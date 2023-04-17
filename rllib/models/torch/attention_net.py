@@ -8,8 +8,8 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-import gym
-from gym.spaces import Box, Discrete, MultiDiscrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, Optional, Union
@@ -439,7 +439,12 @@ class AttentionWrapper(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
-        return []
+        return [
+            torch.zeros(
+                self.gtrxl.view_requirements["state_in_{}".format(i)].space.shape
+            )
+            for i in range(self.gtrxl.num_transformer_units)
+        ]
 
     @override(ModelV2)
     def value_function(self) -> TensorType:

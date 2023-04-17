@@ -1,13 +1,16 @@
+import asyncio
 import binascii
+from collections import defaultdict
+import contextlib
 import errno
 import functools
-import hashlib
 import importlib
 import inspect
 import json
 import logging
 import multiprocessing
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -15,13 +18,24 @@ import sys
 import tempfile
 import threading
 import time
-import uuid
+from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import warnings
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+from subprocess import list2cmdline
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    Coroutine,
+    List,
+)
+
 import grpc
-import numpy as np
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -61,6 +75,10 @@ win32_AssignProcessToJobObject = None
 
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+_PYARROW_VERSION = None
+
+# This global variable is used for testing only
+_CALLED_FREQ = defaultdict(lambda: 0)
 
 
 def get_user_temp_dir():
@@ -121,14 +139,6 @@ def read_ray_address(temp_dir: Optional[str] = None) -> str:
         return None
     with open(address_file, "r") as f:
         return f.read().strip()
-
-
-def _random_string():
-    id_hash = hashlib.shake_128()
-    id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
-    assert len(id_bytes) == ray_constants.ID_SIZE
-    return id_bytes
 
 
 def format_error_message(exception_message: str, task_exception: bool = False):
@@ -198,6 +208,7 @@ def publish_error_to_driver(
     message: str,
     gcs_publisher,
     job_id=None,
+    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -219,35 +230,9 @@ def publish_error_to_driver(
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
     except Exception:
         logger.exception(f"Failed to publish error {error_data}")
-
-
-def random_string():
-    """Generate a random string to use as an ID.
-
-    Note that users may seed numpy, which could cause this function to generate
-    duplicate IDs. Therefore, we need to seed numpy ourselves, but we can't
-    interfere with the state of the user's random number generator, so we
-    extract the state of the random number generator and reset it after we are
-    done.
-
-    TODO(rkn): If we want to later guarantee that these are generated in a
-    deterministic manner, then we will need to make some changes here.
-
-    Returns:
-        A random byte string of length ray_constants.ID_SIZE.
-    """
-    # Get the state of the numpy random number generator.
-    numpy_state = np.random.get_state()
-    # Try to use true randomness.
-    np.random.seed(None)
-    # Generate the random ID.
-    random_id = np.random.bytes(ray_constants.ID_SIZE)
-    # Reset the state of the numpy random number generator.
-    np.random.set_state(numpy_state)
-    return random_id
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
@@ -267,10 +252,7 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
 
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
-    if sys.version_info >= (3, 0):
-        return byte_str.decode(encode_type)
-    else:
-        return byte_str
+    return byte_str.decode(encode_type)
 
 
 def ensure_str(s, encoding="utf-8", errors="strict"):
@@ -296,8 +278,7 @@ def binary_to_task_id(binary_task_id):
 
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
-    if sys.version_info >= (3, 0):
-        hex_identifier = hex_identifier.decode()
+    hex_identifier = hex_identifier.decode()
     return hex_identifier
 
 
@@ -343,6 +324,46 @@ def get_cuda_visible_devices():
 
 
 last_set_gpu_ids = None
+
+
+def set_omp_num_threads_if_unset() -> bool:
+    """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
+
+    This function sets the environment variable OMP_NUM_THREADS for the worker,
+    if the env is not previously set and it's running in worker (WORKER_MODE).
+
+    Returns True if OMP_NUM_THREADS is set in this function.
+
+    """
+    num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
+    if num_threads_from_env is not None:
+        # No ops if it's set
+        return False
+
+    # If unset, try setting the correct CPU count assigned.
+    runtime_ctx = ray.get_runtime_context()
+    if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
+        # Non worker mode, no ops.
+        return False
+
+    num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
+
+    if num_assigned_cpus is None:
+        # This is an actor task w/o any num_cpus specified, set it to 1
+        logger.debug(
+            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+            "degradation with many workers (issue #6998). You can override this "
+            "by explicitly setting OMP_NUM_THREADS, or changing num_cpus."
+        )
+        num_assigned_cpus = 1
+
+    import math
+
+    # For num_cpu < 1: Set to 1.
+    # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
+    omp_num_threads = max(math.floor(num_assigned_cpus), 1)
+    os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    return True
 
 
 def set_cuda_visible_devices(gpu_ids):
@@ -395,7 +416,7 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     if num_gpus is not None:
         resources["GPU"] = num_gpus
     if memory is not None:
-        resources["memory"] = memory
+        resources["memory"] = int(memory)
     if object_store_memory is not None:
         resources["object_store_memory"] = object_store_memory
     if accelerator_type is not None:
@@ -1201,7 +1222,8 @@ def import_attr(full_path: str):
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = (sys.version_info.major, sys.version_info.minor),
+    architecture: Optional[str] = None,
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1210,28 +1232,41 @@ def get_wheel_filename(
             "darwin", "linux", "win32"
         ray_version: The Ray version as returned by ray.__version__ or
             `ray --version`.  Examples: "3.0.0.dev0"
-        py_version (str):
-            The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38", "39"
+        py_version: The Python version as returned by sys.version_info. A
+            tuple of (major, minor). Examples: (3, 8)
+        architecture: Architecture, e.g. ``x86_64`` or ``aarch64``. If None, will
+            be determined by calling ``platform.processor()``.
+
     Returns:
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38", "39"], py_version
+    assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
+
+    py_version_str = "".join(map(str, py_version))
+    if py_version_str in ["37", "38", "39"]:
+        darwin_os_string = "macosx_10_15_x86_64"
+    else:
+        darwin_os_string = "macosx_10_15_universal2"
+
+    architecture = architecture or platform.processor()
+
+    if architecture == "aarch64":
+        linux_os_string = "manylinux2014_aarch64"
+    else:
+        linux_os_string = "manylinux2014_x86_64"
 
     os_strings = {
-        "darwin": "macosx_10_15_x86_64"
-        if py_version in ["38", "39"]
-        else "macosx_10_15_intel",
-        "linux": "manylinux2014_x86_64",
+        "darwin": darwin_os_string,
+        "linux": linux_os_string,
         "win32": "win_amd64",
     }
 
     assert sys_platform in os_strings, sys_platform
 
     wheel_filename = (
-        f"ray-{ray_version}-cp{py_version}-"
-        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"ray-{ray_version}-cp{py_version_str}-"
+        f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1242,7 +1277,7 @@ def get_master_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
     filename = get_wheel_filename(
@@ -1258,7 +1293,7 @@ def get_release_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel for a specific release."""
     filename = get_wheel_filename(
@@ -1288,6 +1323,17 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     grpc_module = aiogrpc if asynchronous else grpc
+
+    options = options or []
+    options_dict = dict(options)
+    options_dict["grpc.keepalive_time_ms"] = options_dict.get(
+        "grpc.keepalive_time_ms", ray._config.grpc_client_keepalive_time_ms()
+    )
+    options_dict["grpc.keepalive_timeout_ms"] = options_dict.get(
+        "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
+    )
+    options = options_dict.items()
+
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
@@ -1329,9 +1375,9 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1363,9 +1409,9 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1420,10 +1466,10 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             return gcs_client.internal_kv_put(
                 key, value, overwrite=True, namespace=namespace
             )
-        except grpc.RpcError as e:
-            if e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+        except ray.exceptions.RpcError as e:
+            if e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1435,7 +1481,7 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
             error = e
-    # Reraise the last grpc.RpcError.
+    # Reraise the last error.
     raise error
 
 
@@ -1596,3 +1642,254 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+    """Get a running async event loop if one exists, otherwise create one.
+
+    This function serves as a proxy for the deprecating get_event_loop().
+    It tries to get the running loop first, and if no running loop
+    could be retrieved:
+    - For python version <3.10: it falls back to the get_event_loop
+        call.
+    - For python version >= 3.10: it uses the same python implementation
+        of _get_event_loop() at asyncio/events.py.
+
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
+    """
+    import sys
+
+    vers_info = sys.version_info
+    if vers_info.major >= 3 and vers_info.minor >= 10:
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio. See python3.10/asyncio/events.py
+        # _get_event_loop()
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError as e:
+            # No running loop, relying on the error message as for now to
+            # differentiate runtime errors.
+            assert "no running event loop" in str(e)
+            return asyncio.get_event_loop_policy().get_event_loop()
+
+    return asyncio.get_event_loop()
+
+
+def get_entrypoint_name():
+    """Get the entrypoint of the current script."""
+    prefix = ""
+    try:
+        curr = psutil.Process()
+        # Prepend `interactive_shell` for interactive shell scripts.
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode # noqa
+        if hasattr(sys, "ps1"):
+            prefix = "(interactive_shell) "
+
+        return prefix + list2cmdline(curr.cmdline())
+    except Exception:
+        return "unknown"
+
+
+def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
+    """Add params to the provided url as query parameters.
+
+    If url already contains query parameters, they will be merged with params, with the
+    existing query parameters overriding any in params with the same parameter name.
+
+    Args:
+        url: The URL to add query parameters to.
+        params: The query parameters to add.
+
+    Returns:
+        URL with params added as query parameters.
+    """
+    # Unquote URL first so we don't lose existing args.
+    url = unquote(url)
+    # Parse URL.
+    parsed_url = urlparse(url)
+    # Merge URL query string arguments dict with new params.
+    base_params = params
+    params = dict(parse_qsl(parsed_url.query))
+    base_params.update(params)
+    # bool and dict values should be converted to json-friendly values.
+    base_params.update(
+        {
+            k: json.dumps(v)
+            for k, v in base_params.items()
+            if isinstance(v, (bool, dict))
+        }
+    )
+
+    # Convert URL arguments to proper query string.
+    encoded_params = urlencode(base_params, doseq=True)
+    # Replace query string in parsed URL with updated query string.
+    parsed_url = parsed_url._replace(query=encoded_params)
+    # Convert back to URL.
+    return urlunparse(parsed_url)
+
+
+def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
+    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
+    parameter. For pyarrow >= 9.0.0, this is required in order to allow
+    ``S3FileSystem.create_dir()`` to create S3 buckets.
+
+    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
+    the URI unchanged.
+
+    Args:
+        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
+
+    Returns:
+        A URI with the added allow_bucket_creation=true query parameter, if the provided
+        URI is an S3 URL; uri will be returned unchanged otherwise.
+    """
+    from pkg_resources._vendor.packaging.version import parse as parse_version
+
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
+        return uri
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "s3":
+        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
+    return uri
+
+
+def _get_pyarrow_version() -> Optional[str]:
+    """Get the version of the installed pyarrow package, returned as a tuple of ints.
+    Returns None if the package is not found.
+    """
+    global _PYARROW_VERSION
+    if _PYARROW_VERSION is None:
+        try:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            pass
+        else:
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = pyarrow.__version__
+    return _PYARROW_VERSION
+
+
+class DeferSigint(contextlib.AbstractContextManager):
+    """Context manager that defers SIGINT signals until the the context is left."""
+
+    # This is used by Ray's task cancellation to defer cancellation interrupts during
+    # problematic areas, e.g. task argument deserialization.
+    def __init__(self):
+        # Whether the task has been cancelled while in the context.
+        self.task_cancelled = False
+        # The original SIGINT handler.
+        self.orig_sigint_handler = None
+        # The original signal method.
+        self.orig_signal = None
+
+    @classmethod
+    def create_if_main_thread(cls) -> contextlib.AbstractContextManager:
+        """Creates a DeferSigint context manager if running on the main thread,
+        returns a no-op context manager otherwise.
+        """
+        if threading.current_thread() == threading.main_thread():
+            return cls()
+        else:
+            return contextlib.nullcontext()
+
+    def _set_task_cancelled(self, signum, frame):
+        """SIGINT handler that defers the signal."""
+        self.task_cancelled = True
+
+    def _signal_monkey_patch(self, signum, handler):
+        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
+        registered within the DeferSigint context.
+        """
+        # Only raise an error if setting a SIGINT handler in the main thread; if setting
+        # a handler in a non-main thread, signal.signal will raise an error anyway
+        # indicating that Python does not allow that.
+        if (
+            threading.current_thread() == threading.main_thread()
+            and signum == signal.SIGINT
+        ):
+            raise ValueError(
+                "Can't set signal handler for SIGINT while SIGINT is being deferred "
+                "within a DeferSigint context."
+            )
+        return self.orig_signal(signum, handler)
+
+    def __enter__(self):
+        # Save original SIGINT handler for later restoration.
+        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        # Set SIGINT signal handler that defers the signal.
+        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
+        # within the context.
+        self.orig_signal = signal.signal
+        signal.signal = self._signal_monkey_patch
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb):
+        assert self.orig_sigint_handler is not None
+        assert self.orig_signal is not None
+        # Restore original signal.signal function.
+        signal.signal = self.orig_signal
+        # Restore original SIGINT handler.
+        signal.signal(signal.SIGINT, self.orig_sigint_handler)
+        if exc_type is None and self.task_cancelled:
+            # No exception raised in context but task has been cancelled, so we raise
+            # KeyboardInterrupt to go through the task cancellation path.
+            raise KeyboardInterrupt
+        else:
+            # If exception was raised in context, returning False will cause it to be
+            # reraised.
+            return False
+
+
+background_tasks = set()
+
+
+def run_background_task(coroutine: Coroutine) -> asyncio.Task:
+    """Schedule a task reliably to the event loop.
+
+    This API is used when you don't want to cache the reference of `asyncio.Task`.
+    For example,
+
+    ```
+    get_event_loop().create_task(coroutine(*args))
+    ```
+
+    The above code doesn't guarantee to schedule the coroutine to the event loops
+
+    When using create_task in a  "fire and forget" way, we should keep the references
+    alive for the reliable execution. This API is used to fire and forget
+    asynchronous execution.
+
+    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
+    """
+    task = get_or_create_event_loop().create_task(coroutine)
+    # Add task to the set. This creates a strong reference.
+    background_tasks.add(task)
+
+    # To prevent keeping references to finished tasks forever,
+    # make each task remove its own reference from the set after
+    # completion:
+    task.add_done_callback(background_tasks.discard)
+    return task
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')

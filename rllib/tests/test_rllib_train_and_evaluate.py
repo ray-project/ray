@@ -6,10 +6,14 @@ import unittest
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import get_trainable_cls
 
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 
 rllib_dir = str(Path(__file__).parent.parent.absolute())
 
@@ -178,7 +182,15 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                 policy_mapping_fn=policy_fn,
             )
             .resources(num_gpus=0)
-            .evaluation(evaluation_config={"explore": False})
+            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "pol0": SingleAgentRLModuleSpec(),
+                        "pol1": SingleAgentRLModuleSpec(),
+                    }
+                ),
+            )
         )
 
         stop = {"episode_reward_mean": 100.0}
@@ -193,6 +205,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                     checkpoint_frequency=1, checkpoint_at_end=True
                 ),
                 local_dir=tmp_dir,
+                failure_config=air.FailureConfig(fail_fast="raise"),
             ),
         ).fit()
 
@@ -282,6 +295,9 @@ class TestCLISmokeTests(unittest.TestCase):
         assert os.popen(f"python {rllib_dir}/scripts.py example list").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py example run cartpole-simpleq-test"
+        ).read()
 
     def test_yaml_run(self):
         assert os.popen(

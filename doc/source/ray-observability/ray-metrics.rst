@@ -14,6 +14,11 @@ To help monitor Ray applications, Ray
 Getting Started
 ---------------
 
+.. tip::
+
+  The below instructions for Prometheus to enable a basic workflow of running and accessing the dashboard on your local machine.
+  For more information about how to run Prometheus on a remote cluster, see :ref:`here <multi-node-metrics>`.
+
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
 First, `download Prometheus <https://prometheus.io/download/>`_. Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
@@ -64,10 +69,20 @@ See :ref:`here <multi-node-metrics>` for more information on how to set up Prome
 
 Grafana
 -------
+
+.. tip::
+
+  The below instructions for Grafana setup to enable a basic workflow of running and accessing the dashboard on your local machine.
+  For more information about how to run Grafana on a remote cluster, see :ref:`here <multi-node-metrics-grafana>`.
+
 Grafana is a tool that supports more advanced visualizations of prometheus metrics and
 allows you to create custom dashboards with your favorite metrics. Ray exports some default
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
+
+
+Deploying Grafana
+~~~~~~~~~~~~~~~~~
 
 First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
@@ -87,6 +102,9 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 .. image:: images/graphs.png
     :align: center
 
+
+See :ref:`here <multi-node-metrics-grafana>` for more information on how to set up Grafana on a Ray Cluster.
+
 .. _system-metrics:
 
 System Metrics
@@ -104,55 +122,64 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Labels
      - Description
    * - `ray_tasks`
-     - `Name`, `State`
-     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label.
+     - `Name`, `State`, `IsRetry`
+     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label. If the task was retried due to failure or reconstruction, the IsRetry label will be set to "1", otherwise "0".
    * - `ray_actors`
      - `Name`, `State`
      - Current number of actors in a particular state. The State label is described by `rpc::ActorTableData <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L85>`_ proto in gcs.proto. The actor class name is available in the Name label.
    * - `ray_resources`
-     - `Name`, `State`
+     - `Name`, `State`, `InstanceId`
      - Logical resource usage for each node of the cluster. Each resource has some quantity that is `in either <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_ USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
-     - `Location`, `ObjectState`
+     - `Location`, `ObjectState`, `InstanceId`
      - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
+   * - `ray_placement_groups`
+     - `State`
+     - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - `ray_memory_manager_worker_eviction_total`
+     - `Type`, `Name`
+     - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
    * - `ray_node_cpu_utilization`
-     - N/A
+     - `InstanceId`
      - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
    * - `ray_node_cpu_count`
-     - N/A
+     - `InstanceId`
      - The number of CPU cores per node.
    * - `ray_node_gpus_utilization`
-     - N/A
-     - The GPU utilization per node as a percentage quantity (0..NGPU*100). Note that unlike ray_node_cpu_utilization, this quantity is pre-multiplied by the number of GPUs per node.
+     - `InstanceId`, `GpuDeviceName`, `GpuIndex`
+     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., Nvidia A10G) and `GpuIndex` is the index of the GPU.
    * - `ray_node_disk_usage`
-     - N/A
+     - `InstanceId`
      - The amount of disk space used per node, in bytes.
    * - `ray_node_disk_free`
-     - N/A
+     - `InstanceId`
      - The amount of disk space available per node, in bytes.
    * - `ray_node_disk_io_write_speed`
-     - N/A
+     - `InstanceId`
      - The disk write throughput per node, in bytes per second.
    * - `ray_node_disk_io_read_speed`
-     - N/A
+     - `InstanceId`
      - The disk read throughput per node, in bytes per second.
    * - `ray_node_mem_used`
-     - N/A
+     - `InstanceId`
      - The amount of physical memory used per node, in bytes.
    * - `ray_node_mem_total`
-     - N/A
+     - `InstanceId`
      - The amount of physical memory available per node, in bytes.
    * - `ray_component_uss_mb`
-     - `Component`
-     - The measured unique set size in megabytes, broken down by logical Ray component (e.g., raylet, gcs, workers).
+     - `Component`, `InstanceId`
+     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_cpu_percentage`
+     - `Component`, `InstanceId`
+     - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
-     - N/A
-     - The amount of GPU memory used per node, in bytes.
+     - `InstanceId`, `GpuDeviceName`, `GpuIndex`
+     - The amount of GPU memory used per GPU, in bytes.
    * - `ray_node_network_receive_speed`
-     - N/A
+     - `InstanceId`
      - The network receive throughput per node, in bytes per second.
    * - `ray_node_network_send_speed`
-     - N/A
+     - `InstanceId`
      - The network send throughput per node, in bytes per second.
    * - `ray_cluster_active_nodes`
      - `node_type`
@@ -169,7 +196,7 @@ Metrics Semantics and Consistency
 
 Ray guarantees all its internal state metrics are *eventually* consistent even in the presence of failures--- should any worker fail, eventually the right state will be reflected in the Prometheus time-series output. However, any particular metrics query is not guaranteed to reflect an exact snapshot of the cluster state.
 
-For the `ray_tasks` and `ray_actor` metrics, you should use sum queries to plot their outputs (e.g., ``sum(ray_tasks) by (Name, State)``). The reason for this is that Ray's task metrics are emitted from multiple distributed components, including the submitting worker of the task, the executor worker for the task, and local raylets for these workers. Hence, are multiple metric points, including negative metric points, emitted for a task from different processes that are intended to be summed together to produce the correct logical view of task states in the distributed system. For example, for a single task submitted and executed, Ray may emit  ``(submitter) SUBMITTED_TO_WORKER: 1, (executor) SUBMITTED_TO_WORKER: -1, (executor) RUNNING: 1``, which reduces to ``SUBMITTED_TO_WORKER: 0, RUNNING: 1`` after summation.
+For the `ray_tasks` and `ray_actors` metrics, you should use sum queries to plot their outputs (e.g., ``sum(ray_tasks) by (Name, State)``). The reason for this is that Ray's task metrics are emitted from multiple distributed components. Hence, there are multiple metric points, including negative metric points, emitted from different processes that must be summed to produce the correct logical view of the distributed system. For example, for a single task submitted and executed, Ray may emit  ``(submitter) SUBMITTED_TO_WORKER: 1, (executor) SUBMITTED_TO_WORKER: -1, (executor) RUNNING: 1``, which reduces to ``SUBMITTED_TO_WORKER: 0, RUNNING: 1`` after summation.
 
 .. _application-level-metrics:
 
@@ -204,8 +231,11 @@ If you open this in the browser, you should see the following output:
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
 
+Configurations
+--------------
+
 Customize prometheus export port
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray by default provides the service discovery file, but you can directly scrape metrics from prometheus ports.
 To do that, you may want to customize the port that metrics gets exposed to a pre-defined port.
@@ -216,6 +246,34 @@ To do that, you may want to customize the port that metrics gets exposed to a pr
 
 Now, you can scrape Ray's metrics using Prometheus via ``<ip>:8080``.
 
+Alternate Prometheus host location
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can choose to run Prometheus on a non-default port or on a different machine. When doing so, you should
+make sure that prometheus can scrape the metrics from your ray nodes following instructions :ref:`here <multi-node-metrics>`.
+
+In addition, both Ray and Grafana needs to know how to access this prometheus instance. This can be configured
+by setting the `RAY_PROMETHEUS_HOST` env var when launching ray. The env var takes in the address to access Prometheus. More
+info can be found :ref:`here <multi-node-metrics-grafana>`. By default, we assume Prometheus is hosted at `localhost:9090`.
+
+For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, One should set the value to
+`RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
+
+
+Alternate Grafana host location
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can choose to run Grafana on a non-default port or on a different machine. If you choose to do this, the
+:ref:`Dashboard <ray-dashboard>` needs to be configured with a public address to that service so the web page
+can load the graphs. This can be done with the `RAY_GRAFANA_HOST` env var when launching ray. The env var takes
+in the address to access Grafana. More info can be found :ref:`here <multi-node-metrics-grafana>`. Instructions
+to use an existing Grafana instance can be found :ref:`here <multi-node-metrics-grafana-existing>`.
+
+For the Grafana charts to work on the Ray dashboard, the user of the dashboard's browser must be able to reach
+the Grafana service. If this browser cannot reach Grafana the same way the Ray head node can, you can use a separate
+env var `RAY_GRAFANA_IFRAME_HOST` to customize the host the browser users to attempt to reach Grafana. If this is not set,
+we use the value of `RAY_GRAFANA_HOST` by default.
+
+For example, if Grafana is hosted at is 55.66.77.88 on port 3000. One should set the value
+to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 
 Troubleshooting
 ---------------
@@ -234,3 +292,9 @@ When downloading binaries from the internet, Mac requires that the binary be sig
 Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
 See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
+
+Grafana dashboards are not embedded in the Ray dashboard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
+That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).

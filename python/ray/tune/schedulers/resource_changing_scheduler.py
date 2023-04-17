@@ -6,12 +6,12 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
+from ray.air.execution.resources.request import _sum_bundles
 from ray.util.annotations import PublicAPI
 from ray.tune.execution import trial_runner
-from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
-from ray.tune.execution.placement_groups import PlacementGroupFactory, _sum_bundles
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +451,12 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        pgf = PlacementGroupFactory(new_bundles)
+        pgf = PlacementGroupFactory(
+            new_bundles,
+            strategy=base_trial_resource.strategy,
+            *base_trial_resource._args,
+            **base_trial_resource._kwargs,
+        )
         pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
         return pgf
 
@@ -601,7 +606,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
     The function should be able to
-    :ref:`load and save checkpoints <tune-checkpoint-syncing>`
+    :ref:`load and save checkpoints <tune-function-trainable-checkpointing>`
     (the latter preferably every iteration).
 
     If the Trainable (class) API is used, you can obtain the current trial
@@ -619,7 +624,7 @@ class ResourceChangingScheduler(TrialScheduler):
             The callable must take four arguments: ``TrialRunner``, current
             ``Trial``, current result :class:`dict` and the
             ``ResourceChangingScheduler`` calling it. The callable must
-            return a ``PlacementGroupFactory``, ``Resources``, :class:`dict`
+            return a ``PlacementGroupFactory``
             or None (signifying no need for an update). If
             ``resources_allocation_function`` is None, no resource
             requirements will be changed at any time.
@@ -667,7 +672,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     Dict[str, Any],
                     "ResourceChangingScheduler",
                 ],
-                Optional[Union[PlacementGroupFactory, Resources]],
+                Optional[PlacementGroupFactory],
             ]
         ] = _DistributeResourcesDefault,
     ) -> None:
@@ -680,9 +685,7 @@ class ResourceChangingScheduler(TrialScheduler):
             )
         self._resources_allocation_function = resources_allocation_function
         self._base_scheduler = base_scheduler or FIFOScheduler()
-        self._base_trial_resources: Optional[
-            Union[Resources, PlacementGroupFactory]
-        ] = None
+        self._base_trial_resources: Optional[PlacementGroupFactory] = None
         self._trials_to_reallocate: Dict[
             Trial, Optional[Union[dict, PlacementGroupFactory]]
         ] = {}
@@ -695,7 +698,7 @@ class ResourceChangingScheduler(TrialScheduler):
         return self._base_scheduler._metric
 
     @property
-    def base_trial_resources(self) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    def base_trial_resources(self) -> Optional[PlacementGroupFactory]:
         return self._base_trial_resources
 
     def set_search_properties(

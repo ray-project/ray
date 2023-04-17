@@ -1,22 +1,22 @@
+from enum import Enum
 import logging
-import platform
-from typing import Any, Dict, List, Optional, Callable, Union
-
 import numpy as np
 import random
-from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
-import psutil  # noqa E402
+import psutil
 
-from ray.util.debug import log_once
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
+from ray.rllib.utils.actor_manager import FaultAwareApply
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
-from ray.rllib.utils.typing import SampleBatchType, T
+from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
+from ray.rllib.utils.typing import SampleBatchType
 from ray.util.annotations import DeveloperAPI
-from ray.util.iter import ParallelIteratorWorker
+from ray.util.debug import log_once
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -63,9 +63,8 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
             logger.info(msg)
 
 
-# TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
 @DeveloperAPI
-class ReplayBuffer(ParallelIteratorWorker):
+class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
     """The lowest-level replay buffer interface used by RLlib.
 
     This class implements a basic ring-type of buffer with random sampling.
@@ -77,46 +76,47 @@ class ReplayBuffer(ParallelIteratorWorker):
     they might not implement all storage_units.
 
     Examples:
-        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, # doctest: +SKIP
-        ...                         StorageUnit # doctest: +SKIP
-        >>> from ray.rllib.policy.sample_batch import SampleBatch # doctest: +SKIP
-        >>> # Store any batch as a whole
-        >>> buffer = ReplayBuffer(capacity=10,
-        ...                         storage_unit=StorageUnit.FRAGMENTS) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]})) # doctest: +SKIP
-        >>> print(buffer.sample(1)) # doctest: +SKIP
-        >>> # SampleBatch(1: ['a', 'b'])
-        >>> # Store only complete episodes
-        >>> buffer = ReplayBuffer(capacity=10,
-        ...                         storage_unit=StorageUnit.EPISODES) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4], # doctest: +SKIP
-        ...                        SampleBatch.T: [0, 1, 0, 1],
-        ...                        SampleBatch.DONES: [False, True, False, True],
-        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]})) # doctest: +SKIP
-        >>> eps_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(eps_n[SampleBatch.EPS_ID]) # doctest: +SKIP
-        >>> # [1 1]
-        >>> # Store single timesteps
-        >>> buffer = ReplayBuffer(capacity=2,  # doctest: +SKIP
-        ...                         storage_unit=StorageUnit.TIMESTEPS) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"a": [1, 2],
-        ...                         SampleBatch.T: [0, 1]})) # doctest: +SKIP
-        >>> t_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(t_n["a"]) # doctest: +SKIP
-        >>> # [2]
-        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]})) # doctest: +SKIP
-        >>> print(buffer._eviction_started) # doctest: +SKIP
-        >>> # True
-        >>> t_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(t_n["a"]) # doctest: +SKIP
-        >>> # [3] # doctest: +SKIP
-        >>> buffer = ReplayBuffer(capacity=10, # doctest: +SKIP
-        ...                         storage_unit=StorageUnit.SEQUENCES) # doctest: +SKIP
-        >>> buffer.add(SampleBatch({"c": [1, 2, 3], # doctest: +SKIP
-        ...                        SampleBatch.SEQ_LENS: [1, 2]})) # doctest: +SKIP
-        >>> seq_n = buffer.sample(1) # doctest: +SKIP
-        >>> print(seq_n["c"]) # doctest: +SKIP
-        >>> # [1]
+
+    .. testcode::
+
+        from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+        from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+        from ray.rllib.policy.sample_batch import SampleBatch
+
+        # Store any batch as a whole
+        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
+        buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
+        buffer.sample(1)
+
+        # Store only complete episodes
+        buffer = ReplayBuffer(capacity=10,
+                                storage_unit=StorageUnit.EPISODES)
+        buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+                                SampleBatch.T: [0, 1, 0, 1],
+                                SampleBatch.TERMINATEDS: [False, True, False, True],
+                                SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        buffer.sample(1)
+
+        # Store single timesteps
+        buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
+        buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
+        buffer.sample(1)
+
+        buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
+        print(buffer._eviction_started)
+        buffer.sample(1)
+
+        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
+        buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
+        buffer.sample(1)
+
+    .. testoutput::
+
+        True
+
+    `True` is not the output of the above testcode, but an artifact of unexpected
+    behaviour of sphinx doctests.
+    (see https://github.com/ray-project/ray/pull/32477#discussion_r1106776101)
     """
 
     def __init__(
@@ -146,8 +146,9 @@ class ReplayBuffer(ParallelIteratorWorker):
             self.storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', 'sequences' or 'episodes' "
-                "or 'fragments', but is {}".format(storage_unit)
+                f"storage_unit must be either '{StorageUnit.TIMESTEPS}', "
+                f"'{StorageUnit.SEQUENCES}', '{StorageUnit.EPISODES}' "
+                f"or '{StorageUnit.FRAGMENTS}', but is {storage_unit}"
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -184,20 +185,20 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         self.batch_size = None
 
+    @override(ReplayBufferInterface)
     def __len__(self) -> int:
-        """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
-    @DeveloperAPI
+    @override(ReplayBufferInterface)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Adds a batch of experiences to this buffer.
+        """Adds a batch of experiences or other data to this buffer.
 
         Splits batch into chunks of timesteps, sequences or episodes, depending on
         `self._storage_unit`. Calls `self._add_single_batch` to add resulting slices
         to the buffer storage.
 
         Args:
-            batch: Batch to add.
+            batch: The batch to add.
             ``**kwargs``: Forward compatibility kwargs.
         """
         if not batch.count > 0:
@@ -220,9 +221,9 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         elif self.storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
-                if (
-                    eps.get(SampleBatch.T, [0])[0] == 0
-                    and eps.get(SampleBatch.DONES, [True])[-1] == True  # noqa E712
+                if eps.get(SampleBatch.T, [0])[0] == 0 and (
+                    eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                    or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                 ):
                     # Only add full episodes to the buffer
                     # Check only if info is available
@@ -232,8 +233,9 @@ class ReplayBuffer(ParallelIteratorWorker):
                         logger.info(
                             "This buffer uses episodes as a storage "
                             "unit and thus allows only full episodes "
-                            "to be added to it. Some samples may be "
-                            "dropped."
+                            "to be added to it (starting from T=0 and ending in "
+                            "`terminateds=True` or `truncateds=True`. "
+                            "Some samples may be dropped."
                         )
 
         elif self.storage_unit == StorageUnit.FRAGMENTS:
@@ -276,8 +278,10 @@ class ReplayBuffer(ParallelIteratorWorker):
         else:
             self._next_idx += 1
 
-    @DeveloperAPI
-    def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
+    @override(ReplayBufferInterface)
+    def sample(
+        self, num_items: Optional[int] = None, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Samples `num_items` items from this buffer.
 
         The items depend on the buffer's storage_unit.
@@ -336,25 +340,14 @@ class ReplayBuffer(ParallelIteratorWorker):
             data.update(self._evicted_hit_stats.stats())
         return data
 
-    @DeveloperAPI
+    @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
-        """Returns all local state.
-
-        Returns:
-            The serializable local state.
-        """
         state = {"_storage": self._storage, "_next_idx": self._next_idx}
         state.update(self.stats(debug=False))
         return state
 
-    @DeveloperAPI
+    @override(ReplayBufferInterface)
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores all local state to the provided `state`.
-
-        Args:
-            state: The new state to set this buffer. Can be
-                obtained by calling `self.get_state()`.
-        """
         # The actual storage.
         self._storage = state["_storage"]
         self._next_idx = state["_next_idx"]
@@ -375,72 +368,18 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         if samples:
             # We assume all samples are of same type
-            sample_type = type(samples[0])
-            out = sample_type.concat_samples(samples)
+            out = concat_samples(samples)
         else:
             out = SampleBatch()
         out.decompress_if_needed()
         return out
 
-    @DeveloperAPI
-    def get_host(self) -> str:
-        """Returns the computer's network name.
-
-        Returns:
-            The computer's networks name or an empty string, if the network
-            name could not be determined.
-        """
-        return platform.node()
-
-    @DeveloperAPI
-    def apply(
-        self,
-        func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
-        *args,
-        **kwargs,
-    ) -> T:
-        """Calls the given function with this ReplayBuffer instance.
-
-        This is useful if we want to apply a function to a set of remote actors.
-
-        Args:
-            func: A callable that accepts the replay buffer itself, args and kwargs
-            ``*args``: Any args to pass to func
-            ``**kwargs``: Any kwargs to pass to func
-
-        Returns:
-            Return value of the induced function call
-        """
-        return func(self, *args, **kwargs)
-
-    @Deprecated(new="ReplayBuffer.add()", error=True)
-    def add_batch(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        old="ReplayBuffer.replay(num_items)",
-        new="ReplayBuffer.sample(num_items)",
-        error=True,
-    )
-    def replay(self, num_items):
-        pass
-
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "
-        "Making a buffer an iterator will soon "
-        "be deprecated altogether. Consider switching to the training "
-        "iteration API to resolve this.",
-        error=False,
+        "Making a buffer an iterator has been deprecated. Switch your Algorithm to "
+        "override the `training_step()` method (instead of `execution_plan()`) to "
+        "resolve this.",
+        error=True,
     )
     def make_iterator(self, num_items_to_replay: int):
-        """Make this buffer a ParallelIteratorWorker to retain compatibility.
-
-        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
-        This method provides an easy way to support this for now.
-        """
-
-        def gen_replay():
-            while True:
-                yield self.sample(num_items_to_replay)
-
-        ParallelIteratorWorker.__init__(self, gen_replay, False)
+        pass

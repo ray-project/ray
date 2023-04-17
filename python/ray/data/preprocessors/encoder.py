@@ -2,10 +2,11 @@ from functools import partial
 from typing import List, Dict, Optional
 
 from collections import Counter, OrderedDict
+import numpy as np
 import pandas as pd
 import pandas.api.types
 
-from ray.data import Dataset
+from ray.data import Datastream
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -42,7 +43,7 @@ class OrdinalEncoder(Preprocessor):
         2    1      0
         3    0      1
 
-        If you transform a value not present in the original dataset, then the value
+        If you transform a value not present in the original datastream, then the value
         is encoded as ``float("nan")``.
 
         >>> df = pd.DataFrame({"sex": ["female"], "level": ["L6"]})
@@ -86,9 +87,9 @@ class OrdinalEncoder(Preprocessor):
         self.columns = columns
         self.encode_lists = encode_lists
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, datastream: Datastream) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, encode_lists=self.encode_lists
+            datastream, self.columns, encode_lists=self.encode_lists
         )
         return self
 
@@ -134,7 +135,7 @@ class OneHotEncoder(Preprocessor):
     1 if the category matches and 0 otherwise.
 
     If you encode an infrequent category (see ``max_categories``) or a category
-    that isn't in the fitted dataset, then the category is encoded as all 0s.
+    that isn't in the fitted datastream, then the category is encoded as all 0s.
 
     Columns must contain hashable objects or lists of hashable objects.
 
@@ -159,7 +160,7 @@ class OneHotEncoder(Preprocessor):
         4           1            0          0
         5           0            1          0
 
-        If you one-hot encode a value that isn't in the fitted dataset, then the
+        If you one-hot encode a value that isn't in the fitted datastream, then the
         value is encoded with zeros.
 
         >>> df = pd.DataFrame({"color": ["yellow"]})
@@ -205,9 +206,9 @@ class OneHotEncoder(Preprocessor):
         self.columns = columns
         self.max_categories = max_categories
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, datastream: Datastream) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset,
+            datastream,
             self.columns,
             max_categories=self.max_categories,
             encode_lists=False,
@@ -314,9 +315,12 @@ class MultiHotEncoder(Preprocessor):
         self.columns = columns
         self.max_categories = max_categories
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, datastream: Datastream) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, max_categories=self.max_categories, encode_lists=True
+            datastream,
+            self.columns,
+            max_categories=self.max_categories,
+            encode_lists=True,
         )
         return self
 
@@ -324,7 +328,9 @@ class MultiHotEncoder(Preprocessor):
         _validate_df(df, *self.columns)
 
         def encode_list(element: list, *, name: str):
-            if not isinstance(element, list):
+            if isinstance(element, np.ndarray):
+                element = element.tolist()
+            elif not isinstance(element, list):
                 element = [element]
             stats = self.stats_[f"unique_values({name})"]
             counter = Counter(element)
@@ -371,7 +377,7 @@ class LabelEncoder(Preprocessor):
         2          4.9           3.0        0
         3          6.2           3.4        2
 
-        If you transform a label not present in the original dataset, then the new
+        If you transform a label not present in the original datastream, then the new
         label is encoded as ``float("nan")``.
 
         >>> df = pd.DataFrame({
@@ -397,8 +403,8 @@ class LabelEncoder(Preprocessor):
     def __init__(self, label_column: str):
         self.label_column = label_column
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
+    def _fit(self, datastream: Datastream) -> Preprocessor:
+        self.stats_ = _get_unique_value_indices(datastream, [self.label_column])
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -425,7 +431,7 @@ class Categorizer(Preprocessor):
     .. warning::
 
         If you don't specify ``dtypes``, fit this preprocessor before splitting
-        your dataset into train and test splits. This ensures categories are
+        your datastream into train and test splits. This ensures categories are
         consistent across splits.
 
     Examples:
@@ -471,13 +477,13 @@ class Categorizer(Preprocessor):
         self.columns = columns
         self.dtypes = dtypes
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, datastream: Datastream) -> Preprocessor:
         columns_to_get = [
             column for column in self.columns if column not in self.dtypes
         ]
         if columns_to_get:
             unique_indices = _get_unique_value_indices(
-                dataset, columns_to_get, drop_na_values=True, key_format="{0}"
+                datastream, columns_to_get, drop_na_values=True, key_format="{0}"
             )
             unique_indices = {
                 column: pd.CategoricalDtype(values_indices.keys())
@@ -501,7 +507,7 @@ class Categorizer(Preprocessor):
 
 
 def _get_unique_value_indices(
-    dataset: Dataset,
+    datastream: Datastream,
     columns: List[str],
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
@@ -509,6 +515,7 @@ def _get_unique_value_indices(
     encode_lists: bool = True,
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
+
     if max_categories is None:
         max_categories = {}
     for column in max_categories:
@@ -547,7 +554,7 @@ def _get_unique_value_indices(
                 )
         return [result]
 
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+    value_counts = datastream.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
     for batch in value_counts.iter_batches(batch_size=None):
         for col_value_counts in batch:
@@ -601,5 +608,5 @@ def _is_series_composed_of_lists(series: pd.Series) -> bool:
         (element for element in series if element is not None), None
     )
     return pandas.api.types.is_object_dtype(series.dtype) and isinstance(
-        first_not_none_element, list
+        first_not_none_element, (list, np.ndarray)
     )

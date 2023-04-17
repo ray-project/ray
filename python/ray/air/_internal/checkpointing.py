@@ -7,6 +7,7 @@ from ray.air.constants import PREPROCESSOR_KEY
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+    from ray.air.checkpoint import Checkpoint
 
 
 def save_preprocessor_to_dir(
@@ -31,3 +32,21 @@ def load_preprocessor_from_dir(
     else:
         preprocessor = None
     return preprocessor
+
+
+def add_preprocessor_to_checkpoint(
+    checkpoint: "Checkpoint", preprocessor: "Preprocessor"
+) -> "Checkpoint":
+    """Adds a preprocessor to Checkpoint.
+
+    Returns a copy of the Checkpoint if it is not backed by a
+    local dir."""
+    if checkpoint._local_path:
+        save_preprocessor_to_dir(preprocessor, checkpoint._local_path)
+    else:
+        metadata = checkpoint._metadata
+        checkpoint_dict = checkpoint.to_dict()
+        checkpoint_dict[PREPROCESSOR_KEY] = preprocessor
+        checkpoint = checkpoint.from_dict(checkpoint_dict)
+        checkpoint._metadata = metadata
+    return checkpoint

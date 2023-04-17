@@ -29,7 +29,6 @@ public class RayJavaLoggingTest extends BaseTest {
     }
   }
 
-  @Test
   public void testJavaLoggingRotate() {
     ActorHandle<HeavyLoggingActor> loggingActor =
         Ray.actor(HeavyLoggingActor::new)

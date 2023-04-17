@@ -6,13 +6,13 @@ Includes options for LSTM-based models (--use-lstm), attention-net models
 (--use-attention), and plain (non-recurrent) models.
 """
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
@@ -23,7 +23,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -95,10 +95,13 @@ if __name__ == "__main__":
                 "attention_dim": 32,
                 "attention_memory_inference": 10,
                 "attention_memory_training": 10,
-            }
+            },
+            # TODO (Kourosh): Enable when Attentions are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {
@@ -126,12 +129,11 @@ if __name__ == "__main__":
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
     # Create new Trainer and restore its state from the last checkpoint.
-    algo = get_algorithm_class(args.run)(config=config)
-    algo.restore(checkpoint)
+    algo = Algorithm.from_checkpoint(checkpoint)
 
     # Create the env to do inference in.
     env = gym.make("FrozenLake-v1")
-    obs = env.reset()
+    obs, info = env.reset()
 
     # In case the model needs previous-reward/action inputs, keep track of
     # these via these variables here (we'll have to pass them into the
@@ -166,10 +168,10 @@ if __name__ == "__main__":
             policy_id="default_policy",  # <- default value
         )
         # Send the computed action `a` to the env.
-        obs, reward, done, _ = env.step(a)
+        obs, reward, done, truncated, _ = env.step(a)
         # Is the episode `done`? -> Reset.
         if done:
-            obs = env.reset()
+            obs, info = env.reset()
             num_episodes += 1
             state = init_state
             prev_a = init_prev_a

@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -103,6 +104,13 @@ class GcsActor {
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+    if (task_spec.scheduling_strategy().scheduling_strategy_case() ==
+        rpc::SchedulingStrategy::SchedulingStrategyCase::
+            kPlacementGroupSchedulingStrategy) {
+      actor_table_data_.set_placement_group_id(task_spec.scheduling_strategy()
+                                                   .placement_group_scheduling_strategy()
+                                                   .placement_group_id());
+    }
 
     // Set required resources.
     auto resource_map =
@@ -132,7 +140,9 @@ class GcsActor {
   }
 
   ~GcsActor() {
-    if (last_metric_state_) {
+    // We don't decrement the value when it becomes DEAD because we don't want to
+    // lose the # of dead actors count when this class is GC'ed.
+    if (last_metric_state_ && last_metric_state_.value() != rpc::ActorTableData::DEAD) {
       RAY_LOG(DEBUG) << "Decrementing state at "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
                      << " " << GetActorTableData().class_name();
@@ -192,7 +202,8 @@ class GcsActor {
     if (last_metric_state_) {
       RAY_LOG(DEBUG) << "Swapping state from "
                      << rpc::ActorTableData::ActorState_Name(last_metric_state_.value())
-                     << " to " << rpc::ActorTableData::ActorState_Name(cur_state);
+                     << " to " << rpc::ActorTableData::ActorState_Name(cur_state)
+                     << " for : " << GetActorID();
       counter_->Swap(
           std::make_pair(last_metric_state_.value(), GetActorTableData().class_name()),
           std::make_pair(cur_state, GetActorTableData().class_name()));
@@ -222,7 +233,7 @@ class GcsActor {
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
-    std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, bool creation_cancelled)>;
+    std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
@@ -281,8 +292,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-          run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -409,6 +418,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// creation task has been scheduled successfully.
   ///
   /// \param actor The actor that has been created.
+  /// \param reply The reply from the PushTask request from creation task executed on a
+  /// remote worker.
   void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                               const rpc::PushTaskReply &reply);
 
@@ -417,12 +428,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
-
-  /// Delete non-detached actor information from durable storage once the associated job
-  /// finishes.
-  ///
-  /// \param job_id The id of finished job.
-  void OnJobFinished(const JobID &job_id);
 
   /// Get the created actors.
   ///
@@ -444,6 +449,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   // Visible for testing.
   int64_t CountFor(rpc::ActorTableData::ActorState state, const std::string &name) const {
     return actor_state_counter_->Get(std::make_pair(state, name));
+  }
+
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+    usage_stats_client_ = usage_stats_client;
   }
 
  private:
@@ -539,6 +548,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
+    actor_delta->set_start_time(actor.start_time());
+    actor_delta->set_end_time(actor.end_time());
+    actor_delta->set_repr_name(actor.repr_name());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());
@@ -575,6 +587,16 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the total count of pending actors.
   /// \return The total count of pending actors in all pending queues.
   size_t GetPendingActorsCount() const;
+
+  /// Invoke the actor creation callbacks on the actor, and remove the callbacks stored.
+  ///
+  /// \param actor Actor.
+  /// \param creation_task_reply The reply from the worker that handles the push task
+  /// request of the creation task.
+  /// \param creation_task_status The status of the actor creation task.
+  void RunAndClearActorCreationCallbacks(const std::shared_ptr<GcsActor> &actor,
+                                         const rpc::PushTaskReply &creation_task_reply,
+                                         const Status &creation_task_status);
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
@@ -631,6 +653,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
+
+  UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -639,6 +663,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Counter of actors broken down by (State, ClassName).
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       actor_state_counter_;
+
+  /// Total number of successfully created actors in the cluster lifetime.
+  int64_t liftime_num_created_actors_ = 0;
 
   // Debug info.
   enum CountType {

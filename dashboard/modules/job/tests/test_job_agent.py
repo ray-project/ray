@@ -1,6 +1,7 @@
-import asyncio
 import logging
 import os
+import ray
+
 import requests
 import shutil
 import sys
@@ -11,6 +12,7 @@ from functools import partial
 import pytest
 import yaml
 
+from ray._private.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -20,6 +22,9 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,
+    run_string_as_driver_nonblocking,
+    get_current_unused_port,
+    async_wait_for_condition_async_predicate,
 )
 from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
@@ -40,11 +45,11 @@ from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
-EVENT_LOOP = asyncio.get_event_loop()
+EVENT_LOOP = get_or_create_event_loop()
 
 
 @pytest.fixture
-def job_sdk_client():
+def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         ip, _ = ctx.address_info["webui_url"].split(":")
         agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
@@ -226,14 +231,11 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    # Conda env takes longer to install, causing flakiness.
-    timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
-
     wait_for_condition(
         partial(
             _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
         ),
-        timeout=timeout,
+        timeout=60,
     )
 
     # There is only one node, so there is no need to replace the client of the JobAgent
@@ -379,7 +381,10 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     indirect=True,
 )
 async def test_job_log_in_multiple_node(
-    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+    make_sure_dashboard_http_port_unused,
+    enable_test_module,
+    disable_aiohttp_cache,
+    ray_start_cluster_head,
 ):
     cluster = ray_start_cluster_head
     assert wait_until_server_available(cluster.webui_url) is True
@@ -483,6 +488,98 @@ async def test_job_log_in_multiple_node(
             print("error:", ex)
             time.sleep(1)
     assert all(job_check_status), job_check_status
+
+
+def test_agent_logs_not_streamed_to_drivers():
+    """Ensure when the job submission is used,
+    (ray.init is called from an agent), the agent logs are
+    not streamed to drivers.
+
+    Related: https://github.com/ray-project/ray/issues/29944
+    """
+    script = """
+import ray
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray._private.test_utils import format_web_url
+from ray._private.test_utils import wait_for_condition
+
+ray.init()
+address = ray._private.worker._global_node.webui_url
+address = format_web_url(address)
+client = JobSubmissionClient(address)
+submission_id = client.submit_job(entrypoint="ls")
+wait_for_condition(
+    lambda: client.get_job_status(submission_id) == JobStatus.SUCCEEDED
+)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "(raylet)" not in out_str
+    assert "(raylet)" not in err_str
+
+
+@pytest.mark.asyncio
+async def test_non_default_dashboard_agent_http_port(tmp_path):
+    """Test that we can connect to the dashboard agent with a non-default
+    http port.
+    """
+    import subprocess
+
+    cmd = (
+        "ray start --head " f"--dashboard-agent-listen-port {get_current_unused_port()}"
+    )
+    subprocess.check_output(cmd, shell=True)
+
+    try:
+        # We will need to wait for the ray to be started in the subprocess.
+        address_info = ray.init("auto", ignore_reinit_error=True).address_info
+
+        ip, _ = address_info["webui_url"].split(":")
+        dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
+        agent_address = f"{ip}:{dashboard_agent_listen_port}"
+        print("agent address = ", agent_address)
+
+        agent_client = JobAgentSubmissionClient(format_web_url(agent_address))
+        head_client = JobSubmissionClient(format_web_url(address_info["webui_url"]))
+
+        assert wait_until_server_available(agent_address)
+
+        # Submit a job through the agent.
+        runtime_env = RuntimeEnv().to_dict()
+        request = validate_request_type(
+            {
+                "runtime_env": runtime_env,
+                "entrypoint": "echo hello",
+            },
+            JobSubmitRequest,
+        )
+        submit_result = await agent_client.submit_job_internal(request)
+        job_id = submit_result.submission_id
+
+        async def verify():
+            # Wait for job finished.
+            wait_for_condition(
+                partial(
+                    _check_job,
+                    client=head_client,
+                    job_id=job_id,
+                    status=JobStatus.SUCCEEDED,
+                ),
+                timeout=10,
+            )
+
+            resp = await agent_client.get_job_logs_internal(job_id)
+            assert "hello" in resp.logs, resp.logs
+
+            return True
+
+        await async_wait_for_condition_async_predicate(verify, retry_interval_ms=2000)
+    finally:
+        subprocess.check_output("ray stop --force", shell=True)
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ class TorchConfig(BackendConfig):
         return _TorchBackend
 
 
-def _set_nccl_network_interface() -> str:
+def _set_nccl_network_interface():
     """Set the appropriate NCCL network interface to use."""
 
     if "NCCL_SOCKET_IFNAME" not in os.environ:
@@ -94,12 +94,21 @@ def _setup_torch_process_group(
         )
     logger.debug(f"using {backend}")
 
-    if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+    # See the `timeout` arg in https://pytorch.org/docs/master/
+    # distributed.html#torch.distributed.init_process_group for description of
+    # NCCL_ASYNC_ERROR_HANDLING. We do not use NCCL_BLOCKING_WAIT due to performance
+    # overhead.
+    if (
+        backend == "nccl"
+        and "NCCL_ASYNC_ERROR_HANDLING" not in os.environ
+        and "NCCL_BLOCKING_WAIT" not in os.environ
+    ):
         logger.debug(
-            "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+            "Setting NCCL_ASYNC_ERROR_HANDLING to fail if NCCL collective "
+            "communication operations are timing out. "
+            "To override this behavior, you can set NCCL_ASYNC_ERROR_HANDLING=0."
         )
-        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
 
     dist.init_process_group(
         backend=backend,
@@ -111,10 +120,36 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
+    from ray.train.torch.train_loop_utils import get_device
+
+    devices = get_device()
+    if not isinstance(devices, list):
+        devices = [devices]
     if destroy_process_group:
         dist.destroy_process_group()
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+        for device in devices:
+            with torch.cuda.device(device):
+                torch.cuda.empty_cache()
+
+
+def _set_torch_distributed_env_vars():
+    # Same env vars as in
+    # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
+    from ray.air import session
+    from ray.train.torch.train_loop_utils import get_device
+
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["NODE_RANK"] = str(session.get_node_rank())
+
+    # Makes sure Hugging Face Accelerate uses the correct device
+    device = get_device()
+    if isinstance(device, list):
+        device = device[0]
+    os.environ["ACCELERATE_TORCH_DEVICE"] = str(device)
 
 
 class _TorchBackend(Backend):
@@ -172,10 +207,15 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-
         worker_group.execute(
-            _shutdown_torch, destroy_process_group=len(worker_group) > 1
+            _shutdown_torch,
+            destroy_process_group=len(worker_group) > 1,
         )
+
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: BackendConfig
+    ):
+        worker_group.execute(_set_torch_distributed_env_vars)
 
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint):

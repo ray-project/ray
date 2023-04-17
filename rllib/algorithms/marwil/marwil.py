@@ -9,13 +9,9 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
-from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -36,29 +32,34 @@ class MARWILConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.marwil import MARWILConfig
         >>> # Run this from the ray directory root.
-        >>> config = MARWILConfig().training(beta=1.0, lr=0.00001, gamma=0.99)\
-        ...             .offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
-        >>> print(config.to_dict())
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> config = MARWILConfig()  # doctest: +SKIP
+        >>> config = config.training(beta=1.0, lr=0.00001, gamma=0.99)  # doctest: +SKIP
+        >>> config = config.offline_data(  # doctest: +SKIP
+        ...     input_=["./rllib/tests/data/cartpole/large.json"])
+        >>> print(config.to_dict()) # doctest: +SKIP
+        ...
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train() # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.marwil import MARWILConfig
         >>> from ray import tune
         >>> config = MARWILConfig()
         >>> # Print out some default values.
-        >>> print(config.beta)
+        >>> print(config.beta)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), beta=0.75)
+        >>> config.training(lr=tune.grid_search(  # doctest: +SKIP
+        ...     [0.001, 0.0001]), beta=0.75)
         >>> # Set the config object's data path.
         >>> # Run this from the ray directory root.
-        >>> config.offline_data(input_=["./rllib/tests/data/cartpole/large.json"])
+        >>> config.offline_data( # doctest: +SKIP
+        ...     input_=["./rllib/tests/data/cartpole/large.json"])
         >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "MARWIL",
         ...     param_space=config.to_dict(),
         ... ).fit()
@@ -93,15 +94,20 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
+        # TODO (Artur): MARWIL should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
-
-        # TODO: Delete this and change off_policy_estimation_methods to {}
-        # Also remove the same section from BC
-        self.off_policy_estimation_methods = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self._set_off_policy_estimation_methods = False
 
     @override(AlgorithmConfig)
@@ -164,7 +170,6 @@ class MARWILConfig(AlgorithmConfig):
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the evaluation related configuration.
-
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -185,9 +190,9 @@ class MARWILConfig(AlgorithmConfig):
     ) -> "Algorithm":
         if not self._set_off_policy_estimation_methods:
             deprecation_warning(
-                old="MARWIL currently uses off_policy_estimation_methods: "
-                f"{self.off_policy_estimation_methods} by default. This will"
-                "change to off_policy_estimation_methods: {} in a future release."
+                old=r"MARWIL used to have off_policy_estimation_methods "
+                "is and wis by default. This has"
+                "changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
                 ".evaluation(off_policy_estimation_methods=...)",
                 error=False,
@@ -201,9 +206,6 @@ class MARWILConfig(AlgorithmConfig):
 
         if self.beta < 0.0 or self.beta > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
-
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
         if self.postprocess_inputs is False and self.beta > 0.0:
             raise ValueError(
@@ -250,7 +252,7 @@ class MARWIL(Algorithm):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
         # Train.
-        if self.config["simple_optimizer"]:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -276,20 +278,3 @@ class MARWIL(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MARWILConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

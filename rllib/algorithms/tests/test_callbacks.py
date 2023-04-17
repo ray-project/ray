@@ -2,7 +2,7 @@ from collections import Counter
 import unittest
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.episode import Episode
@@ -104,7 +104,7 @@ class TestCallbacks(unittest.TestCase):
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
-            MultiCallbacks([OnSubEnvironmentCreatedCallback]),
+            make_multi_callbacks([OnSubEnvironmentCreatedCallback]),
         ):
             config.callbacks(callbacks)
 
@@ -144,7 +144,7 @@ class TestCallbacks(unittest.TestCase):
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
-            MultiCallbacks([OnSubEnvironmentCreatedCallback]),
+            make_multi_callbacks([OnSubEnvironmentCreatedCallback]),
         ):
             config.callbacks(callbacks)
 
@@ -176,7 +176,7 @@ class TestCallbacks(unittest.TestCase):
                 RandomEnv,
                 env_config={
                     "max_episode_len": 200,
-                    "p_done": 0.0,
+                    "p_terminated": 0.0,
                 },
             )
             .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
@@ -194,13 +194,12 @@ class TestCallbacks(unittest.TestCase):
             # -> 1 episode = 200 timesteps
             # -> 2.5 episodes per sub-env
             # -> 3 episodes created [per sub-env] = 6 episodes total
-            self.assertTrue(
-                6
-                == ray.get(
-                    algo.workers.remote_workers()[0].apply.remote(
-                        lambda w: w.callbacks._reset_counter
-                    )
-                )
+            self.assertEqual(
+                6,
+                algo.workers.foreach_worker(
+                    lambda w: w.callbacks._reset_counter,
+                    local_worker=False,
+                )[0],
             )
             algo.stop()
 

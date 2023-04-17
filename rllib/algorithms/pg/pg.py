@@ -4,7 +4,6 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 
 
 class PGConfig(AlgorithmConfig):
@@ -13,10 +12,10 @@ class PGConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
-        >>> print(config.to_dict())
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -27,12 +26,12 @@ class PGConfig(AlgorithmConfig):
         >>> print(config.lr) # doctest: +SKIP
         0.0004
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "PG",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -51,6 +50,15 @@ class PGConfig(AlgorithmConfig):
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 200
         self._disable_preprocessor_api = True
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -90,40 +98,9 @@ class PGConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # Check for mismatches between `train_batch_size` and
-        # `rollout_fragment_length` (if not "auto")..
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        if (
-            self.rollout_fragment_length != "auto"
-            and not self.in_evaluation
-            and self.train_batch_size > 0
-        ):
-            min_batch_size = (
-                max(self.num_rollout_workers, 1)
-                * self.num_envs_per_worker
-                * self.rollout_fragment_length
-            )
-            batch_size = min_batch_size
-            while batch_size < self.train_batch_size:
-                batch_size += min_batch_size
-            if (
-                batch_size - self.train_batch_size > 0.1 * self.train_batch_size
-                or batch_size - min_batch_size - self.train_batch_size
-                > (0.1 * self.train_batch_size)
-            ):
-                suggested_rollout_fragment_length = self.train_batch_size // (
-                    self.num_envs_per_worker * (self.num_rollout_workers or 1)
-                )
-                raise ValueError(
-                    f"Your desired `train_batch_size` ({self.train_batch_size}) or a "
-                    "value 10% off of that cannot be achieved with your other "
-                    f"settings (num_rollout_workers={self.num_rollout_workers}; "
-                    f"num_envs_per_worker={self.num_envs_per_worker}; "
-                    f"rollout_fragment_length={self.rollout_fragment_length})! "
-                    "Try setting `rollout_fragment_length` to 'auto' OR "
-                    f"{suggested_rollout_fragment_length}."
-                )
+        # Synchronous sampling, on-policy PG algo -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
 
 
 class PG(Algorithm):
@@ -163,20 +140,3 @@ class PG(Algorithm):
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 
             return PGTF2Policy
-
-
-# Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.pg.pg::PGConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -373,26 +373,25 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # Since the server acts as an input datasource, we have to reset the
     # input config to the default, which runs env rollouts.
     kwargs = kwargs.copy()
-    del kwargs["input_creator"]
-
-    # Since the server also acts as an output writer, we might have to reset
-    # the output config to the default, i.e. "output": None, otherwise a
-    # local rollout worker might write to an unknown output directory
-    del kwargs["output_creator"]
+    kwargs["config"] = kwargs["config"].copy(copy_frozen=False)
+    config = kwargs["config"]
+    config.output = None
+    config.input_ = "sampler"
+    config.input_config = {}
 
     # If server has no env (which is the expected case):
     # Generate a dummy ExternalEnv here using RandomEnv and the
     # given observation/action spaces.
-    if kwargs["config"].env is None:
+    if config.env is None:
         from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
 
-        config = {
-            "action_space": kwargs["config"].action_space,
-            "observation_space": kwargs["config"].observation_space,
+        env_config = {
+            "action_space": config.action_space,
+            "observation_space": config.observation_space,
         }
-        is_ma = kwargs["config"].is_multi_agent()
+        is_ma = config.is_multi_agent()
         kwargs["env_creator"] = _auto_wrap_external(
-            lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(config)
+            lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(env_config)
         )
         # kwargs["config"].env = True
     # Otherwise, use the env specified by the server args.

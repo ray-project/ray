@@ -284,6 +284,25 @@ class FunctionManager {
     return &it->second;
   }
 
+  static std::string GetClassNameByFuncName(const std::string &func_name) {
+    if (func_name.empty()) {
+      return "";
+    }
+
+    const std::string &prefix = "RAY_FUNC(";
+    size_t start_pos = 0;
+    auto pos = func_name.find(prefix);
+    if (pos != func_name.npos) {
+      start_pos = pos + prefix.size();
+    }
+    auto end_pod = func_name.find_last_of("::");
+    if (end_pod == func_name.npos || end_pod <= start_pos) {
+      return "";
+    }
+
+    return func_name.substr(start_pos, (end_pod - start_pos - 1));
+  }
+
  private:
   FunctionManager() = default;
   ~FunctionManager() = default;

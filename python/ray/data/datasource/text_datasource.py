@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, List, Optional
 
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.util.annotations import PublicAPI
 
@@ -21,10 +22,18 @@ class TextDatasource(BinaryDatasource):
         assert len(block) == 1
         data = block[0]
 
+        builder = DelegatingBlockBuilder()
+
+        drop_empty_lines = reader_args["drop_empty_lines"]
         lines = data.decode(reader_args["encoding"]).split("\n")
-        if reader_args["drop_empty_lines"]:
-            lines = [line for line in lines if line.strip() != ""]
-        return lines
+        for line in lines:
+            if drop_empty_lines and line.strip() == "":
+                continue
+            item = {self._COLUMN_NAME: line}
+            builder.add(item)
+
+        block = builder.build()
+        return block
 
     def _convert_block_to_tabular_block(
         self,
@@ -33,10 +42,8 @@ class TextDatasource(BinaryDatasource):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        if column_name is None:
-            column_name = self._COLUMN_NAME
-
-        return pa.table({column_name: block})
+        assert isinstance(block, pa.Table)
+        return block
 
     def _rows_per_file(self):
         return None

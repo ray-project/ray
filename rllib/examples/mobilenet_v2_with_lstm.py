@@ -3,7 +3,7 @@
 # https://github.com/ray-project/ray/issues/6732
 
 import argparse
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import os
 
@@ -27,7 +27,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--stop-iters", type=int, default=200)

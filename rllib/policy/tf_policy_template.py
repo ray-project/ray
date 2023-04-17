@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -232,9 +232,6 @@ def build_tf_policy(
             existing_model=None,
             existing_inputs=None,
         ):
-            if get_default_config:
-                config = dict(get_default_config(), **config)
-
             if validate_spaces:
                 validate_spaces(self, obs_space, action_space, config)
 
@@ -295,7 +292,7 @@ def build_tf_policy(
             else:
                 optimizers = base.optimizer(self)
             optimizers = force_list(optimizers)
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # No optimizers produced -> Return None.

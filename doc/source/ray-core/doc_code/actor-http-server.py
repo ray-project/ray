@@ -8,7 +8,7 @@ from aiohttp import web
 class Counter:
     async def __init__(self):
         self.counter = 0
-        asyncio.get_event_loop().create_task(self.run_http_server())
+        asyncio.get_running_loop().create_task(self.run_http_server())
 
     async def run_http_server(self):
         app = web.Application()

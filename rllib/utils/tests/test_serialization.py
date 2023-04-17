@@ -1,9 +1,10 @@
 import unittest
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.utils.serialization import (
+    convert_numpy_to_python_primitives,
     gym_space_from_dict,
     gym_space_to_dict,
     space_from_dict,
@@ -140,6 +141,25 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp["discrete"], gym.spaces.Discrete))
         self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
 
+    def test_text(self):
+        expected_space = gym.spaces.Text(min_length=3, max_length=10, charset="abc")
+        d = gym_space_to_dict(expected_space)
+        sp = gym_space_from_dict(d)
+
+        self.assertEqual(expected_space.max_length, sp.max_length)
+        self.assertEqual(expected_space.min_length, sp.min_length)
+
+        charset = getattr(expected_space, "character_set", None)
+        if charset is not None:
+            self.assertEqual(expected_space.character_set, sp.character_set)
+        else:
+            charset = getattr(expected_space, "charset", None)
+            if charset is None:
+                raise ValueError(
+                    "Text space does not have charset or character_set attribute."
+                )
+            self.assertEqual(expected_space.charset, sp.charset)
+
     def test_original_space(self):
         space = gym.spaces.Box(low=0.0, high=1.0, shape=(10,))
         space.original_space = gym.spaces.Dict(
@@ -156,6 +176,23 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp.original_space, gym.spaces.Dict))
         self.assertTrue(isinstance(sp.original_space["obs1"], gym.spaces.Box))
         self.assertTrue(isinstance(sp.original_space["obs2"], gym.spaces.Box))
+
+
+class TestConvertNumpyToPythonPrimitives(unittest.TestCase):
+    def test_convert_numpy_to_python_primitives(self):
+        # test utility for converting numpy types to python primitives
+        test_cases = [
+            [1, 2, 3],
+            [1.0, 2.0, 3.0],
+            ["abc", "def", "ghi"],
+            [True, False, True],
+        ]
+        for test_case in test_cases:
+            _assert_array_equal(
+                self.assertEqual,
+                convert_numpy_to_python_primitives(np.array(test_case)),
+                test_case,
+            )
 
 
 if __name__ == "__main__":

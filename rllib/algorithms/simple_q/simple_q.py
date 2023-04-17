@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -32,6 +32,7 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_replay_buffer,
@@ -48,7 +49,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.replay_buffer_config)
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity":  40000,
@@ -65,16 +66,16 @@ class SimpleQConfig(AlgorithmConfig):
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "SimpleQ",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "SimpleQ",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.5,
@@ -87,7 +88,7 @@ class SimpleQConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
         >>> config = SimpleQConfig()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "softq",
@@ -138,7 +139,7 @@ class SimpleQConfig(AlgorithmConfig):
         }
 
         # `evaluation()`
-        self.evaluation(evaluation_config={"explore": False})
+        self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
 
         # `reporting()`
         self.min_time_s_per_iteration = None
@@ -310,13 +311,14 @@ class SimpleQ(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-        batch_size = self.config["train_batch_size"]
+        batch_size = self.config.train_batch_size
         local_worker = self.workers.local_worker()
 
         # Sample n MultiAgentBatches from n workers.
-        new_sample_batches = synchronous_parallel_sample(
-            worker_set=self.workers, concat=False
-        )
+        with self._timers[SAMPLE_TIMER]:
+            new_sample_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
 
         for batch in new_sample_batches:
             # Update sampling step counters.
@@ -335,7 +337,7 @@ class SimpleQ(Algorithm):
             else NUM_ENV_STEPS_SAMPLED
         ]
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Use deprecated replay() to support old replay buffers for now
             train_batch = self.local_replay_buffer.sample(batch_size)
 
@@ -356,7 +358,7 @@ class SimpleQ(Algorithm):
             )
 
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            if cur_ts - last_update >= self.config.target_network_update_freq:
                 with self._timers[TARGET_NET_UPDATE_TIMER]:
                     to_update = local_worker.get_policies_to_train()
                     local_worker.foreach_policy_to_train(
@@ -377,20 +379,3 @@ class SimpleQ(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SimpleQConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.simple_q::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.simple_q.simple_q::SimpleQConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

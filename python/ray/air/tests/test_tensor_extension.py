@@ -2,6 +2,7 @@ import itertools
 
 import numpy as np
 import pandas as pd
+from pkg_resources._vendor.packaging.version import parse as parse_version
 import pyarrow as pa
 import pytest
 
@@ -12,6 +13,22 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray._private.utils import _get_pyarrow_version
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [np.zeros((3, 1)), np.zeros((3, 2))],
+        [np.zeros((3,))],
+    ],
+)
+def test_create_ragged_ndarray(values):
+    ragged_array = create_ragged_ndarray(values)
+    assert len(ragged_array) == len(values)
+    for actual_array, expected_array in zip(ragged_array, values):
+        np.testing.assert_array_equal(actual_array, expected_array)
 
 
 def test_tensor_array_validation():
@@ -176,7 +193,90 @@ def test_arrow_variable_shaped_tensor_array_slice():
         slice(0, 3),
     ]
     for slice_ in slices:
-        for o, e in zip(ata[slice_], arr[slice_]):
+        ata_slice = ata[slice_]
+        ata_slice_np = ata_slice.to_numpy()
+        arr_slice = arr[slice_]
+        # Check for equivalent dtypes and shapes.
+        assert ata_slice_np.dtype == arr_slice.dtype
+        assert ata_slice_np.shape == arr_slice.shape
+        # Iteration over tensor array slices triggers NumPy conversion.
+        for o, e in zip(ata_slice, arr_slice):
+            np.testing.assert_array_equal(o, e)
+
+
+def test_arrow_variable_shaped_bool_tensor_array_slice():
+    arr = np.array(
+        [
+            [True],
+            [True, False],
+            [False, True, False],
+        ],
+        dtype=object,
+    )
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ata[i], arr[i])
+
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(0, 2),
+        slice(1, 3),
+        slice(0, 3),
+    ]
+    for slice_ in slices:
+        ata_slice = ata[slice_]
+        ata_slice_np = ata_slice.to_numpy()
+        arr_slice = arr[slice_]
+        # Check for equivalent dtypes and shapes.
+        assert ata_slice_np.dtype == arr_slice.dtype
+        assert ata_slice_np.shape == arr_slice.shape
+        # Iteration over tensor array slices triggers NumPy conversion.
+        for o, e in zip(ata_slice, arr_slice):
+            np.testing.assert_array_equal(o, e)
+
+
+def test_arrow_variable_shaped_string_tensor_array_slice():
+    arr = np.array(
+        [
+            ["Philip", "J", "Fry"],
+            ["Leela", "Turanga"],
+            ["Professor", "Hubert", "J", "Farnsworth"],
+            ["Lrrr"],
+        ],
+        dtype=object,
+    )
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    indices = [0, 1, 2, 3]
+    for i in indices:
+        np.testing.assert_array_equal(ata[i], arr[i])
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(3, 4),
+        slice(0, 2),
+        slice(1, 3),
+        slice(2, 4),
+        slice(0, 3),
+        slice(1, 4),
+        slice(0, 4),
+    ]
+    for slice_ in slices:
+        ata_slice = ata[slice_]
+        ata_slice_np = ata_slice.to_numpy()
+        arr_slice = arr[slice_]
+        # Check for equivalent dtypes and shapes.
+        assert ata_slice_np.dtype == arr_slice.dtype
+        assert ata_slice_np.shape == arr_slice.shape
+        # Iteration over tensor array slices triggers NumPy conversion.
+        for o, e in zip(ata_slice, arr_slice):
             np.testing.assert_array_equal(o, e)
 
 
@@ -331,7 +431,8 @@ def test_tensor_array_reductions():
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
 
 
-def test_arrow_tensor_array_getitem():
+@pytest.mark.parametrize("chunked", [False, True])
+def test_arrow_tensor_array_getitem(chunked):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -339,9 +440,23 @@ def test_arrow_tensor_array_getitem():
     arr = np.arange(num_items).reshape(shape)
 
     t_arr = ArrowTensorArray.from_numpy(arr)
+    if chunked:
+        t_arr = pa.chunked_array(t_arr)
 
-    for idx in range(outer_dim):
-        np.testing.assert_array_equal(t_arr[idx], arr[idx])
+    pyarrow_version = parse_version(_get_pyarrow_version())
+    if (
+        chunked
+        and pyarrow_version >= parse_version("8.0.0")
+        and pyarrow_version < parse_version("9.0.0")
+    ):
+        for idx in range(outer_dim):
+            item = t_arr[idx]
+            assert isinstance(item, pa.ExtensionScalar)
+            item = item.type._extension_scalar_to_ndarray(item)
+            np.testing.assert_array_equal(item, arr[idx])
+    else:
+        for idx in range(outer_dim):
+            np.testing.assert_array_equal(t_arr[idx], arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
@@ -352,11 +467,101 @@ def test_arrow_tensor_array_getitem():
 
     # Test slicing and indexing.
     t_arr2 = t_arr[1:]
+    if chunked:
+        # For extension arrays, ChunkedArray.to_numpy() concatenates chunk storage
+        # arrays and calls to_numpy() on the resulting array, which returns the wrong
+        # ndarray.
+        # TODO(Clark): Fix this in Arrow by (1) providing an ExtensionArray hook for
+        # concatenation, and (2) using that + a to_numpy() call on the resulting
+        # ExtensionArray.
+        t_arr2_npy = t_arr2.chunk(0).to_numpy()
+    else:
+        t_arr2_npy = t_arr2.to_numpy()
 
-    np.testing.assert_array_equal(t_arr2.to_numpy(), arr[1:])
+    np.testing.assert_array_equal(t_arr2_npy, arr[1:])
 
-    for idx in range(1, outer_dim):
-        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+    if (
+        chunked
+        and pyarrow_version >= parse_version("8.0.0")
+        and pyarrow_version < parse_version("9.0.0")
+    ):
+        for idx in range(1, outer_dim):
+            item = t_arr2[idx - 1]
+            assert isinstance(item, pa.ExtensionScalar)
+            item = item.type._extension_scalar_to_ndarray(item)
+            np.testing.assert_array_equal(item, arr[idx])
+    else:
+        for idx in range(1, outer_dim):
+            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_arrow_variable_shaped_tensor_array_getitem(chunked):
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    outer_dim = len(shapes)
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    t_arr = ArrowVariableShapedTensorArray.from_numpy(arr)
+
+    if chunked:
+        t_arr = pa.chunked_array(t_arr)
+
+    pyarrow_version = parse_version(_get_pyarrow_version())
+    if (
+        chunked
+        and pyarrow_version >= parse_version("8.0.0")
+        and pyarrow_version < parse_version("9.0.0")
+    ):
+        for idx in range(outer_dim):
+            item = t_arr[idx]
+            assert isinstance(item, pa.ExtensionScalar)
+            item = item.type._extension_scalar_to_ndarray(item)
+            np.testing.assert_array_equal(item, arr[idx])
+    else:
+        for idx in range(outer_dim):
+            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+
+    # Test __iter__.
+    for t_subarr, subarr in zip(t_arr, arr):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    # Test to_pylist.
+    for t_subarr, subarr in zip(t_arr.to_pylist(), list(arr)):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    # Test slicing and indexing.
+    t_arr2 = t_arr[1:]
+    if chunked:
+        # For extension arrays, ChunkedArray.to_numpy() concatenates chunk storage
+        # arrays and calls to_numpy() on the resulting array, which returns the wrong
+        # ndarray.
+        # TODO(Clark): Fix this in Arrow by (1) providing an ExtensionArray hook for
+        # concatenation, and (2) using that + a to_numpy() call on the resulting
+        # ExtensionArray.
+        t_arr2_npy = t_arr2.chunk(0).to_numpy()
+    else:
+        t_arr2_npy = t_arr2.to_numpy()
+
+    for t_subarr, subarr in zip(t_arr2_npy, arr[1:]):
+        np.testing.assert_array_equal(t_subarr, subarr)
+
+    if (
+        chunked
+        and pyarrow_version >= parse_version("8.0.0")
+        and pyarrow_version < parse_version("9.0.0")
+    ):
+        for idx in range(1, outer_dim):
+            item = t_arr2[idx - 1]
+            assert isinstance(item, pa.ExtensionScalar)
+            item = item.type._extension_scalar_to_ndarray(item)
+            np.testing.assert_array_equal(item, arr[idx])
+    else:
+        for idx in range(1, outer_dim):
+            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
 @pytest.mark.parametrize(
@@ -391,7 +596,9 @@ pytest_tensor_array_concat_arrs = [
     for shape in pytest_tensor_array_concat_shapes
 ]
 pytest_tensor_array_concat_arrs += [
-    np.array([np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))])
+    create_ragged_ndarray(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))]
+    )
 ]
 pytest_tensor_array_concat_arr_combinations = list(
     itertools.combinations(pytest_tensor_array_concat_arrs, 2)
@@ -435,6 +642,26 @@ def test_arrow_tensor_array_concat(a1, a2):
             ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
         ):
             np.testing.assert_array_equal(arr, expected)
+
+
+def test_variable_shaped_tensor_array_chunked_concat():
+    # Test that chunking a tensor column and concatenating its chunks preserves typing
+    # and underlying data.
+    shape1 = (2, 2, 2)
+    shape2 = (3, 4, 4)
+    a1 = np.arange(np.prod(shape1)).reshape(shape1)
+    a2 = np.arange(np.prod(shape2)).reshape(shape2)
+    ta1 = ArrowTensorArray.from_numpy(a1)
+    ta2 = ArrowTensorArray.from_numpy(a2)
+    chunked_ta = ArrowTensorArray._chunk_tensor_arrays([ta1, ta2])
+    ta = ArrowTensorArray._concat_same_type(chunked_ta.chunks)
+    assert len(ta) == shape1[0] + shape2[0]
+    assert isinstance(ta.type, ArrowVariableShapedTensorType)
+    assert pa.types.is_struct(ta.type.storage_type)
+    for arr, expected in zip(
+        ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
+    ):
+        np.testing.assert_array_equal(arr, expected)
 
 
 def test_variable_shaped_tensor_array_uniform_dim():

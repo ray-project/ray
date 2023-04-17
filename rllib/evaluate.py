@@ -2,7 +2,7 @@
 
 import collections
 import copy
-import gym
+import gymnasium as gym
 import json
 import os
 from pathlib import Path
@@ -11,7 +11,6 @@ import typer
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.env.env_context import EnvContext
@@ -19,7 +18,6 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.common import CLIArguments as cli
-
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
@@ -144,15 +142,17 @@ class RolloutSaver:
             self._update_file.write(self._get_progress() + "\n")
             self._update_file.flush()
 
-    def append_step(self, obs, action, next_obs, reward, done, info):
+    def append_step(self, obs, action, next_obs, reward, terminated, truncated, info):
         """Add a step to the current rollout, if we are saving them"""
         if self._outfile:
             if self._save_info:
                 self._current_rollout.append(
-                    [obs, action, next_obs, reward, done, info]
+                    [obs, action, next_obs, reward, terminated, truncated, info]
                 )
             else:
-                self._current_rollout.append([obs, action, next_obs, reward, done])
+                self._current_rollout.append(
+                    [obs, action, next_obs, reward, terminated, truncated]
+                )
         self._total_steps += 1
 
 
@@ -208,7 +208,8 @@ def run(
         # Use default config for given agent.
         if not algo:
             raise ValueError("Please provide an algorithm via `--algo`.")
-        _, config = get_algorithm_class(algo, return_config=True)
+        algo_cls = get_trainable_cls(algo)
+        config = algo_cls.get_default_config()
 
     # Make sure worker 0 has an Env.
     config["create_env_on_driver"] = True
@@ -335,7 +336,7 @@ def rollout(
 
     # Agent has neither evaluation- nor rollout workers.
     else:
-        from gym import envs
+        from gymnasium import envs
 
         if envs.registry.env_specs.get(agent.config["env"]):
             # if environment is gym environment, load from gym
@@ -365,7 +366,7 @@ def rollout(
     while keep_going(steps, num_steps, episodes, num_episodes):
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
         saver.begin_rollout()
-        obs = env.reset()
+        obs, info = env.reset()
         agent_states = DefaultMapping(
             lambda agent_id: state_init[mapping_cache[agent_id]]
         )
@@ -373,9 +374,13 @@ def rollout(
             lambda agent_id: action_init[mapping_cache[agent_id]]
         )
         prev_rewards = collections.defaultdict(lambda: 0.0)
-        done = False
+        terminated = truncated = False
         reward_total = 0.0
-        while not done and keep_going(steps, num_steps, episodes, num_episodes):
+        while (
+            not terminated
+            and not truncated
+            and keep_going(steps, num_steps, episodes, num_episodes)
+        ):
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
             for agent_id, a_obs in multi_obs.items():
@@ -406,7 +411,7 @@ def rollout(
             action = action_dict
 
             action = action if multiagent else action[_DUMMY_AGENT_ID]
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             if multiagent:
                 for agent_id, r in reward.items():
                     prev_rewards[agent_id] = r
@@ -414,18 +419,21 @@ def rollout(
                 prev_rewards[_DUMMY_AGENT_ID] = reward
 
             if multiagent:
-                done = done["__all__"]
+                terminated = terminated["__all__"]
+                truncated = truncated["__all__"]
                 reward_total += sum(r for r in reward.values() if r is not None)
             else:
                 reward_total += reward
             if not no_render:
                 env.render()
-            saver.append_step(obs, action, next_obs, reward, done, info)
+            saver.append_step(
+                obs, action, next_obs, reward, terminated, truncated, info
+            )
             steps += 1
             obs = next_obs
         saver.end_rollout()
         print("Episode #{}: reward: {}".format(episodes, reward_total))
-        if done:
+        if terminated or truncated:
             episodes += 1
 
 

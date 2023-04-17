@@ -16,13 +16,14 @@ from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.utils.annotations import Deprecated, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.typing import ResultDict
@@ -44,7 +45,7 @@ class AlphaZeroDefaultCallbacks(DefaultCallbacks):
     """
 
     def on_episode_start(self, worker, base_env, policies, episode, **kwargs):
-        # save env state when an episode starts
+        # Save environment's state when an episode starts.
         env = base_env.get_sub_environments()[0]
         state = env.get_state()
         episode.user_data["initial_state"] = state
@@ -55,13 +56,14 @@ class AlphaZeroConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
-        >>> config = AlphaZeroConfig().training(sgd_minibatch_size=256)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = AlphaZeroConfig()   # doctest: +SKIP
+        >>> config = config.training(sgd_minibatch_size=256)   # doctest: +SKIP
+        >>> config = config..resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config..rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train() # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
@@ -69,14 +71,14 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = AlphaZeroConfig()
         >>> # Print out some default values.
-        >>> print(config.shuffle_sequences)
+        >>> print(config.shuffle_sequences) # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))  # doctest: +SKIP
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "AlphaZero",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -142,6 +144,15 @@ class AlphaZeroConfig(AlgorithmConfig):
                 "add_dirichlet_noise": False,
             },
         })
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -343,9 +354,10 @@ class AlphaZero(Algorithm):
         """
 
         # Sample n MultiAgentBatches from n workers.
-        new_sample_batches = synchronous_parallel_sample(
-            worker_set=self.workers, concat=False
-        )
+        with self._timers[SAMPLE_TIMER]:
+            new_sample_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
 
         for batch in new_sample_batches:
             # Update sampling step counters.
@@ -363,9 +375,9 @@ class AlphaZero(Algorithm):
                 else NUM_ENV_STEPS_SAMPLED
             ]
 
-            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            if cur_ts > self.config.num_steps_sampled_before_learning_starts:
                 train_batch = self.local_replay_buffer.sample(
-                    self.config["train_batch_size"]
+                    self.config.train_batch_size
                 )
             else:
                 train_batch = None
@@ -397,20 +409,3 @@ class AlphaZero(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.alpha_zero.AlphaZeroConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(AlphaZeroConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.alpha_zero.alpha_zero.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete, Box
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 from typing import Dict, List
 

@@ -6,9 +6,9 @@ import {
   TableContainer,
   Tabs,
 } from "@material-ui/core";
-import dayjs from "dayjs";
 import React from "react";
-import { Link, RouteComponentProps } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { formatDateFromTimeMs } from "../../common/formatUtils";
 import ActorTable from "../../components/ActorTable";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
@@ -16,6 +16,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import RayletWorkerTable from "../../components/WorkerTable";
 import { memoryConverter } from "../../util/converter";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -35,7 +36,7 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+const NodeDetailPage = () => {
   const classes = useStyle();
   const {
     params,
@@ -46,10 +47,18 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     onRefreshChange,
     raylet,
     handleChange,
-  } = useNodeDetail(props);
+  } = useNodeDetail();
 
   return (
     <div className={classes.root}>
+      <MainNavPageInfo
+        pageInfo={{
+          title: `Node: ${params.id}`,
+          pageTitle: `${params.id} | Node`,
+          id: "node-detail",
+          path: `/cluster/nodes/${params.id}`,
+        }}
+      />
       <Loading loading={msg.startsWith("Loading")} />
       <TitleCard title={`NODE - ${params.id}`}>
         <StatusChip
@@ -124,9 +133,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
               </Grid>
               <Grid item xs>
                 <div className={classes.label}>Boot Time</div>{" "}
-                {dayjs(nodeDetail.bootTime * 1000).format(
-                  "YYYY/MM/DD HH:mm:ss",
-                )}
+                {formatDateFromTimeMs(nodeDetail.bootTime * 1000)}
               </Grid>
             </Grid>
             <Grid container spacing={2}>
@@ -176,7 +183,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
-                <Link to={`/log/${encodeURIComponent(nodeDetail.logUrl)}`}>
+                <Link to={`/logs/${encodeURIComponent(nodeDetail.logUrl)}`}>
                   log
                 </Link>
               </Grid>
@@ -227,6 +234,7 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
+                detailPathPrefix="/actors"
               />
             </TableContainer>
           </React.Fragment>

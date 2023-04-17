@@ -39,7 +39,7 @@ run_experiments(
     {
         "apex": {
             "run": "APEX",
-            "env": "Pong-v0",
+            "env": "ALE/Pong-v5",
             "config": {
                 "num_workers": 3,
                 "num_gpus": 0,
@@ -47,7 +47,7 @@ run_experiments(
                     "capacity": 10000,
                 },
                 "num_steps_sampled_before_learning_starts": 0,
-                "rollout_fragment_length": 1,
+                "rollout_fragment_length": "auto",
                 "train_batch_size": 1,
                 "min_time_s_per_iteration": 10,
                 "min_sample_timesteps_per_iteration": 10,

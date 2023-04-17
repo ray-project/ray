@@ -391,6 +391,20 @@ class TestSubmit:
             assert "not a valid JSON string" in result.output
 
 
+class TestDelete:
+    def test_address(self, mock_sdk_client):
+        _job_cli_group_test_address(mock_sdk_client, "delete", "fake_job_id")
+
+    def test_delete(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["delete", "job_id"])
+            check_exit_code(result, 0)
+            mock_client_instance.delete_job.assert_called_with("job_id")
+
+
 if __name__ == "__main__":
     import sys
 

@@ -15,6 +15,7 @@ import collections
 import heapq
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -24,12 +25,11 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.row import TableRow
 from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
-    VALUE_COL_NAME,
 )
 from ray.data.aggregate import AggregateFn
 
@@ -54,14 +54,20 @@ def lazy_import_pandas():
 
 class PandasRow(TableRow):
     """
-    Row of a tabular Dataset backed by a Pandas DataFrame block.
+    Row of a tabular Datastream backed by a Pandas DataFrame block.
     """
 
     def __getitem__(self, key: str) -> Any:
+        from ray.data.extensions import TensorArrayElement
+
         col = self._row[key]
         if len(col) == 0:
             return None
         item = col.iloc[0]
+        if isinstance(item, TensorArrayElement):
+            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
+            # which we have to convert to an ndarray.
+            item = item.to_numpy()
         try:
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
@@ -87,7 +93,9 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
-            if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
+            if key == TENSOR_COLUMN_NAME or isinstance(
+                next(iter(value), None), np.ndarray
+            ):
                 from ray.data.extensions.tensor_extension import TensorArray
 
                 if len(value) == 1:
@@ -104,13 +112,17 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
         if len(tables) > 1:
             df = pandas.concat(tables, ignore_index=True)
+            df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
-        df.reset_index(drop=True, inplace=True)
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
         return df
+
+    @staticmethod
+    def _concat_would_copy() -> bool:
+        return True
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":
@@ -136,14 +148,14 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
         from ray.data.extensions import TensorArrayElement
 
-        tensor = row[VALUE_COL_NAME].iloc[0]
+        tensor = row[TENSOR_COLUMN_NAME].iloc[0]
         if isinstance(tensor, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
             tensor = tensor.to_numpy()
         return tensor
 
-    def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
+    def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
         view.reset_index(drop=True, inplace=True)
         if copy:
@@ -174,11 +186,11 @@ class PandasBlockAccessor(TableBlockAccessor):
             names=dtypes.index.tolist(), types=dtypes.values.tolist()
         )
         # Column names with non-str types of a pandas DataFrame is not
-        # supported by Ray Dataset.
+        # supported by Ray Datastream.
         if any(not isinstance(name, str) for name in schema.names):
             raise ValueError(
                 "A Pandas DataFrame with column names of non-str types"
-                " is not supported by Ray Dataset. Column names of this"
+                " is not supported by Ray Datastream. Column names of this"
                 f" DataFrame: {schema.names!r}."
             )
         return schema
@@ -186,7 +198,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         table = self._table
         if ctx.enable_tensor_extension_casting:
             table = _cast_tensor_columns_to_ndarrays(table)
@@ -197,18 +209,27 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.columns.tolist()
-        if not isinstance(columns, list):
+            should_be_single_ndarray = self.is_tensor_wrapper()
+        elif isinstance(columns, list):
+            should_be_single_ndarray = (
+                columns == self._table.columns.tolist() and self.is_tensor_wrapper()
+            )
+        else:
             columns = [columns]
+            should_be_single_ndarray = True
+
         for column in columns:
             if column not in self._table.columns:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.columns.tolist()}"
                 )
+
         arrays = []
         for column in columns:
             arrays.append(self._table[column].to_numpy())
-        if len(arrays) == 1:
+
+        if should_be_single_ndarray:
             arrays = arrays[0]
         else:
             arrays = dict(zip(columns, arrays))

@@ -1,4 +1,7 @@
-import { ResourceSlot } from "../api";
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
 
 export type ResourceAllocations = {
   resourceSlots: ResourceSlot[];

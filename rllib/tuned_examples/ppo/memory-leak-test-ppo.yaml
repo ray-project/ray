@@ -4,14 +4,13 @@ memory-leak-test-ppo:
     run: PPO
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Switch off np.random, which is known to have memory leaks.
         env_config:
             config:
                 static_samples: true
-        rollout_fragment_length: 50
         num_workers: 4
         num_envs_per_worker: 5
-        train_batch_size: 1000
+        train_batch_size: 500
         sgd_minibatch_size: 256
         num_sgd_iter: 5

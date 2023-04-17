@@ -1,11 +1,16 @@
+import sys
 from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
-import warnings
 
 import numpy as np
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
-from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.util.annotations import PublicAPI
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas
@@ -13,12 +18,12 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class BatchMapper(Preprocessor):
-    """Apply an arbitrary operation to a dataset.
+    """Apply an arbitrary operation to a datastream.
 
-    :class:`BatchMapper` applies a user-defined function to batches of a dataset. A
+    :class:`BatchMapper` applies a user-defined function to batches of a datastream. A
     batch is a Pandas ``DataFrame`` that represents a small amount of data. By modifying
     batches instead of individual records, this class can efficiently transform a
-    dataset with vectorized operations.
+    datastream with vectorized operations.
 
     Use this preprocessor to apply stateless operations that aren't already built-in.
 
@@ -41,27 +46,27 @@ class BatchMapper(Preprocessor):
         >>> def fn(batch: pd.DataFrame) -> pd.DataFrame:
         ...     return batch.drop("Y", axis="columns")
         >>>
-        >>> preprocessor = BatchMapper(fn)
+        >>> preprocessor = BatchMapper(fn, batch_format="pandas")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
-        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
+        Datastream(num_blocks=1, num_rows=3, schema={X: int64})
         >>>
         >>> def fn_numpy(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         ...     return {"X": batch["X"]}
         >>> preprocessor = BatchMapper(fn_numpy, batch_format="numpy")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
-        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
+        Datastream(num_blocks=1, num_rows=3, schema={X: int64})
 
     Args:
         fn: The function to apply to data batches.
         batch_size: The desired number of rows in each data batch provided to ``fn``.
-            Semantics are the same as in ```dataset.map_batches()``: specifying
+            Semantics are the same as in ```datastream.map_batches()``: specifying
             ``None`` wil use the entire underlying blocks as batches (blocks may
             contain different number of rows) and the actual size of the batch provided
             to ``fn`` may be smaller than ``batch_size`` if ``batch_size`` doesn't
             evenly divide the block(s) sent to a given map task. Defaults to 4096,
-            which is the same default value as ``dataset.map_batches()``.
+            which is the same default value as ``datastream.map_batches()``.
         batch_format: The preferred batch format to use in UDF. If not given,
-            we will infer based on the input dataset data format.
+            we will infer based on the input datastream data format.
     """
 
     _is_fittable = False
@@ -75,24 +80,19 @@ class BatchMapper(Preprocessor):
                 Union[np.ndarray, Dict[str, np.ndarray]],
             ],
         ],
-        batch_format: Optional[str] = None,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-        # TODO: Make batch_format required from user
+        batch_format: Optional[BatchFormat],
+        batch_size: Optional[Union[int, Literal["default"]]] = "default",
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
-        if not batch_format:
-            warnings.warn(
-                "batch_format will be a required argument for BatchMapper in future "
-                "releases. Defaulting to 'pandas' batch format.",
-                DeprecationWarning,
-            )
-            batch_format = "pandas"
-        if batch_format and batch_format not in [
-            "pandas",
-            "numpy",
+
+        if batch_format not in [
+            BatchFormat.PANDAS,
+            BatchFormat.NUMPY,
         ]:
-            raise ValueError("BatchMapper only supports pandas and numpy batch format.")
+            raise ValueError(
+                "BatchMapper only supports 'pandas' or 'numpy' batch format."
+            )
 
         self.batch_format = batch_format
         self.batch_size = batch_size
@@ -106,11 +106,11 @@ class BatchMapper(Preprocessor):
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
 
-    def _determine_transform_to_use(self, data_format: str):
+    def _determine_transform_to_use(self):
         if self.batch_format:
             return self.batch_format
         else:
-            return super()._determine_transform_to_use(data_format)
+            return super()._determine_transform_to_use()
 
     def _get_transform_config(self) -> Dict[str, Any]:
         return {"batch_size": self.batch_size}

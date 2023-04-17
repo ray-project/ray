@@ -47,7 +47,7 @@ class DistributedLearners:
                 actor's constructor.
         """
         self.config = config
-        self.num_gpus = self.config["num_gpus"]
+        self.num_gpus = self.config.num_gpus
         self.max_num_policies_to_train = max_num_policies_to_train
         self.replay_actor_class = replay_actor_class
         self.replay_actor_args = replay_actor_args

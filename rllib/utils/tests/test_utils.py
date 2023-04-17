@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 import unittest

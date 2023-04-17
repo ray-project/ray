@@ -218,6 +218,15 @@ class TestValidateEnvVars:
         with pytest.raises(TypeError, match=".*Dict[str, str]*"):
             parse_and_validate_env_vars({1: "hi"})
 
+        with pytest.raises(TypeError, match=".*value 123 is of type <class 'int'>*"):
+            parse_and_validate_env_vars({"hi": 123})
+
+        with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
+            parse_and_validate_env_vars({"hi": True})
+
+        with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
+            parse_and_validate_env_vars({1.23: "hi"})
+
 
 class TestParsedRuntimeEnv:
     def test_empty(self):
@@ -294,11 +303,24 @@ test_env_1 = os.path.join(
 test_env_2 = os.path.join(
     os.path.dirname(__file__), "test_runtime_env_validation_2_schema.json"
 )
+test_env_invalid_path = os.path.join(
+    os.path.dirname(__file__), "test_runtime_env_validation_non_existent.json"
+)
+test_env_bad_json = os.path.join(
+    os.path.dirname(__file__), "test_runtime_env_validation_bad_2_schema.json"
+)
 
 
 @pytest.mark.parametrize(
     "set_runtime_env_plugin_schemas",
-    [schemas_dir, f"{test_env_1},{test_env_2}"],
+    [
+        schemas_dir,
+        f"{test_env_1},{test_env_2}",
+        # Test with an invalid JSON file first in the list
+        f"{test_env_bad_json},{test_env_1},{test_env_2}",
+        # Test with a non-existent JSON file
+        f"{test_env_invalid_path},{test_env_1},{test_env_2}",
+    ],
     indirect=True,
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

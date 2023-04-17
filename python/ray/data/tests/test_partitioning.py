@@ -116,7 +116,10 @@ class TestReadHivePartitionedFiles:
         with pytest.raises(ValueError):
             # `read_csv` should error because `month` is a field in both the CSV and
             # the path, and the data is different.
-            read_csv(path, partitioning=Partitioning("hive"), block_type=block_type)
+            ds = read_csv(
+                path, partitioning=Partitioning("hive"), block_type=block_type
+            )
+            ds.schema()
 
     @pytest.mark.parametrize("data", [[1, 1, 1], [1, None, 1]])
     def test_read_files_with_legally_conflicting_key(
@@ -226,7 +229,7 @@ class TestReadDirPartitionedFiles:
                     "dir", field_names=["year", "country"], base_dir=tmp_path
                 ),
                 block_type=block_type,
-            )
+            ).schema()
 
     @pytest.mark.parametrize(
         "relative_path", ["1970/data.csv", "1970/us/94704/data.csv"]
@@ -244,7 +247,7 @@ class TestReadDirPartitionedFiles:
                     "dir", field_names=["year", "country"], base_dir=tmp_path
                 ),
                 block_type=block_type,
-            )
+            ).schema()
 
     def test_read_files_with_conflicting_key(
         self, tmp_path, block_type, ray_start_regular_shared
@@ -260,7 +263,7 @@ class TestReadDirPartitionedFiles:
                     "dir", field_names=["month"], base_dir=tmp_path
                 ),
                 block_type=block_type,
-            )
+            ).schema()
 
     @pytest.mark.parametrize("data", [[1, 1, 1], [1, None, 1]])
     def test_read_files_with_legally_conflicting_key(

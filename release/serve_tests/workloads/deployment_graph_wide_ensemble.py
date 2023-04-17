@@ -1,4 +1,4 @@
-"""
+r"""
 Test that focuses on wide fanout of deployment graph
        -> Node_1
       /          \
@@ -56,7 +56,7 @@ def combine(value_refs):
 def test_wide_fanout_deployment_graph(
     fanout_degree, init_delay_secs=0, compute_delay_secs=0
 ):
-    """
+    r"""
     Test that focuses on wide fanout of deployment graph
         -> Node_1
         /          \
@@ -125,9 +125,8 @@ def main(
     # 0 + 1 + 2 + 3 + 4 + ... + (fanout_degree - 1)
     expected = ((0 + fanout_degree - 1) * fanout_degree) / 2
     assert ray.get(dag_handle.predict.remote(0)) == expected
-    loop = asyncio.get_event_loop()
 
-    throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
+    throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
             dag_handle,
             expected,
@@ -135,7 +134,7 @@ def main(
             num_clients=num_clients,
         )
     )
-    latency_mean_ms, latency_std_ms = loop.run_until_complete(
+    latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
             dag_handle,
             expected,

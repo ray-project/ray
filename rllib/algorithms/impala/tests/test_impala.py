@@ -28,15 +28,16 @@ class TestIMPALA(unittest.TestCase):
         """Test whether Impala can be built with both frameworks."""
         config = (
             impala.ImpalaConfig()
+            .environment("CartPole-v1")
             .resources(num_gpus=0)
+            .rollouts(num_rollout_workers=2)
             .training(
                 model={
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
-                }
+                },
             )
         )
-        env = "CartPole-v1"
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -50,11 +51,11 @@ class TestIMPALA(unittest.TestCase):
                 )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
-                algo = config.build(env=env)
+                algo = config.build()
                 for i in range(num_iterations):
                     results = algo.train()
-                    check_train_results(results)
                     print(results)
+                    check_train_results(results)
 
                 check_compute_single_action(
                     algo,

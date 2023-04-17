@@ -1,4 +1,3 @@
-import json
 import unittest
 import shutil
 import tempfile
@@ -13,7 +12,7 @@ from ray.tune import run, Trainable, sample_from, ExperimentAnalysis, grid_searc
 from ray.tune.result import DEBUG_METRICS
 from ray.tune.experiment import Trial
 from ray.tune.utils.mock_trainable import MyTrainableClass
-from ray.tune.utils.serialization import TuneFunctionEncoder
+from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
@@ -56,53 +55,18 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def testInitLegacy(self):
-        """Should still work if checkpoints are not json strings"""
-        experiment_checkpoint_path = os.path.join(
-            self.test_dir, "experiment_state.json"
-        )
-        checkpoint_data = {
-            "checkpoints": [
-                {
-                    "trial_id": "abcd1234",
-                    "status": Trial.TERMINATED,
-                    "trainable_name": "MockTrainable",
-                    "local_dir": self.test_dir,
-                    "relative_logdir": "MockTrainable_0_id=3_2020-07-12",
-                }
-            ]
-        }
-
-        with open(experiment_checkpoint_path, "w") as f:
-            f.write(json.dumps(checkpoint_data))
-
-        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
-        self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)
-        self.assertTrue(experiment_analysis.trials)
-
     def testInit(self):
-        experiment_checkpoint_path = os.path.join(
-            self.test_dir, "experiment_state.json"
+        trial = Trial(
+            "MockTrainable",
+            stub=True,
+            trial_id="abcd1234",
+            experiment_path=self.test_dir,
         )
-        checkpoint_data = {
-            "checkpoints": [
-                json.dumps(
-                    {
-                        "trial_id": "abcd1234",
-                        "status": Trial.TERMINATED,
-                        "trainable_name": "MockTrainable",
-                        "local_dir": self.test_dir,
-                        "relative_logdir": "MockTrainable_0_id=3_2020-07-12",
-                    },
-                    cls=TuneFunctionEncoder,
-                )
-            ]
-        }
+        trial.status = Trial.TERMINATED
+        trial.relative_logdir = "MockTrainable_0_id=3_2020-07-12"
+        create_tune_experiment_checkpoint([trial], local_checkpoint_dir=self.test_dir)
 
-        with open(experiment_checkpoint_path, "w") as f:
-            f.write(json.dumps(checkpoint_data))
-
-        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
+        experiment_analysis = ExperimentAnalysis(self.test_dir)
         self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)
         self.assertTrue(experiment_analysis.trials)
 
@@ -119,7 +83,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         ea = run(
             self.MockTrainable,
             name="analysis_exp",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": len(scores[0])},
             num_samples=1,
             config={"id": grid_search(list(range(5)))},
@@ -170,7 +134,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         [trial] = run(
             self.MockTrainable,
             name="analysis_remove_exp",
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 9},
             num_samples=1,
             config={"id": 1},
@@ -209,7 +173,7 @@ class AnalysisSuite(unittest.TestCase):
         run(
             MyTrainableClass,
             name=test_name,
-            local_dir=self.test_dir,
+            storage_path=self.test_dir,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={

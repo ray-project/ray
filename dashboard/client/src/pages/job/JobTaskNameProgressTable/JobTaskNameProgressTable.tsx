@@ -28,6 +28,7 @@ const columns: { label: string; helpInfo?: ReactElement }[] = [
   { label: "Task name" },
   { label: "Failed" },
   { label: "Active" },
+  { label: "Finished" },
   { label: "Tasks" },
 ];
 
@@ -68,32 +69,21 @@ export const JobTaskNameProgressTable = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {progress.map(({ name, progress }) => {
-            const {
-              numFailed = 0,
-              numPendingArgsAvail = 0,
-              numPendingNodeAssignment = 0,
-              numRunning = 0,
-              numSubmittedToWorker = 0,
-            } = progress;
-
-            const numActive =
-              numPendingArgsAvail +
-              numPendingNodeAssignment +
-              numRunning +
-              numSubmittedToWorker;
-
-            return (
-              <TableRow>
-                <TableCell align="center">{name}</TableCell>
-                <TableCell align="center">{numFailed}</TableCell>
-                <TableCell align="center">{numActive}</TableCell>
-                <TableCell>
-                  <MiniTaskProgressBar {...progress} />
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {progress.map(
+            ({ name, progress, numFailed, numActive, numFinished }) => {
+              return (
+                <TableRow key={name}>
+                  <TableCell align="center">{name}</TableCell>
+                  <TableCell align="center">{numFailed}</TableCell>
+                  <TableCell align="center">{numActive}</TableCell>
+                  <TableCell align="center">{numFinished}</TableCell>
+                  <TableCell>
+                    <MiniTaskProgressBar {...progress} />
+                  </TableCell>
+                </TableRow>
+              );
+            },
+          )}
         </TableBody>
       </Table>
     </TableContainer>

@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import os
 import shutil
@@ -7,9 +7,10 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.bc import BC
-from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.utils.test_utils import framework_iterator
 
 SPACES = {
@@ -58,7 +59,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         ray.shutdown()
 
     def test_nested_action_spaces(self):
-        config = DEFAULT_CONFIG.copy()
+        config = PGConfig()
         config["env"] = RandomEnv
         # Write output to check, whether actions are written correctly.
         tmp_dir = os.popen("mktemp -d").read()[:-1]
@@ -75,8 +76,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         config["actions_in_input_normalized"] = True
 
         # Remove lr schedule from config, not needed here, and not supported by BC.
-        del config["lr_schedule"]
-
+        config.lr_schedule = None
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
@@ -86,7 +86,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten
-                    pg = PG(config)
+                    pg = config.build()
                     pg.train()
                     pg.stop()
 
@@ -97,6 +97,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                         ioctx=pg.workers.local_worker().io_context,
                     )
                     sample_batch = reader.next()
+                    sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
                     if flatten:
                         assert isinstance(sample_batch["actions"], np.ndarray)
                         assert len(sample_batch["actions"].shape) == 2
@@ -116,7 +117,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                         ioctx.config["input_config"]["paths"], ioctx
                     )
                     config["input_config"] = {"paths": config["output"]}
-                    del config["output"]
+                    config.output = None
                     bc = BC(config=config)
                     bc.train()
                     bc.stop()

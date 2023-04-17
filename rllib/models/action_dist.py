@@ -1,5 +1,5 @@
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI

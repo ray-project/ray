@@ -19,11 +19,14 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
+from click.testing import CliRunner
+from requests.exceptions import ConnectionError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
     format_web_url,
     get_error_message,
@@ -33,6 +36,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
 from ray.experimental.state.api import StateApiClient
@@ -58,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 def make_gcs_client(address_info):
     address = address_info["gcs_address"]
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     return gcs_client
 
 
@@ -418,9 +422,8 @@ def test_class_method_route_table(enable_test_module):
             break
     assert post_handler is not None
 
-    loop = asyncio.get_event_loop()
-    r = loop.run_until_complete(post_handler())
-    assert r.status == 200
+    r = get_or_create_event_loop().run_until_complete(post_handler())
+    assert r.status == 500
     resp = json.loads(r.body)
     assert resp["result"] is False
     assert "Traceback" in resp["msg"]
@@ -438,7 +441,7 @@ def test_async_loop_forever():
         counter[0] += 1
         raise Exception("Test exception")
 
-    loop = asyncio.get_event_loop()
+    loop = get_or_create_event_loop()
     loop.create_task(foo())
     loop.call_later(1, loop.stop)
     loop.run_forever()
@@ -478,7 +481,7 @@ def test_dashboard_module_decorator(enable_test_module):
 import os
 import ray.dashboard.utils as dashboard_utils
 
-os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
+os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
 head_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardHeadModule)
 agent_cls_list = dashboard_utils.get_all_modules(
@@ -537,7 +540,8 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert len(collections.Counter(volatile_value_timestamps)) == 10
 
     response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
-    response.raise_for_status()
+    with pytest.raises(Exception):
+        response.raise_for_status()
     result = response.json()
     assert result["result"] is False
     assert "KeyError" in result["msg"]
@@ -899,7 +903,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
-def test_agent_port_conflict():
+def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # start ray and test agent works.
@@ -988,6 +992,7 @@ def test_dashboard_module_load(tmpdir):
         str(tmpdir),
         str(tmpdir),
         False,
+        True,
     )
 
     # Test basic.
@@ -1042,6 +1047,76 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+def test_dashboard_not_included_ray_init(shutdown_only, capsys):
+    addr = ray.init(include_dashboard=False, dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
+
+
+def test_dashboard_not_included_ray_start(shutdown_only, capsys):
+    runner = CliRunner()
+    try:
+        runner.invoke(
+            scripts.start,
+            ["--head", "--include-dashboard=False", "--dashboard-port=8265"],
+        )
+        addr = ray.init("auto")
+        dashboard_url = addr["webui_url"]
+        assert not dashboard_url
+
+        assert "view the dashboard at" not in capsys.readouterr().err
+
+        # Warm up.
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
+        with pytest.raises(ConnectionError):
+            # Since the dashboard doesn't start, it should raise ConnectionError
+            # becasue we cannot estabilish a connection.
+            requests.get("http://localhost:8265")
+    finally:
+        runner.invoke(scripts.stop, ["--force"])
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test only works for minimal installation.",
+)
+def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
+    addr = ray.init(dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
 
 
 if __name__ == "__main__":

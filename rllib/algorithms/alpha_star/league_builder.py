@@ -170,8 +170,8 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
 
         # Build initial policy mapping function: main_0 vs main_exploiter_0.
         self.config.policy_mapping_fn = (
-            lambda aid, ep, worker, **kw: "main_0"
-            if ep.episode_id % 2 == aid
+            lambda agent_id, episode, worker, **kw: "main_0"
+            if episode.episode_id % 2 == agent_id
             else "main_exploiter_0"
         )
         self.config.policies = policies

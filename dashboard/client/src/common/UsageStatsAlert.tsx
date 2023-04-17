@@ -1,14 +1,14 @@
 import { Alert } from "@material-ui/lab";
 import React, { useEffect, useState } from "react";
-import { getUsageStatsEnabled } from "../api";
+import { getUsageStatsEnabled } from "../service/global";
 
 export const UsageStatsAlert = () => {
   const [usageStatsPromptEnabled, setUsageStatsPromptEnabled] = useState(false);
   const [usageStatsEnabled, setUsageStatsEnabled] = useState(false);
   useEffect(() => {
-    getUsageStatsEnabled().then((res) => {
-      setUsageStatsPromptEnabled(res.usageStatsPromptEnabled);
-      setUsageStatsEnabled(res.usageStatsEnabled);
+    getUsageStatsEnabled().then(({ data }) => {
+      setUsageStatsPromptEnabled(data.usageStatsPromptEnabled);
+      setUsageStatsEnabled(data.usageStatsEnabled);
     });
   }, []);
 

@@ -142,6 +142,11 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   }
 }
 
+const absl::flat_hash_map<NodeID, rpc::ResourcesData>
+    &GcsResourceManager::NodeResourceReportView() const {
+  return node_resource_usages_;
+}
+
 void GcsResourceManager::HandleReportResourceUsage(
     rpc::ReportResourceUsageRequest request,
     rpc::ReportResourceUsageReply *reply,
@@ -217,29 +222,20 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
+  RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
+             num_alive_nodes_);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
-}
-
-void GcsResourceManager::HandleGetGcsSchedulingStats(
-    rpc::GetGcsSchedulingStatsRequest request,
-    rpc::GetGcsSchedulingStatsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (cluster_task_manager_) {
-    // Fill pending (actor creation) tasks of gcs when gcs actor scheduler is enabled.
-    rpc::GetNodeStatsReply gcs_stats;
-    cluster_task_manager_->FillPendingActorInfo(&gcs_stats);
-    reply->mutable_infeasible_tasks()->CopyFrom(gcs_stats.infeasible_tasks());
-    reply->mutable_ready_tasks()->CopyFrom(gcs_stats.ready_tasks());
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    node_resource_usages_[node_id].CopyFrom(resources);
+    // It will only happen when the node has been deleted.
+    // If the node is not registered to GCS,
+    // we are guaranteed that no resource usage will be reported.
+    return;
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
@@ -288,11 +284,13 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   data.set_node_id(node.node_id());
   data.set_node_manager_address(node.node_manager_address());
   node_resource_usages_.emplace(NodeID::FromBinary(node.node_id()), std::move(data));
+  num_alive_nodes_++;
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
+  num_alive_nodes_--;
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(

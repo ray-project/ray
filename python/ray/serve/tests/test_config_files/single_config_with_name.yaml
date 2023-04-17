@@ -1,0 +1,2 @@
+name: my_app
+import_path: ray.serve.tests.test_config_files.world.DagNode

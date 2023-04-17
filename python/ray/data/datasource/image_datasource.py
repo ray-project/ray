@@ -4,7 +4,6 @@ import time
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
-from ray.air.constants import TENSOR_COLUMN_NAME
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -15,7 +14,10 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
+from ray.data.datasource.file_meta_provider import (
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
+)
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
@@ -39,14 +41,14 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 class ImageDatasource(BinaryDatasource):
     """A datasource that lets you read images."""
 
-    _COLUMN_NAME = "image"
     _FILE_EXTENSION = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
     def create_reader(
         self,
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
-        **kwargs,
+        include_paths: bool = False,
+        **reader_args,
     ) -> "Reader[T]":
         if size is not None and len(size) != 2:
             raise ValueError(
@@ -60,7 +62,9 @@ class ImageDatasource(BinaryDatasource):
 
         _check_import(self, module="PIL", package="Pillow")
 
-        return _ImageDatasourceReader(self, size=size, mode=mode, **kwargs)
+        return _ImageDatasourceReader(
+            self, size=size, mode=mode, include_paths=include_paths, **reader_args
+        )
 
     def _convert_block_to_tabular_block(
         self, block: Block, column_name: Optional[str] = None
@@ -68,21 +72,8 @@ class ImageDatasource(BinaryDatasource):
         import pandas as pd
         import pyarrow as pa
 
-        if column_name is None:
-            column_name = self._COLUMN_NAME
-
-        # The input block has one column named `TENSOR_COLUMN_NAME`. We don't want to
-        # leak `TENSOR_COLUMN_NAME`, so we rename the column to a more human-readable
-        # name.
         assert isinstance(block, (pa.Table, pd.DataFrame))
-        tabular_block = None
-        if isinstance(block, pa.Table):
-            assert block.column_names == [TENSOR_COLUMN_NAME]
-            tabular_block = block.rename_columns([column_name])
-        if isinstance(block, pd.DataFrame):
-            assert block.columns == [TENSOR_COLUMN_NAME]
-            tabular_block = block.rename(columns={TENSOR_COLUMN_NAME: column_name})
-        return tabular_block
+        return block
 
     def _read_file(
         self,
@@ -90,12 +81,14 @@ class ImageDatasource(BinaryDatasource):
         path: str,
         size: Optional[Tuple[int, int]],
         mode: Optional[str],
+        include_paths: bool,
+        **reader_args,
     ) -> "pyarrow.Table":
         from PIL import Image
 
-        records = super()._read_file(f, path, include_paths=False)
+        records = super()._read_file(f, path, include_paths=True, **reader_args)
         assert len(records) == 1
-        data = records[0]
+        path, data = records[0]
 
         image = Image.open(io.BytesIO(data))
         if size is not None:
@@ -105,7 +98,12 @@ class ImageDatasource(BinaryDatasource):
             image = image.convert(mode)
 
         builder = DelegatingBlockBuilder()
-        builder.add(np.array(image))
+        array = np.array(image)
+        if include_paths:
+            item = {"image": array, "path": path}
+        else:
+            item = {"image": array}
+        builder.add(item)
         block = builder.build()
 
         return block
@@ -140,7 +138,7 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
         filesystem: "pyarrow.fs.FileSystem",
         partition_filter: PathPartitionFilter,
         partitioning: Partitioning,
-        meta_provider: _ImageFileMetadataProvider = _ImageFileMetadataProvider(),
+        meta_provider: BaseFileMetadataProvider,
         **reader_args,
     ):
         super().__init__(
@@ -148,17 +146,25 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
             paths=paths,
             filesystem=filesystem,
             schema=None,
-            open_stream_args=None,
             meta_provider=meta_provider,
             partition_filter=partition_filter,
             partitioning=partitioning,
             **reader_args,
         )
-        self._encoding_ratio = self._estimate_files_encoding_ratio()
-        meta_provider._set_encoding_ratio(self._encoding_ratio)
+        if isinstance(meta_provider, _ImageFileMetadataProvider):
+            self._encoding_ratio = self._estimate_files_encoding_ratio()
+            meta_provider._set_encoding_ratio(self._encoding_ratio)
+        else:
+            self._encoding_ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        return sum(self._file_sizes) * self._encoding_ratio
+        total_size = 0
+        for file_size in self._file_sizes:
+            # NOTE: check if file size is not None, because some metadata provider
+            # such as FastFileMetadataProvider does not provide file size information.
+            if file_size is not None:
+                total_size += file_size
+        return total_size * self._encoding_ratio
 
     def _estimate_files_encoding_ratio(self) -> float:
         """Return an estimate of the image files encoding ratio."""

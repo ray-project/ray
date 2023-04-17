@@ -1,9 +1,9 @@
 import unittest
 import ray
 
-from ray.rllib.algorithms.crr import CRRConfig, CRR
+from ray.rllib.algorithms.crr import CRRConfig
 from ray.rllib.execution import synchronous_parallel_sample
-from ray.rllib.offline.estimators.feature_importance import FeatureImportance
+from ray.rllib.offline.feature_importance import FeatureImportance
 
 
 class TestFeatureImportance(unittest.TestCase):
@@ -15,7 +15,7 @@ class TestFeatureImportance(unittest.TestCase):
 
     def test_feat_importance_cartpole(self):
         config = CRRConfig().environment("CartPole-v1").framework("torch")
-        runner = CRR(config)
+        runner = config.build()
         policy = runner.workers.local_worker().get_policy()
         sample_batch = synchronous_parallel_sample(worker_set=runner.workers)
 
@@ -26,6 +26,10 @@ class TestFeatureImportance(unittest.TestCase):
 
             # check if the estimate is positive
             assert all(val > 0 for val in estimate.values())
+
+    def test_feat_importance_estimate_on_dataset(self):
+        # TODO (Kourosh): add a test for this
+        pass
 
 
 if __name__ == "__main__":

@@ -94,4 +94,4 @@ async def main():
                 await run_test(num_replicas, num_forwarders, sync)
 
 
-asyncio.get_event_loop().run_until_complete(main())
+asyncio.run(main())

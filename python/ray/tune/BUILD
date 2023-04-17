@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -20,7 +25,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
 )
 
 py_test(
@@ -35,6 +40,14 @@ py_test(
     name = "test_automl_searcher",
     size = "small",
     srcs = ["tests/test_automl_searcher.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_callbacks",
+    size = "small",
+    srcs = ["tests/test_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
@@ -145,14 +158,6 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_comet",
-    size = "small",
-    srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -161,25 +166,20 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_wandb",
-    size = "small",
-    srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_mlflow",
-    size = "small",
-    srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
-)
-
-py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml"],
+)
+
+py_test(
+    name = "test_multi_tenancy",
+    size = "medium",
+    srcs = [
+        "tests/test_multi_tenancy.py",
+        "tests/_test_multi_tenancy_run.py"
+    ],
     deps = [":tune_lib"],
     tags = ["team:ml"],
 )
@@ -257,6 +257,14 @@ py_test(
 )
 
 py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_searchers",
     size = "large",
     srcs = ["tests/test_searchers.py"],
@@ -289,8 +297,16 @@ py_test(
 )
 
 py_test(
-    name = "test_syncer",
+    name = "test_util_object_cache",
     size = "small",
+    srcs = ["tests/test_util_object_cache.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_syncer",
+    size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -330,7 +346,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -338,7 +354,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_2",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner_2.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -346,7 +362,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_3",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
@@ -434,7 +450,7 @@ py_test(
 
 py_test(
     name = "test_tuner",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
@@ -442,7 +458,7 @@ py_test(
 
 py_test(
     name = "test_tuner_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -455,6 +471,7 @@ py_test(
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
+
 
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
@@ -484,6 +501,21 @@ py_test(
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "no_main"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/execution directory.
+# Covers all remaining tests that do not start with `test_`.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_actor_caching",
+    size = "small",
+    srcs = ["tests/execution/test_actor_caching.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
 )
 
 # --------------------------------------------------------------------
@@ -531,7 +563,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"]
+    tags = ["team:ml", "exclusive", "example", "exclude_new_execution"]
 )
 
 py_test(
@@ -733,7 +765,7 @@ py_test(
 
 py_test(
     name = "optuna_multiobjective_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "medium_instance"],
@@ -963,6 +995,20 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/output directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_output",
+    size = "small",
+    srcs = ["tests/output/test_output.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

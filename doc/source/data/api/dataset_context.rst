@@ -1,7 +1,22 @@
 .. _dataset-context-api:
 
-DatasetContext API
-==================
+DataContext API
+===============
 
-.. autoclass:: ray.data.context.DatasetContext
-    :members:
+.. currentmodule:: ray.data
+
+Constructor
+-----------
+
+.. autosummary::
+   :toctree: doc/
+
+   DataContext
+
+Get DataContext
+---------------
+
+.. autosummary::
+   :toctree: doc/
+
+   DataContext.get_current

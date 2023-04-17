@@ -1,0 +1,607 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      ray.io/ft-enabled: "false"
+      ray.io/health-state: ""
+    creationTimestamp: "2022-11-14T23:10:15Z"
+    generateName: raycluster-autoscaler-head-
+    labels:
+      app.kubernetes.io/created-by: kuberay-operator
+      app.kubernetes.io/name: kuberay
+      ray.io/cluster: raycluster-autoscaler
+      ray.io/cluster-dashboard: raycluster-autoscaler-dashboard
+      ray.io/group: headgroup
+      ray.io/identifier: raycluster-autoscaler-head
+      ray.io/is-ray-node: "yes"
+      ray.io/node-type: head
+    name: raycluster-autoscaler-head-8zsc8
+    namespace: default
+    ownerReferences:
+    - apiVersion: ray.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: RayCluster
+      name: raycluster-autoscaler
+      uid: ec79effb-0295-4f40-b08b-8633aa7f786a
+    resourceVersion: "4519"
+    uid: 539ea57c-8d51-4503-a395-08779efb3bf0
+  spec:
+    containers:
+    - args:
+      - 'ulimit -n 65536; ray start --head  --resources="{\"Custom1\": 1, \"Custom2\":
+        5}"  --block  --dashboard-host=0.0.0.0  --metrics-export-port=8080  --no-monitor  --num-cpus=1  --memory=1000000000 '
+      command:
+      - /bin/bash
+      - -c
+      - --
+      env:
+      - name: RAY_IP
+        value: 127.0.0.1
+      - name: RAY_PORT
+        value: "6379"
+      - name: RAY_ADDRESS
+        value: 127.0.0.1:6379
+      - name: REDIS_PASSWORD
+      image: gekho/ray
+      imagePullPolicy: Always
+      lifecycle:
+        preStop:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ray stop
+      name: ray-head
+      ports:
+      - containerPort: 6379
+        name: gcs
+        protocol: TCP
+      - containerPort: 8265
+        name: dashboard
+        protocol: TCP
+      - containerPort: 10001
+        name: client
+        protocol: TCP
+      - containerPort: 8080
+        name: metrics
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1G
+        requests:
+          cpu: 500m
+          memory: 512Mi
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /dev/shm
+        name: shared-mem
+      - mountPath: /tmp/ray
+        name: ray-logs
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-tmxvr
+        readOnly: true
+    - args:
+      - kuberay-autoscaler
+      - --cluster-name
+      - $(RAY_CLUSTER_NAME)
+      - --cluster-namespace
+      - $(RAY_CLUSTER_NAMESPACE)
+      command:
+      - ray
+      env:
+      - name: RAY_CLUSTER_NAME
+        valueFrom:
+          fieldRef:
+            apiVersion: v1
+            fieldPath: metadata.labels['ray.io/cluster']
+      - name: RAY_CLUSTER_NAMESPACE
+        valueFrom:
+          fieldRef:
+            apiVersion: v1
+            fieldPath: metadata.namespace
+      image: gekho/ray
+      imagePullPolicy: Always
+      name: autoscaler
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 512Mi
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /tmp/ray
+        name: ray-logs
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-tmxvr
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: gke-cluster-1-default-pool-a5503908-181p
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: raycluster-autoscaler
+    serviceAccountName: raycluster-autoscaler
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 512Mi
+      name: shared-mem
+    - emptyDir: {}
+      name: ray-logs
+    - name: kube-api-access-tmxvr
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:10:15Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:23Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:23Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:10:15Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: containerd://0b008432be839bec8dd97437d3f2be9ac8d7f017b91067a46ec45a487f141ebf
+      image: docker.io/gekho/ray:latest
+      imageID: docker.io/gekho/ray@sha256:7859a78d1a089bb88691864d5c4a2aad529f5353d7d9c82cc0274842fbda242b
+      lastState: {}
+      name: autoscaler
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2022-11-14T23:11:23Z"
+    - containerID: containerd://b2aae80ed028cc41bad1e350bb70a0a4e8ea722df098b38781efabe54adbc5ec
+      image: docker.io/gekho/ray:latest
+      imageID: docker.io/gekho/ray@sha256:7859a78d1a089bb88691864d5c4a2aad529f5353d7d9c82cc0274842fbda242b
+      lastState: {}
+      name: ray-head
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2022-11-14T23:11:22Z"
+    hostIP: 10.128.0.45
+    phase: Running
+    podIP: 10.4.2.6
+    podIPs:
+    - ip: 10.4.2.6
+    qosClass: Burstable
+    startTime: "2022-11-14T23:10:15Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      key: value
+      ray.io/ft-enabled: "false"
+      ray.io/health-state: ""
+    creationTimestamp: "2022-11-14T23:11:45Z"
+    deletionGracePeriodSeconds: 30
+    deletionTimestamp: "2022-11-14T23:12:20Z"
+    generateName: raycluster-autoscaler-worker-small-group-
+    labels:
+      app.kubernetes.io/created-by: kuberay-operator
+      app.kubernetes.io/name: kuberay
+      key: value
+      ray.io/cluster: raycluster-autoscaler
+      ray.io/cluster-dashboard: raycluster-autoscaler-dashboard
+      ray.io/group: small-group
+      ray.io/identifier: raycluster-autoscaler-worker
+      ray.io/is-ray-node: "yes"
+      ray.io/node-type: worker
+    name: raycluster-autoscaler-worker-small-group-4wxfm
+    namespace: default
+    ownerReferences:
+    - apiVersion: ray.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: RayCluster
+      name: raycluster-autoscaler
+      uid: ec79effb-0295-4f40-b08b-8633aa7f786a
+    resourceVersion: "4845"
+    uid: 3698ed9b-7e06-4d47-b9f6-09e4bd08365a
+  spec:
+    containers:
+    - args:
+      - 'ulimit -n 65536; ray start  --resources="{\"Custom1\": 1, \"Custom2\": 5}"  --address=raycluster-autoscaler-head-svc:6379  --metrics-export-port=8080  --num-cpus=1  --memory=536870912  --block '
+      command:
+      - /bin/bash
+      - -c
+      - --
+      env:
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      - name: RAY_PORT
+        value: "6379"
+      - name: RAY_ADDRESS
+        value: raycluster-autoscaler-head-svc:6379
+      - name: REDIS_PASSWORD
+      image: gekho/ray
+      imagePullPolicy: Always
+      lifecycle:
+        preStop:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ray stop
+      name: machine-learning
+      ports:
+      - containerPort: 8080
+        name: metrics
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 256Mi
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /dev/shm
+        name: shared-mem
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-wthw9
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    initContainers:
+    - command:
+      - sh
+      - -c
+      - until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local;
+        do echo waiting for myservice; sleep 2; done
+      env:
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      image: busybox:1.28
+      imagePullPolicy: IfNotPresent
+      name: init-myservice
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-wthw9
+        readOnly: true
+    nodeName: gke-cluster-1-default-pool-a5503908-dpst
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 256Mi
+      name: shared-mem
+    - name: kube-api-access-wthw9
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:47Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:45Z"
+      message: 'containers with unready status: [machine-learning]'
+      reason: ContainersNotReady
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:45Z"
+      message: 'containers with unready status: [machine-learning]'
+      reason: ContainersNotReady
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:45Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - image: gekho/ray
+      imageID: ""
+      lastState: {}
+      name: machine-learning
+      ready: false
+      restartCount: 0
+      started: false
+      state:
+        waiting:
+          reason: PodInitializing
+    hostIP: 10.128.0.31
+    initContainerStatuses:
+    - containerID: containerd://c7f5a0c3f63957213213ed1ebb6446cd205bd60346d010a879c5fa24e37f5145
+      image: docker.io/library/busybox:1.28
+      imageID: docker.io/library/busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47
+      lastState: {}
+      name: init-myservice
+      ready: true
+      restartCount: 0
+      state:
+        terminated:
+          containerID: containerd://c7f5a0c3f63957213213ed1ebb6446cd205bd60346d010a879c5fa24e37f5145
+          exitCode: 0
+          finishedAt: "2022-11-14T23:11:47Z"
+          reason: Completed
+          startedAt: "2022-11-14T23:11:47Z"
+    phase: Pending
+    podIP: 10.4.0.4
+    podIPs:
+    - ip: 10.4.0.4
+    qosClass: Burstable
+    startTime: "2022-11-14T23:11:45Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      key: value
+      ray.io/ft-enabled: "false"
+      ray.io/health-state: ""
+    creationTimestamp: "2022-11-14T23:11:50Z"
+    generateName: raycluster-autoscaler-worker-small-group-
+    labels:
+      app.kubernetes.io/created-by: kuberay-operator
+      app.kubernetes.io/name: kuberay
+      key: value
+      ray.io/cluster: raycluster-autoscaler
+      ray.io/cluster-dashboard: raycluster-autoscaler-dashboard
+      ray.io/group: small-group
+      ray.io/identifier: raycluster-autoscaler-worker
+      ray.io/is-ray-node: "yes"
+      ray.io/node-type: worker
+    name: raycluster-autoscaler-worker-small-group-dkz2r
+    namespace: default
+    ownerReferences:
+    - apiVersion: ray.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: RayCluster
+      name: raycluster-autoscaler
+      uid: ec79effb-0295-4f40-b08b-8633aa7f786a
+    resourceVersion: "4776"
+    uid: b4fb3233-6024-48a8-9f4f-a18f5e490629
+  spec:
+    containers:
+    - args:
+      - 'ulimit -n 65536; ray start  --block  --resources="{\"Custom1\": 1, \"Custom2\":
+        5}"  --address=raycluster-autoscaler-head-svc:6379  --metrics-export-port=8080  --num-cpus=1  --memory=536870912 '
+      command:
+      - /bin/bash
+      - -c
+      - --
+      env:
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      - name: RAY_PORT
+        value: "6379"
+      - name: RAY_ADDRESS
+        value: raycluster-autoscaler-head-svc:6379
+      - name: REDIS_PASSWORD
+      image: gekho/ray
+      imagePullPolicy: Always
+      lifecycle:
+        preStop:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ray stop
+      name: machine-learning
+      ports:
+      - containerPort: 8080
+        name: metrics
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 256Mi
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /dev/shm
+        name: shared-mem
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-djtd9
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    initContainers:
+    - command:
+      - sh
+      - -c
+      - until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local;
+        do echo waiting for myservice; sleep 2; done
+      env:
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      image: busybox:1.28
+      imagePullPolicy: IfNotPresent
+      name: init-myservice
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-djtd9
+        readOnly: true
+    nodeName: gke-cluster-1-default-pool-a5503908-j51d
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 256Mi
+      name: shared-mem
+    - name: kube-api-access-djtd9
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:51Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:50Z"
+      message: 'containers with unready status: [machine-learning]'
+      reason: ContainersNotReady
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:50Z"
+      message: 'containers with unready status: [machine-learning]'
+      reason: ContainersNotReady
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:11:50Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - image: gekho/ray
+      imageID: ""
+      lastState: {}
+      name: machine-learning
+      ready: false
+      restartCount: 0
+      started: false
+      state:
+        waiting:
+          reason: PodInitializing
+    hostIP: 10.128.0.43
+    initContainerStatuses:
+    - containerID: containerd://672d9a5836e27a17f57a4e15e1d86431cfee6f2edef1210d60e864e3c510aac0
+      image: docker.io/library/busybox:1.28
+      imageID: docker.io/library/busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47
+      lastState: {}
+      name: init-myservice
+      ready: true
+      restartCount: 0
+      state:
+        terminated:
+          containerID: containerd://672d9a5836e27a17f57a4e15e1d86431cfee6f2edef1210d60e864e3c510aac0
+          exitCode: 0
+          finishedAt: "2022-11-14T23:11:51Z"
+          reason: Completed
+          startedAt: "2022-11-14T23:11:51Z"
+    phase: Pending
+    podIP: 10.4.1.8
+    podIPs:
+    - ip: 10.4.1.8
+    qosClass: Burstable
+    startTime: "2022-11-14T23:11:50Z"
+kind: List
+metadata:
+  resourceVersion: ""

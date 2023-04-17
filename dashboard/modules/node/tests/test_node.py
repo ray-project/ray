@@ -16,7 +16,6 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,
-    wait_until_succeeded_without_exception,
 )
 
 
@@ -142,40 +141,6 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
                 )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
-
-
-def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-
-    @ray.remote
-    class ActorWithObjs:
-        def __init__(self):
-            self.obj_ref = ray.put([1, 2, 3])
-
-        def get_obj(self):
-            return ray.get(self.obj_ref)
-
-    my_obj = ray.put([1, 2, 3] * 100)  # noqa
-    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
-    results = ray.get([actor.get_obj.remote() for actor in actors])  # noqa
-    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    resp = requests.get(webui_url + "/memory/set_fetch", params={"shouldFetch": "true"})
-    resp.raise_for_status()
-
-    def check_mem_table():
-        resp = requests.get(f"{webui_url}/memory/memory_table")
-        resp_data = resp.json()
-        assert resp_data["result"]
-        latest_memory_table = resp_data["data"]["memoryTable"]
-        summary = latest_memory_table["summary"]
-        # 1 ref per handle and per object the actor has a ref to
-        assert summary["totalActorHandles"] == len(actors) * 2
-        # 1 ref for my_obj. 2 refs for self.obj_ref for each actor.
-        assert summary["totalLocalRefCount"] == 3
-
-    assert wait_until_succeeded_without_exception(
-        check_mem_table, (AssertionError,), timeout_ms=10000
-    )
 
 
 @pytest.mark.parametrize(

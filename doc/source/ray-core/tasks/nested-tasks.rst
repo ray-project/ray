@@ -4,22 +4,10 @@ Nested Remote Functions
 Remote functions can call other remote functions, resulting in nested tasks.
 For example, consider the following.
 
-.. code:: python
-
-    @ray.remote
-    def f():
-        return 1
-
-    @ray.remote
-    def g():
-        # Call f 4 times and return the resulting object refs.
-        return [f.remote() for _ in range(4)]
-
-    @ray.remote
-    def h():
-        # Call f 4 times, block until those 4 tasks finish,
-        # retrieve the results, and return the values.
-        return ray.get([f.remote() for _ in range(4)])
+.. literalinclude:: ../doc_code/nested-tasks.py
+    :language: python
+    :start-after: __nested_start__
+    :end-before: __nested_end__
 
 Then calling ``g`` and ``h`` produces the following behavior.
 
@@ -39,16 +27,18 @@ definitions of ``g`` and ``h`` because as soon as ``g`` is defined, it
 will be pickled and shipped to the workers, and so if ``f`` hasn't been
 defined yet, the definition will be incomplete.
 
-Yielding Resources
-------------------
+Yielding Resources While Blocked
+--------------------------------
 
+Ray will release CPU resources when being blocked. This prevents
+deadlock cases where the nested tasks are waiting for the CPU
+resources held by the parent task.
 Consider the following remote function.
 
-.. code-block:: python
-
-  @ray.remote(num_cpus=1, num_gpus=1)
-  def g():
-      return ray.get(f.remote())
+.. literalinclude:: ../doc_code/nested-tasks.py
+    :language: python
+    :start-after: __yield_start__
+    :end-before: __yield_end__
 
 When a ``g`` task is executing, it will release its CPU resources when it gets
 blocked in the call to ``ray.get``. It will reacquire the CPU resources when

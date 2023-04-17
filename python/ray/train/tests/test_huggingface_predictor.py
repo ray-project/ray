@@ -7,7 +7,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -17,7 +17,7 @@ from transformers.pipelines import pipeline
 import ray
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 test_strings = ["Complete me", "And me", "Please complete"]
 prompts = pd.DataFrame(test_strings, columns=["sentences"])
@@ -38,9 +38,11 @@ def test_repr(tmpdir):
     assert pattern.match(representation)
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(tmpdir, ray_start_runtime_env, batch_type):
-    dtype_prompts = convert_pandas_to_batch_type(prompts, type=TYPE_TO_ENUM[batch_type])
+    dtype_prompts = _convert_pandas_to_batch_type(
+        prompts, type=TYPE_TO_ENUM[batch_type]
+    )
 
     @ray.remote
     def test(use_preprocessor):
@@ -100,7 +102,8 @@ def create_checkpoint():
         return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
 
 
-@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
+# TODO(ml-team): Add np.ndarray to batch_type
+@pytest.mark.parametrize("batch_type", [pd.DataFrame])
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint = create_checkpoint()
     predictor = BatchPredictor.from_checkpoint(

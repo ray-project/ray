@@ -27,6 +27,8 @@ class ClientMmapTableEntry {
   /// The length of the memory-mapped file.
   size_t length_;
 
+  void MaybeMadviseDontdump();
+
   RAY_DISALLOW_COPY_AND_ASSIGN(ClientMmapTableEntry);
 };
 

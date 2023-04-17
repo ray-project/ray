@@ -20,7 +20,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
@@ -45,13 +44,14 @@ class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL Trainer can be built.
 
     Example:
-        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> from ray.rllib.algorithms.cql import CQLConfig
+        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)
+        >>> config = config.resources(num_gpus=0)
+        >>> config = config.rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")
-        >>> algo.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
@@ -133,9 +133,6 @@ class CQLConfig(SACConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-
         # CQL-torch performs the optimizer steps inside the loss function.
         # Using the multi-GPU optimizer will therefore not work (see multi-GPU
         # check above) and we must use the simple optimizer for now.
@@ -198,7 +195,7 @@ class CQL(SAC):
             else NUM_ENV_STEPS_TRAINED
         ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+        if cur_ts - last_update >= self.config.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(
@@ -209,26 +206,9 @@ class CQL(SAC):
 
         # Update remote workers's weights after learning on local worker
         # (only those policies that were actually trained).
-        if self.workers.remote_workers():
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(policies=list(train_results.keys()))
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(CQLConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-CQL_DEFAULT_CONFIG = DEFAULT_CONFIG

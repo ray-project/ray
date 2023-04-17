@@ -622,24 +622,15 @@ def test_pull_bundle_deadlock(ray_start_cluster):
     assert ray.get(object_c) == "c"
 
 
-@pytest.mark.parametrize("pull_based", [True, False])
-def test_object_directory_failure(pull_based, ray_start_cluster):
+def test_object_directory_failure(ray_start_cluster):
     cluster = ray_start_cluster
-    if pull_based:
-        config = {
-            "health_check_initial_delay_ms": 0,
-            "health_check_period_ms": 500,
-            "health_check_failure_threshold": 10,
-            "object_timeout_milliseconds": 200,
-            "pull_based_healthcheck": True,
-        }
-    else:
-        config = {
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 500,
-            "object_timeout_milliseconds": 200,
-            "pull_based_healthcheck": False,
-        }
+    config = {
+        "health_check_initial_delay_ms": 0,
+        "health_check_period_ms": 500,
+        "health_check_failure_threshold": 10,
+        "object_timeout_milliseconds": 200,
+    }
+
     # Add a head node.
     cluster.add_node(_system_config=config)
     ray.init(address=cluster.address)

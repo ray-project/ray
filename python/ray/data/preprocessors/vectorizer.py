@@ -3,7 +3,7 @@ from typing import List, Callable, Optional
 
 import pandas as pd
 
-from ray.data import Dataset
+from ray.data import Datastream
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_split_tokenizer, simple_hash
 from ray.util.annotations import PublicAPI
@@ -201,7 +201,7 @@ class CountVectorizer(Preprocessor):
             output. If unspecified, the tokenizer uses a function equivalent to
             ``lambda s: s.split(" ")``.
         max_features: The maximum number of tokens to encode in the transformed
-            dataset. If specified, only the most frequent tokens are encoded.
+            datastream. If specified, only the most frequent tokens are encoded.
 
     """  # noqa: E501
 
@@ -217,26 +217,29 @@ class CountVectorizer(Preprocessor):
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer
         self.max_features = max_features
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, datastream: Datastream) -> Preprocessor:
         def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
             def get_token_counts(col):
                 token_series = df[col].apply(self.tokenization_fn)
                 tokens = token_series.sum()
                 return Counter(tokens)
 
-            return [get_token_counts(col) for col in self.columns]
+            return [{col: get_token_counts(col) for col in self.columns}]
 
-        value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-        total_counts = [Counter() for _ in self.columns]
+        value_counts = datastream.map_batches(
+            get_pd_value_counts, batch_format="pandas"
+        )
+        total_counts = {col: Counter() for col in self.columns}
         for batch in value_counts.iter_batches(batch_size=None):
-            for i, col_value_counts in enumerate(batch):
-                total_counts[i].update(col_value_counts)
+            for x in batch:
+                for col, col_value_counts in x.items():
+                    total_counts[col].update(col_value_counts)
 
         def most_common(counter: Counter, n: int):
             return Counter(dict(counter.most_common(n)))
 
         top_counts = [
-            most_common(counter, self.max_features) for counter in total_counts
+            most_common(counter, self.max_features) for counter in total_counts.values()
         ]
 
         self.stats_ = {
@@ -248,15 +251,17 @@ class CountVectorizer(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
 
+        to_concat = []
         for col in self.columns:
             token_counts = self.stats_[f"token_counts({col})"]
             sorted_tokens = [token for (token, count) in token_counts.most_common()]
             tokenized = df[col].map(self.tokenization_fn).map(Counter)
             for token in sorted_tokens:
-                df[f"{col}_{token}"] = tokenized.map(lambda val: val[token])
+                series = tokenized.map(lambda val: val[token])
+                series.name = f"{col}_{token}"
+                to_concat.append(series)
 
-        # Drop original columns.
-        df.drop(columns=self.columns, inplace=True)
+        df = pd.concat(to_concat, axis=1)
         return df
 
     def __repr__(self):

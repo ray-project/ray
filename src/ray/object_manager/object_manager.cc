@@ -70,7 +70,7 @@ ObjectManager::ObjectManager(
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(object_directory),
-      object_store_internal_(
+      object_store_internal_(std::make_unique<ObjectStoreRunner>(
           config,
           spill_objects_callback,
           object_store_full_callback,
@@ -78,9 +78,7 @@ ObjectManager::ObjectManager(
           [this, add_object_callback = std::move(add_object_callback)](
               const ObjectInfo &object_info) {
             main_service_->post(
-                [this,
-                 object_info,
-                 add_object_callback = std::move(add_object_callback)]() {
+                [this, object_info, &add_object_callback]() {
                   HandleObjectAdded(object_info);
                   add_object_callback(object_info);
                 },
@@ -90,14 +88,12 @@ ObjectManager::ObjectManager(
           [this, delete_object_callback = std::move(delete_object_callback)](
               const ObjectID &object_id) {
             main_service_->post(
-                [this,
-                 object_id,
-                 delete_object_callback = std::move(delete_object_callback)]() {
+                [this, object_id, &delete_object_callback]() {
                   HandleObjectDeleted(object_id);
                   delete_object_callback(object_id);
                 },
                 "ObjectManager.ObjectDeleted");
-          }),
+          })),
       buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
@@ -158,7 +154,10 @@ ObjectManager::ObjectManager(
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
 
-void ObjectManager::Stop() { plasma::plasma_store_runner->Stop(); }
+void ObjectManager::Stop() {
+  plasma::plasma_store_runner->Stop();
+  object_store_internal_.reset();
+}
 
 bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
@@ -231,9 +230,9 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
                              BundlePriority prio,
-                             const std::string &task_name) {
+                             const TaskMetricsKey &task_key) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id = pull_manager_->Pull(object_refs, prio, task_name, &objects_to_locate);
+  auto request_id = pull_manager_->Pull(object_refs, prio, task_key, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,

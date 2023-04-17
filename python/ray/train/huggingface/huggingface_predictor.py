@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import pandas as pd
@@ -11,10 +12,35 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+try:
+    import torch
+
+    torch_get_gpus = torch.cuda.device_count
+except ImportError:
+
+    def torch_get_gpus():
+        return 0
+
+
+try:
+    import tensorflow
+
+    def tf_get_gpus():
+        return len(tensorflow.config.list_physical_devices("GPU"))
+
+except ImportError:
+
+    def tf_get_gpus():
+        return 0
+
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -27,14 +53,31 @@ class HuggingFacePredictor(Predictor):
         pipeline: The Transformers pipeline to use for inference.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
         self,
         pipeline: Optional[Pipeline] = None,
         preprocessor: Optional["Preprocessor"] = None,
+        use_gpu: bool = False,
     ):
         self.pipeline = pipeline
+        self.use_gpu = use_gpu
+
+        num_gpus = max(torch_get_gpus(), tf_get_gpus())
+        if not use_gpu and num_gpus > 0 and log_once("hf_predictor_not_using_gpu"):
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{num_gpus} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `HuggingFacePredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction. Ignore if you have set `device` or "
+                "`device_map` arguments in the `pipeline` manually."
+            )
+
         super().__init__(preprocessor)
 
     def __repr__(self):
@@ -49,11 +92,17 @@ class HuggingFacePredictor(Predictor):
         checkpoint: Checkpoint,
         *,
         pipeline_cls: Optional[Type[Pipeline]] = None,
+        use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
 
         The checkpoint is expected to be a result of ``HuggingFaceTrainer``.
+
+        Note that the Transformers ``pipeline`` used internally expects to
+        recieve raw text. If you have any Preprocessors in Checkpoint
+        that tokenize the data, remove them by calling
+        ``Checkpoint.set_preprocessor(None)`` beforehand.
 
         Args:
             checkpoint: The checkpoint to load the model, tokenizer and
@@ -62,15 +111,22 @@ class HuggingFacePredictor(Predictor):
             pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
                 initialization. If ``pipeline`` is None, this must contain
                 the 'task' argument. Cannot contain 'model'. Can be used
-                to override the tokenizer with 'tokenizer'.
+                to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
+                True, 'device' will be set to 0 by default, unless 'device_map' is
+                passed.
         """
         if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
+        if use_gpu and "device_map" not in pipeline_kwargs:
+            # default to using the GPU with the first index
+            pipeline_kwargs.setdefault("device", 0)
         pipeline_cls = pipeline_cls or pipeline_factory
         preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
@@ -80,6 +136,7 @@ class HuggingFacePredictor(Predictor):
         return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,
+            use_gpu=use_gpu,
         )
 
     def _predict(

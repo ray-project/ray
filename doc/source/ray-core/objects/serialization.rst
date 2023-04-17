@@ -17,7 +17,9 @@ Ray is currently compatible with Pickle protocol version 5, while Ray supports s
 Plasma Object Store
 ~~~~~~~~~~~~~~~~~~~
 
-Plasma is an in-memory object store that is being developed as part of Apache Arrow. Ray uses Plasma to efficiently transfer objects across different processes and different nodes. All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
+Plasma is an in-memory object store. It has been originally developed as part of Apache Arrow. Prior to Ray's version 1.0.0 release, Ray forked Arrow's Plasma code into Ray's code base in order to disentangle and continue development with respect to Ray's architecture and performance needs.
+
+Plasma is used to efficiently transfer objects across different processes and different nodes. All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
 
 Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
 

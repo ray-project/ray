@@ -1,4 +1,3 @@
-import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
@@ -9,7 +8,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -18,7 +17,6 @@ from ray.data.datasource.file_meta_provider import (
     _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 import ray.cloudpickle as cloudpickle
 
@@ -43,19 +41,19 @@ FILE_READING_RETRY = 8
 # compared to Parquet encoded representation. Parquet file statistics only record
 # encoded (i.e. uncompressed) data size information.
 #
-# To estimate real-time in-memory data size, Datasets will try to estimate the correct
-# inflation ratio from Parquet to Arrow, using this constant as the default value for
-# safety. See https://github.com/ray-project/ray/pull/26516 for more context.
+# To estimate real-time in-memory data size, Datastreams will try to estimate the
+# correct inflation ratio from Parquet to Arrow, using this constant as the default
+# value for safety. See https://github.com/ray-project/ray/pull/26516 for more context.
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 
 # The lower bound size to estimate Parquet encoding ratio.
 PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 2
 
-# The percentage of files (1% by default) to be sampled from the dataset to estimate
+# The percentage of files (1% by default) to be sampled from the datastream to estimate
 # Parquet encoding ratio.
 PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
 
-# The minimal and maximal number of file samples to take from the dataset to estimate
+# The minimal and maximal number of file samples to take from the datastream to estimate
 # Parquet encoding ratio.
 # This is to restrict `PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO` within the
 # proper boundary.
@@ -148,8 +146,8 @@ class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     The primary difference from ParquetBaseDatasource is that this uses
-    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
-    automatic Arrow dataset schema inference and row count collection at the
+    PyArrow's `ParquetDataset` abstraction for datastream reads, and thus offers
+    automatic Arrow datastream schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
 
     Examples:
@@ -161,6 +159,13 @@ class ParquetDatasource(ParquetBaseDatasource):
         [{"a": 1, "b": "foo"}, ...]
     """
 
+    def get_name(self):
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `ParquetBaseDatasource` method.
+        """
+        return "Parquet"
+
     def create_reader(self, **kwargs):
         return _ParquetDatasourceReader(**kwargs)
 
@@ -169,6 +174,7 @@ class _ParquetDatasourceReader(Reader):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        local_uri: bool = False,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         columns: Optional[List[str]] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
@@ -184,10 +190,22 @@ class _ParquetDatasourceReader(Reader):
         if len(paths) == 1:
             paths = paths[0]
 
+        self._local_scheduling = None
+        if local_uri:
+            import ray
+            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+            self._local_scheduling = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
+
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
             pq_ds = pq.ParquetDataset(
-                paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
+                paths,
+                **dataset_kwargs,
+                filesystem=filesystem,
+                use_legacy_dataset=False,
             )
         except OSError as e:
             _handle_read_os_error(e, paths)
@@ -199,14 +217,14 @@ class _ParquetDatasourceReader(Reader):
             )
 
         if _block_udf is not None:
-            # Try to infer dataset schema by passing dummy table through UDF.
+            # Try to infer datastream schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
             try:
                 inferred_schema = _block_udf(dummy_table).schema
                 inferred_schema = inferred_schema.with_metadata(schema.metadata)
             except Exception:
                 logger.debug(
-                    "Failed to infer schema of dataset by passing dummy table "
+                    "Failed to infer schema of datastream by passing dummy table "
                     "through UDF due to the following exception:",
                     exc_info=True,
                 )
@@ -215,7 +233,15 @@ class _ParquetDatasourceReader(Reader):
             inferred_schema = schema
 
         try:
-            self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+            prefetch_remote_args = {}
+            if self._local_scheduling:
+                prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+            self._metadata = (
+                meta_provider.prefetch_file_metadata(
+                    pq_ds.pieces, **prefetch_remote_args
+                )
+                or []
+            )
         except OSError as e:
             _handle_read_os_error(e, paths)
         self._pq_ds = pq_ds
@@ -255,6 +281,11 @@ class _ParquetDatasourceReader(Reader):
                 pieces=pieces,
                 prefetched_metadata=metadata,
             )
+            # If there is a filter operation, reset the calculated row count,
+            # since the resulting row count is unknown.
+            if self._reader_args.get("filter") is not None:
+                meta.num_rows = None
+
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
             block_udf, reader_args, columns, schema = (
@@ -283,7 +314,7 @@ class _ParquetDatasourceReader(Reader):
 
         To avoid OOMs, it is safer to return an over-estimate than an underestimate.
         """
-        if not DatasetContext.get_current().decoding_size_estimation:
+        if not DataContext.get_current().decoding_size_estimation:
             return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         # Sample a few rows from Parquet files to estimate the encoding ratio.
@@ -309,13 +340,14 @@ class _ParquetDatasourceReader(Reader):
 
         sample_piece = cached_remote_fn(_sample_piece)
         futures = []
+        scheduling = self._local_scheduling or "SPREAD"
         for sample in file_samples:
             # Sample the first rows batch in i-th file.
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
             serialized_sample = _SerializedPiece(sample)
             futures.append(
-                sample_piece.options(scheduling_strategy="SPREAD").remote(
+                sample_piece.options(scheduling_strategy=scheduling).remote(
                     self._reader_args,
                     self._columns,
                     self._schema,
@@ -347,7 +379,7 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     output_buffer = BlockOutputBuffer(
         block_udf=block_udf,
         target_max_block_size=ctx.target_max_block_size,
@@ -355,13 +387,14 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
+    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(
             use_threads=use_threads,
             columns=columns,
             schema=schema,
-            batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+            batch_size=batch_size,
             **reader_args,
         )
         for batch in batches:
@@ -383,26 +416,9 @@ def _read_pieces(
         yield output_buffer.next()
 
 
-def _fetch_metadata_remotely(
-    pieces: List["pyarrow._dataset.ParquetFileFragment"],
-) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
-
-    remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
-    metas = []
-    parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
-    meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    for pcs in np.array_split(pieces, parallelism):
-        if len(pcs) == 0:
-            continue
-        metas.append(remote_fetch_metadata.remote([_SerializedPiece(p) for p in pcs]))
-    metas = meta_fetch_bar.fetch_until_complete(metas)
-    return list(itertools.chain.from_iterable(metas))
-
-
 def _fetch_metadata_serialization_wrapper(
-    pieces: str,
+    pieces: _SerializedPiece,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-
     pieces: List[
         "pyarrow._dataset.ParquetFileFragment"
     ] = _deserialize_pieces_with_retry(pieces)
@@ -434,7 +450,12 @@ def _sample_piece(
 
     # Only sample the first row group.
     piece = piece.subset(row_group_ids=[0])
-    batch_size = min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS)
+    batch_size = max(
+        min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
+    )
+    # Use the batch_size calculated above, and ignore the one specified by user if set.
+    # This is to avoid sampling too few or too many rows.
+    reader_args.pop("batch_size", None)
     batches = piece.to_batches(
         columns=columns,
         schema=schema,
@@ -444,15 +465,19 @@ def _sample_piece(
     # Use first batch in-memory size as ratio estimation.
     try:
         batch = next(batches)
-        in_memory_size = batch.nbytes / batch.num_rows
-        metadata = piece.metadata
-        total_size = 0
-        for idx in range(metadata.num_row_groups):
-            total_size += metadata.row_group(idx).total_byte_size
-        file_size = total_size / metadata.num_rows
-        ratio = in_memory_size / file_size
     except StopIteration:
         ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+    else:
+        if batch.num_rows > 0:
+            in_memory_size = batch.nbytes / batch.num_rows
+            metadata = piece.metadata
+            total_size = 0
+            for idx in range(metadata.num_row_groups):
+                total_size += metadata.row_group(idx).total_byte_size
+            file_size = total_size / metadata.num_rows
+            ratio = in_memory_size / file_size
+        else:
+            ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
     logger.debug(
         f"Estimated Parquet encoding ratio is {ratio} for piece {piece} "
         f"with batch size {batch_size}."

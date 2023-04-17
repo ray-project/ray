@@ -9,6 +9,8 @@ from ray.data.datasource.datasource import (
     Reader,
     WriteResult,
 )
+from ray.data.datasource.mongo_datasource import MongoDatasource
+
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
@@ -36,17 +38,19 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
     Partitioning,
 )
+from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
-from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
+from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data.datasource.text_datasource import TextDatasource
-from ray.data.datasource.torch_datasource import SimpleTorchDatasource
 
 __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "BlockWritePathProvider",
+    "Connection",
     "CSVDatasource",
     "Datasource",
+    "SQLDatasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",
@@ -68,12 +72,12 @@ __all__ = [
     "Partitioning",
     "RandomIntRowDatasource",
     "RangeDatasource",
+    "MongoDatasource",
     "ReadTask",
     "Reader",
-    "SimpleTensorFlowDatasource",
-    "SimpleTorchDatasource",
     "TextDatasource",
     "TFRecordDatasource",
+    "WebDatasetDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",
 ]

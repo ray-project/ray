@@ -13,13 +13,13 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict
@@ -33,13 +33,14 @@ class QMixConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.algorithms.qmix import QMixConfig
-        >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = QMixConfig()  # doctest: +SKIP
+        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env=TwoStepGame)
-        >>> algo.train()
+        >>> algo = config.build(env=TwoStepGame)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -48,14 +49,16 @@ class QMixConfig(SimpleQConfig):
         >>> from ray import tune
         >>> config = QMixConfig()
         >>> # Print out some default values.
-        >>> print(config.optim_alpha)
+        >>> print(config.optim_alpha)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), optim_alpha=0.97)
+        >>> config.training(  # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), optim_alpha=0.97
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env=TwoStepGame)
+        >>> config.environment(env=TwoStepGame)  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "QMix",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -75,6 +78,12 @@ class QMixConfig(SimpleQConfig):
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
         self.grad_clip = 10
+
+        # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
+        # alternative `learn_on_loaded_batch` alternative for the GPU.
+        # TODO: This hack will be resolved once we move all algorithms to the new
+        #  RLModule/Learner APIs.
+        self.simple_optimizer = True
 
         # Override some of AlgorithmConfig's default values with QMix-specific values.
         # .training()
@@ -131,10 +140,8 @@ class QMixConfig(SimpleQConfig):
         # .evaluation()
         # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
         # The evaluation stats will be reported under the "evaluation" metric key.
-        # Note that evaluation is currently not parallelized, and that for Ape-X
-        # metrics are already only reported for the lowest epsilon workers.
         self.evaluation(
-            evaluation_config={"explore": False}
+            evaluation_config=AlgorithmConfig.overrides(explore=False)
         )
         # __sphinx_doc_end__
         # fmt: on
@@ -249,9 +256,10 @@ class QMix(SimpleQ):
             The results dict from executing the training iteration.
         """
         # Sample n batches from n workers.
-        new_sample_batches = synchronous_parallel_sample(
-            worker_set=self.workers, concat=False
-        )
+        with self._timers[SAMPLE_TIMER]:
+            new_sample_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
 
         for batch in new_sample_batches:
             # Update counters.
@@ -269,12 +277,12 @@ class QMix(SimpleQ):
 
         train_results = {}
 
-        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+        if cur_ts > self.config.num_steps_sampled_before_learning_starts:
             # Sample n batches from replay buffer until the total number of timesteps
             # reaches `train_batch_size`.
             train_batch = sample_min_n_steps_from_buffer(
                 replay_buffer=self.local_replay_buffer,
-                min_steps=self.config["train_batch_size"],
+                min_steps=self.config.train_batch_size,
                 count_by_agent_steps=self.config.count_steps_by == "agent_steps",
             )
 
@@ -288,7 +296,7 @@ class QMix(SimpleQ):
 
             # Update target network every `target_network_update_freq` sample steps.
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            if cur_ts - last_update >= self.config.target_network_update_freq:
                 to_update = self.workers.local_worker().get_policies_to_train()
                 self.workers.local_worker().foreach_policy_to_train(
                     lambda p, pid: pid in to_update and p.update_target()
@@ -312,20 +320,3 @@ class QMix(SimpleQ):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.qmix.qmix.QMixConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(QMixConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -1,29 +1,31 @@
 import enum
 import logging
-import time
 import traceback
 import inspect
+import os
 import asyncio
 from functools import wraps
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import grpc
 
 import ray
 from ray._private import ray_constants
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from ray.core.generated.common_pb2 import ErrorType
+from ray.core.generated import (
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
+
+from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     AvailableResources,
     ErrorTableData,
     GcsEntry,
     GcsNodeInfo,
-    JobConfig,
     JobTableData,
     ObjectTableData,
     PlacementGroupTableData,
-    ProfileTableData,
     PubSubMessage,
     ResourceDemand,
     ResourceLoad,
@@ -33,6 +35,7 @@ from ray.core.generated.gcs_pb2 import (
     ResourceUsageBatchData,
     TablePrefix,
     TablePubsub,
+    TaskEvents,
     WorkerTableData,
 )
 
@@ -50,9 +53,9 @@ __all__ = [
     "ResourceUsageBatchData",
     "ResourcesData",
     "ObjectTableData",
-    "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
+    "TaskEvents",
     "ResourceDemand",
     "ResourceLoad",
     "ResourceMap",
@@ -121,6 +124,8 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     except grpc.RpcError:
         traceback.print_exc()
         return False
+    finally:
+        channel.close()
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
 
@@ -138,22 +143,39 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     return True
 
 
+# This global variable is used for testing only
+_called_freq = {}
+
+
 def _auto_reconnect(f):
+    # This is for testing to count the frequence
+    # of gcs call
     if inspect.iscoroutinefunction(f):
 
         @wraps(f)
         async def wrapper(self, *args, **kwargs):
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                global _called_freq
+                name = f.__name__
+                if name not in _called_freq:
+                    _called_freq[name] = 0
+                _called_freq[name] += 1
+
             remaining_retry = self._nums_reconnect_retry
             while True:
                 try:
                     return await f(self, *args, **kwargs)
                 except grpc.RpcError as e:
-                    if remaining_retry <= 0:
-                        raise
                     if e.code() in (
                         grpc.StatusCode.UNAVAILABLE,
                         grpc.StatusCode.UNKNOWN,
                     ):
+                        if remaining_retry <= 0:
+                            logger.error(
+                                "Failed to connect to GCS. Please check"
+                                " `gcs_server.out` for more details."
+                            )
+                            raise
                         logger.debug(
                             "Failed to send request to gcs, reconnecting. " f"Error {e}"
                         )
@@ -169,32 +191,10 @@ def _auto_reconnect(f):
         return wrapper
     else:
 
-        @wraps(f)
-        def wrapper(self, *args, **kwargs):
-            remaining_retry = self._nums_reconnect_retry
-            while True:
-                try:
-                    return f(self, *args, **kwargs)
-                except grpc.RpcError as e:
-                    if remaining_retry <= 0:
-                        raise
-                    if e.code() in (
-                        grpc.StatusCode.UNAVAILABLE,
-                        grpc.StatusCode.UNKNOWN,
-                    ):
-                        logger.debug(
-                            "Failed to send request to gcs, reconnecting. " f"Error {e}"
-                        )
-                        try:
-                            self._connect()
-                        except Exception:
-                            logger.error(f"Connecting to gcs failed. Error {e}")
-                        time.sleep(1)
-                        remaining_retry -= 1
-                        continue
-                    raise
-
-        return wrapper
+        raise NotImplementedError(
+            "This code moved to Cython, see "
+            "https://github.com/ray-project/ray/pull/33769"
+        )
 
 
 class GcsChannel:
@@ -221,170 +221,6 @@ class GcsCode(enum.IntEnum):
     OK = 0
     NotFound = 17
     GrpcUnavailable = 26
-
-
-class GcsClient:
-    """Client to GCS using GRPC"""
-
-    def __init__(
-        self,
-        channel: Optional[GcsChannel] = None,
-        address: Optional[str] = None,
-        nums_reconnect_retry: int = 5,
-    ):
-        if channel is None:
-            assert isinstance(address, str)
-            channel = GcsChannel(gcs_address=address)
-        assert isinstance(channel, GcsChannel)
-        assert channel._aio is False
-        self._channel = channel
-        self._connect()
-        self._nums_reconnect_retry = nums_reconnect_retry
-
-    def _connect(self):
-        self._channel.connect()
-        self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
-            self._channel.channel()
-        )
-        self._runtime_env_stub = gcs_service_pb2_grpc.RuntimeEnvGcsServiceStub(
-            self._channel.channel()
-        )
-        self._node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            self._channel.channel()
-        )
-        self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._channel.channel()
-        )
-
-    @property
-    def address(self):
-        return self._channel._gcs_address
-
-    @_auto_reconnect
-    def internal_kv_get(
-        self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> Optional[bytes]:
-        logger.debug(f"internal_kv_get {key!r} {namespace!r}")
-        req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
-        reply = self._kv_stub.InternalKVGet(req, timeout=timeout)
-        if reply.status.code == GcsCode.OK:
-            return reply.value
-        elif reply.status.code == GcsCode.NotFound:
-            return None
-        else:
-            raise RuntimeError(
-                f"Failed to get value for key {key!r} "
-                f"due to error {reply.status.message}"
-            )
-
-    @_auto_reconnect
-    def internal_kv_put(
-        self,
-        key: bytes,
-        value: bytes,
-        overwrite: bool,
-        namespace: Optional[bytes],
-        timeout: Optional[float] = None,
-    ) -> int:
-        logger.debug(f"internal_kv_put {key!r} {value!r} {overwrite} {namespace!r}")
-        req = gcs_service_pb2.InternalKVPutRequest(
-            namespace=namespace,
-            key=key,
-            value=value,
-            overwrite=overwrite,
-        )
-        reply = self._kv_stub.InternalKVPut(req, timeout=timeout)
-        if reply.status.code == GcsCode.OK:
-            return reply.added_num
-        else:
-            raise RuntimeError(
-                f"Failed to put value {value!r} to key {key!r} "
-                f"due to error {reply.status.message}"
-            )
-
-    @_auto_reconnect
-    def internal_kv_del(
-        self,
-        key: bytes,
-        del_by_prefix: bool,
-        namespace: Optional[bytes],
-        timeout: Optional[float] = None,
-    ) -> int:
-        logger.debug(f"internal_kv_del {key!r} {del_by_prefix} {namespace!r}")
-        req = gcs_service_pb2.InternalKVDelRequest(
-            namespace=namespace, key=key, del_by_prefix=del_by_prefix
-        )
-        reply = self._kv_stub.InternalKVDel(req, timeout=timeout)
-        if reply.status.code == GcsCode.OK:
-            return reply.deleted_num
-        else:
-            raise RuntimeError(
-                f"Failed to delete key {key!r} " f"due to error {reply.status.message}"
-            )
-
-    @_auto_reconnect
-    def internal_kv_exists(
-        self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> bool:
-        logger.debug(f"internal_kv_exists {key!r} {namespace!r}")
-        req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
-        reply = self._kv_stub.InternalKVExists(req, timeout=timeout)
-        if reply.status.code == GcsCode.OK:
-            return reply.exists
-        else:
-            raise RuntimeError(
-                f"Failed to check existence of key {key!r} "
-                f"due to error {reply.status.message}"
-            )
-
-    @_auto_reconnect
-    def internal_kv_keys(
-        self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
-    ) -> List[bytes]:
-        logger.debug(f"internal_kv_keys {prefix!r} {namespace!r}")
-        req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
-        reply = self._kv_stub.InternalKVKeys(req, timeout=timeout)
-        if reply.status.code == GcsCode.OK:
-            return reply.results
-        else:
-            raise RuntimeError(
-                f"Failed to list prefix {prefix!r} "
-                f"due to error {reply.status.message}"
-            )
-
-    @_auto_reconnect
-    def pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
-        """Makes a synchronous call to the GCS to temporarily pin the URI."""
-        req = gcs_service_pb2.PinRuntimeEnvURIRequest(
-            uri=uri, expiration_s=expiration_s
-        )
-        reply = self._runtime_env_stub.PinRuntimeEnvURI(req)
-        if reply.status.code == GcsCode.GrpcUnavailable:
-            raise RuntimeError(
-                f"Failed to pin URI reference {uri} due to the GCS being "
-                f"unavailable, most likely it has crashed: {reply.status.message}."
-            )
-        elif reply.status.code != GcsCode.OK:
-            raise RuntimeError(
-                f"Failed to pin URI reference for {uri} "
-                f"due to unexpected error {reply.status.message}."
-            )
-
-    @_auto_reconnect
-    def get_all_node_info(
-        self, timeout: Optional[float] = None
-    ) -> gcs_service_pb2.GetAllNodeInfoReply:
-        req = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = self._node_info_stub.GetAllNodeInfo(req, timeout=timeout)
-        return reply
-
-    @_auto_reconnect
-    def get_all_job_info(
-        self, timeout: Optional[float] = None
-    ) -> gcs_service_pb2.GetAllJobInfoReply:
-        req = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
-        return reply
 
 
 class GcsAioClient:
@@ -453,6 +289,24 @@ class GcsAioClient:
             )
 
     @_auto_reconnect
+    async def internal_kv_multi_get(
+        self,
+        keys: List[bytes],
+        namespace: Optional[bytes],
+        timeout: Optional[float] = None,
+    ) -> Dict[bytes, bytes]:
+        logger.debug(f"internal_kv_multi_get {keys!r} {namespace!r}")
+        req = gcs_service_pb2.InternalKVMultiGetRequest(namespace=namespace, keys=keys)
+        reply = await self._kv_stub.InternalKVMultiGet(req, timeout=timeout)
+        if reply.status.code == GcsCode.OK:
+            return {entry.key: entry.value for entry in reply.results}
+        else:
+            raise RuntimeError(
+                f"Failed to get value for keys {keys!r} "
+                f"due to error {reply.status.message}"
+            )
+
+    @_auto_reconnect
     async def internal_kv_put(
         self,
         key: bytes,
@@ -461,6 +315,20 @@ class GcsAioClient:
         namespace: Optional[bytes],
         timeout: Optional[float] = None,
     ) -> int:
+        """Put a key-value pair into the GCS.
+
+        Args:
+            key: The key to put.
+            value: The value to put.
+            overwrite: Whether to overwrite the value if the key already exists.
+            namespace: The namespace to put the key-value pair into.
+            timeout: The timeout in seconds.
+
+        Returns:
+            The number of keys added. If overwrite is True, this will be 1 if the
+                key was added and 0 if the key was updated. If overwrite is False,
+                this will be 1 if the key was added and 0 if the key already exists.
+        """
         logger.debug(f"internal_kv_put {key!r} {value!r} {overwrite} {namespace!r}")
         req = gcs_service_pb2.InternalKVPutRequest(
             namespace=namespace,
@@ -549,10 +417,38 @@ class GcsAioClient:
         return reply
 
 
-def use_gcs_for_bootstrap():
-    """In the current version of Ray, we always use the GCS to bootstrap.
-    (This was previously controlled by a feature flag.)
+def cleanup_redis_storage(
+    host: str, port: int, password: str, use_ssl: bool, storage_namespace: str
+):
+    """This function is used to cleanup the storage. Before we having
+    a good design for storage backend, it can be used to delete the old
+    data. It support redis cluster and non cluster mode.
 
-    This function is included for the purposes of backwards compatibility.
+    Args:
+       host: The host address of the Redis.
+       port: The port of the Redis.
+       password: The password of the Redis.
+       use_ssl: Whether to encrypt the connection.
+       storage_namespace: The namespace of the storage to be deleted.
     """
-    return True
+
+    from ray._raylet import del_key_from_storage  # type: ignore
+
+    if not isinstance(host, str):
+        raise ValueError("Host must be a string")
+
+    if not isinstance(password, str):
+        raise ValueError("Password must be a string")
+
+    if port < 0:
+        raise ValueError(f"Invalid port: {port}")
+
+    if not isinstance(use_ssl, bool):
+        raise TypeError("use_ssl must be a boolean")
+
+    if not isinstance(storage_namespace, str):
+        raise ValueError("storage namespace must be a string")
+
+    # Right now, GCS store all data into a hash set key by storage_namespace.
+    # So we only need to delete the specific key to cleanup the cluster.
+    return del_key_from_storage(host, port, password, use_ssl, storage_namespace)

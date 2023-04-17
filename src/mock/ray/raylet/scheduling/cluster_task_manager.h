@@ -43,10 +43,6 @@ class MockClusterTaskManager : public ClusterTaskManager {
               (const TaskID &task_id, bool runtime_env_setup_failed),
               (override));
   MOCK_METHOD(void,
-              FillPendingActorInfo,
-              (rpc::GetNodeStatsReply * reply),
-              (const, override));
-  MOCK_METHOD(void,
               FillResourceUsage,
               (rpc::ResourcesData & data,
                const std::shared_ptr<NodeResources> &last_reported_resources),

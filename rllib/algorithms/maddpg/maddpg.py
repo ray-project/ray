@@ -17,7 +17,7 @@ from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import Deprecated, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -30,35 +30,34 @@ class MADDPGConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
         >>> config = MADDPGConfig()
-        >>> print(config.replay_buffer_config)
-        >>> replay_config = config.replay_buffer_config.update(
-        >>>     {
-        >>>         "capacity": 100000,
-        >>>         "prioritized_replay_alpha": 0.8,
-        >>>         "prioritized_replay_beta": 0.45,
-        >>>         "prioritized_replay_eps": 2e-6,
-        >>>     }
-        >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        >>>       .resources(num_gpus=0)\
-        >>>       .rollouts(num_rollout_workers=4)\
-        >>>       .environment("CartPole-v1")
-        >>> algo = config.build()
-        >>> while True:
-        >>>     algo.train()
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
+        >>> replay_config = config.replay_buffer_config.update(  # doctest: +SKIP
+        ...     {
+        ...         "capacity": 100000,
+        ...         "prioritized_replay_alpha": 0.8,
+        ...         "prioritized_replay_beta": 0.45,
+        ...         "prioritized_replay_eps": 2e-6,
+        ...     }
+        ... )
+        >>> config.training(replay_buffer_config=replay_config)   # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")   # doctest: +SKIP
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
         >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
-        >>> config.training(n_step=tune.grid_search([3, 5]))
-        >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "MADDPG",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> config.training(n_step=tune.grid_search([3, 5]))  # doctest: +SKIP
+        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "MADDPG",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -101,6 +100,15 @@ class MADDPGConfig(AlgorithmConfig):
         self.train_batch_size = 1024
         self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # fmt: on
         # __sphinx_doc_end__
 
@@ -311,20 +319,3 @@ class MADDPG(DQN):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         return MADDPGTFPolicy
-
-
-# Deprecated: Use ray.rllib.algorithms.maddpg.MADDPG instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MADDPGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.maddpg.maddpg.MADDPGConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

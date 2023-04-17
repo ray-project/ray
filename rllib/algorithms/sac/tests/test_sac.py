@@ -1,6 +1,5 @@
-from gym import Env
-from gym.spaces import Box, Dict, Discrete, Tuple
-from gym.envs.registration import EnvSpec
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import re
 import unittest
@@ -35,7 +34,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-class SimpleEnv(Env):
+class SimpleEnv(gym.Env):
     def __init__(self, config):
         self._skip_env_checking = True
         if config.get("simplex_actions", False):
@@ -47,18 +46,19 @@ class SimpleEnv(Env):
         self.state = None
         self.steps = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.state = self.observation_space.sample()
         self.steps = 0
-        return self.state
+        return self.state, {}
 
     def step(self, action):
         self.steps += 1
         # Reward is 1.0 - (max(actions) - state).
-        [r] = 1.0 - np.abs(np.max(action) - self.state)
-        d = self.steps >= self.max_steps
+        [rew] = 1.0 - np.abs(np.max(action) - self.state)
+        terminated = False
+        truncated = self.steps >= self.max_steps
         self.state = self.observation_space.sample()
-        return self.state, r, d, {}
+        return self.state, rew, terminated, truncated, {}
 
 
 class TestSAC(unittest.TestCase):
@@ -128,7 +128,6 @@ class TestSAC(unittest.TestCase):
             for env in [
                 "random_dict_env",
                 "random_tuple_env",
-                # "MsPacmanNoFrameskip-v4",
                 "CartPole-v1",
             ]:
                 print("Env={}".format(env))
@@ -517,20 +516,21 @@ class TestSAC(unittest.TestCase):
             {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
         ]
 
-        class NestedDictEnv(Env):
+        class NestedDictEnv(gym.Env):
             def __init__(self):
                 self.action_space = Box(low=-1.0, high=1.0, shape=(2,))
                 self.observation_space = dict_space
-                self._spec = EnvSpec("NestedDictEnv-v0")
                 self.steps = 0
 
-            def reset(self):
+            def reset(self, *, seed=None, options=None):
                 self.steps = 0
-                return dict_samples[0]
+                return dict_samples[0], {}
 
             def step(self, action):
                 self.steps += 1
-                return dict_samples[self.steps], 1, self.steps >= 5, {}
+                terminated = False
+                truncated = self.steps >= 5
+                return dict_samples[self.steps], 1, terminated, truncated, {}
 
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (
@@ -565,7 +565,9 @@ class TestSAC(unittest.TestCase):
                 SampleBatch.CUR_OBS: np.random.random(size=obs_size),
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: np.random.random(size=(batch_size,)),
-                SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
+                SampleBatch.TERMINATEDS: np.random.choice(
+                    [True, False], size=(batch_size,)
+                ),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.random.random(size=(batch_size,)),
                 "batch_indexes": [0] * batch_size,
@@ -698,7 +700,7 @@ class TestSAC(unittest.TestCase):
         q_t_selected = np.squeeze(q_t, axis=-1)
         q_tp1 -= alpha * log_pis_tp1
         q_tp1_best = np.squeeze(q_tp1, axis=-1)
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         if fw == "torch":
             dones = dones.float().numpy()

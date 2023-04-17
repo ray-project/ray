@@ -3,6 +3,7 @@ from typing import Any, List
 
 import ray
 from ray._private.ray_constants import env_integer
+from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
@@ -43,16 +44,25 @@ def set_progress_bars(enabled: bool) -> bool:
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
-    def __init__(self, name: str, total: int, position: int = 0):
-        if not _enabled or threading.current_thread() is not threading.main_thread():
+    def __init__(
+        self, name: str, total: int, position: int = 0, enabled: bool = _enabled
+    ):
+        self._desc = name
+        if not enabled:
             self._bar = None
         elif tqdm:
-            self._bar = tqdm.tqdm(total=total, position=position)
-            self._bar.set_description(name)
+            ctx = ray.data.context.DataContext.get_current()
+            if ctx.use_ray_tqdm:
+                self._bar = tqdm_ray.tqdm(total=total, position=position)
+            else:
+                self._bar = tqdm.tqdm(total=total, position=position)
+            self._bar.set_description(self._desc)
         else:
             global needs_warning
             if needs_warning:
-                print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
+                print(
+                    "[datastream]: Run `pip install tqdm` to enable progress reporting."
+                )
                 needs_warning = False
             self._bar = None
 
@@ -83,8 +93,9 @@ class ProgressBar:
         return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
-        if self._bar:
-            self._bar.set_description(name)
+        if self._bar and name != self._desc:
+            self._desc = name
+            self._bar.set_description(self._desc)
 
     def update(self, i: int) -> None:
         if self._bar and i != 0:

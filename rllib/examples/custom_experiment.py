@@ -29,12 +29,12 @@ def experiment(config):
     eval_algo.restore(checkpoint)
     env = eval_algo.workers.local_worker().env
 
-    obs = env.reset()
+    obs, info = env.reset()
     done = False
     eval_results = {"eval_reward": 0, "eval_eps_length": 0}
     while not done:
         action = eval_algo.compute_single_action(obs)
-        next_obs, reward, done, info = env.step(action)
+        next_obs, reward, done, truncated, info = env.step(action)
         eval_results["eval_reward"] += reward
         eval_results["eval_eps_length"] += 1
     results = {**train_results, **eval_results}
@@ -45,10 +45,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(num_cpus=3)
-    config = ppo.DEFAULT_CONFIG.copy()
+    config = ppo.PPOConfig().environment("CartPole-v1")
+    config = config.to_dict()
     config["train-iterations"] = args.train_iterations
-
-    config["env"] = "CartPole-v1"
 
     tune.Tuner(
         tune.with_resources(experiment, ppo.PPO.default_resource_request(config)),

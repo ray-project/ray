@@ -424,7 +424,9 @@ class TestDDPG(unittest.TestCase):
                 SampleBatch.CUR_OBS: np.random.random(size=obs_size),
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: np.random.random(size=(batch_size,)),
-                SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
+                SampleBatch.TERMINATEDS: np.random.choice(
+                    [True, False], size=(batch_size,)
+                ),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.ones(shape=(batch_size,)),
             }
@@ -545,7 +547,7 @@ class TestDDPG(unittest.TestCase):
         q_tp1 = np.minimum(q_tp1, twin_q_tp1)
         q_tp1_best = np.squeeze(q_tp1, axis=-1)
 
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         if fw == "torch":
             dones = dones.float().numpy()

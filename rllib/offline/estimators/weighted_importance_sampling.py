@@ -1,7 +1,12 @@
 from typing import Dict, Any, List
 import numpy as np
+import math
 
+from ray.data import Dataset
+
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.offline_evaluation_utils import compute_is_weights
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -76,6 +81,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target
+        estimates_per_epsiode["weights"] = weights
+        estimates_per_epsiode["new_prob"] = new_prob
+        estimates_per_epsiode["old_prob"] = old_prob
 
         return estimates_per_epsiode
 
@@ -118,3 +126,53 @@ class WeightedImportanceSampling(OffPolicyEstimator):
                 f"Make sure dataset contains only unique episodes with unique ids."
             )
         self.p[eps_id] = episode_p
+
+    @override(OfflineEvaluator)
+    def estimate_on_dataset(
+        self, dataset: Dataset, *, n_parallelism: int = ...
+    ) -> Dict[str, Any]:
+        """Computes the weighted importance sampling estimate on a dataset.
+
+        Note: This estimate works for both continuous and discrete action spaces.
+
+        Args:
+            dataset: Dataset to compute the estimate on. Each record in dataset should
+                include the following columns: `obs`, `actions`, `action_prob` and
+                `rewards`. The `obs` on each row shoud be a vector of D dimensions.
+            n_parallelism: Number of parallel workers to use for the computation.
+
+        Returns:
+            Dictionary with the following keys:
+                v_target: The weighted importance sampling estimate.
+                v_behavior: The behavior policy estimate.
+                v_gain_mean: The mean of the gain of the target policy over the
+                    behavior policy.
+                v_gain_ste: The standard error of the gain of the target policy over
+                    the behavior policy.
+        """
+        # compute the weights and weighted rewards
+        batch_size = max(dataset.count() // n_parallelism, 1)
+        updated_ds = dataset.map_batches(
+            compute_is_weights,
+            batch_size=batch_size,
+            fn_kwargs={
+                "policy_state": self.policy.get_state(),
+                "estimator_class": self.__class__,
+            },
+        )
+        v_target = updated_ds.mean("weighted_rewards") / updated_ds.mean("weights")
+        v_behavior = updated_ds.mean("rewards")
+        v_gain_mean = v_target / v_behavior
+        v_gain_ste = (
+            updated_ds.std("weighted_rewards")
+            / updated_ds.mean("weights")
+            / v_behavior
+            / math.sqrt(dataset.count())
+        )
+
+        return {
+            "v_target": v_target,
+            "v_behavior": v_behavior,
+            "v_gain_mean": v_gain_mean,
+            "v_gain_ste": v_gain_ste,
+        }

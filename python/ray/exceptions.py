@@ -178,7 +178,7 @@ class RayTaskError(RayError):
             if line.startswith("Traceback "):
                 traceback_line = (
                     f"{colorama.Fore.CYAN}"
-                    f"{self.proctitle}"
+                    f"{self.proctitle}()"
                     f"{colorama.Fore.RESET} "
                     f"(pid={self.pid}, ip={self.ip}"
                 )
@@ -455,6 +455,18 @@ class ObjectFetchTimedOutError(ObjectLostError):
                 "system-level bug."
             )
         )
+
+
+@DeveloperAPI
+class RpcError(RayError):
+    """Indicates an error in the underlying RPC system."""
+
+    def __init__(self, message, rpc_code=None):
+        self.message = message
+        self.rpc_code = rpc_code
+
+    def __str__(self):
+        return self.message
 
 
 @DeveloperAPI

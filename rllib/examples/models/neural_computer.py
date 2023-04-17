@@ -1,5 +1,5 @@
 from collections import OrderedDict
-import gym
+import gymnasium as gym
 from typing import Union, Dict, List, Tuple
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2

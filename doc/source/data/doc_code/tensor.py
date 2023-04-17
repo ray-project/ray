@@ -9,7 +9,7 @@ import ray
 # Create a Dataset of tensors.
 ds = ray.data.range_tensor(10000, shape=(64, 64))
 # -> Dataset(num_blocks=200, num_rows=10000,
-#            schema={__value__: ArrowTensorType(shape=(64, 64), dtype=int64)})
+#            schema={__value__: numpy.ndarray(shape=(64, 64), dtype=int64)})
 
 ds.take(2)
 # -> [array([[0, 0, 0, ..., 0, 0, 0],
@@ -52,6 +52,7 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(single_col_udf)
+ds.materialize()
 # -> Dataset(num_blocks=17, num_rows=1000,
 #            schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
@@ -73,6 +74,7 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(multi_col_udf)
+ds.materialize()
 # -> Dataset(num_blocks=17, num_rows=1000,
 #            schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64),
 #                    embed: TensorDtype(shape=(256,), dtype=uint8)})
@@ -84,12 +86,12 @@ import ray
 # From in-memory numpy data.
 ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
 # -> Dataset(num_blocks=1, num_rows=1000,
-#            schema={__value__: ArrowTensorType(shape=(128, 128, 3), dtype=int64)})
+#            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 
 # From saved numpy files.
 ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 # __create_numpy_end__
 
 # __create_parquet_1_begin__
@@ -98,7 +100,7 @@ import ray
 # Reading previously saved Tensor data works out of the box.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: ArrowTensorType(shape=(128, 128, 3), dtype=uint8),
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
 ds.take(1)
@@ -146,7 +148,7 @@ ds.write_parquet(path)
 # Read the Parquet files into a new Dataset, with the serialized tensors
 # automatically cast to our tensor column extension type.
 ds = ray.data.read_parquet(
-    path, tensor_column_schema={"two": (np.int, (2, 2, 2))})
+    path, tensor_column_schema={"two": (np.int_, (2, 2, 2))})
 
 # The new column is represented with as a Tensor extension type.
 print(ds.schema())
@@ -154,7 +156,7 @@ print(ds.schema())
 #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 # __create_parquet_2_end__
 
-ds.fully_executed()
+ds.materialize()
 shutil.rmtree(path)
 
 # __create_parquet_3_begin__
@@ -191,12 +193,12 @@ print(ds.schema())
 # -> one: int64
 #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 # __create_parquet_3_end__
-ds.fully_executed()
+ds.materialize()
 
 # __create_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
 # -> Dataset(num_blocks=3, num_rows=3, 
-#            schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
 # -> [array([[[ 88,  70,  68],
@@ -215,7 +217,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: np.ndarray) -> np.ndarray:
     return batch + 1
@@ -246,7 +248,7 @@ import ray
 # Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: ArrowTensorType(shape=(128, 128, 3), dtype=uint8),
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
 def add_one(batch: pd.DataFrame) -> pd.DataFrame:
@@ -270,7 +272,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: pd.DataFrame) -> pd.DataFrame:
     batch["__value__"] += 1
@@ -293,7 +295,7 @@ import ray
 # Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: ArrowTensorType(shape=(128, 128, 3), dtype=uint8),
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
 def add_one(batch: pd.DataFrame) -> pd.DataFrame:
@@ -320,7 +322,7 @@ import pyarrow
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: pyarrow.Table) -> pyarrow.Table:
     np_col = np.array(
@@ -388,7 +390,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: np.ndarray) -> np.ndarray:
     batch += 1
@@ -447,7 +449,7 @@ next(ds.iter_batches(batch_format="numpy"))
 # __consume_numpy_2_end__
 
 
-ds.fully_executed()
+ds.materialize()
 shutil.rmtree("/tmp/some_path")
 
 # __write_1_begin__
@@ -466,14 +468,14 @@ print(read_ds.schema())
 #    label: string
 # __write_1_end__
 
-read_ds.fully_executed()
+read_ds.materialize()
 shutil.rmtree("/tmp/some_path")
 
 # __write_2_begin__
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
+#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 # You can write the dataset to Parquet.
 ds.write_numpy("/tmp/some_path")
@@ -487,17 +489,21 @@ print(read_ds.schema())
 # fmt: off
 # __create_variable_shaped_tensors_begin___
 # Create a Dataset of variable-shaped tensors.
-arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
-ds = ray.data.from_numpy([arr, arr])
+ragged_array = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
+df = pd.DataFrame({"feature": ragged_array, "label": [1, 1]})
+ds = ray.data.from_pandas([df, df])
 # -> Dataset(num_blocks=2, num_rows=4,
-#            schema={__value__: ArrowVariableShapedTensorType(dtype=double)})
+#            schema={feature: TensorDtype(shape=(None, None), dtype=float64), 
+#            label: int64})
 
 ds.take(2)
-# -> [array([[1., 1.],
-#            [1., 1.]]),
-#     array([[1., 1., 1.],
-#            [1., 1., 1.],
-#            [1., 1., 1.]])]
+# -> [{'feature': array([[1., 1.],
+#                       [1., 1.]]), 
+#       'label': 1}, 
+#     {'feature': array([[1., 1., 1.],
+#                        [1., 1., 1.],
+#                        [1., 1., 1.]]), 
+#       'label': 1}]
 # __create_variable_shaped_tensors_end__
 
 # fmt: off
@@ -505,13 +511,16 @@ ds.take(2)
 # Convert Ray Dataset to a TensorFlow Dataset.
 tf_ds = ds.to_tf(
     batch_size=2,
-    output_signature=tf.RaggedTensorSpec(shape=(None, None, None), dtype=tf.float64),
+    feature_columns="feature",
+    label_columns="label"
 )
 # Iterate through the tf.RaggedTensors.
 for ragged_tensor in tf_ds:
     print(ragged_tensor)
-# -> <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
-#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
-#    <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
-#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
+# -> (<tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#                      [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>,
+#     <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 1])>)
+# (<tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#                   [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>,
+#  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 1])>)
 # __tf_variable_shaped_tensors_end__

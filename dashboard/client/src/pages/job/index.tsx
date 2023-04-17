@@ -12,10 +12,12 @@ import {
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
+import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { HelpInfo } from "../../components/Tooltip";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
 
@@ -35,7 +37,9 @@ const useStyles = makeStyles((theme) => ({
 const columns = [
   { label: "Job ID" },
   { label: "Submission ID" },
+  { label: "Entrypoint" },
   { label: "Status" },
+  { label: "Duration" },
   {
     label: "Tasks",
     helpInfo: (
@@ -53,11 +57,10 @@ const columns = [
     ),
   },
   {
-    label: "Logs",
+    label: "Actions",
   },
   { label: "StartTime" },
   { label: "EndTime" },
-  { label: "Duration" },
   { label: "Driver Pid" },
 ];
 
@@ -146,6 +149,24 @@ const JobList = () => {
         </TableContainer>
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Jobs page for the new information hierarchy
+ */
+export const JobsLayout = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Jobs",
+          id: "jobs",
+          path: "/jobs",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

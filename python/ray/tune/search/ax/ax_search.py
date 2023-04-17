@@ -1,7 +1,8 @@
 import copy
-import pickle
+import numpy as np
 from typing import Dict, List, Optional, Union
 
+from ray import cloudpickle
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
@@ -18,7 +19,7 @@ from ray.tune.search import (
     Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 
 try:
     import ax
@@ -87,6 +88,7 @@ class AxSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
         from ray.tune.search.ax import AxSearch
 
         config = {
@@ -97,13 +99,15 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.report(score=intermediate_result)
+                session.report({"score": intermediate_result})
 
-        ax_search = AxSearch(metric="score")
+        ax_search = AxSearch()
         tuner = tune.Tuner(
             easy_objective,
             tune_config=tune.TuneConfig(
                 search_alg=ax_search,
+                metric="score",
+                mode="max",
             ),
             param_space=config,
         )
@@ -115,6 +119,7 @@ class AxSearch(Searcher):
     .. code-block:: python
 
         from ray import tune
+        from ray.air import session
         from ray.tune.search.ax import AxSearch
 
         parameters = [
@@ -125,9 +130,9 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                tune.report(score=intermediate_result)
+                session.report({"score": intermediate_result})
 
-        ax_search = AxSearch(space=parameters, metric="score")
+        ax_search = AxSearch(space=parameters, metric="score", mode="max")
         tuner = tune.Tuner(
             easy_objective,
             tune_config=tune.TuneConfig(
@@ -147,7 +152,7 @@ class AxSearch(Searcher):
         parameter_constraints: Optional[List] = None,
         outcome_constraints: Optional[List] = None,
         ax_client: Optional[AxClient] = None,
-        **ax_kwargs
+        **ax_kwargs,
     ):
         assert (
             ax is not None
@@ -297,7 +302,17 @@ class AxSearch(Searcher):
                 return None
 
         self._live_trial_mapping[trial_id] = trial_index
-        return unflatten_dict(parameters)
+        try:
+            suggested_config = unflatten_list_dict(parameters)
+        except AssertionError:
+            # Fails to unflatten if keys are out of order, which only happens
+            # if search space includes a list with both constants and
+            # tunable hyperparameters:
+            # Ex: "a": [1, tune.uniform(2, 3), 4]
+            suggested_config = unflatten_list_dict(
+                {k: parameters[k] for k in sorted(parameters.keys())}
+            )
+        return suggested_config
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
@@ -310,12 +325,21 @@ class AxSearch(Searcher):
 
     def _process_result(self, trial_id, result):
         ax_trial_index = self._live_trial_mapping[trial_id]
-        metric_dict = {self._metric: (result[self._metric], None)}
-        outcome_names = [
+        metrics_to_include = [self._metric] + [
             oc.metric.name
             for oc in self._ax.experiment.optimization_config.outcome_constraints
         ]
-        metric_dict.update({on: (result[on], None) for on in outcome_names})
+        metric_dict = {}
+        for key in metrics_to_include:
+            val = result[key]
+            if np.isnan(val) or np.isinf(val):
+                # Don't report trials with NaN metrics to Ax
+                self._ax.abandon_trial(
+                    trial_index=ax_trial_index,
+                    reason=f"nan/inf metrics reported by {trial_id}",
+                )
+                return
+            metric_dict[key] = (val, None)
         self._ax.complete_trial(trial_index=ax_trial_index, raw_data=metric_dict)
 
     @staticmethod
@@ -385,15 +409,15 @@ class AxSearch(Searcher):
                 )
             )
 
-        # Fixed vars
+        # Parameter name is e.g. "a/b/c" for nested dicts,
+        # "a/d/0", "a/d/1" for nested lists (using the index in the list)
         fixed_values = [
-            {"name": "/".join(path), "type": "fixed", "value": val}
+            {"name": "/".join(str(p) for p in path), "type": "fixed", "value": val}
             for path, val in resolved_vars
         ]
-
-        # Parameter name is e.g. "a/b/c" for nested dicts
         resolved_values = [
-            resolve_value("/".join(path), domain) for path, domain in domain_vars
+            resolve_value("/".join(str(p) for p in path), domain)
+            for path, domain in domain_vars
         ]
 
         return fixed_values + resolved_values
@@ -401,9 +425,9 @@ class AxSearch(Searcher):
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
         with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(save_object, outputFile)
+            cloudpickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
-            save_object = pickle.load(inputFile)
+            save_object = cloudpickle.load(inputFile)
         self.__dict__.update(save_object)

@@ -8,6 +8,7 @@ from typing import Coroutine, Dict, Optional, Union
 import threading
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 
 from ray import serve
@@ -129,7 +130,7 @@ class RayServeHandle:
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment"),
+            tag_keys=("handle", "deployment", "route"),
         )
         self.request_counter.set_default_tags(
             {"handle": self.handle_tag, "deployment": self.deployment_name}
@@ -163,7 +164,7 @@ class RayServeHandle:
         return Router(
             self.controller_handle,
             self.deployment_name,
-            event_loop=asyncio.get_event_loop(),
+            event_loop=get_or_create_event_loop(),
         )
 
     def stop_metrics_pusher(self):
@@ -182,7 +183,7 @@ class RayServeHandle:
 
         This is only useful for async handles.
         """
-        return asyncio.get_event_loop() == self.router._event_loop
+        return get_or_create_event_loop() == self.router._event_loop
 
     def options(
         self,
@@ -212,12 +213,15 @@ class RayServeHandle:
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+        _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
-            get_random_letters(10),  # Used for debugging.
+            _request_context.request_id,
             deployment_name,
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
+            route=_request_context.route,
         )
+        self.request_counter.inc(tags={"route": _request_context.route})
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
@@ -237,7 +241,6 @@ class RayServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
-        self.request_counter.inc()
         return await self._remote(
             self.deployment_name, self.handle_options, args, kwargs
         )
@@ -299,7 +302,6 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        self.request_counter.inc()
         coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._event_loop

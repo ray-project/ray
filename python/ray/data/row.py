@@ -7,7 +7,7 @@ from ray.util.annotations import PublicAPI
 @PublicAPI
 class TableRow(Mapping):
     """
-    A dict-like row of a tabular ``Dataset``.
+    A dict-like row of a tabular ``Datastream``.
 
     This implements the dictionary mapping interface, but provides more
     efficient access with less data copying than converting Arrow Tables
@@ -41,5 +41,5 @@ class TableRow(Mapping):
     def _repr_pretty_(self, p, cycle):
         from IPython.lib.pretty import _dict_pprinter_factory
 
-        pprinter = _dict_pprinter_factory(f"{type(self).__name__}({{", "})")
+        pprinter = _dict_pprinter_factory("{", "}")
         return pprinter(self, p, cycle)

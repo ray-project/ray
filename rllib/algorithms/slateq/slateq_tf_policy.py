@@ -1,7 +1,7 @@
 """TensorFlow policy class used for SlateQ."""
 
 import functools
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 from typing import Dict
@@ -146,7 +146,7 @@ def build_slateq_losses(
     next_q_target_max = tf.reduce_max(input_tensor=next_q_target_slate, axis=1)
 
     target = reward + policy.config["gamma"] * next_q_target_max * (
-        1.0 - tf.cast(train_batch["dones"], tf.float32)
+        1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
     )
     target = tf.stop_gradient(target)
 
@@ -348,7 +348,7 @@ def rmsprop_optimizer(
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
             epsilon=config["rmsprop_epsilon"],
-            decay=0.95,
+            weight_decay=0.95,
             momentum=0.0,
             centered=True,
         )
@@ -364,7 +364,7 @@ def rmsprop_optimizer(
 
 SlateQTFPolicy = build_tf_policy(
     name="SlateQTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.SlateQConfig(),
     # Build model, loss functions, and optimizers
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,

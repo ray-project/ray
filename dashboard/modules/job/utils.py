@@ -176,7 +176,7 @@ async def get_driver_jobs(
                 status=JobStatus.SUCCEEDED
                 if job_table_entry.is_dead
                 else JobStatus.RUNNING,
-                entrypoint="",
+                entrypoint=job_table_entry.entrypoint,
                 start_time=job_table_entry.start_time,
                 end_time=job_table_entry.end_time,
                 metadata=metadata,

@@ -6,6 +6,8 @@ from math import floor
 import os
 import sys
 import time
+from ray._private.utils import get_or_create_event_loop
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 try:
     from packaging.version import Version
@@ -21,7 +23,7 @@ from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 
 
 # Logger for this module. It should be configured at the entry point
@@ -94,12 +96,23 @@ class HttpServerDashboardHead:
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
         if Version(aiohttp.__version__) < Version("4.0.0"):
-            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
+            self.http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
 
     @routes.get("/")
     async def get_index(self, req) -> aiohttp.web.FileResponse:
+        try:
+            # This API will be no-op after the first report.
+            # Note: We always record the usage, but it is not reported
+            # if the usage stats is disabled.
+            record_extra_usage_tag(TagKey.DASHBOARD_USED, "True")
+        except Exception as e:
+            logger.warning(
+                "Failed to record the dashboard usage. "
+                "This error message is harmless and can be ignored. "
+                f"Error: {e}"
+            )
         return aiohttp.web.FileResponse(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
@@ -121,6 +134,7 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
         start_time = time.monotonic()
+
         try:
             response = await handler(request)
             status_tag = f"{floor(response.status / 100)}xx"
@@ -132,14 +146,14 @@ class HttpServerDashboardHead:
             resp_time = time.monotonic() - start_time
             try:
                 self.metrics.metrics_request_duration.labels(
-                    endpoint=request.path,
+                    endpoint=handler.__name__,
                     http_status=status_tag,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).observe(resp_time)
                 self.metrics.metrics_request_count.labels(
                     method=request.method,
-                    endpoint=request.path,
+                    endpoint=handler.__name__,
                     http_status=status_tag,
                     SessionName=self._session_name,
                     Component="dashboard",
@@ -151,6 +165,7 @@ class HttpServerDashboardHead:
         # Bind http routes of each module.
         for c in modules:
             dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(

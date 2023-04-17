@@ -5,7 +5,7 @@ import json
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.search.sample import Domain, Float, Quantized
+from ray.tune.search.sample import Domain, Float, Quantized, Uniform
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,
     UNDEFINED_METRIC_MODE,
@@ -53,8 +53,14 @@ class BayesOptSearch(Searcher):
 
         pip install bayesian-optimization
 
-    This algorithm requires setting a search space using the
-    `BayesianOptimization search space specification`_.
+    Initializing this search algorithm with a ``space`` requires that it's
+    in the ``BayesianOptimization`` search space format. Otherwise, you
+    should instead pass in a Tune search space into ``Tuner(param_space=...)``,
+    and the search space will be automatically converted for you.
+
+    See this `BayesianOptimization example notebook
+    <https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb>`_
+    for an example.
 
     Args:
         space: Continuous search space. Parameters will be sampled from
@@ -78,9 +84,11 @@ class BayesOptSearch(Searcher):
         random_search_steps: Number of initial random searches.
             This is necessary to avoid initial local overfitting
             of the Bayesian process.
-        analysis: Optionally, the previous analysis
-            to integrate.
         verbose: Sets verbosity level for BayesOpt packages.
+        patience: If patience is set and we've repeated a trial numerous times,
+            we terminate the experiment.
+        skip_duplicate: skip duplicate config
+        analysis: Optionally, the previous analysis to integrate.
 
     Tune automatically converts search spaces to BayesOptSearch's format:
 
@@ -372,28 +380,26 @@ class BayesOptSearch(Searcher):
 
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
+        save_object = self.get_state()
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(
-                (
-                    self.optimizer,
-                    self._buffered_trial_results,
-                    self._total_random_search_trials,
-                    self._config_counter,
-                    self._points_to_evaluate,
-                ),
-                f,
-            )
+            pickle.dump(save_object, f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
+            save_object = pickle.load(f)
+
+        if isinstance(save_object, dict):
+            self.set_state(save_object)
+        else:
+            # Backwards compatibility
             (
                 self.optimizer,
                 self._buffered_trial_results,
                 self._total_random_search_trials,
                 self._config_counter,
                 self._points_to_evaluate,
-            ) = pickle.load(f)
+            ) = save_object
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
@@ -419,7 +425,9 @@ class BayesOptSearch(Searcher):
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
-                if domain.sampler is not None:
+                if domain.sampler is not None and not isinstance(
+                    domain.sampler, Uniform
+                ):
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
                         "The {} sampler will be dropped.".format(sampler)

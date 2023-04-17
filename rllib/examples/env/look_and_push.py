@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 
@@ -21,10 +21,10 @@ class LookAndPush(gym.Env):
         self._state = None
         self._case = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self._state = 2
         self._case = np.random.choice(2)
-        return self._state
+        return self._state, {}
 
     def step(self, action):
         assert self.action_space.contains(action)
@@ -43,7 +43,7 @@ class LookAndPush(gym.Env):
             elif self._state == 2:
                 self._state = self._case
 
-        return self._state, -1, False, {}
+        return self._state, -1, False, False, {}
 
 
 class OneHot(gym.Wrapper):
@@ -51,13 +51,13 @@ class OneHot(gym.Wrapper):
         super(OneHot, self).__init__(env)
         self.observation_space = gym.spaces.Box(0.0, 1.0, (env.observation_space.n,))
 
-    def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
-        return self._encode_obs(obs)
+    def reset(self, *, seed=None, options=None):
+        obs, info = self.env.reset(seed=seed, options=options)
+        return self._encode_obs(obs), info
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        return self._encode_obs(obs), reward, done, info
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        return self._encode_obs(obs), reward, terminated, truncated, info
 
     def _encode_obs(self, obs):
         new_obs = np.ones(self.env.observation_space.n)

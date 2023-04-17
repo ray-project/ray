@@ -5,7 +5,6 @@ import unittest
 
 import ray
 
-from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
 from ray.rllib.algorithms.sac import SACConfig
@@ -16,15 +15,22 @@ from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.ars import ARSConfig
 from ray.rllib.algorithms.a3c import A3CConfig
+from ray.tune.registry import get_trainable_cls
 
 
 def get_mean_action(alg, obs):
     out = []
-    for _ in range(2000):
+    for _ in range(5000):
         out.append(float(alg.compute_single_action(obs)))
     return np.mean(out)
 
 
+# As we transition things to RLModule API the explore=False will get
+# deprecated. For now, we will just not set it. The reason is that the RLModule
+# API has forward_exploration() method that can be overriden if user needs to
+# really turn of the stochasticity. This test in particular is robust to
+# explore=None if we compare the mean of the distribution of actions for the
+# same observation to be the same.
 algorithms_and_configs = {
     "A3C": (A3CConfig().exploration(explore=False).rollouts(num_rollout_workers=1)),
     "APEX_DDPG": (
@@ -61,8 +67,9 @@ algorithms_and_configs = {
         .rollouts(observation_filter="MeanStdFilter", num_rollout_workers=2)
     ),
     "PPO": (
+        # See the comment before the `algorithms_and_configs` dict.
+        # explore is set to None for PPO in favor of RLModule API support.
         PPOConfig()
-        .exploration(explore=False)
         .training(num_sgd_iter=5, train_batch_size=1000)
         .rollouts(num_rollout_workers=2)
     ),
@@ -89,7 +96,7 @@ def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=Fa
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True] if object_store else [False]:
             print("use_object_store={}".format(use_object_store))
-            cls = get_algorithm_class(algo_name)
+            cls = get_trainable_cls(algo_name)
             if "DDPG" in algo_name or "SAC" in algo_name:
                 alg1 = cls(config=config, env="Pendulum-v1")
                 alg2 = cls(config=config, env="Pendulum-v1")

@@ -556,7 +556,10 @@ class Worker:
         task = instance._prepare_client_task()
         # data is serialized tuple of (args, kwargs)
         task.data = dumps_from_client((args, kwargs), self._client_id)
-        return self._call_schedule_for_task(task, instance._num_returns())
+        num_returns = instance._num_returns()
+        if instance._num_returns() == "dynamic":
+            num_returns = -1
+        return self._call_schedule_for_task(task, num_returns)
 
     def _call_schedule_for_task(
         self, task: ray_client_pb2.ClientTask, num_returns: int
@@ -566,7 +569,10 @@ class Worker:
         if num_returns is None:
             num_returns = 1
 
-        id_futures = [Future() for _ in range(num_returns)]
+        num_return_refs = num_returns
+        if num_return_refs == -1:
+            num_return_refs = 1
+        id_futures = [Future() for _ in range(num_return_refs)]
 
         def populate_ids(resp: Union[ray_client_pb2.DataResponse, Exception]) -> None:
             if isinstance(resp, Exception):
@@ -586,9 +592,9 @@ class Worker:
                     future.set_exception(ex)
                 return
 
-            if len(ticket.return_ids) != num_returns:
+            if len(ticket.return_ids) != num_return_refs:
                 exc = ValueError(
-                    f"Expected {num_returns} returns but received "
+                    f"Expected {num_return_refs} returns but received "
                     f"{len(ticket.return_ids)}"
                 )
                 for future, raw_id in zip(id_futures, ticket.return_ids):

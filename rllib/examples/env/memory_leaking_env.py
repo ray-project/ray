@@ -20,9 +20,9 @@ class MemoryLeakingEnv(RandomEnv):
         self._steps_after_reset = 0
 
     @override(RandomEnv)
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self._steps_after_reset = 0
-        return super().reset()
+        return super().reset(seed=seed, options=options)
 
     @override(RandomEnv)
     def step(self, action):

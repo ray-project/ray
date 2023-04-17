@@ -24,6 +24,8 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
 
+MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
+
 
 class EventHead(
     dashboard_utils.DashboardHeadModule, event_pb2_grpc.ReportEventServiceServicer
@@ -54,11 +56,17 @@ class EventHead(
                 job_id = "global"
             if system_event is False:
                 all_job_events[job_id][event_id] = event
-        # TODO(fyrestone): Limit the event count per job.
+
         for job_id, new_job_events in all_job_events.items():
             job_events = DataSource.events.get(job_id, JobEvents())
             job_events.update(new_job_events)
             DataSource.events[job_id] = job_events
+
+            # Limit the # of events cached if it exceeds the threshold.
+            events = DataSource.events[job_id]
+            if len(events) > MAX_EVENTS_TO_CACHE * 1.1:
+                while len(events) > MAX_EVENTS_TO_CACHE:
+                    events.popitem(last=False)
 
     async def ReportEvents(self, request, context):
         received_events = []
@@ -82,7 +90,7 @@ class EventHead(
         }
 
     @routes.get("/events")
-    @dashboard_optional_utils.aiohttp_cache(2)
+    @dashboard_optional_utils.aiohttp_cache
     async def get_event(self, req) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
         if job_id is None:

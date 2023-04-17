@@ -7,7 +7,6 @@ from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +39,13 @@ class BanditLinTSConfig(BanditConfig):
     """Defines a configuration class from which a Thompson-sampling bandit can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.bandit import BanditLinTSConfig
+        >>> from ray.rllib.algorithms.bandit import BanditLinTSConfig # doctest: +SKIP
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
-        >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)# doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env=WheelBanditEnv)
-        >>> algo.train()
+        >>> algo = config.build(env=WheelBanditEnv)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self):
@@ -63,13 +62,14 @@ class BanditLinUCBConfig(BanditConfig):
     """Defines a config class from which an upper confidence bound bandit can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.bandit import BanditLinUCBConfig
+        >>> from ray.rllib.algorithms.bandit import BanditLinUCBConfig# doctest: +SKIP
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
-        >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = BanditLinUCBConfig()  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4) # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env=WheelBanditEnv)
-        >>> algo.train()
+        >>> algo = config.build(env=WheelBanditEnv)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self):
@@ -120,20 +120,3 @@ class BanditLinUCB(Algorithm):
             return BanditTFPolicy
         else:
             raise NotImplementedError("Only `framework=[torch|tf2]` supported!")
-
-
-# Deprecated: Use ray.rllib.algorithms.bandit.BanditLinUCBConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(BanditLinUCBConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.bandit.bandit.BanditLin[UCB|TS]Config(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

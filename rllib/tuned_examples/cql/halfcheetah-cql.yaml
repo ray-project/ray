@@ -14,9 +14,7 @@ halfcheetah_cql:
         #input: d4rl.halfcheetah-medium-replay-v0
 
         # Works for both torch and tf.
-        framework: tf
-        soft_horizon: False
-        horizon: 1000
+        framework: torch
         q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256, 256]
@@ -25,7 +23,6 @@ halfcheetah_cql:
             fcnet_hiddens: [256, 256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: false
         n_step: 3
         rollout_fragment_length: 1
         replay_buffer_config:

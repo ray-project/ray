@@ -3,7 +3,7 @@ from typing import Iterable, List, Dict, Optional, Type, Union
 import pandas as pd
 import numpy as np
 
-from ray.data import Dataset
+from ray.data import Datastream
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -20,6 +20,8 @@ class _AbstractKBinsDiscretizer(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         def bin_values(s: pd.Series) -> pd.Series:
+            if s.name not in self.columns:
+                return s
             labels = self.dtypes.get(s.name) if self.dtypes else False
             ordered = True
             if labels:
@@ -156,11 +158,9 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.duplicates = duplicates
         self.dtypes = dtypes
 
-    _is_fittable = False
-
-    def _transform(self, dataset: Dataset) -> Dataset:
         self._validate_bins_columns()
-        return super()._transform(dataset)
+
+    _is_fittable = False
 
 
 @PublicAPI(stability="alpha")
@@ -253,7 +253,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.duplicates = duplicates
         self.dtypes = dtypes
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, datastream: Datastream) -> Preprocessor:
         self._validate_on_fit()
         stats = {}
         aggregates = []
@@ -267,7 +267,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
                 self._fit_uniform_covert_bin_to_aggregate_if_needed(column)
             )
 
-        aggregate_stats = dataset.aggregate(*aggregates)
+        aggregate_stats = datastream.aggregate(*aggregates)
         mins = {}
         maxes = {}
         for key, value in aggregate_stats.items():

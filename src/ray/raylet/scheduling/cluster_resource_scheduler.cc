@@ -123,6 +123,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const rpc::SchedulingStrategy &scheduling_strategy,
     bool actor_creation,
     bool force_spillback,
+    const std::string &preferred_node_id,
     int64_t *total_violations,
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
@@ -149,7 +150,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
             force_spillback,
             force_spillback,
             scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
-            scheduling_strategy.node_affinity_scheduling_strategy().soft()));
+            scheduling_strategy.node_affinity_scheduling_strategy().soft(),
+            scheduling_strategy.node_affinity_scheduling_strategy()
+                .spill_on_unavailable()));
   } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
              !is_local_node_with_raylet_) {
     // This scheduling strategy is only used for gcs scheduling for the time being.
@@ -168,7 +171,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         scheduling_policy_->Schedule(resource_request,
                                      SchedulingOptions::Hybrid(
                                          /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback));
+                                         /*require_node_available*/ force_spillback,
+                                         preferred_node_id));
   }
 
   *is_infeasible = best_node_id.IsNil();
@@ -192,6 +196,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool requires_object_store_memory,
     bool actor_creation,
     bool force_spillback,
+    const std::string &preferred_node_id,
     int64_t *total_violations,
     bool *is_infeasible) {
   ResourceRequest resource_request =
@@ -200,6 +205,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                                 scheduling_strategy,
                                 actor_creation,
                                 force_spillback,
+                                preferred_node_id,
                                 total_violations,
                                 is_infeasible);
 }
@@ -244,13 +250,13 @@ bool ClusterResourceScheduler::IsSchedulableOnNode(
 
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const TaskSpecification &task_spec,
-    bool prioritize_local_node,
+    const std::string &preferred_node_id,
     bool exclude_local_node,
     bool requires_object_store_memory,
     bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
-  if (prioritize_local_node && !exclude_local_node &&
+  if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
                           task_spec.GetRequiredResources().GetResourceMap(),
                           requires_object_store_memory)) {
@@ -266,6 +272,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                              requires_object_store_memory,
                              task_spec.IsActorCreationTask(),
                              exclude_local_node,
+                             preferred_node_id,
                              &_unused,
                              is_infeasible);
 
@@ -276,7 +283,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                            requires_object_store_memory)) {
     // Prefer waiting on the local node since the local node is chosen for a reason (e.g.
     // spread).
-    if (prioritize_local_node) {
+    if (preferred_node_id == local_node_id_.Binary()) {
       *is_infeasible = false;
       return local_node_id_;
     }

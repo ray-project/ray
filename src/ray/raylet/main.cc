@@ -42,9 +42,10 @@ DEFINE_int32(max_worker_port,
 DEFINE_string(worker_port_list,
               "",
               "An explicit list of ports that workers' gRPC servers will bind on.");
-DEFINE_int32(num_initial_python_workers_for_first_job,
+DEFINE_int32(num_prestart_python_workers,
              0,
-             "Number of initial Python workers for the first job.");
+             "Number of prestarted default Python workers on raylet startup.");
+DEFINE_bool(head, false, "Whether this node is a head node.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
@@ -96,8 +97,8 @@ int main(int argc, char *argv[]) {
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const std::string worker_port_list = FLAGS_worker_port_list;
-  const int num_initial_python_workers_for_first_job =
-      static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
+  const int num_prestart_python_workers =
+      static_cast<int>(FLAGS_num_prestart_python_workers);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
@@ -116,6 +117,7 @@ int main(int argc, char *argv[]) {
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
+  const bool is_head_node = FLAGS_head;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -177,8 +179,7 @@ int main(int argc, char *argv[]) {
         auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_workers_soft_limit =
             soft_limit_config >= 0 ? soft_limit_config : num_cpus;
-        node_manager_config.num_initial_python_workers_for_first_job =
-            num_initial_python_workers_for_first_job;
+        node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
@@ -257,7 +258,6 @@ int main(int argc, char *argv[]) {
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
             {ray::stats::WorkerIdKey, ""},
-            {ray::stats::JobIdKey, ""},
             {ray::stats::VersionKey, kRayVersion},
             {ray::stats::NodeAddressKey, node_ip_address},
             {ray::stats::SessionNameKey, session_name}};
@@ -271,26 +271,37 @@ int main(int argc, char *argv[]) {
                                                        node_manager_config,
                                                        object_manager_config,
                                                        gcs_client,
-                                                       metrics_export_port);
+                                                       metrics_export_port,
+                                                       is_head_node);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
           ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
-                            RayConfig::instance().event_level());
+                            RayConfig::instance().event_level(),
+                            RayConfig::instance().emit_event_to_log_file());
         };
 
         raylet->Start();
       }));
 
+  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
+
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client](
+  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client, shutted_down](
                      const boost::system::error_code &error, int signal_number) {
+    // Make the shutdown handler idempotent since graceful shutdown can be triggered
+    // by many places.
+    if (*shutted_down) {
+      RAY_LOG(INFO) << "Raylet already received SIGTERM. It will ignore the request.";
+      return;
+    }
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
+    *shutted_down = true;
     raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <csignal>
 #include <string>
 #include <utility>
 #include <vector>

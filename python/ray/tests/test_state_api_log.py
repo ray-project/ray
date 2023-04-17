@@ -5,11 +5,11 @@ from typing import List
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
 
 import ray
-import ray.scripts.scripts as scripts
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -220,7 +220,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     worker_id = WorkerID(b"3" * 28)
     logs_manager.list_logs = AsyncMock()
     logs_manager.list_logs.return_value = {
-        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"]
+        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"],
+        "worker_err": [],
     }
     log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
@@ -260,7 +261,10 @@ async def test_logs_manager_resolve_file(logs_manager):
         pid = 456
         logs_manager.list_logs = AsyncMock()
         # Provide the wrong pid.
-        logs_manager.list_logs.return_value = {"worker_out": ["worker-123-123-123.out"]}
+        logs_manager.list_logs.return_value = {
+            "worker_out": ["worker-123-123-123.out"],
+            "worker_err": [],
+        }
         log_file_name = await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
@@ -275,7 +279,10 @@ async def test_logs_manager_resolve_file(logs_manager):
     pid = 123
     logs_manager.list_logs = AsyncMock()
     # Provide the wrong pid.
-    logs_manager.list_logs.return_value = {"worker_out": [f"worker-123-123-{pid}.out"]}
+    logs_manager.list_logs.return_value = {
+        "worker_out": [f"worker-123-123-{pid}.out"],
+        "worker_err": [],
+    }
     log_file_name, n = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
@@ -303,6 +310,48 @@ async def test_logs_manager_resolve_file(logs_manager):
             get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
             timeout=10,
         )
+
+    """
+    Test suffix is specified
+    """
+    pid = 123
+    logs_manager.list_logs = AsyncMock()
+    logs_manager.list_logs.return_value = {
+        "worker_out": [f"worker-123-123-{pid}.out"],
+        "worker_err": [],
+    }
+    log_file_name, n = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
+        log_filename=None,
+        actor_id=None,
+        task_id=None,
+        pid=pid,
+        get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+        timeout=10,
+    )
+    logs_manager.list_logs.assert_awaited_with(
+        node_id.hex(), 10, glob_filter=f"*{pid}*"
+    )
+    assert log_file_name == f"worker-123-123-{pid}.out"
+
+    logs_manager.list_logs.return_value = {
+        "worker_out": [],
+        "worker_err": [f"worker-123-123-{pid}.err"],
+    }
+    log_file_name, n = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
+        log_filename=None,
+        actor_id=None,
+        task_id=None,
+        pid=pid,
+        get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+        timeout=10,
+        suffix="err",
+    )
+    logs_manager.list_logs.assert_awaited_with(
+        node_id.hex(), 10, glob_filter=f"*{pid}*err"
+    )
+    assert log_file_name == f"worker-123-123-{pid}.err"
 
 
 @pytest.mark.skipif(
@@ -413,8 +462,11 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
 
 
 def test_logs_list(ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
     webui_url = format_web_url(webui_url)
     node_id = list_nodes()[0]["node_id"]
 
@@ -495,8 +547,11 @@ def test_logs_list(ray_start_with_dashboard):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_logs_stream_and_tail(ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
     webui_url = format_web_url(webui_url)
     node_id = list_nodes()[0]["node_id"]
 
@@ -609,6 +664,12 @@ def test_log_list(ray_start_cluster):
 
     wait_for_condition(verify)
 
+    node_id = "XXXX"
+    with pytest.raises(requests.HTTPError) as e:
+        list_logs(node_id=node_id)
+
+    e.match(f"Given node id {node_id} is not available")
+
 
 def test_log_get(ray_start_cluster):
     cluster = ray_start_cluster
@@ -677,6 +738,96 @@ def test_log_get(ray_start_cluster):
         for _ in get_log(task_id=123, tail=10):
             pass
 
+    del a
+    """
+    Test log suffix selection for worker/actor
+    """
+    ACTOR_LOG_LINE = "{dest}:test actor log"
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            import sys
+
+            print(ACTOR_LOG_LINE.format(dest="out"))
+            print(ACTOR_LOG_LINE.format(dest="err"), file=sys.stderr)
+
+    actor = Actor.remote()
+    actor_id = actor._actor_id.hex()
+
+    WORKER_LOG_LINE = "{dest}:test worker log"
+
+    @ray.remote
+    def worker_func():
+        import os
+        import sys
+
+        print(WORKER_LOG_LINE.format(dest="out"))
+        print(WORKER_LOG_LINE.format(dest="err"), file=sys.stderr)
+        return os.getpid()
+
+    pid = ray.get(worker_func.remote())
+
+    def verify():
+        # Test actors
+        lines = get_log(actor_id=actor_id, suffix="err")
+        assert ACTOR_LOG_LINE.format(dest="err") in "".join(lines)
+
+        lines = get_log(actor_id=actor_id, suffix="out")
+        assert ACTOR_LOG_LINE.format(dest="out") in "".join(lines)
+
+        # Default to out
+        lines = get_log(actor_id=actor_id)
+        assert ACTOR_LOG_LINE.format(dest="out") in "".join(lines)
+
+        # Test workers
+        lines = get_log(node_ip=head_node["node_ip"], pid=pid, suffix="err")
+        assert WORKER_LOG_LINE.format(dest="err") in "".join(lines)
+
+        lines = get_log(node_ip=head_node["node_ip"], pid=pid, suffix="out")
+        assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
+
+        lines = get_log(node_ip=head_node["node_ip"], pid=pid)
+        assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    ##############################
+    # Test binary files and encodings.
+    ##############################
+    # Write a binary file to ray log directory.
+    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+    file = "test.bin"
+    binary_file = os.path.join(log_dir, file)
+    with open(binary_file, "wb") as f:
+        data = bytearray(i for i in range(256))
+        f.write(data)
+
+    # Get the log
+    def verify():
+        for read in get_log(node_ip=head_node["node_ip"], filename=file, encoding=None):
+            assert read == data
+
+        # Default utf-8
+        for read in get_log(
+            node_ip=head_node["node_ip"], filename=file, errors="replace"
+        ):
+            assert read == data.decode(encoding="utf-8", errors="replace")
+
+        for read in get_log(
+            node_ip=head_node["node_ip"],
+            filename=file,
+            encoding="iso-8859-1",
+            errors="replace",
+        ):
+            assert read == data.decode(encoding="iso-8859-1", errors="replace")
+
+        return True
+
+    wait_for_condition(verify)
+
 
 def test_log_cli(shutdown_only):
     ray.init(num_cpus=1)
@@ -684,9 +835,8 @@ def test_log_cli(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(scripts.ray_logs)
-        print(result.output)
-        assert result.exit_code == 0
+        result = runner.invoke(logs_state_cli_group, ["cluster"])
+        assert result.exit_code == 0, result.exception
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" in result.output
@@ -697,9 +847,8 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.ray_logs, ["raylet.out"])
+        result = runner.invoke(logs_state_cli_group, ["cluster", "raylet.out"])
         assert result.exit_code == 0
-        print(result.output)
         assert "raylet.out" not in result.output
         assert "raylet.err" not in result.output
         assert "gcs_server.out" not in result.output
@@ -712,13 +861,91 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.ray_logs, ["raylet.*"])
-        assert result.exit_code == 0
-        print(result.output)
+        result = runner.invoke(logs_state_cli_group, ["cluster", "raylet.*"])
+        assert result.exit_code == 0, result.exception
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" not in result.output
         assert "gcs_server.err" not in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test actor log: `ray logs actor`
+    ACTOR_LOG_LINE = "test actor log"
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            print(ACTOR_LOG_LINE)
+
+    actor = Actor.remote()
+    actor_id = actor._actor_id.hex()
+
+    def verify():
+        result = runner.invoke(logs_state_cli_group, ["actor", "--id", actor_id])
+        assert result.exit_code == 0, result.exception
+        assert ACTOR_LOG_LINE in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test worker log: `ray logs worker`
+    WORKER_LOG_LINE = "test worker log"
+
+    @ray.remote
+    def worker_func():
+        import os
+
+        print(WORKER_LOG_LINE)
+        return os.getpid()
+
+    pid = ray.get(worker_func.remote())
+
+    def verify():
+        result = runner.invoke(logs_state_cli_group, ["worker", "--pid", pid])
+        assert result.exit_code == 0, result.exception
+        assert WORKER_LOG_LINE in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test `ray logs raylet.*` forwarding to `ray logs cluster raylet.*`
+    def verify():
+        result = runner.invoke(logs_state_cli_group, ["raylet.*"])
+        assert result.exit_code == 0, result.exception
+        assert "raylet.out" in result.output
+        assert "raylet.err" in result.output
+        assert "gcs_server.out" not in result.output
+        assert "gcs_server.err" not in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test binary binary files and encodings.
+    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+    file = "test.bin"
+    binary_file = os.path.join(log_dir, file)
+    with open(binary_file, "wb") as f:
+        data = bytearray(i for i in range(256))
+        f.write(data)
+
+    def verify():
+        # Tailing with lines is not supported for binary files, thus the `tail=-1`
+        result = runner.invoke(
+            logs_state_cli_group,
+            [
+                file,
+                "--encoding",
+                "iso-8859-1",
+                "--encoding-errors",
+                "replace",
+                "--tail",
+                "-1",
+            ],
+        )
+        assert result.exit_code == 0, result.exception
+        assert result.output == data.decode(encoding="iso-8859-1", errors="replace")
         return True
 
     wait_for_condition(verify)

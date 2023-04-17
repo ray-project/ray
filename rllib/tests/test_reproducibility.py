@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import unittest
 
@@ -17,13 +17,13 @@ class TestReproducibility(unittest.TestCase):
                 )
                 self.action_space = gym.spaces.Discrete(4)
 
-            def reset(self, **kwargs):
+            def reset(self, *, seed=None, options=None):
                 self.obs = np.random.randn(4)
-                return self.obs
+                return self.obs, {}
 
             def step(self, action):
                 reward = self.obs[action]
-                return self.obs, reward, True, {}
+                return self.obs, reward, True, False, {}
 
         def env_creator(env_config):
             return PickLargest()

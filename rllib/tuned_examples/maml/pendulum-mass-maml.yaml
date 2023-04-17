@@ -4,7 +4,6 @@ pendulum-mass-maml:
     stop:
         training_iteration: 500   
     config:
-        horizon: 200
         rollout_fragment_length: 200
         num_envs_per_worker: 10
         inner_adaptation_steps: 1

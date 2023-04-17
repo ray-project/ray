@@ -5,15 +5,14 @@ import uuid
 from functools import wraps
 
 import ray._private.signature
-from ray import Language
-from ray import cloudpickle as pickle
-from ray import cross_language
+from ray import Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -49,7 +48,8 @@ class RemoteFunction:
             remote function.
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
-        _memory: The heap memory request for this task.
+        _memory: The heap memory request in bytes for this task/actor,
+            rounded down to the nearest integer.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -89,10 +89,16 @@ class RemoteFunction:
         if inspect.iscoroutinefunction(function):
             raise ValueError(
                 "'async def' should not be used for remote tasks. You can wrap the "
-                "async function with `asyncio.get_event_loop.run_until(f())`. "
-                "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
+                "async function with `asyncio.run(f())`. See more at:"
+                "https://docs.ray.io/en/latest/ray-core/actors/async_api.html "
             )
         self._default_options = task_options
+
+        # When gpu is used, set the task non-recyclable by default.
+        # https://github.com/ray-project/ray/issues/29624 for more context.
+        num_gpus = self._default_options.get("num_gpus") or 0
+        if num_gpus > 0 and self._default_options.get("max_calls", None) is None:
+            self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
         # They are being used in some other places, mostly tests. Need cleanup later.
@@ -148,8 +154,9 @@ class RemoteFunction:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.accelerators` for accelerator types.
-            memory: The heap memory request for this task/actor.
+                See `ray.util.accelerators` for accelerator types.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_calls: This specifies the
                 maximum number of times that a given worker can execute
@@ -157,16 +164,16 @@ class RemoteFunction:
                 (this can be used to address memory leaks in third-party
                 libraries or to reclaim resources that cannot easily be
                 released, e.g., GPU memory that was acquired by TensorFlow).
-                By default this is infinite.
+                By default this is infinite for CPU tasks and 1 for GPU tasks
+                (to force GPU tasks to release resources after finishing).
             max_retries: This specifies the maximum number of times that the remote
                 function should be rerun when the worker process executing it
                 crashes unexpectedly. The minimum valid value is 0,
-                the default is 4 (default), and a value of -1 indicates
+                the default is 3 (default), and a value of -1 indicates
                 infinite retries.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation. This API is
-                in beta and may change before becoming stable.
+                :ref:`runtime-environments` for detailed documentation.
             retry_exceptions: This specifies whether application-level errors
                 should be retried up to max_retries times.
             scheduling_strategy: Strategy about how to
@@ -179,7 +186,9 @@ class RemoteFunction:
                 "DEFAULT": default hybrid scheduling;
                 "SPREAD": best effort spread scheduling;
                 `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling.
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -257,16 +266,10 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            try:
-                self._pickled_function = pickle.dumps(self._function)
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the function "
-                    f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                    "for more information."
-                )
-                raise TypeError(msg) from e
+            self._pickled_function = pickle_dumps(
+                self._function,
+                f"Could not serialize the function {self._function_descriptor.repr}",
+            )
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)

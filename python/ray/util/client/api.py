@@ -397,3 +397,10 @@ class _ClientAPI:
         self, ref: "ClientObjectRef", callback: Callable[["DataResponse"], None]
     ) -> None:
         self.worker.register_callback(ref, callback)
+
+    def _get_dashboard_url(self) -> str:
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
+
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.DASHBOARD_URL
+        ).get("dashboard_url", "")

@@ -11,7 +11,7 @@ Ray offers two types of concurrency within an actor:
 
 Keep in mind that the Python's `Global Interpreter Lock (GIL) <https://wiki.python.org/moin/GlobalInterpreterLock>`_ will only allow one thread of Python code running at once.
 
-This means if you are just parallelizing Python code, you won't get true parallelism. If you calls Numpy, Cython, Tensorflow, or PyTorch code, these libraries will release the GIL when calling into C/C++ functions.
+This means if you are just parallelizing Python code, you won't get true parallelism. If you call Numpy, Cython, Tensorflow, or PyTorch code, these libraries will release the GIL when calling into C/C++ functions.
 
 **Neither the** :ref:`threaded-actors` nor :ref:`async-actors` **model will allow you to bypass the GIL.**
 
@@ -204,6 +204,8 @@ Instead, you can wrap the ``async`` function with a wrapper to run the task sync
     @ray.remote
     def wrapper():
         import asyncio
-        asyncio.get_event_loop().run_until_complete(f())
+        asyncio.run(f())
+        # For python < 3.7: 
+        # asyncio.get_event_loop().run_until_complete(f())
     
     

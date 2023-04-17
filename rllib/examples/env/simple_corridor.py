@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 
@@ -19,9 +19,9 @@ class SimpleCorridor(gym.Env):
         self.end_pos = length
         print("Updated corridor length to {}".format(length))
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.cur_pos = 0.0
-        return [self.cur_pos]
+        return [self.cur_pos], {}
 
     def step(self, action):
         assert action in [0, 1], action
@@ -29,5 +29,5 @@ class SimpleCorridor(gym.Env):
             self.cur_pos -= 1.0
         elif action == 1:
             self.cur_pos += 1.0
-        done = self.cur_pos >= self.end_pos
-        return [self.cur_pos], 1 if done else 0, done, {}
+        done = truncated = self.cur_pos >= self.end_pos
+        return [self.cur_pos], 1 if done else 0, done, truncated, {}

@@ -31,8 +31,9 @@ class TestAPPO(unittest.TestCase):
             algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
-                check_train_results(results)
                 print(results)
+                check_train_results(results)
+
             check_compute_single_action(algo)
             algo.stop()
 
@@ -41,8 +42,9 @@ class TestAPPO(unittest.TestCase):
             algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
-                check_train_results(results)
                 print(results)
+                check_train_results(results)
+
             check_compute_single_action(algo)
             algo.stop()
 

@@ -6,7 +6,7 @@ cartpole-simpleq-fake-gpus:
         training_iteration: 400
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # Fake 2 GPUs.
         num_gpus: 2

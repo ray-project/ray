@@ -23,6 +23,7 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -110,6 +111,15 @@ class BackendExecutor:
             actor_cls_kwargs=train_cls_kwargs,
             placement_group=placement_group,
         )
+        # Hack to avoid OOMs.
+        # This is just a temporary solution for Train loading entire checkpoints
+        # into memory by ensuring that the rank 0 worker is on the same node as
+        # trainable, thus allowing for lazy checkpoint transfer to be used.
+        # See https://github.com/ray-project/ray/issues/33073
+        # for more context.
+        # TODO remove
+        if self._trial_info and self._trial_info.driver_ip:
+            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
@@ -230,6 +240,7 @@ class BackendExecutor:
 
         futures = []
         for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            gpu_ids = sorted(gpu_ids)
             all_gpu_ids = ",".join(gpu_ids)
 
             def set_gpu_ids():
@@ -334,6 +345,7 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
+        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -361,6 +373,7 @@ class BackendExecutor:
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
+                    enable_lazy_checkpointing=use_lazy_checkpointing,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -398,6 +411,8 @@ class BackendExecutor:
                     encode_data_fn=self._backend._encode_data,
                 )
             )
+
+        self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
 

@@ -1,0 +1,32 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library")
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("//bazel:ray.bzl", "COPTS")
+
+proto_library(
+    name = "helloworld_proto_lib",
+    srcs = ["helloworld.proto"],
+)
+
+cc_proto_library(
+    name = "helloworld_proto_lib_cc",
+    deps = [":helloworld_proto_lib"],
+)
+
+cc_grpc_library(
+    name = "helloworld_cc_lib",
+    srcs = [":helloworld_proto_lib"],
+    grpc_only = True,
+    deps = [":helloworld_proto_lib_cc"],
+)
+
+
+cc_binary(
+    name = "grpc_bench",
+    srcs = ["grpc_bench.cc"],
+    copts = COPTS,
+    deps = [
+        "//:grpc_common_lib",
+        ":helloworld_cc_lib",
+    ],
+)

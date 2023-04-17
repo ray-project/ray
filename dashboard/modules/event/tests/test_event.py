@@ -46,7 +46,7 @@ def _get_event(msg="empty message", job_id=None, source_type=None):
         "pid": random.randint(1, 65536),
         "label": "",
         "message": msg,
-        "time_stamp": time.time(),
+        "timestamp": time.time(),
         "severity": "INFO",
         "custom_fields": {
             "job_id": ray.JobID.from_int(random.randint(1, 100)).hex()
@@ -448,6 +448,37 @@ def test_jobs_cluster_events(shutdown_only):
     print("Test failed (runtime_env failure) job run.")
     wait_for_condition(verify, timeout=30)
     pprint(list_cluster_events())
+
+
+def test_cluster_events_retention(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 5s for the second node.
+        # This will help the API not return until the node is killed.
+        m.setenv("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", "10")
+        ray.init()
+        address = ray._private.worker._global_node.webui_url
+        address = format_web_url(address)
+        client = JobSubmissionClient(address)
+
+        submission_ids = []
+        for _ in range(12):
+            submission_ids.append(client.submit_job(entrypoint="ls"))
+        print(submission_ids)
+
+        def verify():
+            events = list_cluster_events()
+            assert len(list_cluster_events()) == 10
+
+            messages = [event["message"] for event in events]
+
+            # Make sure the first two has been GC'ed.
+            for m in messages:
+                assert submission_ids[0] not in m
+                assert submission_ids[1] not in m
+            return True
+
+        wait_for_condition(verify)
+        pprint(list_cluster_events())
 
 
 if __name__ == "__main__":

@@ -16,10 +16,11 @@ from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -48,14 +49,15 @@ class ARSConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
-        >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)\
-        ...     .environment("CartPole-v1")
-        >>> print(config.to_dict())
+        >>> config = ARSConfig()  # doctest: +SKIP
+        >>> config = config.training(report_length=20) # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()
-        >>> algo.train()
+        >>> algo = config.build()  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
@@ -63,14 +65,15 @@ class ARSConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = ARSConfig()
         >>> # Print out some default values.
-        >>> print(config.action_noise_std)
+        >>> print(config.action_noise_std)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "ARS",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -94,6 +97,7 @@ class ARSConfig(AlgorithmConfig):
         self.eval_prob = 0.03
         self.report_length = 10
         self.offset = 0
+        self.tf_single_threaded = True
 
         # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.num_rollout_workers = 2
@@ -104,11 +108,20 @@ class ARSConfig(AlgorithmConfig):
         # (would break ARSPolicy's compute_single_action method) and to not do
         # obs-filtering.
         self.evaluation(
-            evaluation_config={
-                "num_envs_per_worker": 1,
-                "observation_filter": "NoFilter",
-            }
+            evaluation_config=AlgorithmConfig.overrides(
+                num_envs_per_worker=1,
+                observation_filter="NoFilter",
+            )
         )
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -125,6 +138,7 @@ class ARSConfig(AlgorithmConfig):
         eval_prob: Optional[float] = NotProvided,
         report_length: Optional[int] = NotProvided,
         offset: Optional[int] = NotProvided,
+        tf_single_threaded: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "ARSConfig":
         """Sets the training related configuration.
@@ -143,6 +157,8 @@ class ARSConfig(AlgorithmConfig):
             report_length: How many of the last rewards we average over.
             offset: Value to subtract from the reward (e.g. survival bonus
                 from humanoid) during rollouts.
+            tf_single_threaded: Whether the tf-session should be generated without any
+                parallelism options.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -168,6 +184,8 @@ class ARSConfig(AlgorithmConfig):
             self.report_length = report_length
         if offset is not NotProvided:
             self.offset = offset
+        if tf_single_threaded is not NotProvided:
+            self.tf_single_threaded = tf_single_threaded
 
         return self
 
@@ -223,27 +241,32 @@ class SharedNoiseTable:
         return idx, self.get(idx, dim)
 
 
-@ray.remote
-class Worker:
-    def __init__(self, config, env_creator, noise, worker_index, min_task_runtime=0.2):
-
+@ray.remote(max_restarts=-1)
+class Worker(FaultAwareApply):
+    def __init__(
+        self,
+        config: AlgorithmConfig,
+        env_creator,
+        noise,
+        worker_index,
+        min_task_runtime=0.2,
+    ):
         # Set Python random, numpy, env, and torch/tf seeds.
-        seed = config.get("seed")
+        seed = config.seed
         if seed is not None:
             # Python random module.
             random.seed(seed)
             # Numpy.
             np.random.seed(seed)
             # Torch.
-            if config.get("framework") == "torch":
+            if config.framework_str == "torch":
                 set_torch_seed(seed)
 
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.config["single_threaded"] = True
         self.noise = SharedNoiseTable(noise)
 
-        env_context = EnvContext(config["env_config"] or {}, worker_index)
+        env_context = EnvContext(self.config.env_config, worker_index)
         self.env = env_creator(env_context)
         # Seed the env, if gym.Env.
         if not hasattr(self.env, "seed"):
@@ -256,9 +279,9 @@ class Worker:
 
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 
-        policy_cls = get_policy_class(config)
+        policy_cls = get_policy_class(self.config)
         self.policy = policy_cls(
-            self.env.observation_space, self.env.action_space, config
+            self.env.observation_space, self.env.action_space, config.to_dict()
         )
 
     @property
@@ -283,7 +306,7 @@ class Worker:
             self.env,
             timestep_limit=timestep_limit,
             add_noise=add_noise,
-            offset=self.config["offset"],
+            offset=self.config.offset,
         )
         return rollout_rewards, rollout_fragment_length
 
@@ -296,7 +319,7 @@ class Worker:
 
         # Perform some rollouts with noise.
         while len(noise_indices) == 0:
-            if np.random.uniform() < self.config["eval_prob"]:
+            if np.random.uniform() < self.config.eval_prob:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
@@ -306,7 +329,7 @@ class Worker:
                 # Do a regular run with parameter perturbations.
                 noise_index = self.noise.sample_index(self.policy.num_params)
 
-                perturbation = self.config["noise_stdev"] * self.noise.get(
+                perturbation = self.config.noise_stdev * self.noise.get(
                     noise_index, self.policy.num_params
                 )
 
@@ -335,8 +358,8 @@ class Worker:
         )
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
+def get_policy_class(config: AlgorithmConfig):
+    if config.framework_str == "torch":
         from ray.rllib.algorithms.ars.ars_torch_policy import ARSTorchPolicy
 
         policy_cls = ARSTorchPolicy
@@ -354,7 +377,7 @@ class ARS(Algorithm):
         return ARSConfig()
 
     @override(Algorithm)
-    def setup(self, config):
+    def setup(self, config: AlgorithmConfig):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         if isinstance(config, dict):
@@ -364,32 +387,37 @@ class ARS(Algorithm):
         self.config.validate()
 
         # Generate the local env.
-        env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)
+        env_context = EnvContext(self.config.env_config or {}, worker_index=0)
         env = self.env_creator(env_context)
 
-        self.callbacks = self.config["callbacks"]()
+        self.callbacks = self.config.callbacks_class()
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
             env.observation_space, env.action_space, self.config
         )
-        self.optimizer = optimizers.SGD(self.policy, self.config["sgd_stepsize"])
+        self.optimizer = optimizers.SGD(self.policy, self.config.sgd_stepsize)
 
-        self.rollouts_used = self.config["rollouts_used"]
-        self.num_rollouts = self.config["num_rollouts"]
-        self.report_length = self.config["report_length"]
+        self.rollouts_used = self.config.rollouts_used
+        self.num_rollouts = self.config.num_rollouts
+        self.report_length = self.config.report_length
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote(self.config.noise_size)
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
-        self.workers = [
+
+        remote_workers = [
             Worker.remote(self.config, self.env_creator, noise_id, idx + 1)
-            for idx in range(self.config["num_workers"])
+            for idx in range(self.config.num_rollout_workers)
         ]
+        self.workers = WorkerSet._from_existing(
+            local_worker=None,
+            remote_workers=remote_workers,
+        )
 
         self.episodes_so_far = 0
         self.reward_list = []
@@ -491,6 +519,9 @@ class ARS(Algorithm):
         if len(all_eval_returns) > 0:
             self.reward_list.append(eval_returns.mean())
 
+        # Bring restored workers back if necessary.
+        self.restore_workers(self.workers)
+
         # Now sync the filters
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
@@ -515,9 +546,13 @@ class ARS(Algorithm):
 
     @override(Algorithm)
     def cleanup(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+        self.workers.stop()
+
+    @override(Algorithm)
+    def restore_workers(self, workers: WorkerSet):
+        restored = self.workers.probe_unhealthy_workers()
+        if restored:
+            self._sync_weights_to_workers(worker_set=self.workers, worker_ids=restored)
 
     @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
@@ -527,12 +562,18 @@ class ARS(Algorithm):
         return action[0]
 
     @override(Algorithm)
-    def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
+    def _sync_weights_to_workers(self, *, worker_set=None, worker_ids=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
         logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.policy.get_flat_weights())
-        worker_set.foreach_policy(lambda p, pid: p.set_flat_weights(ray.get(weights)))
+        worker_set.foreach_worker(
+            lambda w: w.foreach_policy(
+                lambda p, _: p.set_flat_weights(ray.get(weights))
+            ),
+            local_worker=False,
+            remote_worker_ids=worker_ids,
+        )
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0
@@ -543,11 +584,12 @@ class ARS(Algorithm):
                     num_episodes, num_timesteps
                 )
             )
-            rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self.workers
-            ]
+            rollout_ids = self.workers.foreach_worker(
+                func=lambda w: w.do_rollouts(ray.get(theta_id)),
+                local_worker=False,
+            )
             # Get the results of the rollouts.
-            for result in ray.get(rollout_ids):
+            for result in rollout_ids:
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
@@ -571,20 +613,3 @@ class ARS(Algorithm):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.ars.ARSConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ARSConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ars.ars.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ars.ars.ARSConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

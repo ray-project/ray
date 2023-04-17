@@ -37,10 +37,6 @@ class MockClusterTaskManagerInterface : public ClusterTaskManagerInterface {
                const std::shared_ptr<NodeResources> &last_reported_resources),
               (override));
   MOCK_METHOD(void,
-              FillPendingActorInfo,
-              (rpc::GetNodeStatsReply * reply),
-              (const, override));
-  MOCK_METHOD(void,
               TaskFinished,
               (std::shared_ptr<WorkerInterface> worker, RayTask *task),
               (override));

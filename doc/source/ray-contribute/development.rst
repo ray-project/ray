@@ -71,35 +71,48 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-.. tip::
+You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``. 
 
-  To setup an isolated Anaconda environment, see :ref:`ray_anaconda`.
+.. tabbed:: conda
 
-You will probably want to have some type of Python virtual environment. For example you could use Python's integrated ``venv`` module to create one:
+    Set up a ``conda`` environment named ``ray``:
 
-.. code-block:: shell
+    .. code-block:: shell
 
-    python -m venv venv
+        conda create -c conda-forge python=3.9 -n ray
 
-That will create a virtual environment called ``venv`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-Next, you need to activate the environment to tell your shell/terminal to use this particular Python. This will also depend on the system you use to set up your virtual environment (conda, venv, or other methods).
+    Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
-If you are using the example from above using ``venv``, you would activate your virtual environment with:
+    .. code-block:: shell
+		    
+        conda activate ray
+        
+    You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
-.. code-block:: shell
+.. tabbed:: venv
 
-    source venv/bin/activate
+    Use Python's integrated ``venv`` module to create a virtual environment called ``venv`` in the current directory:
 
-You will need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
+    .. code-block:: shell
 
-After that, it's always good to make sure you have the latest version of ``pip`` and ``wheel``. When you create a new virtual environment it can come with an older version, and many strange-looking problems while installing packages are simply solved by upgrading pip to the latest version:
+        python -m venv venv
 
-.. code-block:: shell
+    This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-    python -m pip install --upgrade pip wheel
+    Activate your virtual environment to tell the  shell/terminal to use this particular Python:
 
-That command tells Python to use the module ``pip`` to install the latest version of ``pip`` (itself) and ``wheel``.
+    .. code-block:: shell
+
+        source venv/bin/activate
+
+    You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
+
+    Creating a new virtual environment can come with older versions of ``pip`` and ``wheel``. To avoid problems when you install packages, use the module ``pip`` to install the latest version of ``pip`` (itself) and ``wheel``:
+
+    .. code-block:: shell
+
+        python -m pip install --upgrade pip wheel
 
 .. _python-develop:
 

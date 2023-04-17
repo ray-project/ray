@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, Tuple
+from gymnasium.spaces import Discrete, Tuple
 
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2

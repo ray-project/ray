@@ -6,6 +6,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import signal
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -13,10 +14,10 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
-from ray._private.gcs_utils import GcsAioClient, GcsClient
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 from ray.experimental.internal_kv import (
@@ -48,7 +49,18 @@ except AttributeError:
 
 logger = logging.getLogger(__name__)
 
-aiogrpc.init_grpc_aio()
+# We would want to suppress deprecating warnings from aiogrpc library
+# with the usage of asyncio.get_event_loop() in python version >=3.10
+# This could be removed once https://github.com/grpc/grpc/issues/32526
+# is released, and we used higher versions of grpcio that that.
+if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+        aiogrpc.init_grpc_aio()
+else:
+    aiogrpc.init_grpc_aio()
 
 
 class DashboardAgent:
@@ -243,7 +255,7 @@ class DashboardAgent:
                                     error = True
                         except Exception as e:
                             msg += f"Failed to read Raylet logs at {log_path}: {e}!"
-                            logger.exception()
+                            logger.exception(msg)
                             error = True
                         if error:
                             logger.error(msg)
@@ -296,9 +308,10 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
-        internal_kv._internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]),
+        await self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
+            json.dumps([http_port, self.grpc_port]).encode(),
+            True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
@@ -452,7 +465,7 @@ if __name__ == "__main__":
         help=(
             "Minimal agent only contains a subset of features that don't "
             "require additional dependencies installed when ray is installed "
-            "by `pip install ray[default]`."
+            "by `pip install 'ray[default]'`."
         ),
     )
     parser.add_argument(
@@ -476,6 +489,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
     try:
         logging_params = dict(
             logging_level=args.logging_level,
@@ -485,7 +499,11 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
-        setup_component_logger(**logging_params)
+        logger = setup_component_logger(**logging_params)
+
+        # Initialize event loop, see Dashboard init code for caveat
+        # w.r.t grpc server init in the DashboardAgent initializer.
+        loop = ray._private.utils.get_or_create_event_loop()
 
         agent = DashboardAgent(
             args.node_ip_address,
@@ -507,7 +525,20 @@ if __name__ == "__main__":
             session_name=args.session_name,
         )
 
-        loop = asyncio.get_event_loop()
+        def sigterm_handler():
+            logger.warning("Exiting with SIGTERM immediately...")
+            # Exit code 0 will be considered as an expected shutdown
+            os._exit(signal.SIGTERM)
+
+        if sys.platform != "win32":
+            # TODO(rickyyx): we currently do not have any logic for actual
+            # graceful termination in the agent. Most of the underlying
+            # async tasks run by the agent head doesn't handle CancelledError.
+            # So a truly graceful shutdown is not trivial w/o much refactoring.
+            # Re-open the issue: https://github.com/ray-project/ray/issues/25518
+            # if a truly graceful shutdown is required.
+            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
+
         loop.run_until_complete(agent.run())
     except Exception:
         logger.exception("Agent is working abnormally. It will exit immediately.")

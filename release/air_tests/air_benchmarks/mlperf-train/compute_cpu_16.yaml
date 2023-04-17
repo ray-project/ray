@@ -8,3 +8,10 @@ head_node_type:
     instance_type: m5.4xlarge
 
 worker_node_types: []
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 400

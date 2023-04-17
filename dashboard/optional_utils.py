@@ -151,7 +151,7 @@ class ClassMethodRouteTable:
 
 
 def rest_response(
-    success, message, convert_google_style=True, **kwargs
+    success, message, convert_google_style=True, reason=None, **kwargs
 ) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
@@ -168,6 +168,8 @@ def rest_response(
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
+        status=200 if success else 500,
+        reason=reason,
     )
 
 
@@ -270,6 +272,7 @@ def init_ray_and_catch_exceptions() -> Callable:
                         ray.init(
                             address=address,
                             log_to_driver=False,
+                            configure_logging=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:

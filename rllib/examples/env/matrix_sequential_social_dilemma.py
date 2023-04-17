@@ -11,8 +11,8 @@ from collections import Iterable
 from typing import Dict, Optional
 
 import numpy as np
-from gym.spaces import Discrete
-from gym.utils import seeding
+from gymnasium.spaces import Discrete
+from gymnasium.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
 from ray.rllib.examples.env.utils.mixins import (
@@ -63,19 +63,16 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         if self.output_additional_info:
             self._init_info()
 
-    def seed(self, seed=None):
-        """Seed the PRNG of this space."""
+    def reset(self, *, seed=None, options=None):
         self.np_random, seed = seeding.np_random(seed)
-        return [seed]
 
-    def reset(self):
         self.step_count_in_current_episode = 0
         if self.output_additional_info:
             self._reset_info()
         return {
             self.player_row_id: self.NUM_STATES - 1,
             self.player_col_id: self.NUM_STATES - 1,
-        }
+        }, {}
 
     def step(self, actions: dict):
         """
@@ -140,7 +137,7 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
             "__all__": epi_is_done,
         }
 
-        return observations, rewards, done, info
+        return observations, rewards, done, done, info
 
     def _get_info_for_current_epi(self, epi_is_done):
         if epi_is_done and self.output_additional_info:
