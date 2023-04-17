@@ -94,7 +94,7 @@ def test_repeat(setup):
             ExitCode.CLUSTER_WAIT_TIMEOUT,
             ExitCode.RAY_WHEELS_TIMEOUT,
         )
-        == ExitCode.RAY_WHEELS_TIMEOUT.value
+        == 79
     )
     assert _read_state(state_file) == 3
 
