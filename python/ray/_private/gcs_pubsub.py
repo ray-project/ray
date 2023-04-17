@@ -278,7 +278,7 @@ class _SyncSubscriber(_SubscriberBase):
                 self._last_batch_size = len(fut.result().pub_messages)
                 if fut.result().publisher_id != self._publisher_id:
                     if self._publisher_id != "":
-                        logger.warn(
+                        logger.debug(
                             f"replied publisher_id {fut.result().publisher_id} "
                             f"different from {self._publisher_id}, this should "
                             "only happens during gcs failover."
@@ -558,7 +558,7 @@ class _AioSubscriber(_SubscriberBase):
                 self._last_batch_size = len(poll.result().pub_messages)
                 if poll.result().publisher_id != self._publisher_id:
                     if self._publisher_id != "":
-                        logger.warn(
+                        logger.debug(
                             f"replied publisher_id {poll.result().publisher_id}"
                             f"different from {self._publisher_id}, this should "
                             "only happens during gcs failover."
