@@ -67,8 +67,8 @@ Execution
 The Datasets execution by default is:
 
 - **Lazy**: This means that transformations on Dataset are not executed until a
-  consumption operation (e.g. :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`)
-  or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>` is called. This creates
+  consumption operation (e.g. :meth:`ds.iter_batches() <ray.data.Datastream.iter_batches>`)
+  or :meth:`Dataset.materialize() <ray.data.Datastream.materialize>` is called. This creates
   opportunities for optimizing the execution plan (e.g. :ref:`stage fusion <datasets_stage_fusion>`).
 - **Pipelined**: This means that Dataset transformations will be executed in a
   streaming way, incrementally on the base data, instead of on all of the data
@@ -86,12 +86,12 @@ Lazy execution offers opportunities for improved performance and memory stabilit
 to stage fusion optimizations and aggressive garbage collection of intermediate results.
 
 Dataset creation and transformation APIs are lazy, with execution only triggered via "sink"
-APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
-writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering via
-:meth:`ds.materialize() <ray.data.Dataset.materialize>`. There are a few
+APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Datastream.iter_batches>`),
+writing (:meth:`ds.write_parquet() <ray.data.Datastream.write_parquet>`), or manually triggering via
+:meth:`ds.materialize() <ray.data.Datastream.materialize>`. There are a few
 exceptions to this rule, where transformations such as :meth:`ds.union()
-<ray.data.Dataset.union>` and
-:meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution; we plan to make these
+<ray.data.Datastream.union>` and
+:meth:`ds.limit() <ray.data.Datastream.limit>` trigger execution; we plan to make these
 operations lazy in the future.
 
 Check the API docs for Datasets methods to see if they
@@ -104,7 +104,7 @@ Streaming Execution
 ~~~~~~~~~~~~~~~~~~~
 
 The following code is a hello world example which invokes the execution with
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting, which shows per-operator progress in addition to overall progress.
+:meth:`ds.iter_batches() <ray.data.Datastream.iter_batches>` consumption. We will also enable verbose progress reporting, which shows per-operator progress in addition to overall progress.
 
 .. code-block::
 
@@ -226,7 +226,7 @@ lazy operations that are compatible:
 
 Read stages and subsequent map-like transformations will usually be fused together.
 All-to-all transformations such as
-:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>` can be fused with earlier
+:meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>` can be fused with earlier
 map-like stages, but not later stages.
 
 You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (e.g., ``read->map_batches``).
@@ -250,7 +250,7 @@ During execution, a task can read multiple input blocks, and write multiple outp
 
 Datasets attempts to bound its heap memory usage to `num_execution_slots * max_block_size`. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker will automatically split the output into multiple smaller blocks to avoid running out of heap memory.
 
-Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
+Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Datasets is too large, and always call :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
 Object Store Memory
 ~~~~~~~~~~~~~~~~~~~

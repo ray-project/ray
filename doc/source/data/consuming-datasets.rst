@@ -14,8 +14,8 @@ Retrieving a limited set of rows
 ================================
 
 A limited set of rows can be retrieved from a ``Dataset`` via the
-:meth:`ds.take() <ray.data.Dataset.take>` or :meth:`ds.take_batch() <ray.data.Dataset.take_batch>`
-APIs, and :meth:`ds.show() <ray.data.Dataset.show>`, for printing a limited set of rows. These
+:meth:`ds.take() <ray.data.Datastream.take>` or :meth:`ds.take_batch() <ray.data.Datastream.take_batch>`
+APIs, and :meth:`ds.show() <ray.data.Datastream.show>`, for printing a limited set of rows. These
 methods are convenient for quickly inspecting a subset (prefix) of rows. They have the
 benefit that, if used right after reading, they will only trigger more files to be
 read if needed to retrieve rows from that file; if inspecting a small prefix of rows,
@@ -30,7 +30,7 @@ Iterating over Datasets
 =======================
 
 Datasets can be consumed a row at a time using the
-:meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>` API
+:meth:`ds.iter_rows() <ray.data.Datastream.iter_rows>` API
 
 .. literalinclude:: ./doc_code/consuming_datasets.py
   :language: python
@@ -38,7 +38,7 @@ Datasets can be consumed a row at a time using the
   :end-before: __iter_rows_end__
 
 or a batch at a time using the
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` API, where you can specify
+:meth:`ds.iter_batches() <ray.data.Datastream.iter_batches>` API, where you can specify
 batch size as well as the desired batch format. By default, the batch format is
 ``"default"``. For tabular data, the default format is a Pandas DataFrame; for Python
 objects, it's a list.
@@ -63,7 +63,7 @@ Splitting Into and Consuming Shards
 
 Datasets can be split up into disjoint sub-datasets, or shards.
 Locality-aware splitting is supported if you pass in a list of actor handles to the
-:meth:`ds.split() <ray.data.Dataset.split>` function along with the number of desired splits.
+:meth:`ds.split() <ray.data.Datastream.split>` function along with the number of desired splits.
 This is a common pattern useful for loading and sharding data between distributed training actors:
 
 .. note::
@@ -76,47 +76,47 @@ This is a common pattern useful for loading and sharding data between distribute
   :start-after: __split_begin__
   :end-before: __split_end__
 
-.. _saving_datasets:
+.. _saving_datastreams:
 
 Saving Datasets
 ===============
 
 Datasets can be written to local or remote storage in the desired data format.
 The supported formats include Parquet, CSV, JSON, NumPy. To control the number
-of output files, you may use :meth:`ds.repartition() <ray.data.Dataset.repartition>`
+of output files, you may use :meth:`ds.repartition() <ray.data.Datastream.repartition>`
 to repartition the Dataset before writing out.
 
 .. tabbed:: Parquet
 
-  .. literalinclude:: ./doc_code/saving_datasets.py
+  .. literalinclude:: ./doc_code/saving_datastreams.py
     :language: python
     :start-after: __write_parquet_begin__
     :end-before: __write_parquet_end__
 
 .. tabbed:: CSV
 
-  .. literalinclude:: ./doc_code/saving_datasets.py
+  .. literalinclude:: ./doc_code/saving_datastreams.py
     :language: python
     :start-after: __write_csv_begin__
     :end-before: __write_csv_end__
 
 .. tabbed:: JSON
 
-  .. literalinclude:: ./doc_code/saving_datasets.py
+  .. literalinclude:: ./doc_code/saving_datastreams.py
     :language: python
     :start-after: __write_json_begin__
     :end-before: __write_json_end__
 
 .. tabbed:: NumPy
 
-  .. literalinclude:: ./doc_code/saving_datasets.py
+  .. literalinclude:: ./doc_code/saving_datastreams.py
     :language: python
     :start-after: __write_numpy_begin__
     :end-before: __write_numpy_end__
 
 .. tabbed:: TFRecords
 
-  .. literalinclude:: ./doc_code/saving_datasets.py
+  .. literalinclude:: ./doc_code/saving_datastreams.py
     :language: python
     :start-after: __write_tfrecords_begin__
     :end-before: __write_tfrecords_end__

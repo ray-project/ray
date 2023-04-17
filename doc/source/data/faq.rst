@@ -168,7 +168,7 @@ For batch (offline) inference, why should I use Ray Datasets instead of an actor
 ======================================================================================
 
 Ray Datasets provides its own autoscaling actor pool via the actor compute strategy for
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`, allowing you to perform CPU- or
+:meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, allowing you to perform CPU- or
 GPU-based batch inference on this actor pool. Using this instead of the
 `Ray actor pool <https://github.com/ray-project/ray/blob/b17cbd825fe3fbde4fe9b03c9dd33be2454d4737/python/ray/util/actor_pool.py#L6>`__
 has a few advantages:
@@ -219,7 +219,7 @@ Ray Datasets supports creating a ``Dataset`` from local and distributed in-memor
 via integrations with common data libraries, as well as from local and remote storage
 systems via our support for many common file formats and storage backends.
 
-Check out our :ref:`feature guide for creating datasets <creating_datasets>` for
+Check out our :ref:`feature guide for creating datasets <creating_datastreams>` for
 details.
 
 How do I do streaming/online data loading and processing?
@@ -264,7 +264,7 @@ out of such a gradient rut. In the distributed data-parallel training case, the 
 status quo solution is typically to have a per-shard in-memory shuffle buffer that you
 fill up and pop random batches from, without mixing data across shards between epochs.
 Ray Datasets also offers fully global random shuffling via
-:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle()>`, and doing so on an
+:meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle()>`, and doing so on an
 epoch-repeated dataset pipeline to provide global per-epoch shuffling is as simple as
 ``ray.data.read().repeat().random_shuffle_each_window()``. But when should you opt for
 global per-epoch shuffling instead of local shuffle buffer shuffling?

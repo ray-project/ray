@@ -26,41 +26,41 @@ For Pandas Users
    * - Pandas DataFrame API
      - Ray Datasets API
    * - df.head()
-     - :meth:`ds.show() <ray.data.Dataset.show>`, :meth:`ds.take() <ray.data.Dataset.take>`, or :meth:`ds.take_batch() <ray.data.Dataset.take_batch>`
+     - :meth:`ds.show() <ray.data.Datastream.show>`, :meth:`ds.take() <ray.data.Datastream.take>`, or :meth:`ds.take_batch() <ray.data.Datastream.take_batch>`
    * - df.dtypes
-     - :meth:`ds.schema() <ray.data.Dataset.schema>`
+     - :meth:`ds.schema() <ray.data.Datastream.schema>`
    * - len(df) or df.shape[0]
-     - :meth:`ds.count() <ray.data.Dataset.count>`
+     - :meth:`ds.count() <ray.data.Datastream.count>`
    * - df.truncate()
-     - :meth:`ds.limit() <ray.data.Dataset.limit>`
+     - :meth:`ds.limit() <ray.data.Datastream.limit>`
    * - df.iterrows()
-     - :meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>`
+     - :meth:`ds.iter_rows() <ray.data.Datastream.iter_rows>`
    * - df.drop()
-     - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
+     - :meth:`ds.drop_columns() <ray.data.Datastream.drop_columns>`
    * - df.transform()
-     - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` or :meth:`ds.map() <ray.data.Dataset.map>`
+     - :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` or :meth:`ds.map() <ray.data.Datastream.map>`
    * - df.groupby()
-     - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
+     - :meth:`ds.groupby() <ray.data.Datastream.groupby>`
    * - df.groupby().apply()
      - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedData.map_groups>`
    * - df.sample()
-     - :meth:`ds.random_sample() <ray.data.Dataset.random_sample>`
+     - :meth:`ds.random_sample() <ray.data.Datastream.random_sample>`
    * - df.sort_values()
-     - :meth:`ds.sort() <ray.data.Dataset.sort>`
+     - :meth:`ds.sort() <ray.data.Datastream.sort>`
    * - df.append()
-     - :meth:`ds.union() <ray.data.Dataset.union>`
+     - :meth:`ds.union() <ray.data.Datastream.union>`
    * - df.aggregate()
-     - :meth:`ds.aggregate() <ray.data.Dataset.aggregate>`
+     - :meth:`ds.aggregate() <ray.data.Datastream.aggregate>`
    * - df.min()
-     - :meth:`ds.min() <ray.data.Dataset.min>`
+     - :meth:`ds.min() <ray.data.Datastream.min>`
    * - df.max()
-     - :meth:`ds.max() <ray.data.Dataset.max>`
+     - :meth:`ds.max() <ray.data.Datastream.max>`
    * - df.sum()
-     - :meth:`ds.sum() <ray.data.Dataset.sum>`
+     - :meth:`ds.sum() <ray.data.Datastream.sum>`
    * - df.mean()
-     - :meth:`ds.mean() <ray.data.Dataset.mean>`
+     - :meth:`ds.mean() <ray.data.Datastream.mean>`
    * - df.std()
-     - :meth:`ds.std() <ray.data.Dataset.std>`
+     - :meth:`ds.std() <ray.data.Datastream.std>`
 
 .. _api-guide-for-pyarrow-users:
 
@@ -73,16 +73,16 @@ For PyArrow Users
    * - PyArrow Table API
      - Ray Datasets API
    * - pa.Table.schema
-     - :meth:`ds.schema() <ray.data.Dataset.schema>`
+     - :meth:`ds.schema() <ray.data.Datastream.schema>`
    * - pa.Table.num_rows
-     - :meth:`ds.count() <ray.data.Dataset.count>`
+     - :meth:`ds.count() <ray.data.Datastream.count>`
    * - pa.Table.filter()
-     - :meth:`ds.filter() <ray.data.Dataset.filter>`
+     - :meth:`ds.filter() <ray.data.Datastream.filter>`
    * - pa.Table.drop()
-     - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
+     - :meth:`ds.drop_columns() <ray.data.Datastream.drop_columns>`
    * - pa.Table.add_column()
-     - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
+     - :meth:`ds.add_column() <ray.data.Datastream.add_column>`
    * - pa.Table.groupby()
-     - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
+     - :meth:`ds.groupby() <ray.data.Datastream.groupby>`
    * - pa.Table.sort_by()
-     - :meth:`ds.sort() <ray.data.Dataset.sort>`
+     - :meth:`ds.sort() <ray.data.Datastream.sort>`

@@ -1,9 +1,9 @@
-.. _datasets_getting_started:
+.. _data_getting_started:
 
 Getting Started
 ===============
 
-A Ray :class:`Dataset <ray.data.Dataset>` is a distributed data collection. It holds
+A Ray :class:`Dataset <ray.data.Datastream>` is a distributed data collection. It holds
 references to distributed data *blocks*, and exposes APIs for loading and processing
 data.
 
@@ -40,7 +40,7 @@ Ray reads from any `filesystem supported by Arrow
 
 
 To learn more about creating datasets, read
-:ref:`Creating datasets <creating_datasets>`.
+:ref:`Creating datasets <creating_datastreams>`.
 
 Transform the dataset
 ---------------------
@@ -76,13 +76,13 @@ transform datasets. Ray executes transformations in parallel for performance at 
 
 
 To learn more about transforming datasets, read
-:ref:`Transforming datasets <transforming_datasets>`.
+:ref:`Transforming datasets <transforming_datastreams>`.
 
 Consume the dataset
 -------------------
 
 Pass datasets to Ray tasks or actors, and access records with methods like
-:meth:`~ray.data.Dataset.iter_batches`.
+:meth:`~ray.data.Datastream.iter_batches`.
 
 .. tabbed:: Local
 
@@ -106,7 +106,7 @@ Pass datasets to Ray tasks or actors, and access records with methods like
    .. testcode::
 
         @ray.remote
-        def consume(dataset: ray.data.Dataset) -> int:
+        def consume(dataset: ray.data.Datastream) -> int:
             num_batches = 0
             for batch in dataset.iter_batches(batch_size=8):
                 num_batches += 1
@@ -137,7 +137,7 @@ To learn more about consuming datasets, read
 Save the dataset
 ----------------
 
-Call methods like :meth:`~ray.data.Dataset.write_parquet` to save datasets to local
+Call methods like :meth:`~ray.data.Datastream.write_parquet` to save datasets to local
 or remote filesystems.
 
 .. testcode::
@@ -154,7 +154,7 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving datasets, read :ref:`Saving datasets <saving_datasets>`.
+To learn more about saving datasets, read :ref:`Saving datasets <saving_datastreams>`.
 
 Next Steps
 ----------

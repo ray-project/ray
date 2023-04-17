@@ -10,8 +10,8 @@ Ray Datasets Glossary
         The way batches of data are represented.
 
         Set ``batch_format`` in methods like
-        :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and
-        :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>` to specify the
+        :meth:`Dataset.iter_batches() <ray.data.Datastream.iter_batches>` and
+        :meth:`Dataset.map_batches() <ray.data.Datastream.map_batches>` to specify the
         batch type.
 
         .. doctest::
@@ -35,7 +35,7 @@ Ray Datasets Glossary
         :ref:`UDF Input Batch Formats <transform_datasets_batch_formats>`.
 
     Block
-        A processing unit of data. A :class:`~ray.data.Dataset` consists of a
+        A processing unit of data. A :class:`~ray.data.Datastream` consists of a
         collection of blocks.
 
         Under the hood, :term:`Datasets <Datasets (library)>` partition :term:`records <Record>`
@@ -51,7 +51,7 @@ Ray Datasets Glossary
         `Arrow tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`_,
         `pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`_,
         and Python lists. To determine the block format, call
-        :meth:`Dataset.dataset_format() <ray.data.Dataset.dataset_format>`.
+        :meth:`Dataset.dataset_format() <ray.data.Datastream.dataset_format>`.
 
     Datasets (library)
         A library for distributed data processing.
@@ -60,12 +60,12 @@ Ray Datasets Glossary
         Its utility is as the last-mile bridge from ETL pipeline outputs to distributed
         ML applications and libraries in Ray.
 
-        To learn more about Ray Datasets, read :ref:`Key Concepts <dataset_concept>`.
+        To learn more about Ray Datasets, read :ref:`Key Concepts <datastream_concept>`.
 
     Dataset (object)
         A class that represents a distributed collection of data.
 
-        :class:`~ray.data.Dataset` exposes methods to read, transform, and consume data at scale.
+        :class:`~ray.data.Datastream` exposes methods to read, transform, and consume data at scale.
 
         To learn more about Datasets and the operations they support, read the :ref:`Datasets API Reference <data-api>`.
 
@@ -98,7 +98,7 @@ Ray Datasets Glossary
         tensor shape and data type.
 
         To determine a dataset's schema, call
-        :meth:`Dataset.schema() <ray.data.Dataset.schema>`.
+        :meth:`Dataset.schema() <ray.data.Datastream.schema>`.
 
     Simple Dataset
         A Dataset that represents a collection of arbitrary Python objects.
@@ -147,8 +147,8 @@ Ray Datasets Glossary
     User-defined function (UDF)
         A callable that transforms batches or :term:`records <Record>` of data. UDFs let you arbitrarily transform datasets.
 
-        Call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`,
-        :meth:`Dataset.map() <ray.data.Dataset.map>`, or
-        :meth:`Dataset.flat_map() <ray.data.Dataset.flat_map>` to apply UDFs.
+        Call :meth:`Dataset.map_batches() <ray.data.Datastream.map_batches>`,
+        :meth:`Dataset.map() <ray.data.Datastream.map>`, or
+        :meth:`Dataset.flat_map() <ray.data.Datastream.flat_map>` to apply UDFs.
 
         To learn more about UDFs, read :ref:`Writing User-Defined Functions <transform_datasets_writing_udfs>`.

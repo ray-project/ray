@@ -57,7 +57,7 @@ Ray Data also simplifies general purpose parallel GPU and CPU compute in Ray thr
 powerful ``Datastream`` abstraction. This allows users to execute workloads such as 
 :ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets.
 
-.. image:: images/datastream-compute-1.png
+.. image:: images/dataset-compute-1.png
    :width: 500px
    :align: center
 
@@ -111,7 +111,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
     Learn how to :ref:`create datastreams <creating_datastreams>`, :ref:`save
     datastreams <saving_datastreams>`, :ref:`transform datastreams <transforming_datastreams>`,
     :ref:`access and exchange datastreams <consuming_datastreams>`, or
-    :ref:`work with tensor data <datastreams_tensor_support>`.
+    :ref:`work with tensor data <data_tensor_support>`.
 
     +++
     .. link-button:: data_user_guide

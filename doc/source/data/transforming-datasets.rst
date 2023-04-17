@@ -1,4 +1,4 @@
-.. _transforming_datasets:
+.. _transforming_datastreams:
 
 =====================
 Transforming Datasets
@@ -25,9 +25,9 @@ Transformations
 There are two main types of transformations:
 
 * One-to-one: each input block will contribute to only one output
-  block, such as :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`.
+  block, such as :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`.
 * All-to-all: input blocks can contribute to multiple output blocks,
-  such as :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`.
+  such as :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>`.
 
 Here is a table listing some common transformations supported by Ray Datasets.
 
@@ -37,45 +37,45 @@ Here is a table listing some common transformations supported by Ray Datasets.
    * - Transformation
      - Type
      - Description
-   * - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+   * - :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
      - One-to-one
      - Apply a given function to batches of records of this dataset.
-   * - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
+   * - :meth:`ds.add_column() <ray.data.Datastream.add_column>`
      - One-to-one
      - Apply a given function to batches of records to create a new column.
-   * - :meth:`ds.drop_columns() <ray.data.Dataset.add_column>`
+   * - :meth:`ds.drop_columns() <ray.data.Datastream.add_column>`
      - One-to-one
      - Drop the given columns from the dataset.
-   * - :meth:`ds.split() <ray.data.Dataset.split>`
+   * - :meth:`ds.split() <ray.data.Datastream.split>`
      - One-to-one
      - | Split the dataset into N disjoint pieces.
-   * - :meth:`ds.repartition(shuffle=False) <ray.data.Dataset.repartition>`
+   * - :meth:`ds.repartition(shuffle=False) <ray.data.Datastream.repartition>`
      - One-to-one
      - | Repartition the dataset into N blocks, without shuffling the data.
-   * - :meth:`ds.repartition(shuffle=True) <ray.data.Dataset.repartition>`
+   * - :meth:`ds.repartition(shuffle=True) <ray.data.Datastream.repartition>`
      - All-to-all
      - | Repartition the dataset into N blocks, shuffling the data during repartition.
-   * - :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`
+   * - :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>`
      - All-to-all
      - | Randomly shuffle the elements of this dataset.
-   * -  :meth:`ds.sort() <ray.data.Dataset.sort>`
+   * -  :meth:`ds.sort() <ray.data.Datastream.sort>`
      - All-to-all
      - | Sort the dataset by a sortkey.
-   * -  :meth:`ds.groupby() <ray.data.Dataset.groupby>`
+   * -  :meth:`ds.groupby() <ray.data.Datastream.groupby>`
      - All-to-all
      - | Group the dataset by a groupkey.
 
 .. tip::
 
-    Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Dataset.map>`,
-    :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, and :meth:`ds.filter() <ray.data.Dataset.filter>`,
-    which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but
+    Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Datastream.map>`,
+    :meth:`ds.flat_map() <ray.data.Datastream.flat_map>`, and :meth:`ds.filter() <ray.data.Datastream.filter>`,
+    which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`), but
     may be useful for development.
 
 The following is an example to make use of those transformation APIs for processing
 the Iris dataset.
 
-.. literalinclude:: ./doc_code/transforming_datasets.py
+.. literalinclude:: ./doc_code/transforming_datastreams.py
    :language: python
    :start-after: __dataset_transformation_begin__
    :end-before: __dataset_transformation_end__
@@ -87,10 +87,10 @@ Writing User-defined Functions (UDFs)
 -------------------------------------
 
 User-defined functions (UDFs) are routines that apply on one row (e.g.
-:meth:`.map() <ray.data.Dataset.map>`) or a batch of rows (e.g.
-:meth:`.map_batches() <ray.data.Dataset.map_batches>`) of a dataset. UDFs let you
+:meth:`.map() <ray.data.Datastream.map>`) or a batch of rows (e.g.
+:meth:`.map_batches() <ray.data.Datastream.map_batches>`) of a dataset. UDFs let you
 express your customized business logic in transformations. Here we will focus on
-:meth:`.map_batches() <ray.data.Dataset.map_batches>` as it's the primary mapping
+:meth:`.map_batches() <ray.data.Datastream.map_batches>` as it's the primary mapping
 API in Datasets.
 
 Here are the basics that you need to know about UDFs:
@@ -109,7 +109,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 
   The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datasets_batch_formats` for the supported batch formats.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_default_udfs_tabular_begin__
     :end-before: __writing_default_udfs_tabular_end__
@@ -127,7 +127,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
     These transformation APIs take the uninstantiated callable class as an argument,
     not an instance of the class.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_callable_classes_udfs_begin__
     :end-before: __writing_callable_classes_udfs_end__
@@ -137,9 +137,9 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
   UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
 
   .. warning::
-    When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Dataset.flat_map>` API and not the :meth:`.map() <ray.data.Dataset.map>` API.
+    When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Datastream.flat_map>` API and not the :meth:`.map() <ray.data.Datastream.map>` API.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_generator_udfs_begin__
     :end-before: __writing_generator_udfs_end__
@@ -151,7 +151,7 @@ UDF Input Batch Format
 ======================
 
 Choose the *batch format* of the data given to UDFs
-by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Dataset.map_batches>`.
+by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Datastream.map_batches>`.
 Here is an overview of the available batch formats:
 
 .. tabbed:: "default"
@@ -163,7 +163,7 @@ Here is an overview of the available batch formats:
     This may incur a conversion cost if the underlying Dataset block is not
     zero-copy convertible from an Arrow table.
 
-    .. literalinclude:: ./doc_code/transforming_datasets.py
+    .. literalinclude:: ./doc_code/transforming_datastreams.py
       :language: python
       :start-after: __writing_default_udfs_tabular_begin__
       :end-before: __writing_default_udfs_tabular_end__
@@ -172,14 +172,14 @@ Here is an overview of the available batch formats:
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
     containing the single tensor column for this batch.
 
-    .. literalinclude:: ./doc_code/transforming_datasets.py
+    .. literalinclude:: ./doc_code/transforming_datastreams.py
       :language: python
       :start-after: __writing_default_udfs_tensor_begin__
       :end-before: __writing_default_udfs_tensor_end__
 
   * **Simple Datasets**: Each batch will be a Python list.
 
-    .. literalinclude:: ./doc_code/transforming_datasets.py
+    .. literalinclude:: ./doc_code/transforming_datastreams.py
       :language: python
       :start-after: __writing_default_udfs_list_begin__
       :end-before: __writing_default_udfs_list_end__
@@ -191,7 +191,7 @@ Here is an overview of the available batch formats:
   format. If converting a simple dataset to Pandas DataFrame batches, a single-column
   dataframe with the column ``"__value__"`` will be created.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_pandas_udfs_begin__
     :end-before: __writing_pandas_udfs_end__
@@ -203,7 +203,7 @@ Here is an overview of the available batch formats:
   format. If converting a simple dataset to Arrow Table batches, a single-column table
   with the column ``"__value__"`` will be created.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_arrow_udfs_begin__
     :end-before: __writing_arrow_udfs_end__
@@ -225,7 +225,7 @@ Here is an overview of the available batch formats:
   * **Simple Datasets**: Each batch will be a single NumPy ndarray, where Datasets will
     attempt to convert each list-batch to an ndarray.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
@@ -281,10 +281,10 @@ is given in the below table:
 
 .. tip::
 
-  If the UDF for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` does **not**
+  If the UDF for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` does **not**
   mutate its input, we can prevent an unnecessary data batch copy by specifying
   ``zero_copy_batch=True``, which will provide the UDF with zero-copy, read-only
-  batches. See the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` docstring for
+  batches. See the :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` docstring for
   more information.
 
 .. _transform_datasets_batch_output_types:
@@ -293,14 +293,14 @@ Batch UDF Output Types
 ======================
 
 The following output types are allowed for batch UDFs (e.g.,
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`). The following describes
+:meth:`ds.map_batches() <ray.data.Datastream.map_batches>`). The following describes
 how they are interpreted to create the transformation result:
 
 .. tabbed:: pd.DataFrame
 
   Returning ``pd.DataFrame`` creates a Tabular dataset as the transformation result:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_pandas_out_udfs_begin__
     :end-before: __writing_pandas_out_udfs_end__
@@ -309,7 +309,7 @@ how they are interpreted to create the transformation result:
 
   Returning ``pa.Table`` creates a Tabular dataset as the transformation result:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_arrow_out_udfs_begin__
     :end-before: __writing_arrow_out_udfs_end__
@@ -318,7 +318,7 @@ how they are interpreted to create the transformation result:
 
   Returning ``np.ndarray`` creates a single-column Tensor dataset as the transformation result:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_numpy_out_udfs_begin__
     :end-before: __writing_numpy_out_udfs_end__
@@ -332,7 +332,7 @@ how they are interpreted to create the transformation result:
   :ref:`tensor extension type <dataset-tensor-extension-api>` to embed these
   n-dimensional tensors in the Arrow table.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_numpy_dict_out_udfs_begin__
     :end-before: __writing_numpy_dict_out_udfs_end__
@@ -341,7 +341,7 @@ how they are interpreted to create the transformation result:
 
   Returning ``list`` creates a simple Python object dataset as the transformation result:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_simple_out_udfs_begin__
     :end-before: __writing_simple_out_udfs_end__
@@ -352,7 +352,7 @@ Row UDF Output Types
 ====================
 
 The following output types are allowed for per-row UDFs (e.g.,
-:meth:`ds.map() <ray.data.Dataset.map>`):
+:meth:`ds.map() <ray.data.Datastream.map>`):
 
 .. tabbed:: dict
 
@@ -360,7 +360,7 @@ The following output types are allowed for per-row UDFs (e.g.,
   as the transformation result. If any dict values are not Arrow-compatible, then
   a simple Python object dataset will be created:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_dict_out_row_udfs_begin__
     :end-before: __writing_dict_out_row_udfs_end__
@@ -369,7 +369,7 @@ The following output types are allowed for per-row UDFs (e.g.,
 
   Returning ``np.ndarray`` creates a single-column Tensor dataset as the transformation result:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_numpy_out_row_udfs_begin__
     :end-before: __writing_numpy_out_row_udfs_end__
@@ -378,7 +378,7 @@ The following output types are allowed for per-row UDFs (e.g.,
 
   Other return row types will create a simple Python object dataset as the transformation result:
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
+  .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
@@ -389,13 +389,13 @@ The following output types are allowed for per-row UDFs (e.g.,
 Configuring Batch Size
 ----------------------
 
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is the canonical parallel
+:meth:`ds.map_batches() <ray.data.Datastream.map_batches>` is the canonical parallel
 transformation API for Datasets: it launches parallel tasks over the underlying Datasets
 blocks and maps UDFs over data batches within those tasks, allowing the UDF to
 implement vectorized operations on batches. An important parameter to
 set is ``batch_size``, which controls the size of the batches provided to the UDF.
 
-.. literalinclude:: ./doc_code/transforming_datasets.py
+.. literalinclude:: ./doc_code/transforming_datastreams.py
   :language: python
   :start-after: __configuring_batch_size_begin__
   :end-before: __configuring_batch_size_end__
@@ -418,7 +418,7 @@ is set to too large of a value for your dataset), the number of parallel tasks
 may be less than expected.
 
 If your ``Dataset`` blocks are smaller than your ``batch_size`` and you want to increase
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
+:meth:`ds.map_batches() <ray.data.Datastream.map_batches>` parallelism, decrease your
 ``batch_size`` to prevent this block bundling. If you think that your ``Dataset`` blocks
 are too small, try decreasing ``parallelism`` during the read to create larger blocks.
 
@@ -450,7 +450,7 @@ For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size
 The following is an example of using the Ray tasks and actors compute strategy
 for batch inference:
 
-.. literalinclude:: ./doc_code/transforming_datasets.py
+.. literalinclude:: ./doc_code/transforming_datastreams.py
    :language: python
    :start-after: __dataset_compute_strategy_begin__
    :end-before: __dataset_compute_strategy_end__
@@ -467,12 +467,12 @@ aggregation has been computed.
 
 .. code-block:: python
 
-    ds: ray.data.Dataset = ray.data.from_items([
+    ds: ray.data.Datastream = ray.data.from_items([
         {"A": x % 3, "B": 2 * x, "C": 3 * x}
         for x in range(10)])
 
     # Group by the A column and calculate the per-group mean for B and C columns.
-    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"]).materialize()
+    agg_ds: ray.data.Datastream = ds.groupby("A").mean(["B", "C"]).materialize()
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
@@ -549,7 +549,7 @@ with calculated column means.
 Shuffling data
 --------------
 
-Call :meth:`Dataset.random_shuffle() <ray.data.Dataset.random_shuffle>` to
+Call :meth:`Dataset.random_shuffle() <ray.data.Datastream.random_shuffle>` to
 perform a global shuffle.
 
 .. doctest::

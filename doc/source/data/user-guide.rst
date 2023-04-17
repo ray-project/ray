@@ -4,7 +4,7 @@
 User Guides
 ===========
 
-If you’re new to Ray Datasets, we recommend starting with the :ref:`Ray Datasets Quick Start <datasets_getting_started>`.
+If you’re new to Ray Datasets, we recommend starting with the :ref:`Ray Datasets Quick Start <data_getting_started>`.
 This user guide will help you navigate the Ray Datasets project and show you how achieve several tasks.
 
 .. toctree::

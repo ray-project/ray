@@ -1,4 +1,4 @@
-.. _datasets_tensor_support:
+.. _data_tensor_support:
 
 ML Tensor Support
 =================
@@ -112,7 +112,7 @@ This section shows how to create single and multi-column tensor datasets.
 Transforming / Consuming Tensor Data
 ------------------------------------
 
-Like any other Dataset, Datasets with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=\<format\>) <ray.data.Dataset.iter_batches>` and :meth:`ds.map_batches(fn, batch_format=\<format\>) <ray.data.Dataset.map_batches>` APIs. This section shows the available batch formats and their behavior:
+Like any other Dataset, Datasets with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=\<format\>) <ray.data.Datastream.iter_batches>` and :meth:`ds.map_batches(fn, batch_format=\<format\>) <ray.data.Datastream.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
 .. tabbed:: "default"
 

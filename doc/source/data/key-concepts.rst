@@ -4,7 +4,7 @@
 Key Concepts
 ============
 
-.. _dataset_concept:
+.. _datastream_concept:
 
 --------
 Datasets
@@ -15,7 +15,7 @@ Each block holds a set of items in an `Arrow table <https://arrow.apache.org/doc
 `pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
 Having multiple blocks in a dataset allows for parallel transformation and ingest.
 
-For ML use cases, Datasets also natively supports mixing :ref:`Tensors <datasets_tensor_support>` and tabular data.
+For ML use cases, Datasets also natively supports mixing :ref:`Tensors <data_tensor_support>` and tabular data.
 
 There are three types of datasets:
 
@@ -47,7 +47,7 @@ Datasets uses Ray tasks to read data from remote storage in parallel. Each read 
 
 You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying dataset.
 
-For an in-depth guide on creating datasets, read :ref:`Creating Datasets <creating_datasets>`.
+For an in-depth guide on creating datasets, read :ref:`Creating Datasets <creating_datastreams>`.
 
 Transforming Data
 =================
@@ -55,7 +55,7 @@ Transforming Data
 Datasets uses either Ray tasks or Ray actors to transform data blocks. By default, Datasets uses tasks.
 
 To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
-:meth:`~ray.data.Dataset.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
+:meth:`~ray.data.Datastream.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
 pool of Ray actors. This allows you to cache expensive state initialization
 (e.g., model loading for GPU-based tasks).
 
@@ -64,17 +64,17 @@ pool of Ray actors. This allows you to cache expensive state initialization
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For an in-depth guide on transforming datasets, read :ref:`Transforming Datasets <transforming_datasets>`.
+For an in-depth guide on transforming datasets, read :ref:`Transforming Datasets <transforming_datastreams>`.
 
 Shuffling Data
 ==============
 
-Operations like :meth:`~ray.data.Dataset.sort` and :meth:`~ray.data.Dataset.groupby`
+Operations like :meth:`~ray.data.Datastream.sort` and :meth:`~ray.data.Datastream.groupby`
 require blocks to be partitioned by value or *shuffled*. Datasets uses tasks to shuffle blocks in a map-reduce
 style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
 blocks.
 
-Call :meth:`~ray.data.Dataset.repartition` to change the number of blocks in a :class:`~ray.data.Dataset`.
+Call :meth:`~ray.data.Datastream.repartition` to change the number of blocks in a :class:`~ray.data.Datastream`.
 Repartition has two modes:
 
 * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
@@ -92,7 +92,7 @@ Execution mode
 ==============
 
 Most transformations are lazy. They don't execute until you consume a dataset or call
-:meth:`Dataset.materialize() <ray.data.Dataset.materialize>`.
+:meth:`Dataset.materialize() <ray.data.Datastream.materialize>`.
 
 The transformations are executed in a streaming way, incrementally on the data and
 with operators processed in parallel, see :ref:`Streaming Execution <datasets_streaming_execution>`.
