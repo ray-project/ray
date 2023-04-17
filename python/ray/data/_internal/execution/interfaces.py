@@ -337,6 +337,14 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
+    def should_add_input(self) -> bool:
+        """Return whether it is desirable to add input to this operator right now.
+
+        Operators can customize the implementation of this method to apply additional
+        backpressure (e.g., waiting for internal actors to be created).
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -444,6 +452,17 @@ class PhysicalOperator(Operator):
         ExecutionResources(cpu=1) as its incremental usage.
         """
         return ExecutionResources()
+
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        """Called periodically by the executor.
+
+        Args:
+            input_queue_size: The number of inputs queued outside this operator.
+            under_resource_limits: Whether this operator is under resource limits.
+        """
+        pass
 
 
 class OutputIterator(Iterator[RefBundle]):
