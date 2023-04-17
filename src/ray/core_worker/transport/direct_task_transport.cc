@@ -16,15 +16,38 @@
 
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace core {
+
+google::protobuf::Timestamp CurrentTimestamp() {
+  // NOTE: Using high_resolution_clock for consistnecy with the rest of this
+  // file, but this should probably use stead_clock.
+  // https://en.cppreference.com/w/cpp/chrono/high_resolution_clock
+  auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
+  auto ts = google::protobuf::Timestamp();
+  ts.set_seconds(std::chrono::duration_cast<std::chrono::seconds>(time).count());
+  ts.set_nanos(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count());
+  return ts;
+}
+
+void RecordTaskMetrics(const TaskSpecification &task_spec) {
+  float duration_s = task_spec.GetMessage().dependency_resolution_time().seconds() -
+                     task_spec.GetMessage().lease_grant_time().seconds();
+
+  duration_s += (task_spec.GetMessage().dependency_resolution_time().nanos() -
+                 task_spec.GetMessage().lease_grant_time().nanos()) *
+                (1e-9);
+
+  stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
+}
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
+  resolver_.ResolveDependencies(task_spec, [&](Status status) {
     task_finisher_->MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
@@ -95,6 +118,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         keep_executing = false;
       }
       if (keep_executing) {
+        *task_spec.GetMutableMessage().mutable_dependency_resolution_time() =
+            CurrentTimestamp();
+        RecordTaskMetrics(task_spec);
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
         const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
@@ -212,6 +238,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
+
+      *task_spec.GetMutableMessage().mutable_dependency_resolution_time() =
+          CurrentTimestamp();
       lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the

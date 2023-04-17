@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/runtime_env_common.proto";
+import "google/protobuf/timestamp.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -422,6 +423,13 @@ message TaskSpec {
   // This will be the actor creation task's task id for concurrent actors. Or
   // the main thread's task id for other cases.
   bytes submitter_task_id = 33;
+  // Some timestamps of the task's lifetime, useful for metrics.
+  // The time the task's dependencies have been resolved.
+  google.protobuf.Timestamp dependency_resolution_time = 34;
+  // The time that the task is given a lease, and sent to the executing core
+  // worker.
+  google.protobuf.Timestamp lease_grant_time = 35;
+
 }
 
 message TaskInfoEntry {
