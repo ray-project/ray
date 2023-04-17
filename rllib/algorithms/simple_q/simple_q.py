@@ -117,7 +117,11 @@ class SimpleQConfig(AlgorithmConfig):
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
-        self.grad_clip = 40
+
+        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
+        self.grad_clip = 40.0
+        self.grad_clip_by_global_norm = 40.0
+
         self.tau = 1.0
         # __sphinx_doc_end__
         # fmt: on

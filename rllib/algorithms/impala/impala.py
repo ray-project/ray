@@ -125,7 +125,11 @@ class ImpalaConfig(AlgorithmConfig):
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
+
+        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 40.0
+        self.grad_clip_by_global_norm = 40.0
+
         self.opt_type = "adam"
         self.lr_schedule = None
         self.decay = 0.99

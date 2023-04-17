@@ -67,7 +67,11 @@ class A3CConfig(AlgorithmConfig):
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
+
+        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 40.0
+        self.grad_clip_by_global_norm = 40.0
+
         self.lr_schedule = None
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
