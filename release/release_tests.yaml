@@ -138,6 +138,7 @@
 
   run:
     timeout: 600  # 10min
+    long_running: true
     script: python frequent_pausing/script.py
 
   alert: default
