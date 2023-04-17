@@ -326,6 +326,8 @@ class GlobalState:
                 return "PENDING"
             elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == gcs_utils.PlacementGroupTableData.RESCHEDULING:
+                return "RESCHEDULING"
             else:
                 return "REMOVED"
 
