@@ -7,6 +7,10 @@ from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import TensorType
 
+torch, _ = try_import_torch()
+_, tf, _ = try_import_tf()
+jax, _ = try_import_jax()
+
 _INVALID_INPUT_DUP_DIM = "Duplicate dimension names in shape ({})"
 _INVALID_INPUT_UNKNOWN_DIM = "Unknown dimension name {} in shape ({})"
 _INVALID_INPUT_POSITIVE = "Dimension {} in ({}) must be positive, got {}"
@@ -108,50 +112,23 @@ class TensorSpec(Spec):
         self._dtype = dtype
         self._framework = framework
 
-        # Import and prepare framework-specific properties.
-        if self._framework == "torch":
-            torch, _ = try_import_torch()
-            self._expected_type = torch.Tensor
-
-            def _full(cls, shape, fill_value=0):
-                return torch.full(shape, fill_value, dtype=cls.dtype)
-
-        elif self._framework == "tf2":
-            _, tf, _ = try_import_tf()
-            self._expected_type = tf.Tensor
-
-            def _full(cls, shape, fill_value=0):
-                if self.dtype:
-                    return tf.ones(shape, dtype=cls.dtype) * fill_value
-                return tf.fill(shape, fill_value)
-
-        elif self._framework == "np":
-            self._expected_type = np.ndarray
-
-            def _full(cls, shape, fill_value=0):
-                return np.full(shape, fill_value, dtype=cls.dtype)
-
-        elif self._framework == "jax":
-            jax, _ = try_import_jax()
-            self._expected_type = jax.numpy.ndarray
-
-            def _full(cls, shape, fill_value=0):
-                return jax.numpy.full(shape, fill_value, dtype=cls.dtype)
-
-        elif self._framework is None:
-            # Don't restrict the type of the tensor if no framework is specified.
-            self._expected_type = object
-
-            def _full(cls, shape, fill_value=0):
-                raise ValueError(
-                    "Cannot fill tensor without framework. This "
-                    "TensorSpec was instantiated without a framework."
-                )
-
-        else:
+        if framework not in ("tf2", "torch", "np", "jax", None):
             raise ValueError(f"Unknown framework {self._framework}")
 
-        self._full = _full
+    @property
+    def _expected_type(self) -> Type:
+        if self._framework == "torch":
+            return torch.Tensor
+        elif self._framework == "tf2":
+            return tf.Tensor
+        elif self._framework == "np":
+            return np.ndarray
+        elif self._framework == "jax":
+            jax, _ = try_import_jax()
+            return jax.numpy.ndarray
+        elif self._framework is None:
+            # Don't restrict the type of the tensor if no framework is specified.
+            return object
 
     @property
     def shape(self) -> Tuple[Union[int, str]]:
@@ -242,7 +219,26 @@ class TensorSpec(Spec):
         Returns:
             A tensor with the specified value that matches the specs.
         """
-        return self._full(self, self.full_shape, fill_value)
+
+        if self._framework == "torch":
+            return torch.full(self.full_shape, fill_value, dtype=self.dtype)
+
+        elif self._framework == "tf2":
+            if self.dtype:
+                return tf.ones(self.full_shape, dtype=self.dtype) * fill_value
+            return tf.fill(self.full_shape, fill_value)
+
+        elif self._framework == "np":
+            return np.full(self.full_shape, fill_value, dtype=self.dtype)
+
+        elif self._framework == "jax":
+            return jax.numpy.full(self.full_shape, fill_value, dtype=self.dtype)
+
+        elif self._framework is None:
+            raise ValueError(
+                "Cannot fill tensor without providing `framework` to TensorSpec. "
+                "This TensorSpec was instantiated without `framework`."
+            )
 
     def _get_full_shape(self) -> Tuple[int]:
         """Converts the expected shape to a shape by replacing the unknown dimension
