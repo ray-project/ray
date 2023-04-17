@@ -10,15 +10,16 @@ def test_handle_exception():
     """
     assert handle_exception(ReleaseTestError(), 10) == (
         ExitCode.UNSPECIFIED,
-        ResultStatus.UNKNOWN,
+        ResultStatus.RUNTIME_ERROR,
         None,
     )
     # retriable
-    assert handle_exception(ReleaseTestSetupError(), 10) == (
-        ExitCode.SETUP_ERROR,
-        ResultStatus.TRANSIENT_INFRA_ERROR,
-        None,
-    )
+    with mock.patch.dict(os.environ, {"BUILDKITE_TIME_LIMIT_FOR_RETRY": "100"}):
+        assert handle_exception(ReleaseTestSetupError(), 10) == (
+            ExitCode.SETUP_ERROR,
+            ResultStatus.TRANSIENT_INFRA_ERROR,
+            None,
+        )
     # retry limit reached, not retriable
     with mock.patch.dict(os.environ, {"BUILDKITE_RETRY_COUNT": "1"}):
         assert handle_exception(ReleaseTestSetupError(), 10) == (
