@@ -81,7 +81,7 @@ print(cum_sum)
 import ray
 
 @ray.remote
-def consume(data: ray.data.Dataset[int]) -> int:
+def consume(data: ray.data.Datastream[int]) -> int:
     num_batches = 0
     # Consume data in 2-record batches.
     for batch in data.iter_batches(batch_size=2):
@@ -103,7 +103,7 @@ class Worker:
     def __init__(self, rank: int):
         pass
 
-    def train(self, shard: ray.data.Dataset[int]) -> int:
+    def train(self, shard: ray.data.Datastream[int]) -> int:
         for batch in shard.iter_torch_batches(batch_size=256):
             pass
         return shard.count()

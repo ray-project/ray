@@ -132,7 +132,7 @@ Pass datasets to Ray tasks or actors, and access records with methods like
 
 
 To learn more about consuming datasets, read
-:ref:`Consuming datasets <consuming_datasets>`.
+:ref:`Consuming datasets <consuming_datastreams>`.
 
 Save the dataset
 ----------------
