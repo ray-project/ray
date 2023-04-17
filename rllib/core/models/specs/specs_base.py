@@ -143,8 +143,10 @@ class TensorSpec(Spec):
             self._expected_type = object
 
             def _full(cls, shape, fill_value=0):
-                raise ValueError("Cannot fill tensor without framework. This "
-                                 "TensorSpec was instantiated without a framework.")
+                raise ValueError(
+                    "Cannot fill tensor without framework. This "
+                    "TensorSpec was instantiated without a framework."
+                )
 
         else:
             raise ValueError(f"Unknown framework {self._framework}")

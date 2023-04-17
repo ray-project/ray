@@ -9,21 +9,23 @@ from ray.rllib.core.models.specs.specs_base import TensorSpec
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 jax, _ = try_import_jax()
-import jax
 jnp = jax.numpy
+
+# This makes it so that does not convert 64-bit floats to 32-bit
+jax.config.update("jax_enable_x64", True)
 
 FRAMEWORKS_TO_TEST = {"torch", "np", "tf2", "jax"}
 DOUBLE_TYPE = {
     "torch": torch.float64,
     "np": np.float64,
     "tf2": tf.float64,
-    "jax": jnp.float64
+    "jax": jnp.float64,
 }
 FLOAT_TYPE = {
     "torch": torch.float32,
     "np": np.float32,
     "tf2": tf.float32,
-    "jax": jnp.float32
+    "jax": jnp.float32,
 }
 
 
@@ -62,7 +64,8 @@ class TestSpecs(unittest.TestCase):
     #        double_type = DOUBLE_TYPE[fw]
     #        float_type = FLOAT_TYPE[fw]
 
-    #        tensor_2d = TensorSpec("b,h", b=b, h=h, framework=fw, dtype=double_type).fill()
+    #        tensor_2d = TensorSpec("b,h", b=b, h=h, framework=fw,
+    #                               dtype=double_type).fill()
 
     #        matching_specs = [
     #            TensorSpec("b,h", framework=fw),
@@ -86,7 +89,8 @@ class TestSpecs(unittest.TestCase):
     #            TensorSpec("b,h", h=h + 1, framework=fw),
     #        ]
     #        if fw != "jax":
-    #            non_matching_specs.append(TensorSpec("b,h", framework=fw, dtype=float_type))
+    #            non_matching_specs.append(TensorSpec("b,h", framework=fw,
+    #                                                 dtype=float_type))
 
     #        for spec in non_matching_specs:
     #            self.assertRaises(ValueError, lambda: spec.validate(tensor_2d))
@@ -94,12 +98,15 @@ class TestSpecs(unittest.TestCase):
     #        # non unique dimensions
     #        self.assertRaises(ValueError, lambda: TensorSpec("b,b", framework=fw))
     #        # unknown dimensions
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h=2, c=3, framework=fw))
+    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h=2, c=3,
+    #                                                         framework=fw))
     #        self.assertRaises(ValueError, lambda: TensorSpec("b1", b2=1, framework=fw))
     #        # zero dimensions
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h=0, framework=fw))
-    #        # non-integer dimension
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h="h", framework=fw))
+    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h=0,
+    #                                                         framework=fw))
+    #        non-integer dimension
+    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h="h",
+    #                                                         framework=fw))
 
     def test_equal(self):
 
