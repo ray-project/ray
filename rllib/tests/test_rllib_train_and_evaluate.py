@@ -209,6 +209,10 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             config.evaluation(
                 evaluation_config=AlgorithmConfig.overrides(explore=False)
             )
+        else:
+            config.evaluation(
+                evaluation_config=AlgorithmConfig.overrides(explore=True)
+            )
 
         stop = {"episode_reward_mean": 100.0}
 
