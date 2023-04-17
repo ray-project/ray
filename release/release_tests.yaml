@@ -3007,7 +3007,7 @@
   
   run:
     timeout: 3600
-    script: pytest checkpointing_tests/learner_group_checkpointing.py
+    script: pytest checkpointing_tests/test_learner_group_checkpointing.py
 
     wait_for_nodes:
       num_nodes: 3
