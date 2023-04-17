@@ -121,16 +121,6 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # Auto-retry on transient infra error (according to result.BuildkiteExitCode)
-    step["retry"] = {
-        "automatic": [
-            {
-                "exit_status": BuildkiteExitCode.TRANSIENT_INFRA_ERROR.value,
-                "limit": 2,
-            }
-        ]
-    }
-
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)
     if not stable:
