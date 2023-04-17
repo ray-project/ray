@@ -1274,6 +1274,15 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: horovod/app_config.yaml
+        cluster_compute: horovod/compute_tpl_gce.yaml
+
   alert: default
 
 - name: ml_user_horovod_user_test_master
@@ -1293,6 +1302,15 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: horovod/app_config_master.yaml
+        cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1314,6 +1332,15 @@
     wait_for_nodes:
       num_nodes: 3
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: train/app_config.yaml
+        cluster_compute: train/compute_tpl_gce.yaml
+
   alert: default
 
 - name: ml_user_train_torch_linear_test
@@ -1334,6 +1361,15 @@
     wait_for_nodes:
       num_nodes: 3
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: train/app_config.yaml
+        cluster_compute: train/compute_tpl_gce.yaml
+
   alert: default
 
 - name: ml_user_xgboost_gpu_connect_latest
@@ -1353,6 +1389,15 @@
     wait_for_nodes:
       num_nodes: 5
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: xgboost/app_config_gpu.yaml
+        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
+
   alert: default
 
 - name: ml_user_xgboost_gpu_connect_master
@@ -1371,6 +1416,15 @@
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: xgboost/app_config_gpu_master.yaml
+        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
 
   alert: default
 
@@ -1392,6 +1446,15 @@
     wait_for_nodes:
       num_nodes: 3
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ray-lightning/app_config.yaml
+        cluster_compute: ray-lightning/compute_tpl_gce.yaml
+
   alert: default
 
 - name: ml_user_ray_lightning_user_test_master
@@ -1412,6 +1475,15 @@
     wait_for_nodes:
       num_nodes: 3
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ray-lightning/app_config_master.yaml
+        cluster_compute: ray-lightning/compute_tpl_gce.yaml
+
   alert: default
 
 - name: ml_user_tune_rllib_connect_test
@@ -1431,6 +1503,15 @@
     script: python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tune_rllib/compute_tpl_gce.yaml
 
   alert: default
 
