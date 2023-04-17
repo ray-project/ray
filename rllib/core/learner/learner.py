@@ -761,7 +761,10 @@ class Learner:
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def postprocess_gradients(self, gradients_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         """Applies potential postprocessing operations on the gradients.
 
         This method is called after gradients have been computed, and modifies them
@@ -773,9 +776,9 @@ class Learner:
             gradients_dict: A dictionary of gradients.
 
         Returns:
-            A new dictionary with the updated gradients.
+            A dictionary with the updated gradients.
         """
-        return gradients_dict.copy()
+        return gradients_dict
 
     def update(
         self,

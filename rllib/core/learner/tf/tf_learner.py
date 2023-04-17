@@ -103,7 +103,10 @@ class TfLearner(Learner):
         return grads
 
     @override(Learner)
-    def postprocess_gradients(self, gradients_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         """Applies grad clipping depending on the optimizer config."""
 
         # Clip by value (each gradient individually).
