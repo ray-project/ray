@@ -16,9 +16,6 @@
 
 # BASED ON https://github.com/philwo/bazel-utils/blob/main/sharding/sharding.py
 
-from collections import defaultdict
-from dataclasses import dataclass
-from typing import Iterable, List, Optional, Set, Tuple
 import argparse
 import os
 import re
@@ -26,6 +23,9 @@ import shlex
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Iterable, List, Optional, Set, Tuple
 
 
 @dataclass
