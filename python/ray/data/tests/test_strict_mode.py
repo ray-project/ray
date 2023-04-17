@@ -147,10 +147,10 @@ def test_strict_schema(ray_start_regular_shared):
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
     assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert str(schema) == "Schema(['data'])"
+    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
-    assert str(schema) == "Schema(['data'])"
+    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
     assert isinstance(schema.base_schema, PandasBlockSchema)
 
 
