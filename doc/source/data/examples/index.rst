@@ -12,9 +12,9 @@ Examples
 Simple Data Processing Examples
 -------------------------------
 
-Ray Datasets is a data processing engine that supports multiple data
+Ray Data is a data processing engine that supports multiple data
 modalities and types. Here you will find a few end-to-end examples of some basic data
-processing with Ray Datasets on tabular data, text (coming soon!), and imagery (coming
+processing with Ray Data on tabular data, text (coming soon!), and imagery (coming
 soon!).
 
 .. panels::
@@ -36,7 +36,7 @@ soon!).
     +++
     .. link-button:: batch_training
         :type: ref
-        :text: Batch Training with Ray Datasets
+        :text: Batch Training with Ray Data
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/ocr.jpg
@@ -44,7 +44,7 @@ soon!).
     +++
     .. link-button:: ocr_example
         :type: ref
-        :text: Scaling OCR with Ray Datasets
+        :text: Scaling OCR with Ray Data
         :classes: btn-link btn-block stretched-link
 
 

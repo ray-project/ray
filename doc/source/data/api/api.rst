@@ -1,6 +1,6 @@
 .. _data-api:
 
-Ray Datasets API
+Ray Data API
 ================
 
 .. toctree::

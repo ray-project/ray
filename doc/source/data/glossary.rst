@@ -1,7 +1,7 @@
 .. _datasets_glossary:
 
 =====================
-Ray Datasets Glossary
+Ray Data Glossary
 =====================
 
 .. glossary::
@@ -60,7 +60,7 @@ Ray Datasets Glossary
         Its utility is as the last-mile bridge from ETL pipeline outputs to distributed
         ML applications and libraries in Ray.
 
-        To learn more about Ray Datasets, read :ref:`Key Concepts <datastream_concept>`.
+        To learn more about Ray Data, read :ref:`Key Concepts <datastream_concept>`.
 
     Dataset (object)
         A class that represents a distributed collection of data.

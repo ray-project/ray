@@ -32,7 +32,7 @@ The following figure visualizes a tabular dataset with three blocks, each holdin
 
 Since a Dataset is just a list of Ray object references, it can be freely passed between Ray tasks,
 actors, and libraries like any other object reference.
-This flexibility is a unique characteristic of Ray Datasets.
+This flexibility is a unique characteristic of Ray Data.
 
 Reading Data
 ============

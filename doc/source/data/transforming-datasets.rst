@@ -29,9 +29,9 @@ There are two main types of transformations:
 * All-to-all: input blocks can contribute to multiple output blocks,
   such as :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>`.
 
-Here is a table listing some common transformations supported by Ray Datasets.
+Here is a table listing some common transformations supported by Ray Data.
 
-.. list-table:: Common Ray Datasets transformations.
+.. list-table:: Common Ray Data transformations.
    :header-rows: 1
 
    * - Transformation

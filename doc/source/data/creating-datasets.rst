@@ -318,7 +318,7 @@ are supported for each of these storage systems.
 Reading from Local Storage
 ==========================
 
-In Ray Datasets, users often read from remote storage systems as described above. In
+In Ray Data, users often read from remote storage systems as described above. In
 some use cases, users may want to read from local storage. There are three ways to read
 from a local filesystem:
 
@@ -342,9 +342,9 @@ from a local filesystem:
 Reading Compressed Files
 ========================
 
-Ray Datasets supports reading compressed files using the ``arrow_open_stream_args`` arg.
+Ray Data supports reading compressed files using the ``arrow_open_stream_args`` arg.
 `Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__
-(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Datasets.
+(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Data.
 For example:
 
 .. literalinclude:: ./doc_code/creating_datastreams.py
@@ -567,7 +567,7 @@ From Torch and TensorFlow
 From 🤗 (Hugging Face) Datasets
 -------------------------------
 
-You can convert 🤗 Datasets into Ray Datasets by using
+You can convert 🤗 Datasets into Ray Data by using
 :py:class:`~ray.data.from_huggingface`. This function accesses the underlying Arrow table and
 converts it into a Ray Dataset directly.
 
