@@ -218,6 +218,9 @@ class TensorSpec(Spec):
 
         Returns:
             A tensor with the specified value that matches the specs.
+
+        Raises:
+            ValueError: If `framework` is not specified.
         """
 
         if self._framework == "torch":
