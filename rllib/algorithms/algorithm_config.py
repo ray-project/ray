@@ -421,7 +421,8 @@ class AlgorithmConfig(_Config):
         self._enable_rl_module_api = False
         # Whether to error out if exploration config is set when using RLModules.
         self._validate_exploration_conf_and_rl_modules = True
-        # Helper to keep track of the original exploration config.
+        # Helper to keep track of the original exploration config when dis-/enabling
+        # rl modules.
         self.__prior_exploration_config = None
 
         # `self.experimental()`
