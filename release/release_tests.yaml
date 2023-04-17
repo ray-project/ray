@@ -766,12 +766,14 @@
   team: ml
   cluster:
     cluster_env: dreambooth_env.yaml
-    cluster_compute: dreambooth_compute.yaml
+    cluster_compute: dreambooth_compute_aws.yaml
 
   run:
     timeout: 1800
     script: bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
+
+  # variations: A10G not available on GCE, yet.
 
 
 - name: air_example_gptj_deepspeed_fine_tuning
@@ -784,11 +786,20 @@
   team: ml
   cluster:
     cluster_env: gptj_deepspeed_env.yaml
-    cluster_compute: gptj_deepspeed_compute.yaml
+    cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
     timeout: 3600
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: gptj_deepspeed_env.yaml
+        cluster_compute: gptj_deepspeed_compute_gce.yaml
 
 
 #####################################
