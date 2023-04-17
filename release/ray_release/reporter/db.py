@@ -11,7 +11,8 @@ from ray_release.config import Test
 from ray_release.logger import logger
 
 CRASH_PATTERN_MAX_LENGTH = 4000
-TRACEBACK_PATTERN = 'Traceback (most recent call last)'
+TRACEBACK_PATTERN = "Traceback (most recent call last)"
+
 
 class DBReporter(Reporter):
     def __init__(self):
@@ -23,8 +24,8 @@ class DBReporter(Reporter):
 
     def _compute_signature(self, stack_trace: List[str]) -> str:
         """
-        Compute signature pattern from stack trace, by remove factors such as date, 
-        time, temp directory, line numbers, etc. This help to aggregate similar logs 
+        Compute signature pattern from stack trace, by remove factors such as date,
+        time, temp directory, line numbers, etc. This help to aggregate similar logs
         into same bug patterns
         """
         massaged_trace = []
