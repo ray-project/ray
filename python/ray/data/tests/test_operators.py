@@ -532,6 +532,38 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
         op.start(ExecutionOptions())
 
 
+def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
+    """Tests that ActorPoolMapOperator refuses input when actors are pending."""
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    compute_strategy = ActorPoolStrategy(size=1)
+
+    op = MapOperator.create(
+        _sleep,
+        input_op=input_op,
+        init_fn=lambda: 0,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    op.start(ExecutionOptions())
+
+    # Cannot add input until actor has started.
+    assert not op.should_add_input()
+    for ref in op.get_work_refs():
+        op.notify_work_completed(ref)
+    assert op.should_add_input()
+
+    # Can accept up to four inputs per actor by default.
+    for _ in range(4):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    assert not op.should_add_input()
+
+
 @pytest.mark.parametrize(
     "compute,expected",
     [

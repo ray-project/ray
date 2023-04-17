@@ -317,8 +317,9 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     ds = ray.data.range(100000, parallelism=100).map_batches(func, batch_size=None)
     it = iter(ds.iter_batches(batch_size=None))
     next(it)
+    time.sleep(3)  # Pause a little so anything that would be executed runs.
     num_finished = ray.get(counter.get.remote())
-    assert num_finished < 5, num_finished
+    assert num_finished < 20, num_finished
     # Check intermediate stats reporting.
     stats = ds.stats()
     assert "100/100 blocks executed" not in stats, stats
