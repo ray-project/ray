@@ -77,7 +77,10 @@ class QMixConfig(SimpleQConfig):
         self.double_q = True
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
-        self.grad_clip = 10
+
+        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
+        self.grad_clip = 10.0
+        self.grad_clip_by_global_norm = 10.0
 
         # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
         # alternative `learn_on_loaded_batch` alternative for the GPU.

@@ -107,7 +107,11 @@ class APPOConfig(ImpalaConfig):
         self.learner_queue_timeout = 300
         self.max_sample_requests_in_flight_per_worker = 2
         self.broadcast_interval = 1
+
+        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 40.0
+        self.grad_clip_by_global_norm = 40.0
+
         self.opt_type = "adam"
         self.lr = 0.0005
         self.lr_schedule = None
@@ -250,31 +254,6 @@ class APPOConfig(ImpalaConfig):
             tau=self.tau,
             **dataclasses.asdict(base_hps),
         )
-
-
-class UpdateTargetAndKL:
-    def __init__(self, workers, config):
-        self.workers = workers
-        self.config = config
-        self.update_kl = UpdateKL(workers)
-        self.target_update_freq = (
-            config["num_sgd_iter"] * config["minibatch_buffer_size"]
-        )
-
-    def __call__(self, fetches):
-        metrics = _get_shared_metrics()
-        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
-        last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update > self.target_update_freq:
-            metrics.counters[NUM_TARGET_UPDATES] += 1
-            metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
-            # Update Target Network
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, _: p.update_target()
-            )
-            # Also update KL Coeff
-            if self.config.use_kl_loss:
-                self.update_kl(fetches)
 
 
 class APPO(Impala):

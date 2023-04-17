@@ -77,7 +77,11 @@ class DreamerConfig(AlgorithmConfig):
         self.td_model_lr = 6e-4
         self.actor_lr = 8e-5
         self.critic_lr = 8e-5
+
+        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 100.0
+        self.grad_clip_by_global_norm = 100.0
+
         self.lambda_ = 0.95
         self.dreamer_train_iters = 100
         self.batch_size = 50
