@@ -7,8 +7,8 @@ import os
 import re
 import subprocess
 import sys
-from pprint import pformat
 import traceback
+from pprint import pformat
 
 
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
