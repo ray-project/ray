@@ -24,7 +24,7 @@ def test_create_node_returns_dict():
     expected_return_value = {"instance_id1": {"dict": 1}, "instance_id2": {"dict": 2}}
 
     def __init__(self, provider_config: dict, cluster_name: str):
-        self.lock = RLock()
+        self.locks: Dict[str, RLock] = {}
         self.cached_nodes: Dict[str, GCPNode] = {}
         self.resources: Dict[GCPNodeType, GCPResource] = {}
         self.resources[GCPNodeType.COMPUTE] = mock_resource
@@ -33,6 +33,56 @@ def test_create_node_returns_dict():
         node_provider = GCPNodeProvider({}, "")
         create_node_return_value = node_provider.create_node(mock_node_config, {}, 1)
     assert create_node_return_value == expected_return_value
+
+
+def test_create_node_update_locks():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    mock_resource = MagicMock()
+    mock_resource.create_instances.return_value = [
+        ({"dict": 1}, "instance_id1"),
+        ({"dict": 2}, "instance_id2"),
+    ]
+    expected_node_ids_from_locks = {"instance_id1", "instance_id2"}
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.locks: Dict[str, RLock] = {}
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+        _ = node_provider.create_node(mock_node_config, {}, 1)
+        update_node_ids_from_locks = set(node_provider.locks.keys())
+    assert update_node_ids_from_locks == expected_node_ids_from_locks
+
+
+def test_terminate_nodes():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    node_type = GCPNodeType.COMPUTE.value
+    id1, id2 = f"instance-id1-{node_type}", f"instance-id2-{node_type}"
+    terminate_node_ids = [id1, id2]
+    mock_resource = MagicMock()
+    mock_resource.create_instances.return_value = [
+        ({"dict": 1}, id1),
+        ({"dict": 2}, id2),
+    ]
+    mock_resource.delete_instance.return_value = {}
+    expected_lock_list_len = 0
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.locks: Dict[str, RLock] = {}
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+        node_provider.create_node(mock_node_config, {}, 1)
+        node_provider.terminate_nodes(terminate_node_ids)
+        terminated_lock_list_len = len(node_provider.locks)
+
+    assert terminated_lock_list_len == expected_lock_list_len
 
 
 @pytest.mark.parametrize(
