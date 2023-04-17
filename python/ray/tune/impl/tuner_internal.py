@@ -310,7 +310,7 @@ class TunerInternal:
             raise RuntimeError(
                 f"Could not find Tuner state in restore directory. Did you pass"
                 f"the correct path (including experiment directory?) Got: "
-                f"{path_or_uri}"
+                f"{path_or_uri} ({experiment_checkpoint_path})"
             )
 
         # Load trainable and tuner state

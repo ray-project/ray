@@ -42,6 +42,12 @@ def ray_start_2_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
+
+
 @pytest.fixture(scope="module")
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4, configure_logging=False)
@@ -393,20 +399,20 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys):
+def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path):
     """Check that restoring Tuner() objects from cloud storage works"""
     tuner = Tuner(
         _dummy_train_fn,
         run_config=RunConfig(
             name="exp_dir",
-            storage_path="memory:///test/restore",
+            storage_path=configure_storage_path,
             local_dir=str(tmpdir / "ray_results"),
         ),
     )
     tuner.fit()
 
     check_path = tmpdir / "check_save"
-    download_from_uri("memory:///test/restore", str(check_path))
+    download_from_uri(storage_path, str(check_path))
     remote_contents = os.listdir(check_path / "exp_dir")
 
     assert "tuner.pkl" in remote_contents
@@ -417,7 +423,7 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
 
     (tmpdir / "ray_results").remove(ignore_errors=True)
 
-    tuner2 = Tuner.restore("memory:///test/restore/exp_dir", trainable=_dummy_train_fn)
+    tuner2 = Tuner.restore(storage_path + "/exp_dir", trainable=_dummy_train_fn)
     results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
@@ -438,8 +444,27 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
     assert prev_lstat.st_size != after_lstat.st_size
 
     # Overwriting should work
-    tuner3 = Tuner.restore("memory:///test/restore/exp_dir", trainable=_dummy_train_fn)
+    tuner3 = Tuner.restore(storage_path + "/exp_dir", trainable=_dummy_train_fn)
     tuner3.fit()
+
+
+def test_tuner_restore_from_cloud_manual_path(
+    ray_start_2_cpus, tmpdir, clear_memory_filesys
+):
+    storage_path = "memory:///test/restore"
+    _test_tuner_restore_from_cloud(
+        tmpdir, configure_storage_path=storage_path, storage_path=storage_path
+    )
+
+
+def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir):
+    storage_path = "mock:///test/restore"
+
+    ray.init(num_cpus=2, configure_logging=False, storage=storage_path)
+
+    _test_tuner_restore_from_cloud(
+        tmpdir / "local", configure_storage_path=None, storage_path=storage_path
+    )
 
 
 @pytest.mark.parametrize(
