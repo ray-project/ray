@@ -6,7 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
 from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,

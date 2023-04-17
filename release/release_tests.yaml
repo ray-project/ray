@@ -4872,7 +4872,7 @@
 
   run:
     timeout: 7200
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
 
@@ -4898,7 +4898,7 @@
 
   run:
     timeout: 7200
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
+    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
 
@@ -4914,7 +4914,7 @@
 
   run:
     timeout: 28800
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
+    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
 
@@ -4928,7 +4928,7 @@
         cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
       run:
         timeout: 28800
-        script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=40000 --partition-size=1e9 --shuffle
+        script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=40000 --partition-size=1e9 --shuffle
         wait_for_nodes:
           num_nodes: 100
 
@@ -5061,7 +5061,7 @@
   run:
     timeout: 7200
     prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
+    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
 
@@ -5118,7 +5118,7 @@
   run:
     timeout: 7200
     prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
 

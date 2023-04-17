@@ -6,7 +6,7 @@ from typing import Iterator, Optional
 
 import ray
 from ray.data.context import DataContext
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -35,7 +35,7 @@ from ray.data._internal.stats import DatastreamStats
 logger = DatastreamLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
-DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
+DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.

@@ -24,7 +24,7 @@ from ray.data._internal.split import (
     _split_at_indices,
 )
 from ray.data.block import BlockAccessor
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 

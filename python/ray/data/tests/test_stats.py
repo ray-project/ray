@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.stats import _StatsActor, DatastreamStats
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
