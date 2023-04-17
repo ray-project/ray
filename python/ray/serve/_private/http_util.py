@@ -158,8 +158,10 @@ class ASGIHTTPSender(Send):
     def build_asgi_response(self) -> RawASGIResponse:
         return RawASGIResponse(self.messages)
 
+
 def find_all_routes_from_fast_api(fastapi_app, cls: Type):
     from fastapi.routing import APIRoute
+
     class_method_routes = [
         route
         for route in fastapi_app.routes
@@ -185,7 +187,10 @@ def find_all_routes_from_fast_api(fastapi_app, cls: Type):
             )
     return class_method_routes
 
-def make_fastapi_class_based_view(fastapi_app, cls: Type, class_method_routes=None, servable_object=None) -> None:
+
+def make_fastapi_class_based_view(
+    fastapi_app, cls: Type, class_method_routes=None, servable_object=None
+) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 
     Modified from
@@ -219,7 +224,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type, class_method_routes=No
     # for each routes.
     new_router = APIRouter()
     for route in class_method_routes:
-        #fastapi_app.routes.remove(route)
+        # fastapi_app.routes.remove(route)
 
         # This block just adds a default values to the self parameters so that
         # FastAPI knows to inject the object when calling the route.
@@ -257,7 +262,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type, class_method_routes=No
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
-        #if route.response_model:
+        # if route.response_model:
         #    route.secure_cloned_response_field.outer_type_ = (
         #        route.response_field.outer_type_
         #    )

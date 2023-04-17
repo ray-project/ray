@@ -36,7 +36,6 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
 from ray.serve._private.utils import get_random_letters
-from starlette.datastructures import QueryParams
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

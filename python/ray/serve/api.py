@@ -38,7 +38,11 @@ from ray.serve._private.deployment_graph_build import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view, find_all_routes_from_fast_api
+from ray.serve._private.http_util import (
+    ASGIHTTPSender,
+    make_fastapi_class_based_view,
+    find_all_routes_from_fast_api,
+)
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
     DEFAULT,
@@ -53,7 +57,6 @@ from ray.serve._private.utils import (
 from ray.serve._private import api as _private_api
 import starlette
 from collections import OrderedDict
-from ray.util import metrics
 
 logger = logging.getLogger(__file__)
 
@@ -215,8 +218,7 @@ def multiplex(num_models_per_replicas=1):
 
             async def __call__(self, request: starlette.requests.Request):
 
-                # assert RAY_SERVE_REQUEST_ROUTING_TAG in request.query_params
-                tag = request.headers["ray_serve_request_routing_tag"]
+                tag = request.headers[RAY_SERVE_REQUEST_ROUTING_TAG]
 
                 if tag not in self.models:
                     print(f"{bcolors.WARNING}Model miss {tag} {bcolors.ENDC}")
@@ -269,11 +271,11 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
-        #if isinstance(app, (FastAPI, APIRouter)):
+        # if isinstance(app, (FastAPI, APIRouter)):
         #   make_fastapi_class_based_view(app, cls)
-        #if isinstance(app, (FastAPI, APIRouter)):
+        # if isinstance(app, (FastAPI, APIRouter)):
         #    make_fastapi_class_based_view(app, cls, class_method_routes)
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         class_method_routes = find_all_routes_from_fast_api(app, cls)
 
         # Free the state of the app so subsequent modification won't affect
@@ -281,38 +283,40 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         # recursion issue.
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
-        #if isinstance(frozen_app, (FastAPI, APIRouter)):
+        # if isinstance(frozen_app, (FastAPI, APIRouter)):
         #   make_fastapi_class_based_view(frozen_app, cls, class_method_routes)
-        #if isinstance(frozen_app, (FastAPI, APIRouter)):
+        # if isinstance(frozen_app, (FastAPI, APIRouter)):
         #    make_fastapi_class_based_view(frozen_app, cls, class_method_routes, None)
 
         class ASGIAppWrapper(cls):
             async def __init__(self, *args, servable_object=None, **kwargs):
                 super().__init__(*args, **kwargs)
                 if isinstance(frozen_app, (FastAPI, APIRouter)):
-                    make_fastapi_class_based_view(frozen_app, cls, class_method_routes, servable_object)
-                #import pdb; pdb.set_trace()
+                    make_fastapi_class_based_view(
+                        frozen_app, cls, class_method_routes, servable_object
+                    )
+                # import pdb; pdb.set_trace()
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
 
                 install_serve_encoders_to_fastapi()
 
-                #frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+                # frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
                 self._serve_app = frozen_app
 
                 # Use uvicorn's lifespan handling code to properly deal with
                 # startup and shutdown event.
                 self._serve_asgi_lifespan = LifespanOn(
-                   Config(self._serve_app, lifespan="on")
+                    Config(self._serve_app, lifespan="on")
                 )
                 # Replace uvicorn logger with our own.
                 self._serve_asgi_lifespan.logger = logger
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
-                   self._serve_asgi_lifespan.logger, level=logging.WARNING
+                    self._serve_asgi_lifespan.logger, level=logging.WARNING
                 ):
-                   await self._serve_asgi_lifespan.startup()
+                    await self._serve_asgi_lifespan.startup()
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
@@ -329,9 +333,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
-                   self._serve_asgi_lifespan.logger, level=logging.WARNING
+                    self._serve_asgi_lifespan.logger, level=logging.WARNING
                 ):
-                   await self._serve_asgi_lifespan.shutdown()
+                    await self._serve_asgi_lifespan.shutdown()
 
                 # Make sure to call user's del method as well.
                 super_cls = super()

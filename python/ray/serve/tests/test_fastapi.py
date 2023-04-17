@@ -29,7 +29,10 @@ from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.http_util import make_fastapi_class_based_view, find_all_routes_from_fast_api
+from ray.serve._private.http_util import (
+    make_fastapi_class_based_view,
+    find_all_routes_from_fast_api,
+)
 from ray.serve._private.utils import DEFAULT
 from ray._private.test_utils import SignalActor, wait_for_condition
 
