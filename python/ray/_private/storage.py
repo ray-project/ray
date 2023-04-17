@@ -339,7 +339,7 @@ def _init_storage(storage_uri: str, is_head: bool):
 
 
 def _get_storage_uri() -> Optional[str]:
-    """Get storage API if defined."""
+    """Get storage API, if configured."""
     global _storage_uri
     return _storage_uri
 
