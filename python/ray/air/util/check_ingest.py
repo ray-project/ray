@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import Dataset, DatasetIterator, Preprocessor
+from ray.data import Dataset, DataIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -67,11 +67,11 @@ class DummyTrainer(DataParallelTrainer):
         print("Starting dataset preprocessing")
         super().preprocess_datasets()
         if self.time_preprocessing_separately:
-            for dataset_name, ds in self.datasets.items():
+            for dataset_name, ds in list(self.datasets.items()):
                 start = time.perf_counter()
                 # Force execution to time preprocessing since Datasets are lazy by
                 # default.
-                ds.cache()
+                self.datasets[dataset_name] = ds.materialize()
                 print(
                     f"Preprocessed {dataset_name} in",
                     time.perf_counter() - start,
@@ -157,9 +157,9 @@ def make_local_dataset_iterator(
     dataset: Dataset,
     preprocessor: Preprocessor,
     dataset_config: DatasetConfig,
-) -> DatasetIterator:
+) -> DataIterator:
     """A helper function to create a local
-    :py:class:`DatasetIterator <ray.data.DatasetIterator>`,
+    :py:class:`DataIterator <ray.data.DataIterator>`,
     like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
 
     This function should only be used for development and debugging. It will

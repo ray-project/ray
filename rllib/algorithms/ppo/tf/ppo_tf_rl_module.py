@@ -1,12 +1,12 @@
 from typing import Mapping, Any, List
 
 from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
-from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
+from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -16,7 +16,7 @@ tf1, tf, _ = try_import_tf()
 
 
 class PPOTfRLModule(PPORLModuleBase, TfRLModule):
-    framework = "tf2"
+    framework: str = "tf2"
 
     def __init__(self, *args, **kwargs):
         TfRLModule.__init__(self, *args, **kwargs)
@@ -69,14 +69,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
+        # if self.encoder.config.shared:
+        #     batch[STATE_IN] = None
+        # else:
+        #     batch[STATE_IN] = {
+        #         ACTOR: None,
+        #         CRITIC: None,
+        #     }
+        # batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -99,14 +99,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
+        # if self.encoder.config.shared:
+        #     batch[STATE_IN] = None
+        # else:
+        #     batch[STATE_IN] = {
+        #         ACTOR: None,
+        #         CRITIC: None,
+        #     }
+        # batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -132,14 +132,14 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
+        # if self.encoder.config.shared:
+        #     batch[STATE_IN] = None
+        # else:
+        #     batch[STATE_IN] = {
+        #         ACTOR: None,
+        #         CRITIC: None,
+        #     }
+        # batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)

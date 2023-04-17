@@ -13,7 +13,6 @@ from jsonschema import validate
 import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private import gcs_utils
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
@@ -239,7 +238,7 @@ def test_worker_crash_increment_stats():
         with pytest.raises(ray.exceptions.OutOfMemoryError):
             ray.get(oomer.options(max_retries=0).remote())
 
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
             lambda: "worker_crash_system_error"
             in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
@@ -264,7 +263,7 @@ def test_actor_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         actor = Actor.remote()
         wait_for_condition(
@@ -319,7 +318,7 @@ def test_pg_stats(reset_usage_stats):
         num_cpus=3,
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
         ray.get(pg.ready())
@@ -349,7 +348,7 @@ def test_task_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
@@ -704,6 +703,8 @@ def test_usage_stats_enabled_endpoint(
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
+    from ray.job_submission import JobSubmissionClient
+
     address = call_ray_start
     ray.init(address=address)
 
@@ -748,9 +749,7 @@ with joblib.parallel_backend("ray"):
     run_string_as_driver(driver)
 
     if sys.platform != "win32":
-        job_submission_client = ray.job_submission.JobSubmissionClient(
-            "http://127.0.0.1:8265"
-        )
+        job_submission_client = JobSubmissionClient("http://127.0.0.1:8265")
         job_id = job_submission_client.submit_job(entrypoint="ls")
         wait_for_condition(
             lambda: job_submission_client.get_job_status(job_id)
@@ -798,7 +797,7 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
 ):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
-    gcs_client = gcs_utils.GcsClient(address=cluster.gcs_address)
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
     assert ray_usage_lib.get_total_num_running_jobs_to_report(gcs_client) == 0
 
     ray.init(address=cluster.address)

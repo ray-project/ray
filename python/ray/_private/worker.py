@@ -456,6 +456,7 @@ class Worker:
         self.ray_debugger_external = False
         self._load_code_from_local = False
         # Opened file descriptor to stdout/stderr for this python worker.
+        self._enable_record_task_log = ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING
         self._out_file = None
         self._err_file = None
         # Create the lock here because the serializer will use it before
@@ -539,6 +540,9 @@ class Worker:
 
     def record_task_log_start(self):
         """Record the task log info when task starts executing"""
+        if not self._enable_record_task_log:
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -548,6 +552,9 @@ class Worker:
 
     def record_task_log_end(self):
         """Record the task log info when task finishes executing"""
+        if not self._enable_record_task_log:
+            return
+
         self.core_worker.record_task_log_end(
             self.get_current_out_offset(), self.get_current_err_offset()
         )
@@ -1424,10 +1431,6 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
-    # NOTE(swang): We must set the node IP address *after* we determine whether
-    # this is an existing cluster or not. For Windows and OSX, the resolved IP
-    # is localhost for new clusters and the usual public IP for existing
-    # clusters.
     if _node_ip_address is not None:
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
     raylet_ip_address = node_ip_address
@@ -1498,15 +1501,6 @@ def init(
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             storage=storage,
-            # We need to disable it if runtime env is not set.
-            # Uploading happens after core worker is created. And we should
-            # prevent default worker being created before uploading.
-            # TODO (yic): Have a separate connection to gcs client when
-            # removal redis is done. The uploading should happen before this
-            # one.
-            start_initial_python_workers_for_first_job=(
-                job_config is None or job_config.runtime_env is None
-            ),
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -2285,7 +2279,7 @@ def connect(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
     )
     if tracing_hook_val is not None:
-        ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
+        ray.util.tracing.tracing_helper._enbale_tracing()
         if not getattr(ray, "__traced__", False):
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()

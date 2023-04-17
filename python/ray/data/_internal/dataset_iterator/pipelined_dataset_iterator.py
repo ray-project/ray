@@ -2,15 +2,15 @@ from typing import Any, TYPE_CHECKING, Callable, Optional, Union, Iterator, Tupl
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, DataBatch
-from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.stats import DatasetStats
+from ray.data.dataset_iterator import DataIterator
+from ray.data._internal.stats import DatastreamStats
 
 if TYPE_CHECKING:
     import pyarrow
     from ray.data import DatasetPipeline
 
 
-class PipelinedDatasetIterator(DatasetIterator):
+class PipelinedDataIterator(DataIterator):
     def __init__(
         self,
         base_dataset_pipeline: "DatasetPipeline",
@@ -19,9 +19,9 @@ class PipelinedDatasetIterator(DatasetIterator):
         self._epoch_iterator = None
 
     def __repr__(self) -> str:
-        return f"DatasetIterator({self._base_dataset_pipeline})"
+        return f"DataIterator({self._base_dataset_pipeline})"
 
-    def _get_next_dataset(self) -> "DatasetPipeline":
+    def _get_next_datastream(self) -> "DatasetPipeline":
         if self._epoch_iterator is None:
             self._epoch_iterator = self._base_dataset_pipeline.iter_epochs()
 
@@ -31,15 +31,30 @@ class PipelinedDatasetIterator(DatasetIterator):
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats]
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
-        epoch_pipeline = self._get_next_dataset()
+        epoch_pipeline = self._get_next_datastream()
+
+        # Peek the first datastream from the pipeline to see if blocks are owned
+        # by consumer. If so, the blocks are safe to be eagerly cleared after use
+        # because memories are not shared across different consumers. This will
+        # improve the memory efficiency.
+        if epoch_pipeline._first_datastream is not None:
+            blocks_owned_by_consumer = (
+                epoch_pipeline._first_datastream._plan.execute()._owned_by_consumer
+            )
+        else:
+            blocks_owned_by_consumer = (
+                epoch_pipeline._peek()._plan.execute()._owned_by_consumer
+            )
 
         def block_iter():
             for ds in epoch_pipeline.iter_datasets():
                 yield from ds._plan.execute().iter_blocks_with_metadata()
 
-        return block_iter(), None
+        return block_iter(), None, blocks_owned_by_consumer
 
     def iter_batches(
         self,
@@ -80,12 +95,12 @@ class PipelinedDatasetIterator(DatasetIterator):
             # Raise error for backwards compatibility.
             # TODO: remove this method in 2.6.
             raise DeprecationWarning(
-                "session.get_dataset_shard returns a ray.data.DatasetIterator "
-                "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
+                "session.get_dataset_shard returns a ray.data.DataIterator "
+                "instead of a Datastream/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
                 "iterate over one epoch. See "
                 "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
-                "for full DatasetIterator docs."
+                "for full DataIterator docs."
             )
         else:
             raise AttributeError()
