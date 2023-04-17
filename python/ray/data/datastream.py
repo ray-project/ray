@@ -733,7 +733,7 @@ class Datastream(Generic[T]):
 
         return self.map_batches(
             process_batch,
-            batch_format="pandas",# TODO(ekl) we should make this configurable.
+            batch_format="pandas",  # TODO(ekl) we should make this configurable.
             compute=compute,
             zero_copy_batch=False,
             **ray_remote_args,
@@ -4747,4 +4747,3 @@ def _do_write(
     write_args = _unwrap_arrow_serialization_workaround(write_args)
     DataContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)
-
