@@ -242,7 +242,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = -1):
+def range_table(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     """Create a tabular stream from a range of integers [0..n).
 
     Examples:

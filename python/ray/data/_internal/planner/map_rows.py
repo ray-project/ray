@@ -4,7 +4,7 @@ from typing import Callable, Iterator
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import Block, BlockAccessor, RowUDF
+from ray.data.block import Block, BlockAccessor, RowUDF, StrictModeError
 from ray.data.context import DataContext
 
 
@@ -27,7 +27,7 @@ def generate_map_rows_fn() -> Callable[
                 if context.strict_mode and not isinstance(
                     item, collections.abc.Mapping
                 ):
-                    raise ValueError(
+                    raise StrictModeError(
                         f"Error validating {_truncated_repr(item)}: "
                         "Standalone Python objects are not "
                         "allowed in strict mode. To return Python objects from map(), "

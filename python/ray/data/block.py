@@ -59,6 +59,10 @@ AggType = TypeVar("AggType")
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
+class StrictModeError(ValueError):
+    pass
+
+
 def _validate_key_fn(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     key: KeyFn,
@@ -162,7 +166,7 @@ def apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
         if given_batch_format == "default":
             given_batch_format = "numpy"
         if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
-            raise ValueError(
+            raise StrictModeError(
                 f"The given batch format {given_batch_format} is not allowed "
                 f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
             )
@@ -394,7 +398,7 @@ class BlockAccessor(Generic[T]):
 
             ctx = ray.data.DatasetContext.get_current()
             if ctx.strict_mode:
-                raise ValueError(
+                raise StrictModeError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "Standalone numpy arrays are not "
                     "allowed in strict mode. Return a dict of field -> array, "
@@ -445,7 +449,7 @@ class BlockAccessor(Generic[T]):
 
             ctx = ray.data.DatasetContext.get_current()
             if ctx.strict_mode:
-                raise ValueError(
+                raise StrictModeError(
                     f"Error validating {_truncated_repr(block)}: "
                     "Standalone Python objects are not "
                     "allowed in strict mode. To use Python objects in a datastream, "
