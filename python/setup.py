@@ -29,7 +29,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -225,18 +225,11 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    if sys.version_info >= (3, 7):
-        pandas_dep = "pandas >= 1.3"
-        numpy_dep = "numpy >= 1.20"
-    else:
-        # Pandas dropped python 3.6 support in 1.2.
-        pandas_dep = "pandas >= 1.0.5"
-        # NumPy dropped python 3.6 support in 1.20.
-        numpy_dep = "numpy >= 1.19"
-    if sys.version_info >= (3, 7) and sys.platform != "win32":
+    pandas_dep = "pandas >= 1.3"
+    numpy_dep = "numpy >= 1.20"
+    if sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
-        # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
@@ -261,7 +254,7 @@ if setup_spec.type == SetupType.RAY:
             "smart_open",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api",
@@ -781,7 +774,6 @@ setuptools.setup(
         "reinforcement-learning deep-learning serving python"
     ),
     classifiers=[
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",

@@ -2,7 +2,6 @@ import argparse
 import base64
 import json
 import time
-import sys
 
 import ray
 import ray._private.node
@@ -171,12 +170,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
-    if sys.version_info >= (3, 7):
-        worker_launched_time_ms = time.time_ns() // 1e6
-    else:
-        # This value might be inaccurate in Python 3.6.
-        # We will anyway deprecate Python 3.6.
-        worker_launched_time_ms = time.time() * 1000
+    worker_launched_time_ms = time.time_ns() // 1e6
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
