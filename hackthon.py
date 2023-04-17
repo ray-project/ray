@@ -17,7 +17,7 @@ logger = logging.getLogger(__file__)
 class ModelTest:
     def __init__(self, tag: str):
         self.tag = tag
-    
+
     async def __call__(self, request: starlette.requests.Request):
         time.sleep(1)
         return f"hello {self.tag}"
@@ -51,7 +51,7 @@ class ModelMultiplex:
         # return self._model(*args, **kwargs)
 
     @app.post("/run2")
-    async def run(self, request: starlette.requests.Request):
+    async def run2(self, request: starlette.requests.Request):
         time.sleep(1)
         return f"[ModelMultiplex] post hello run2 {self.tag}"
 
@@ -75,7 +75,7 @@ class ModelMultiplex2:
         # return self._model(*args, **kwargs)
 
     @app2.post("/run2")
-    async def run(self, request: starlette.requests.Request):
+    async def run2(self, request: starlette.requests.Request):
         time.sleep(1)
         return f"[ModelMultiplex2] post hello run2 {self.tag}"
 

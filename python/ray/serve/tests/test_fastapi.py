@@ -29,10 +29,7 @@ from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.http_util import (
-    make_fastapi_class_based_view,
-    find_all_routes_from_fast_api,
-)
+from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
 from ray._private.test_utils import SignalActor, wait_for_condition
 
@@ -131,8 +128,7 @@ def test_make_fastapi_cbv_util():
     assert app.routes[-1].dependant.query_params[0].name == "self"
     assert len(app.routes[-1].dependant.dependencies) == 0
 
-    class_methods = find_all_routes_from_fast_api(app, A)
-    make_fastapi_class_based_view(app, A, class_methods)
+    make_fastapi_class_based_view(app, A)
 
     # after, "self" is treated as a dependency instead of query params
     assert app.routes[-1].endpoint == A.b

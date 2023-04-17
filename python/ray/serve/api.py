@@ -41,7 +41,6 @@ from ray.serve.handle import RayServeHandle
 from ray.serve._private.http_util import (
     ASGIHTTPSender,
     make_fastapi_class_based_view,
-    find_all_routes_from_fast_api,
 )
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
@@ -271,30 +270,20 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
-        # if isinstance(app, (FastAPI, APIRouter)):
-        #   make_fastapi_class_based_view(app, cls)
-        # if isinstance(app, (FastAPI, APIRouter)):
-        #    make_fastapi_class_based_view(app, cls, class_method_routes)
-        # import pdb; pdb.set_trace()
-        class_method_routes = find_all_routes_from_fast_api(app, cls)
+        if isinstance(app, (FastAPI, APIRouter)):
+            make_fastapi_class_based_view(app, cls)
 
         # Free the state of the app so subsequent modification won't affect
         # this ingress deployment. We don't use copy.copy here to avoid
         # recursion issue.
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
-        # if isinstance(frozen_app, (FastAPI, APIRouter)):
-        #   make_fastapi_class_based_view(frozen_app, cls, class_method_routes)
-        # if isinstance(frozen_app, (FastAPI, APIRouter)):
-        #    make_fastapi_class_based_view(frozen_app, cls, class_method_routes, None)
 
         class ASGIAppWrapper(cls):
             async def __init__(self, *args, servable_object=None, **kwargs):
                 super().__init__(*args, **kwargs)
-                if isinstance(frozen_app, (FastAPI, APIRouter)):
-                    make_fastapi_class_based_view(
-                        frozen_app, cls, class_method_routes, servable_object
-                    )
+                if isinstance(frozen_app, (FastAPI, APIRouter)) and servable_object:
+                    make_fastapi_class_based_view(frozen_app, cls, servable_object)
                 # import pdb; pdb.set_trace()
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
