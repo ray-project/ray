@@ -3891,13 +3891,22 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
       200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+        cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
+
 
 - name: dask_on_ray_large_scale_test_spilling
   group: core-daily-test
   working_dir: nightly_tests
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -3953,6 +3962,15 @@
         num_nodes: 5
       script: python stress_tests/test_state_api_scale.py --smoke-test
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: stress_tests/state_api_app_config.yaml
+        cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
+
 
 - name: shuffle_20gb_with_state_api
   group: core-daily-test
@@ -4007,6 +4025,15 @@
         num_nodes: 5
       script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: stress_tests/stress_tests_app_config.yaml
+        cluster_compute: stress_tests/stress_tests_compute_gce.yaml
+
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
@@ -4037,6 +4064,15 @@
       script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3
         --num-children=3
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: stress_tests/stress_tests_app_config.yaml
+        cluster_compute: stress_tests/stress_tests_compute_gce.yaml
+
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
 - name: threaded_actors_stress_test
@@ -4056,6 +4092,15 @@
 
     wait_for_nodes:
       num_nodes: 5
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: stress_tests/stress_tests_app_config.yaml
+        cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # - name: threaded_actors_stress_test
 #   group: core-daily-test
@@ -4168,6 +4213,15 @@
     wait_for_nodes:
       num_nodes: 500
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: distributed/many_nodes_tests/app_config.yaml
+        cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
+
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
 #  working_dir: nightly_tests
@@ -4226,6 +4280,14 @@
     wait_for_nodes:
       num_nodes: 5
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: placement_group_tests/app_config.yaml
+        cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
 
 
 #########################
@@ -4433,6 +4495,15 @@
 
     wait_for_nodes:
       num_nodes: 32
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: scheduling_gce.yaml
 
 
 # - name: scheduling_test_many_5s_tasks_single_node
@@ -5078,6 +5149,15 @@
   run:
     timeout: 14400
     script: python mem_check.py --working-dir .
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: agent_stress_app_config.yaml
+        cluster_compute: agent_stress_compute_gce.yaml
 
 - name: k8s_serve_ha_test
   group: k8s-test
