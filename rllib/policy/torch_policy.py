@@ -535,8 +535,12 @@ class TorchPolicy(Policy):
                 view_requirements=self.view_requirements,
             )
 
+        # 3) Load splits into the given buffer (consisting of n GPUs).
         if not self.config.get("_load_only_minibatch_onto_device", False):
-            # 3) Load splits into the given buffer (consisting of n GPUs).
+            # We usually want to load the full batch onto the device here, which is
+            # much faster than loading the batch slice-by-slice.
+            # However, if the batch is too large, it may be favorable to load the
+            # batch slice-by-slice.
             slices = [
                 slice.to_device(self.devices[i]) for i, slice in enumerate(slices)
             ]
@@ -607,9 +611,11 @@ class TorchPolicy(Policy):
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
-        # Determine whether we need to copy the batch to the device
-        # We usually do this before putting the batch into a buffer, but not if
-        # `_load_only_minibatch_onto_device=True`
+        # If `_load_only_minibatch_onto_device` is True, then the main batch always
+        # remains on the CPU (it's probably too big to be fit on the GPU). Thus, in
+        # this case, for each individual update step, we need to copy the freshly
+        # determined sub-slice to the GPU. These sub-slices need to be small enough
+        # then to fit on the GPU.
         if self.config.get("_load_only_minibatch_onto_device", False):
             copy_batch_to_device = True
         else:
