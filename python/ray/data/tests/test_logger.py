@@ -40,7 +40,7 @@ def test_datastream_logger(shutdown_only):
         raise Exception(f"Invalid log timestamp: {logged_ds} {logged_ts}")
 
     assert logged_level == logging.getLevelName(logging.INFO)
-    assert re.match(r"test_datastream_logger.py:\d+", logged_filepath)
+    assert re.match(r"test_logger.py:\d+", logged_filepath)
     assert logged_msg == msg
 
 
