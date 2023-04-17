@@ -361,6 +361,17 @@ def test_preload_workers(ray_start_cluster, preload):
     ray.get(futures)
 
 
+def test_gcs_port_env():
+    try:
+        os.environ["RAY_GCS_SERVER_PORT"] = "12345"
+        ray.init()
+    except RuntimeError:
+        pass
+        # it's ok to throw runtime error for port conflicts
+    finally:
+        del os.environ["RAY_GCS_SERVER_PORT"]
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
