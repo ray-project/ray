@@ -30,7 +30,6 @@ reason() {
 RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
-RAY_TEST_COMMIT=${RAY_TEST_COMMIT}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=1
 BUILDKITE_RETRY_CODE=79
