@@ -1265,7 +1265,7 @@
 
   cluster:
     cluster_env: horovod/app_config.yaml
-    cluster_compute: horovod/compute_tpl.yaml
+    cluster_compute: horovod/compute_tpl_aws.yaml
 
   driver_setup: horovod/driver_setup_latest.sh
   run:
@@ -1285,7 +1285,7 @@
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
-    cluster_compute: horovod/compute_tpl.yaml
+    cluster_compute: horovod/compute_tpl_aws.yaml
 
   driver_setup: horovod/driver_setup_master.sh
   run:
@@ -1305,7 +1305,7 @@
 
   cluster:
     cluster_env: train/app_config.yaml
-    cluster_compute: train/compute_tpl.yaml
+    cluster_compute: train/compute_tpl_aws.yaml
 
   driver_setup: train/driver_setup.sh
   run:
@@ -1325,7 +1325,7 @@
 
   cluster:
     cluster_env: train/app_config.yaml
-    cluster_compute: train/compute_tpl.yaml
+    cluster_compute: train/compute_tpl_aws.yaml
 
   driver_setup: train/driver_setup.sh
   run:
@@ -1345,7 +1345,7 @@
 
   cluster:
     cluster_env: xgboost/app_config_gpu.yaml
-    cluster_compute: xgboost/tpl_gpu_small_scaling.yaml
+    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
     timeout: 1200
@@ -1364,7 +1364,7 @@
 
   cluster:
     cluster_env: xgboost/app_config_gpu_master.yaml
-    cluster_compute: xgboost/tpl_gpu_small_scaling.yaml
+    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
     timeout: 1200
@@ -1383,7 +1383,7 @@
 
   cluster:
     cluster_env: ray-lightning/app_config.yaml
-    cluster_compute: ray-lightning/compute_tpl.yaml
+    cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
   driver_setup: ray-lightning/driver_setup.sh
   run:
@@ -1403,7 +1403,7 @@
 
   cluster:
     cluster_env: ray-lightning/app_config_master.yaml
-    cluster_compute: ray-lightning/compute_tpl.yaml
+    cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
   driver_setup: ray-lightning/driver_setup.sh
   run:
@@ -1423,7 +1423,7 @@
 
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
-    cluster_compute: tune_rllib/compute_tpl.yaml
+    cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   driver_setup: tune_rllib/driver_setup.sh
   run:
