@@ -522,14 +522,14 @@ class Learner:
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
-        mean_grads = [
-            np.mean(grad)
+        mean_abs_grads = [
+            np.mean(np.abs(grad))
             for grad in convert_to_numpy(postprocessed_gradients.values())
             if grad is not None
         ]
 
         module_learner_stats[ALL_MODULES] = {
-            "mean_gradient": np.mean(mean_grads),
+            "mean_abs_postprocessed_gradients": np.mean(mean_abs_grads),
             self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
         }
 
@@ -753,22 +753,21 @@ class Learner:
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        """Applies potential postprocessings to the gradients.
+    def postprocess_gradients(self, gradients_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Applies potential postprocessing operations on the gradients.
 
-        In some algorithms, we may want to perform some postprocessing on the
-        gradients before they are applied. This method is called after gradients
-        have been computed, and modifies them before they are applied.
+        This method is called after gradients have been computed, and modifies them
+        before they are applied to the respective module(s).
+        This includes grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
 
         Args:
             gradients_dict: A dictionary of gradients.
 
         Returns:
-            A dictionary of updated gradients.
+            A new dictionary with the updated gradients.
         """
-        return gradients_dict
+        return gradients_dict.copy()
 
     def update(
         self,
