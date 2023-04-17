@@ -142,7 +142,7 @@ Simply click on the dropdowns below to see examples of our most popular librarie
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
 :animate: fade-in-slide-down
 
-Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
+Ray Data are the standard way to load and exchange data in Ray libraries and applications.
 Datasets provide basic distributed data transformations such as `map`, `filter`, and `repartition`.
 They are compatible with a variety of file formats, datasources, and distributed frameworks.
 

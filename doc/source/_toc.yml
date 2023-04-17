@@ -94,9 +94,9 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch Training with Ray Datasets
+                title: Batch Training with Ray Data
               - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Datasets
+                title: Scaling OCR with Ray Data
               - file: data/examples/advanced-pipelines
               - file: data/examples/random-access
           - file: data/faq

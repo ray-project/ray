@@ -12,7 +12,7 @@ Here, we cover the main concepts in AIR.
 Datasets
 --------
 
-:ref:`Ray Datasets <datasets>` are the standard way to load and exchange data in Ray AIR. In AIR, Datasets are used extensively for data loading, preprocessing, and batch inference.
+:ref:`Ray Data <datasets>` are the standard way to load and exchange data in Ray AIR. In AIR, Datasets are used extensively for data loading, preprocessing, and batch inference.
 
 
 Preprocessors
@@ -33,7 +33,7 @@ See the documentation on :ref:`Preprocessors <air-preprocessor-ref>`.
 Trainers
 --------
 
-Trainers are wrapper classes around third-party training frameworks such as XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Ray Tune, and Ray Datasets.
+Trainers are wrapper classes around third-party training frameworks such as XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Ray Tune, and Ray Data.
 
 See the documentation on :ref:`Trainers <air-trainers>`.
 

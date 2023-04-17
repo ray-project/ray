@@ -10,7 +10,7 @@ Here are examples for some of the commonly used trainers:
 
     In this example we will train a model using distributed XGBoost.
 
-    First, we load the dataset from S3 using Ray Datasets and split it into a
+    First, we load the dataset from S3 using Ray Data and split it into a
     train and validation dataset.
 
     .. literalinclude:: doc_code/gbdt_user_guide.py
@@ -48,7 +48,7 @@ Here are examples for some of the commonly used trainers:
 
     In this example we will train a model using distributed LightGBM.
 
-    First, we load the dataset from S3 using Ray Datasets and split it into a
+    First, we load the dataset from S3 using Ray Data and split it into a
     train and validation dataset.
 
     .. literalinclude:: doc_code/gbdt_user_guide.py

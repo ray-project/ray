@@ -123,7 +123,7 @@ Learn more about many model training with the following resources.
 
     .. link-button:: /data/examples/batch_training
         :type: ref
-        :text: [Example] Batch Training with Ray Datasets
+        :text: [Example] Batch Training with Ray Data
         :classes: btn-link btn-block stretched-link batchTrainingDatasets
     ---
     :img-top: /images/tune.png
