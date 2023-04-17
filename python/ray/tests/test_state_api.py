@@ -9,7 +9,6 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray._private import gcs_utils
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -19,7 +18,9 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
+from ray._raylet import ActorID
 from ray._private.test_utils import (
+    run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -130,6 +131,18 @@ Unit tests
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
     manager = StateAPIManager(data_source_client)
+    yield manager
+
+
+@pytest.fixture
+def state_api_manager_e2e(ray_start_with_dashboard):
+    address_info = ray_start_with_dashboard
+    gcs_address = address_info["gcs_address"]
+    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_channel = gcs_aio_client.channel.channel()
+    state_api_data_source_client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    manager = StateAPIManager(state_api_data_source_client)
+
     yield manager
 
 
@@ -497,6 +510,87 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
 
 
 @pytest.mark.asyncio
+async def test_api_manager_e2e_list_actors(state_api_manager_e2e):
+    @ray.remote
+    class Actor:
+        pass
+
+    a = Actor.remote()
+    script = """
+import ray
+
+ray.init("auto")
+
+@ray.remote
+class Actor:
+    pass
+
+    def ready(self):
+        pass
+
+b = Actor.remote()
+ray.get(b.ready.remote())
+del b
+    """
+
+    run_string_as_driver(script)
+
+    async def verify():
+        result = await state_api_manager_e2e.list_actors(option=create_api_options())
+        print(result)
+        assert result.total == 2
+        assert result.num_after_truncation == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test actor id filtering on source
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("actor_id", "=", a._actor_id.hex())])
+        )
+        print(result)
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test state filtering on source
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("state", "=", "ALIVE")])
+        )
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test job filtering on source
+        cur_job_id = ray.get_runtime_context().get_job_id()
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("job_id", "=", cur_job_id)])
+        )
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        with pytest.raises(ValueError):
+            await state_api_manager_e2e.list_actors(
+                option=create_api_options(filters=[("state", "=", "DEEEED")])
+            )
+
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     actor_id = b"1234"
@@ -539,9 +633,7 @@ async def test_api_manager_list_actors(state_api_manager):
         result = await state_api_manager.list_actors(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
-    result = await state_api_manager.list_actors(
-        option=create_api_options(filters=[("state", "=", "DEAD")])
-    )
+
     assert len(result.result) == 1
 
     """
@@ -1592,8 +1684,11 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors.
-    assert result.total == 4
+    # Driver + 3 workers for actors + 2 prestarted task-only workers
+    # TODO(clarng): prestart worker on worker lease request doesn't
+    # work, otherwise it should have created the 2 prestarted task-only
+    # workers prior to https://github.com/ray-project/ray/pull/33623
+    assert result.total == 6
 
 
 @pytest.mark.asyncio
@@ -2030,20 +2125,29 @@ def test_list_get_pgs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_nodes(shutdown_only):
-    ray.init()
+def test_list_get_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
         nodes = list_nodes()
-        assert nodes[0]["state"] == "ALIVE"
-        assert is_hex(nodes[0]["node_id"])
+        for node in nodes:
+            assert node["state"] == "ALIVE"
+            assert is_hex(node["node_id"])
+            assert (
+                node["is_head_node"]
+                if node["node_name"] == "head_node"
+                else not node["is_head_node"]
+            )
 
         # Check with legacy API
         check_nodes = ray.nodes()
         assert len(check_nodes) == len(nodes)
 
-        sorted(check_nodes, key=lambda n: n["NodeID"])
-        sorted(nodes, key=lambda n: n["node_id"])
+        check_nodes = sorted(check_nodes, key=lambda n: n["NodeID"])
+        nodes = sorted(nodes, key=lambda n: n["node_id"])
 
         for check_node, node in zip(check_nodes, nodes):
             assert check_node["NodeID"] == node["node_id"]
@@ -2054,11 +2158,9 @@ def test_list_get_nodes(shutdown_only):
         for node in nodes:
             get_node_data = get_node(node["node_id"])
             assert get_node_data == node
-
         return True
 
     wait_for_condition(verify)
-    print(list_nodes())
 
 
 @pytest.mark.skipif(
@@ -3298,16 +3400,17 @@ def test_get_id_not_found(shutdown_only):
     """
     ray.init()
     runner = CliRunner()
-    result = runner.invoke(ray_get, ["actors", "1234"])
-    assert result.exit_code == 0
-    assert "Resource with id=1234 not found in the cluster." in result.output
+    id = ActorID.from_random().hex()
+    result = runner.invoke(ray_get, ["actors", id])
+    assert result.exit_code == 0, str(result.exception) + result.output
+    assert f"Resource with id={id} not found in the cluster." in result.output
 
 
 def test_core_state_api_usage_tags(shutdown_only):
     from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()

@@ -33,7 +33,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.row import TableRow
 
 try:
@@ -52,14 +52,14 @@ T = TypeVar("T")
 
 
 # We offload some transformations to polars for performance.
-def get_sort_transform(context: DatasetContext) -> Callable:
+def get_sort_transform(context: DataContext) -> Callable:
     if context.use_polars:
         return transform_polars.sort
     else:
         return transform_pyarrow.sort
 
 
-def get_concat_and_sort_transform(context: DatasetContext) -> Callable:
+def get_concat_and_sort_transform(context: DataContext) -> Callable:
     if context.use_polars:
         return transform_polars.concat_and_sort
     else:
@@ -68,7 +68,7 @@ def get_concat_and_sort_transform(context: DatasetContext) -> Callable:
 
 class ArrowRow(TableRow):
     """
-    Row of a tabular Dataset backed by a Arrow Table block.
+    Row of a tabular Datastream backed by a Arrow Table block.
     """
 
     def __getitem__(self, key: str) -> Any:
@@ -210,6 +210,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 element = element.type._extension_scalar_to_ndarray(element)
         # For Arrow < 8.0.0, accessing an element in a chunked tensor array produces an
         # ndarray, which we return directly.
+        assert isinstance(element, np.ndarray), type(element)
         return element
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
@@ -229,7 +230,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         df = self._table.to_pandas()
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df)
         return df
@@ -429,7 +430,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         sort = get_sort_transform(context)
         col, _ = key[0]
         table = sort(self._table, key, descending)
@@ -543,9 +544,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
-            concat_and_sort = get_concat_and_sort_transform(
-                DatasetContext.get_current()
-            )
+            concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, key, _descending)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
@@ -653,21 +652,4 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
-    import pyarrow as pa
-    from ray.air.util.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_column_extension_type,
-    )
-
-    # Copy the table by copying each column and constructing a new table with
-    # the same schema.
-    cols = table.columns
-    new_cols = []
-    for col in cols:
-        if _is_column_extension_type(col):
-            # Extension arrays don't support concatenation.
-            arr = _concatenate_extension_column(col)
-        else:
-            arr = col.combine_chunks()
-        new_cols.append(arr)
-    return pa.Table.from_arrays(new_cols, schema=table.schema)
+    return transform_pyarrow.combine_chunks(table)

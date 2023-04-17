@@ -2,7 +2,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import grpc
 from grpc.aio._call import UnaryStreamCall
@@ -12,8 +12,9 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import JobID
+from ray._raylet import ActorID, JobID
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
@@ -47,7 +48,11 @@ from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
 from ray.dashboard.utils import Dict as Dictionary
-from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
+from ray.experimental.state.common import (
+    RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+    PredicateType,
+    SupportedFilterType,
+)
 from ray.experimental.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -221,12 +226,32 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
-        self, timeout: int = None, limit: int = None
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllActorInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
 
-        request = GetAllActorInfoRequest(limit=limit)
+        req_filters = GetAllActorInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "state":
+                if value not in ActorTableData.ActorState.keys():
+                    raise ValueError(f"Invalid actor state for filtering: {value}")
+                req_filters.state = ActorTableData.ActorState.Value(value)
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+
+        request = GetAllActorInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )

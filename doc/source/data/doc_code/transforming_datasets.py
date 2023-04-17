@@ -227,8 +227,10 @@ def normalize(arr: np.ndarray) -> np.ndarray:
 
 ds = ds.map_batches(normalize, batch_format="numpy")
 # -> MapBatches(normalize)
-#    +- Dataset(num_blocks=1, num_rows=3,
-#               schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=double>})
+#    +- Dataset(num_blocks=1,
+#               num_rows=3,
+#               schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
+#       )
 # __writing_numpy_udfs_end__
 # fmt: on
 

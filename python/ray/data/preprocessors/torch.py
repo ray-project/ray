@@ -18,9 +18,9 @@ class TorchVisionPreprocessor(Preprocessor):
 
     Examples:
         >>> import ray
-        >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-        >>> dataset  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
+        >>> datastream = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        >>> datastream  # doctest: +ellipsis
+        Datastream(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(..., 3), dtype=float)})
 
         Torch models expect inputs of shape :math:`(B, C, H, W)` in the range
         :math:`[0.0, 1.0]`. To convert images to this format, add ``ToTensor`` to your
@@ -33,9 +33,9 @@ class TorchVisionPreprocessor(Preprocessor):
         ...     transforms.Resize((224, 224)),
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
-        >>> dataset = preprocessor.transform(dataset)  # doctest: +ellipsis
-        >>> dataset  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+        >>> datastream = preprocessor.transform(datastream)  # doctest: +ellipsis
+        >>> datastream  # doctest: +ellipsis
+        Datastream(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
@@ -54,9 +54,9 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> preprocessor = TorchVisionPreprocessor(
         ...     ["image"], transform=transform, batched=True
         ... )
-        >>> dataset = preprocessor.transform(dataset)  # doctest: +ellipsis
-        >>> dataset  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+        >>> datastream = preprocessor.transform(datastream)  # doctest: +ellipsis
+        >>> datastream  # doctest: +ellipsis
+        Datastream(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
 
     Args:
         columns: The columns to apply the TorchVision transform to.

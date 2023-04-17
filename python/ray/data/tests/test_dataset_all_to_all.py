@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -212,13 +212,13 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_grouped_dataset_repr(ray_start_regular_shared):
+def test_grouped_datastream_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
-    assert repr(ds.groupby("key")) == f"GroupedDataset(dataset={ds!r}, key='key')"
+    assert repr(ds.groupby("key")) == f"GroupedData(datastream={ds!r}, key='key')"
 
 
 def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
-    # Test empty dataset.
+    # Test empty datastream.
     agg_ds = (
         ray.data.range_table(10)
         .filter(lambda r: r["value"] > 10)
@@ -416,7 +416,7 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
         ds = _to_pandas(ds)
     assert ds.sum("A") == 4950
 
-    # Test empty dataset
+    # Test empty datastream
     ds = ray.data.range_table(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
@@ -776,7 +776,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_pandas(df).groupby("A").mean("D").materialize()
     with pytest.raises(ValueError):
         ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).materialize()
-    # Columns for simple Dataset.
+    # Columns for simple Datastream.
     with pytest.raises(ValueError):
         ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").materialize()
 
@@ -794,7 +794,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_pandas(df).mean("D").materialize()
     with pytest.raises(ValueError):
         ray.data.from_pandas(df).mean(["B", "D"]).materialize()
-    # Columns for simple Dataset.
+    # Columns for simple Datastream.
     with pytest.raises(ValueError):
         ray.data.from_items(xs).mean("A").materialize()
 
@@ -905,7 +905,7 @@ def test_groupby_simple(ray_start_regular_shared):
         ("None", 3),
     ]
 
-    # Test empty dataset.
+    # Test empty datastream.
     ds = ray.data.from_items([])
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         AggregateFn(
@@ -995,7 +995,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
-def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
+def test_groupby_map_groups_for_empty_datastream(ray_start_regular_shared):
     ds = ray.data.from_items([])
     mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
     assert mapped.count() == 0
@@ -1304,7 +1304,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
 
     # Test built-in global mean aggregation
     assert ray.data.from_items(xs).repartition(num_parts).mean() == 49.5
-    # Test empty dataset
+    # Test empty datastream
     assert ray.data.range(10).filter(lambda r: r > 10).mean() is None
 
     # Test built-in global mean aggregation with nans
@@ -1403,7 +1403,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
         pd.Series(xs).std(ddof=0),
     )
 
-    # Test empty dataset
+    # Test empty datastream
     assert ray.data.from_items([]).std() is None
     # Test edge cases
     assert ray.data.from_items([3]).std() == 0
@@ -1521,8 +1521,8 @@ def test_random_block_order_schema(ray_start_regular_shared):
     ds.schema().names == ["a", "b"]
 
 
-def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
-    ctx = DatasetContext.get_current()
+def test_random_block_order(ray_start_regular_shared, restore_data_context):
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     # Test BlockList.randomize_block_order.
@@ -1534,7 +1534,7 @@ def test_random_block_order(ray_start_regular_shared, restore_dataset_context):
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     try:
         original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
         context.optimize_fuse_read_stages = False
@@ -1604,7 +1604,7 @@ def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
     r2 = range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
-    # Test empty dataset.
+    # Test empty datastream.
     ds = ray.data.from_items([])
     r1 = ds.random_shuffle()
     assert r1.count() == 0
@@ -1670,7 +1670,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
 
     ray.init(cluster.address)
 
-    # Run dataset in "bar" nodes.
+    # Run datastream in "bar" nodes.
     ds = ray.data.read_parquet(
         "example://parquet_images_mini",
         parallelism=2,

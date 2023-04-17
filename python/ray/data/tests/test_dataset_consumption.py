@@ -13,11 +13,11 @@ from unittest.mock import patch
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatastreamLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
@@ -66,7 +66,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
-    plan_uuid = ds._plan._dataset_uuid
+    plan_uuid = ds._plan._datastream_uuid
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
@@ -83,7 +83,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     # Check Dataset state.
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
-    assert ds._plan._dataset_uuid == plan_uuid
+    assert ds._plan._datastream_uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(ds.take()) == list(range(2, 12))
@@ -261,7 +261,7 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
 
     def check_num_computed(expected):
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
             # In streaing executor, ds.take() will not invoke partial execution
             # in LazyBlocklist.
             assert ds._plan.execute()._num_computed() == 0
@@ -472,6 +472,23 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     out = ds.take_all()
     assert out == records
     assert ds.num_blocks() == n
+
+
+def test_take_batch(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=2)
+    assert ds.take_batch(3) == [0, 1, 2]
+    assert ds.take_batch(6) == [0, 1, 2, 3, 4, 5]
+    assert ds.take_batch(100) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+
+    ds = ray.data.range_tensor(10, parallelism=2)
+    assert np.all(ds.take_batch(3) == np.array([[0], [1], [2]]))
+    assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+
+    with pytest.raises(ValueError):
+        ray.data.range(0).take_batch()
 
 
 def test_take_all(ray_start_regular_shared):
@@ -694,7 +711,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
     # Prefetch with ray.wait.
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     old_config = context.actor_prefetcher_enabled
     try:
         context.actor_prefetcher_enabled = False
@@ -1015,7 +1032,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
             # In streaming execution of ds.iter_batches(), there is no partial
             # execution so _num_computed() in LazyBlocklist is 0.
             assert ds._plan.execute()._num_computed() == 0
@@ -1467,7 +1484,7 @@ def test_read_write_local_node(ray_start_cluster):
         path = os.path.join(data_path, f"test{idx}.parquet")
         df.to_parquet(path)
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.read_write_local_node = True
 
     def check_dataset_is_local(ds):
@@ -1551,7 +1568,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
-    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
+    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, datastream_uuid="data")
     assert df1.equals(
         pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
     )
@@ -1586,7 +1603,7 @@ def test_datasource(ray_start_regular):
 def test_polars_lazy_import(shutdown_only):
     import sys
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
@@ -1721,7 +1738,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",
@@ -1732,7 +1749,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
             ds = ds.map_batches(lambda x: x)
             ds.take()
         except Exception as e:
-            if ray.data.context.DatasetContext.get_current().use_streaming_executor:
+            if ray.data.context.DataContext.get_current().use_streaming_executor:
                 assert isinstance(e, ValueError)
                 assert "exceeds the execution limits ExecutionResources(cpu=0.0" in str(
                     e
@@ -1752,7 +1769,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",
