@@ -1,8 +1,8 @@
 import logging
 import queue
 import threading
-import sys
 from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
+from contextlib import nullcontext
 
 import ray
 from ray.types import ObjectRef
@@ -21,15 +21,6 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 logger = logging.getLogger(__name__)
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
 
 
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
