@@ -150,7 +150,7 @@ if TYPE_CHECKING:
     import torch.utils.data
 
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedData
+    from ray.data.grouped_data import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -1713,7 +1713,7 @@ class Datastream(Generic[T]):
         Returns:
             A lazy GroupedData that can be aggregated later.
         """
-        from ray.data.grouped_dataset import GroupedData
+        from ray.data.grouped_data import GroupedData
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.

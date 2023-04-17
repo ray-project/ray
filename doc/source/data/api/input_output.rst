@@ -195,7 +195,7 @@ TensorFlow
 
    from_tf
 
-WebDatastream
+WebDataset
 ----------
 
 .. autosummary::
@@ -234,7 +234,7 @@ Built-in Datasources
    datasource.RangeDatasource
    datasource.TFRecordDatasource
    datasource.MongoDatasource
-   datasource.WebDatastreamDatasource
+   datasource.WebDatasetDatasource
 
 Partitioning API
 ----------------

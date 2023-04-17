@@ -10,8 +10,8 @@ This user guide will help you navigate the Ray Data project and show you how ach
 .. toctree::
     :maxdepth: 2
 
-    creating-datasets
-    transforming-datasets
+    creating-datastreams
+    transforming-datastreams
     consuming-datasets
     dataset-tensor-support
     custom-datasource
