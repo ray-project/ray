@@ -1,13 +1,29 @@
 import enum
+import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
+
+
+class ResultStatus(enum.Enum):
+    """
+    Overall status of the result test run
+    """
+
+    SUCCESS = "success"
+    UNKNOWN = "unknown"
+    RUNTIME_ERROR = "runtime_error"
+    TRANSIENT_INFRA_ERROR = "transient_infra_error"
+    INFRA_ERROR = "infra_error"
+    INFRA_TIMEOUT = "infra_timeout"
+    ERROR = "error"
+    TIMEOUT = "timeout"
 
 
 @dataclass
 class Result:
     results: Optional[Dict] = None
 
-    status: str = "invalid"
+    status: str = ResultStatus.UNKNOWN.value
     return_code: int = 0
     last_logs: Optional[str] = None
 
@@ -64,33 +80,34 @@ class ExitCode(enum.Enum):
     PREPARE_ERROR = 43
 
 
-def handle_exception(e: Exception) -> Tuple[ExitCode, str, Optional[int]]:
+def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
     from ray_release.exception import ReleaseTestError
 
-    if isinstance(e, ReleaseTestError):
-        exit_code = e.exit_code
-        # Legacy reporting
-        if 1 <= exit_code.value < 10:
-            error_type = "runtime_error"
-            runtime = None
-        elif 10 <= exit_code.value < 20:
-            error_type = "infra_error"
-            runtime = None
-        elif 30 <= exit_code.value < 40:
-            error_type = "infra_timeout"
-            runtime = None
-        elif exit_code == ExitCode.COMMAND_TIMEOUT:
-            error_type = "timeout"
-            runtime = 0
-        elif 40 <= exit_code.value < 50:
-            error_type = "error"
-            runtime = 0
-        else:
-            error_type = "error"
-            runtime = 0
-    else:
-        exit_code = ExitCode.UNKNOWN
-        error_type = "unknown error"
+    if not isinstance(e, ReleaseTestError):
+        return ExitCode.UNKNOWN, ResultStatus.UNKNOWN, 0
+    exit_code = e.exit_code
+    if 1 <= exit_code.value < 10:
+        result_status = ResultStatus.RUNTIME_ERROR
+        runtime = None
+    elif 10 <= exit_code.value < 20:
+        result_status = ResultStatus.INFRA_ERROR
+        runtime = None
+    elif 30 <= exit_code.value < 40:
+        result_status = ResultStatus.INFRA_TIMEOUT
+        runtime = None
+    elif exit_code == ExitCode.COMMAND_TIMEOUT:
+        result_status = ResultStatus.TIMEOUT
+        runtime = 0
+    elif 40 <= exit_code.value:
+        result_status = ResultStatus.ERROR
         runtime = 0
 
-    return exit_code, error_type, runtime
+    # if this result is to be retried, mark its status as transient
+    # this logic should be in-sync with run_release_test.sh
+    if result_status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
+        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
+        max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
+        if retry_count < max_retry:
+            result_status = ResultStatus.TRANSIENT_INFRA_ERROR
+
+    return exit_code, result_status, runtime
