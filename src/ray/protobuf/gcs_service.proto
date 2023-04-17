@@ -121,6 +121,17 @@ message GetAllActorInfoRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
   optional int64 limit = 2;
+
+  // The filter to apply to the returned entries.
+  message Filters {
+    // Actor id
+    optional bytes actor_id = 1;
+    // Job id
+    optional bytes job_id = 2;
+    // Actor state
+    optional ActorTableData.ActorState state = 3;
+  }
+  optional Filters filters = 3;
 }
 
 message GetAllActorInfoReply {
@@ -129,6 +140,8 @@ message GetAllActorInfoReply {
   repeated ActorTableData actor_table_data = 2;
   // Length of the corresponding resource without truncation.
   int64 total = 3;
+  // Number of results filtered on the source.
+  int64 num_filtered = 4;
 }
 
 // `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.

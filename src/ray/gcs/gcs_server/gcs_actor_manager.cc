@@ -338,17 +338,40 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
-  // We store actors in memory from dead jobs as well, until a GC limit by
-  // RAY_maximum_gcs_destroyed_actor_cached_count.
-  // So we don't need to read from gcs table.
+
+  const auto filter_fn = [](const rpc::GetAllActorInfoRequest::Filters &filters,
+                            const rpc::ActorTableData &data) {
+    if (filters.has_actor_id() &&
+        ActorID::FromBinary(filters.actor_id()) != ActorID::FromBinary(data.actor_id())) {
+      return false;
+    }
+    if (filters.has_job_id() &&
+        JobID::FromBinary(filters.job_id()) != JobID::FromBinary(data.job_id())) {
+      return false;
+    }
+    if (filters.has_state() && filters.state() != data.state()) {
+      return false;
+    }
+    return true;
+  };
+
   auto total_actors = registered_actors_.size() + destroyed_actors_.size();
   reply->set_total(total_actors);
 
   auto count = 0;
+  auto num_filtered = 0;
   for (const auto &iter : registered_actors_) {
     if (limit != -1 && count >= limit) {
       break;
     }
+
+    // With filters, skip the actor if it doesn't match the filter.
+    if (request.has_filters() &&
+        !filter_fn(request.filters(), iter.second->GetActorTableData())) {
+      ++num_filtered;
+      continue;
+    }
+
     count += 1;
     *reply->add_actor_table_data() = iter.second->GetActorTableData();
   }
@@ -357,9 +380,17 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
     if (limit != -1 && count >= limit) {
       break;
     }
+    // With filters, skip the actor if it doesn't match the filter.
+    if (request.has_filters() &&
+        !filter_fn(request.filters(), iter.second->GetActorTableData())) {
+      ++num_filtered;
+      continue;
+    }
+
     count += 1;
     *reply->add_actor_table_data() = iter.second->GetActorTableData();
   }
+  reply->set_num_filtered(num_filtered);
   RAY_LOG(DEBUG) << "Finished getting all actor info.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
