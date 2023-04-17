@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
 
-
 class ResultStatus(enum.Enum):
     """
     Overall status of the result test run
@@ -18,7 +17,6 @@ class ResultStatus(enum.Enum):
     INFRA_TIMEOUT = "infra_timeout"
     ERROR = "error"
     TIMEOUT = "timeout"
-
 
 
 @dataclass
