@@ -363,7 +363,7 @@ class TunerInternal:
 
         try:
             self._experiment_analysis = ExperimentAnalysis(
-                self._run_config.storage_path,
+                experiment_checkpoint_path=path_or_uri,
                 default_metric=self._tune_config.metric,
                 default_mode=self._tune_config.mode,
             )
