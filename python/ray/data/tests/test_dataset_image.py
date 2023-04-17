@@ -1,5 +1,6 @@
 import os
 from typing import Dict
+from unittest.mock import patch, ANY
 
 import numpy as np
 import pyarrow as pa
@@ -8,7 +9,7 @@ import pytest
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.data.datasource import Partitioning
+from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
@@ -192,7 +193,7 @@ class TestReadImages:
 
         data_size = ds.size_bytes()
         assert data_size >= 0, "estimated data size is out of expected bound"
-        data_size = ds.cache().size_bytes()
+        data_size = ds.materialize().size_bytes()
         assert data_size >= 0, "actual data size is out of expected bound"
 
         reader = _ImageDatasourceReader(
@@ -213,7 +214,7 @@ class TestReadImages:
         assert data_size >= 0, "estimated data size is out of expected bound"
 
     def test_dynamic_block_split(ray_start_regular_shared):
-        ctx = ray.data.context.DatasetContext.get_current()
+        ctx = ray.data.context.DataContext.get_current()
         target_max_block_size = ctx.target_max_block_size
         block_splitting_enabled = ctx.block_splitting_enabled
         # Reduce target max block size to trigger block splitting on small input.
@@ -224,16 +225,37 @@ class TestReadImages:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
-            ds.cache()
+            ds = ds.materialize()
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 
             # Test union of same datasets
-            union_ds = ds.union(ds, ds, ds).cache()
+            union_ds = ds.union(ds, ds, ds).materialize()
             assert union_ds.num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
             ctx.block_splitting_enabled = block_splitting_enabled
+
+    def test_args_passthrough(ray_start_regular_shared):
+        kwargs = {
+            "paths": "foo",
+            "filesystem": pa.fs.LocalFileSystem(),
+            "parallelism": 20,
+            "meta_provider": FastFileMetadataProvider(),
+            "ray_remote_args": {"resources": {"bar": 1}},
+            "arrow_open_file_args": {"foo": "bar"},
+            "partition_filter": PathPartitionFilter.of(lambda x: True),
+            "partitioning": Partitioning("hive"),
+            "size": (2, 2),
+            "mode": "foo",
+            "include_paths": True,
+            "ignore_missing_paths": True,
+        }
+        with patch("ray.data.read_api.read_datasource") as mock:
+            ray.data.read_images(**kwargs)
+        kwargs["open_stream_args"] = kwargs.pop("arrow_open_file_args")
+        mock.assert_called_once_with(ANY, **kwargs)
+        assert isinstance(mock.call_args[0][0], ImageDatasource)
 
 
 if __name__ == "__main__":

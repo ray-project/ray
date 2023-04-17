@@ -84,7 +84,7 @@ class TestAlgorithm(unittest.TestCase):
                 # Add a new policy either by class (and options) or by instance.
                 pid = f"p{i}"
                 print(f"Adding policy {pid} ...")
-                # By instance.
+                # By (already instantiated) instance.
                 if i == 2:
                     new_pol = algo.add_policy(
                         pid,

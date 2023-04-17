@@ -1,4 +1,5 @@
 import copy
+import io
 import os
 import math
 import logging
@@ -143,12 +144,14 @@ class TunerInternal:
             with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
                 pickle.dump(self.trainable, fp)
         except TypeError as e:
-            inspect_serializability(self.trainable)
+            sio = io.StringIO()
+            inspect_serializability(self.trainable, print_file=sio)
             msg = (
                 "The provided trainable is not serializable, which is a requirement "
                 "since the trainable is serialized and deserialized when transferred "
-                "to remote workers. See above for a trace of the non-serializable "
-                "objects that were found in your trainable."
+                "to remote workers. See below for a trace of the non-serializable "
+                "objects that were found in your trainable:\n"
+                f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
 
@@ -337,13 +340,13 @@ class TunerInternal:
             # Update local_dir to use the parent of the experiment path
             # provided to `Tuner.restore`
             experiment_path = Path(self._experiment_checkpoint_dir)
-            self._run_config.local_dir = str(experiment_path.parent)
+            self._run_config.storage_path = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
-            # Set the experiment `name` and `upload_dir` according to the URI
+            # Set the experiment `name` and `storage_path` according to the URI
             uri = URI(path_or_uri)
             self._run_config.name = uri.name
-            self._run_config.sync_config.upload_dir = str(uri.parent)
+            self._run_config.storage_path = str(uri.parent)
 
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -448,7 +451,7 @@ class TunerInternal:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
             trainable,
-            run_config.local_dir,
+            run_config.storage_path,
             run_config.name,
         )
         if not os.path.exists(path):
@@ -571,7 +574,7 @@ class TunerInternal:
                 checkpoint_at_end = True
 
         return dict(
-            local_dir=self._run_config.local_dir,
+            storage_path=self._run_config.storage_path,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,

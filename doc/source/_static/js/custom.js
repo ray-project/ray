@@ -28,7 +28,48 @@ window.addEventListener("scroll", loadVisibleTermynals);
 createTermynals();
 loadVisibleTermynals();
 
+// Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
+// programmatically figure out which nav items have children anymore.
+document.addEventListener("DOMContentLoaded", function() {
+    let navItems = document.querySelectorAll(".bd-sidenav li");
+    for (let i = 0; i < navItems.length; i++) {
+        let navItem = navItems[i];
+        const stringList = [
+            "User Guide", "Examples",
+            "Ray Core", "Ray Core API",
+            "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
+            "Applications Guide", "Ray Cluster Management API",
+            "Ray AI Runtime (AIR)", "Ray AIR API",
+            "Ray Data", "Ray Datasets API", "Integrations",
+            "Ray Train", "Ray Train API",
+            "Ray Tune", "Ray Tune Examples", "Ray Tune API",
+            "Ray Serve", "Ray Serve API",
+            "Ray RLlib", "Ray RLlib API",
+            "More Libraries", "Ray Workflows (Alpha)",
+            "Monitoring and Debugging",
+            "References",
+            "Developer Guides", "Getting Involved / Contributing",
+        ];
 
+        const containsString = stringList.some(str => navItem.innerText ===str);
+
+        if (containsString && ! navItem.classList.contains('current')) {
+            if (navItem.classList.contains('toctree-l1')) {
+                navItem.style.fontWeight = "bold";
+            }
+            const href = navItem.querySelector("a").getAttribute("href");
+            navItem.innerHTML +=
+                '<a href="'+ href +'" style="display: none">'
+                + '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
+                + i + '" name="toctree-checkbox-' + i + '" type="button"></a>'
+                + '<label for="toctree-checkbox-' + i + '">' +
+                '<i class="fas fa-chevron-down"></i></label>'
+        }
+    }
+});
+
+// Dynamically adjust the height of all panel elements in a gallery to be the same as
+// that of the max-height element.
 document.addEventListener("DOMContentLoaded", function() {
   let images = document.getElementsByClassName("fixed-height-img");
   let maxHeight = 0;

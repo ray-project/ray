@@ -42,9 +42,10 @@ DEFINE_int32(max_worker_port,
 DEFINE_string(worker_port_list,
               "",
               "An explicit list of ports that workers' gRPC servers will bind on.");
-DEFINE_int32(num_initial_python_workers_for_first_job,
+DEFINE_int32(num_prestart_python_workers,
              0,
-             "Number of initial Python workers for the first job.");
+             "Number of prestarted default Python workers on raylet startup.");
+DEFINE_bool(head, false, "Whether this node is a head node.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
@@ -96,8 +97,8 @@ int main(int argc, char *argv[]) {
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const std::string worker_port_list = FLAGS_worker_port_list;
-  const int num_initial_python_workers_for_first_job =
-      static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
+  const int num_prestart_python_workers =
+      static_cast<int>(FLAGS_num_prestart_python_workers);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
@@ -116,6 +117,7 @@ int main(int argc, char *argv[]) {
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
+  const bool is_head_node = FLAGS_head;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -177,8 +179,7 @@ int main(int argc, char *argv[]) {
         auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_workers_soft_limit =
             soft_limit_config >= 0 ? soft_limit_config : num_cpus;
-        node_manager_config.num_initial_python_workers_for_first_job =
-            num_initial_python_workers_for_first_job;
+        node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
@@ -270,7 +271,8 @@ int main(int argc, char *argv[]) {
                                                        node_manager_config,
                                                        object_manager_config,
                                                        gcs_client,
-                                                       metrics_export_port);
+                                                       metrics_export_port,
+                                                       is_head_node);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
