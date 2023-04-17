@@ -93,9 +93,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     All the other datasets will not be split.
 
     You can also provide ``datasets.Dataset`` object or other dataset objects
-    allowed by ``transformers.Trainer`` directly in the training function, without
-    specifying the ``datasets`` dict. It is recommended to initialize those
-    objects in the function, as otherwise they will be serialized and passed
+    allowed by ``transformers.Trainer`` directly in the ``trainer_init_per_worker``
+    function, without specifying the ``datasets`` dict. It is recommended to initialize
+    those objects inside the function, as otherwise they will be serialized and passed
     to the function, which may lead to long runtime and memory issues with large
     amounts of data.
 
