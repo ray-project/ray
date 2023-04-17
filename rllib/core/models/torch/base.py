@@ -60,11 +60,15 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, skip_nn_module_init=False):
         """Initialized a TorchModel.
 
         Args:
-            config: The ModelConfig to use.
+            config: The ModelConfig to use
+            skip_nn_module_init: Whether to skip the call to nn.Module.__init__.
+                This should be used if the child class has called nn.Module.__init__
+                already to avoid deleting sub-modules that were added between the two
+                nn.Module.__init__ calls.
         """
         nn.Module.__init__(self)
         Model.__init__(self, config)

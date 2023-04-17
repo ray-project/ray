@@ -4,6 +4,7 @@ import unittest
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
+import torch
 import tree
 
 import ray
@@ -162,7 +163,7 @@ class TestPPO(unittest.TestCase):
             #     lambda x: x[None], convert_to_torch_tensor(state_in)
             # )
             # batch[STATE_IN] = state_in
-            # batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
+            batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
             if fwd_fn == "forward_exploration":
                 module.forward_exploration(batch)
