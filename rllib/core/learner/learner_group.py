@@ -236,26 +236,26 @@ class LearnerGroup:
         """
 
         if block:
-            results = self._worker_manager.foreach_actor(
-                [
+            results = []
+            for batch in batches:
+                results.append(self._worker_manager.foreach_actor([
                     lambda w: w.update(
                         minibatch,
                         minibatch_size=minibatch_size,
                         num_iters=num_iters,
                         reduce_fn=reduce_fn,
                     )
-                    for batch in batches
                     for minibatch in ShardBatchIterator(batch, len(self._workers))
-                ]
-            )
+                ]))
         else:
             if batches is not None:
                 self._in_queue.extend(batches)
             results = self._worker_manager.fetch_ready_async_reqs()
             if self._worker_manager_ready() and self._in_queue:
-                batch = self._in_queue.popleft()
-                self._worker_manager.foreach_actor_async(
-                    [
+                batches = list(self._in_queue)
+                self._in_queue.clear()
+                for batch in batches:
+                    self._worker_manager.foreach_actor_async([
                         lambda w: w.update(
                             minibatch,
                             minibatch_size=minibatch_size,
@@ -263,8 +263,7 @@ class LearnerGroup:
                             reduce_fn=reduce_fn,
                         )
                         for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ]
-                )
+                    ])
 
         return self._get_results(results)
 
