@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import collections
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -401,7 +402,7 @@ class BlockAccessor(Generic[T]):
                 )
 
             return ArrowBlockAccessor.numpy_to_block(batch)
-        elif isinstance(batch, dict):
+        elif isinstance(batch, collections.abc.Mapping):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
             import pyarrow as pa
 
@@ -414,7 +415,7 @@ class BlockAccessor(Generic[T]):
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
                 # don't need this fallback path.
-                return pd.DataFrame(batch)
+                return pd.DataFrame(dict(batch))
         return batch
 
     @staticmethod

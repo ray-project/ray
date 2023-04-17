@@ -1,3 +1,4 @@
+import collections
 from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
@@ -33,7 +34,14 @@ def generate_map_batches_fn(
 
         def validate_batch(batch: Block) -> None:
             if not isinstance(
-                batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
+                batch,
+                (
+                    list,
+                    pa.Table,
+                    np.ndarray,
+                    collections.abc.Mapping,
+                    pd.core.frame.DataFrame,
+                ),
             ):
                 raise ValueError(
                     "The `fn` you passed to `map_batches` returned a value of type "
@@ -42,7 +50,7 @@ def generate_map_batches_fn(
                     "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                 )
 
-            if isinstance(batch, dict):
+            if isinstance(batch, collections.abc.Mapping):
                 for key, value in batch.items():
                     if not isinstance(value, np.ndarray):
                         raise ValueError(

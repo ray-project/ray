@@ -1,3 +1,4 @@
+import collections
 import logging
 from typing import (
     TYPE_CHECKING,
@@ -171,10 +172,12 @@ def from_items(
         for j in builtins.range(block_start, block_end):
             item = items[j]
             if ctx.strict_mode:
-                if not isinstance(item, dict):
+                if not isinstance(item, collections.abc.Mapping):
                     item = {"item": item}
             else:
-                if output_arrow_format and not isinstance(item, (dict, np.ndarray)):
+                if output_arrow_format and not isinstance(
+                    item, (collections.abc.Mapping, np.ndarray)
+                ):
                     raise ValueError(
                         "Arrow block format can only be used if all items are "
                         "either dicts or Numpy arrays. Received data of type: "

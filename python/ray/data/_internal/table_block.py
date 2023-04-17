@@ -50,7 +50,7 @@ class TableBlockBuilder(BlockBuilder[T]):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
             item = {TENSOR_COLUMN_NAME: item}
-        if not isinstance(item, dict):
+        if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))

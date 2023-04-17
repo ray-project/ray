@@ -162,7 +162,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}
-        elif not isinstance(batch, dict) or any(
+        elif not isinstance(batch, collections.abc.Mapping) or any(
             not isinstance(col, np.ndarray) for col in batch.values()
         ):
             raise ValueError(

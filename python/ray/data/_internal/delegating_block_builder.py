@@ -1,3 +1,4 @@
+import collections
 from typing import Any
 
 import numpy as np
@@ -18,7 +19,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
     def add(self, item: Any) -> None:
         if self._builder is None:
             # TODO (kfstorm): Maybe we can use Pandas block format for dict.
-            if isinstance(item, dict) or isinstance(item, ArrowRow):
+            if isinstance(item, collections.abc.Mapping) or isinstance(item, ArrowRow):
                 import pyarrow
 
                 try:
