@@ -167,7 +167,7 @@ class ExperimentAnalysis:
         """
         return self._remote_path or self._local_path
 
-    def _parse_cloud_path(self, local_path: str):
+    def _convert_local_to_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
         if not self._remote_experiment_path:
             return None
@@ -212,7 +212,7 @@ class ExperimentAnalysis:
 
         Args:
             experiment_checkpoint_path: The local or remote path to the experiment
-                checkpoint *file*.
+                checkpoint file.
 
         Returns:
             str: The local copy of the experiment checkpoint.
@@ -247,6 +247,18 @@ class ExperimentAnalysis:
     def _get_latest_checkpoint_from_dir(
         self, experiment_checkpoint_path: str, top_level: bool = True
     ) -> List[str]:
+        """Gets the latest experiment checkpoints from a given directory.
+
+        Args:
+            experiment_checkpoint_path: A local or remote path to a directory
+                containing at least one experiment checkpoint file.
+            top_level: True if this is the first directory level. False if
+                we are searching in a subdirectory. (Max recursion depth of 1.)
+
+        Returns:
+            list: A list of local paths pointing to the latest experiment checkpoint
+            file for each experiment found within the given directory.
+        """
         latest_checkpoint = _find_newest_experiment_checkpoint(
             experiment_checkpoint_path
         )
@@ -272,15 +284,15 @@ class ExperimentAnalysis:
         """Gets the latest experiment checkpoints corresponding to a given path.
 
         Acceptable path inputs (either local or remote):
-        - A path to the actual experiment checkpoint file.
-        - A path to the experiment directory, which contains an experiment checkpoint
+        - A path to an experiment checkpoint file.
+        - A path to an experiment directory, which contains an experiment checkpoint
           file at the directory's top-level.
         - A path to a directory that contains multiple experiment directories,
           where each subdirectory contains an experiment checkpoint file.
 
         Returns:
-            list: A list of the latest experiment checkpoint files for each experiment
-            found at the given path.
+            list: A list of local paths pointing to the latest experiment checkpoint
+            file for each experiment corresponding to the given path.
         """
         if is_directory(experiment_checkpoint_path):
             return self._get_latest_checkpoint_from_dir(experiment_checkpoint_path)
@@ -600,7 +612,7 @@ class ExperimentAnalysis:
         best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
 
         best_path, best_metric = best_path_metrics[0]
-        cloud_path = self._parse_cloud_path(best_path)
+        cloud_path = self._convert_local_to_cloud_path(best_path)
 
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
@@ -641,7 +653,9 @@ class ExperimentAnalysis:
             try:
                 param_file = os.path.join(path, EXPR_PARAM_FILE)
                 if not os.path.exists(param_file):
-                    download_from_uri(self._parse_cloud_path(param_file), param_file)
+                    download_from_uri(
+                        self._convert_local_to_cloud_path(param_file), param_file
+                    )
 
                 with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
                     config = json.load(f)
@@ -844,7 +858,9 @@ class ExperimentAnalysis:
                 if self._file_type == "json":
                     json_file = os.path.join(path, EXPR_RESULT_FILE)
                     if not os.path.exists(json_file):
-                        download_from_uri(self._parse_cloud_path(json_file), json_file)
+                        download_from_uri(
+                            self._convert_local_to_cloud_path(json_file), json_file
+                        )
 
                     with open(json_file, "r") as f:
                         json_list = [json.loads(line) for line in f if line]
@@ -852,7 +868,9 @@ class ExperimentAnalysis:
                 elif self._file_type == "csv":
                     csv_file = os.path.join(path, EXPR_PROGRESS_FILE)
                     if not os.path.exists(csv_file):
-                        download_from_uri(self._parse_cloud_path(csv_file), csv_file)
+                        download_from_uri(
+                            self._convert_local_to_cloud_path(csv_file), csv_file
+                        )
 
                     df = pd.read_csv(csv_file, dtype=force_dtype)
                 self.trial_dataframes[path] = df

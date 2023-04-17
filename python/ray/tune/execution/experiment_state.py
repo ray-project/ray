@@ -8,7 +8,8 @@ import os
 import time
 import warnings
 
-from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.remote_storage import is_local_path, list_at_uri
+from ray.air._internal.uri_utils import URI
 
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
@@ -70,10 +71,23 @@ def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
 
 
 def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
-    """Returns file name of most recently modified checkpoint."""
+    """Returns file name of most recently created experiment checkpoint.
+
+    Args:
+        experiment_dir: Local or remote path to the experiment directory
+            containing at least one experiment checkpoint file.
+
+    Returns:
+        str: The local or remote path to the latest experiment checkpoint file
+            based on timestamp. None if no experiment checkpoints were found.
+    """
 
     def construct(file: str) -> str:
-        return os.path.join(experiment_dir, file)
+        return (
+            str(URI(experiment_dir) / file)
+            if is_local_path(file)
+            else os.path.join(experiment_dir, file)
+        )
 
     candidate_paths = [
         construct(file)
