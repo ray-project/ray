@@ -11,7 +11,7 @@ Ray Data API
     data_iterator.rst
     dataset_pipeline.rst
     execution_options.rst
-    grouped_dataset.rst
+    grouped_data.rst
     data_context.rst
     data_representations.rst
     random_access_dataset.rst
