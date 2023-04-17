@@ -119,7 +119,6 @@ class TestAPPOTfLearner(unittest.TestCase):
                 rollout_fragment_length=frag_length,
             )
             .resources(num_gpus=0)
-            .framework(eager_tracing=True)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -135,13 +134,13 @@ class TestAPPOTfLearner(unittest.TestCase):
             )
             .exploration(exploration_config={})
         )
-        for _ in framework_iterator(config, ("tf2")):
+        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
             algo = config.build()
             # Call train while results aren't returned because this is
             # a asynchronous trainer and results are returned asynchronously.
             while 1:
                 results = algo.train()
-                if results:
+                if results and "info" in results and LEARNER_INFO in results["info"]:
                     break
             curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                 LEARNER_STATS_KEY
