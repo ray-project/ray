@@ -123,7 +123,9 @@ class StreamingExecutor(Executor, threading.Thread):
                         if self._outer._global_info:
                             self._outer._global_info.update(1)
                         return item
-                except Exception:
+                # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
+                # can leave dangling progress bars by skipping shutdown.
+                except BaseException:
                     self._outer.shutdown()
                     raise
 
