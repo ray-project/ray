@@ -53,7 +53,6 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
-
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
@@ -500,6 +499,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     values = [[s["one"], s["two"]] for s in ds.take()]
     check_num_computed(ds, 1, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert ds.count() == 2
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
@@ -510,6 +510,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     values = [[s["one"], s["two"]] for s in ds.take()]
     check_num_computed(ds, 2, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert ds.count() == 2
 
 
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
