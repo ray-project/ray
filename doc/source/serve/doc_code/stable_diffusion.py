@@ -88,7 +88,7 @@ if __name__ == "__main__":
         }
     )
 
-    with serve_session(my_first_deployment) as handle:
+    with serve_session(entrypoint) as handle:
         ray.get(handle.generate.remote("hi"))
 
         prompt = "a cute cat is dancing on the grass."
