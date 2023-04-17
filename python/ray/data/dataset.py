@@ -4680,7 +4680,9 @@ class Schema:
         return self.base_schema.names
 
     def __str__(self):
-        return f"Schema({str(self.names)})"
+        # TODO(ekl) we should canonicalize Pandas vs Pyarrow dtypes, which will be
+        # possible one we support Python objects in Arrow via an extension type.
+        return f"Schema({dict(zip(self.base_schema.names, self.base_schema.types))})"
 
     def __repr__(self):
         return str(self)
