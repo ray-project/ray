@@ -270,15 +270,10 @@ class Node:
 
         # Pick a GCS server port.
         if head:
-            gcs_server_port_environment = os.getenv(
-                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE, ""
-            )
-            # If "RAY_GCS_SERVER_PORT" is set incorrectly by user,
-            # it will be ignored.
-            gcs_server_port = (
-                int(gcs_server_port_environment)
-                if gcs_server_port_environment.isnumeric()
-                else None
+            from ray.autoscaler._private.constants import env_integer
+
+            gcs_server_port = env_integer(
+                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE, 0
             )
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)

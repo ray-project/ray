@@ -11,12 +11,19 @@ from ray._private.ray_constants import (  # noqa F401
 
 
 def env_integer(key, default):
+    # If env is set incorrectly by user, it will be passed to user.
     if key in os.environ:
-        val = os.environ[key]
-        if val == "inf":
-            return sys.maxsize
-        else:
-            return int(val)
+        try:
+            val = os.environ[key]
+            if val == "inf":
+                return sys.maxsize
+            else:
+                return int(val)
+        except Exception:
+            raise ValueError(
+                f"Env which should be int is set incorrectly. Error env is {key}: {val}",
+            )
+
     return default
 
 

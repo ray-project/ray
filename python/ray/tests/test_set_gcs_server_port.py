@@ -52,8 +52,8 @@ def test_as_gcs_server_port_is_set_incorrectly():
     os.environ["RAY_GCS_SERVER_PORT"] = "non-numeric"
     try:
         ray.init()
-    except Exception:
-        assert False
+    except Exception as e:
+        assert type(e) is ValueError
     finally:
         ray.shutdown()
 
