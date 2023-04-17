@@ -74,6 +74,8 @@ message Instance {
     bytes external_instance_id = 2;
     bytes instance_type= 3;
     InstanceState instance_state = 4; 
+    bytes internal_ip = 5;
+    bytes external_ip = 6;
 }
 
 message UpdateInstanceManagerStateRequest {

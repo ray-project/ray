@@ -39,3 +39,6 @@ TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
 # if the node is a worker, this also hashes content of the directories
 # specified by the cluster_synced_files config
 TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"
+
+# Tag uniquely identifying a node per cluster.
+TAG_RAY_INSTANCE_ID = "ray-instance-id"
