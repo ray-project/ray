@@ -18,7 +18,9 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
+from ray._raylet import ActorID
 from ray._private.test_utils import (
+    run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -129,6 +131,18 @@ Unit tests
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
     manager = StateAPIManager(data_source_client)
+    yield manager
+
+
+@pytest.fixture
+def state_api_manager_e2e(ray_start_with_dashboard):
+    address_info = ray_start_with_dashboard
+    gcs_address = address_info["gcs_address"]
+    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_channel = gcs_aio_client.channel.channel()
+    state_api_data_source_client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    manager = StateAPIManager(state_api_data_source_client)
+
     yield manager
 
 
@@ -496,6 +510,87 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
 
 
 @pytest.mark.asyncio
+async def test_api_manager_e2e_list_actors(state_api_manager_e2e):
+    @ray.remote
+    class Actor:
+        pass
+
+    a = Actor.remote()
+    script = """
+import ray
+
+ray.init("auto")
+
+@ray.remote
+class Actor:
+    pass
+
+    def ready(self):
+        pass
+
+b = Actor.remote()
+ray.get(b.ready.remote())
+del b
+    """
+
+    run_string_as_driver(script)
+
+    async def verify():
+        result = await state_api_manager_e2e.list_actors(option=create_api_options())
+        print(result)
+        assert result.total == 2
+        assert result.num_after_truncation == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test actor id filtering on source
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("actor_id", "=", a._actor_id.hex())])
+        )
+        print(result)
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test state filtering on source
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("state", "=", "ALIVE")])
+        )
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test job filtering on source
+        cur_job_id = ray.get_runtime_context().get_job_id()
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("job_id", "=", cur_job_id)])
+        )
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        with pytest.raises(ValueError):
+            await state_api_manager_e2e.list_actors(
+                option=create_api_options(filters=[("state", "=", "DEEEED")])
+            )
+
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     actor_id = b"1234"
@@ -538,9 +633,7 @@ async def test_api_manager_list_actors(state_api_manager):
         result = await state_api_manager.list_actors(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
-    result = await state_api_manager.list_actors(
-        option=create_api_options(filters=[("state", "=", "DEAD")])
-    )
+
     assert len(result.result) == 1
 
     """
@@ -3307,9 +3400,10 @@ def test_get_id_not_found(shutdown_only):
     """
     ray.init()
     runner = CliRunner()
-    result = runner.invoke(ray_get, ["actors", "1234"])
-    assert result.exit_code == 0
-    assert "Resource with id=1234 not found in the cluster." in result.output
+    id = ActorID.from_random().hex()
+    result = runner.invoke(ray_get, ["actors", id])
+    assert result.exit_code == 0, str(result.exception) + result.output
+    assert f"Resource with id={id} not found in the cluster." in result.output
 
 
 def test_core_state_api_usage_tags(shutdown_only):
