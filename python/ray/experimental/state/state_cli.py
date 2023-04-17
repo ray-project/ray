@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 from datetime import datetime
@@ -27,7 +28,6 @@ from ray.experimental.state.common import (
     StateResource,
     StateSchema,
     SupportedFilterType,
-    TaskState,
     resource_to_schema,
 )
 from ray.experimental.state.exception import RayStateApiException
@@ -115,7 +115,7 @@ def _get_available_resources(
     ]
 
 
-def get_table_output(state_data: List, schema: StateSchema) -> str:
+def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str:
     """Display the table output.
 
     The table headers are ordered as the order defined in the dataclass of
@@ -142,7 +142,7 @@ def get_table_output(state_data: List, schema: StateSchema) -> str:
     header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
     table = []
-    cols = schema.list_columns()
+    cols = schema.list_columns(detail=detail)
     for data in state_data:
         for key, val in data.items():
             if isinstance(val, dict):
@@ -166,19 +166,26 @@ Table:
 
 
 def output_with_format(
-    state_data: List,
+    state_data: List[Dict],
     *,
     schema: Optional[StateSchema],
     format: AvailableFormat = AvailableFormat.DEFAULT,
+    detail: bool = False,
 ) -> str:
     if format == AvailableFormat.DEFAULT:
-        return get_table_output(state_data, schema)
+        return get_table_output(state_data, schema, detail)
     if format == AvailableFormat.YAML:
-        return yaml.dump(state_data, indent=4, explicit_start=True)
+        return yaml.dump(
+            state_data,
+            indent=4,
+            explicit_start=True,
+            # We want to keep the defined ordering of the states, thus sort_keys=False
+            sort_keys=False,
+        )
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
-        return get_table_output(state_data, schema)
+        return get_table_output(state_data, schema, detail)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
@@ -277,35 +284,31 @@ Table (group by {summary_by})
 
 
 def format_get_api_output(
-    state_data: Optional[Dict],
+    state_data: Optional[StateSchema],
     id: str,
     *,
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.YAML,
 ) -> str:
-
-    if not state_data or len(state_data) == 0:
+    if not state_data or isinstance(state_data, list) and len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
-
-    return output_with_format(state_data, schema=schema, format=format)
+    if not isinstance(state_data, list):
+        state_data = [state_data]
+    state_data = [dataclasses.asdict(state) for state in state_data]
+    return output_with_format(state_data, schema=schema, format=format, detail=True)
 
 
 def format_list_api_output(
-    state_data: List[Dict],
+    state_data: List[StateSchema],
     *,
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.DEFAULT,
+    detail: bool = False,
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    if schema == TaskState and format == AvailableFormat.YAML:
-        augmented_task_state_data = [
-            {("task_id: " + state["task_id"]): state} for state in state_data
-        ]
-        return output_with_format(
-            augmented_task_state_data, schema=schema, format=format
-        )
-    return output_with_format(state_data, schema=schema, format=format)
+    state_data = [dataclasses.asdict(state) for state in state_data]
+    return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
 def _should_explain(format: AvailableFormat) -> bool:
@@ -566,6 +569,7 @@ def ray_list(
             state_data=data,
             schema=resource_to_schema(resource),
             format=format,
+            detail=detail,
         )
     )
 
