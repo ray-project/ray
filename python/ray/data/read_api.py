@@ -49,7 +49,7 @@ from ray.data._internal.util import (
 from ray.data.row import TableRow
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
-from ray.data.dataset import Datastream, MaterializedDatastream
+from ray.data.datastream import Datastream, MaterializedDatastream
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,

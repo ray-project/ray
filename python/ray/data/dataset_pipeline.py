@@ -28,7 +28,7 @@ from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.dataset_iterator.pipelined_dataset_iterator import (
+from ray.data._internal.iterator.pipelined_iterator import (
     PipelinedDataIterator,
 )
 from ray.data._internal.plan import ExecutionPlan
@@ -44,8 +44,8 @@ from ray.data.block import (
     apply_strict_mode_batch_format,
 )
 from ray.data.context import DataContext
-from ray.data.dataset import Datastream
-from ray.data.dataset_iterator import DataIterator
+from ray.data.datastream import Datastream
+from ray.data.iterator import DataIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
