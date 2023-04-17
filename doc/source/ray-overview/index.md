@@ -52,7 +52,7 @@ Ray's unified compute framework comprises of three layers:
 **Scale machine learning workloads**
 ^^^
 Build ML applications with a toolkit of libraries for distributed 
-[data processing](../data/dataset.rst), 
+[data processing](../data/data.rst), 
 [model training](../train/train.rst), 
 [tuning](tune/../index.rst), 
 [reinforcement learning](../rllib/index.rst), 

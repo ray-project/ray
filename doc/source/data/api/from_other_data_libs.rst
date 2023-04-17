@@ -12,7 +12,7 @@ libraries, so you can quickly map what you may already know to Ray Data APIs.
 
   - This is meant to map APIs that perform comparable but not necessarily identical operations.
     Please check the API reference for exact semantics and usage.
-  - This list may not be exhaustive: Ray Data is not a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
+  - This list may not be exhaustive: Ray Data is not a traditional ETL data processing library, so not all data processing APIs can map to Datastreams.
     In addition, we try to focus on common APIs or APIs that are less obvious to see a connection.
 
 .. _api-guide-for-pandas-users:
@@ -42,7 +42,7 @@ For Pandas Users
    * - df.groupby()
      - :meth:`ds.groupby() <ray.data.Datastream.groupby>`
    * - df.groupby().apply()
-     - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedData.map_groups>`
+     - :meth:`ds.groupby().map_groups() <ray.data.grouped_data.GroupedData.map_groups>`
    * - df.sample()
      - :meth:`ds.random_sample() <ray.data.Datastream.random_sample>`
    * - df.sort_values()
