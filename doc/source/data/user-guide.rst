@@ -1,4 +1,4 @@
-.. _data_user_guide :
+.t. _data_user_guide :
 
 ===========
 User Guides
@@ -12,9 +12,9 @@ This user guide will help you navigate the Ray Data project and show you how ach
 
     creating-datastreams
     transforming-datastreams
-    consuming-datasets
-    dataset-tensor-support
+    consuming-datastreams
+    data-tensor-support
     custom-datasource
     pipelining-compute
-    dataset-internals
+    data-internals
     performance-tips

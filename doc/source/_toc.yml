@@ -83,7 +83,7 @@ parts:
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
-      - file: data/dataset
+      - file: data/data
         title: Ray Data
         sections:
           - file: data/getting-started
