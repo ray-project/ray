@@ -62,6 +62,13 @@ class DirectMethod(OffPolicyEstimator):
 
         super().__init__(policy, gamma, epsilon_greedy)
 
+        # Some dummy policies and ones that are not based on a tensor framework
+        # backend can come without a config or without a framework key.
+        if hasattr(policy, "config"):
+            assert (
+                policy.config.get("framework", "torch") == "torch"
+            ), "Framework must be torch to use DirectMethod."
+
         q_model_config = q_model_config or {}
         model_cls = q_model_config.pop("type", FQETorchModel)
         self.model = model_cls(
