@@ -247,6 +247,7 @@ Ray components (view below example). Normally, each worker has 2~3 connections t
 If you have more workers, you should consider using a higher number than 65536.
 
 .. code-block:: bash
+
   # Start head node components with higher ulimit.
   ulimit -n 65536 ray start --head
 
