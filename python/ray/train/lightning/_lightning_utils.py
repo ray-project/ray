@@ -14,7 +14,7 @@ from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from torch.utils.data import IterableDataset, DataLoader
-from ray.data.dataset import DataIterator
+from ray.data.datastream import DataIterator
 
 logger = logging.getLogger(__name__)
 
