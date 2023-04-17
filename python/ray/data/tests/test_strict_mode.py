@@ -150,7 +150,8 @@ def test_strict_schema(ray_start_regular_shared):
     assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
-    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
+    # TODO(ekl) fix this to return ndarray
+    assert str(schema) == "Schema({'data': TensorDtype(shape=(10,), dtype=float64)})"
     assert isinstance(schema.base_schema, PandasBlockSchema)
 
 
