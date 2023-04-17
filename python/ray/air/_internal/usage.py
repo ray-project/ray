@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 AIR_TRAINERS = {
     "HorovodTrainer",
-    "HuggingFaceTrainer",
+    "TransformersTrainer",
     "LightGBMTrainer",
     "LightningTrainer",
     "MosaicTrainer",
