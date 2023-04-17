@@ -78,14 +78,6 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # dataclasses are 10-100x faster than cloudpickle.
     request = pickle.dumps(request)
 
-    # Extract the request routing tags
-    # params = QueryParams(scope["query_string"])
-    # tag = params.get(RAY_SERVE_REQUEST_ROUTING_TAG, None)
-    tag = None
-    for key, value in scope["headers"]:
-        if RAY_SERVE_REQUEST_ROUTING_TAG == key.decode():
-            tag = value.decode()
-
     retries = 0
     backoff_time_s = 0.05
     backoff = False
@@ -94,7 +86,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-        assignment_task: asyncio.Task = handle.remote(request, request_routing_tags=tag)
+        assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED,
@@ -407,8 +399,16 @@ class HTTPProxy:
             scope["root_path"] = root_path + route_prefix
 
         start_time = time.time()
+
+        # Extract the request routing tags
+        # params = QueryParams(scope["query_string"])
+        # tag = params.get(RAY_SERVE_REQUEST_ROUTING_TAG, None)
+        tag = ""
+        for key, value in scope["headers"]:
+            if RAY_SERVE_REQUEST_ROUTING_TAG == key.decode():
+                tag = value.decode()
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(route_path, get_random_letters(10))
+            ray.serve.context.RequestContext(route_path, get_random_letters(10), tag)
         )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0

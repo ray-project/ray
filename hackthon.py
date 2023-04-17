@@ -11,7 +11,7 @@ from ray import serve
 logger = logging.getLogger(__file__)
 
 
-"""
+
 @serve.deployment
 @serve.multiplex(num_models_per_replicas=3)
 class ModelTest:
@@ -23,11 +23,14 @@ class ModelTest:
         return f"hello {self.tag}"
 
 
-serve.run(ModelTest.bind())
+handle = serve.run(ModelTest.bind())
 headers = {"ray_serve_request_routing_tag": str(1)}
 resp = requests.get(
     "http://127.0.0.1:8000/run", headers=headers
 )
+#import pdb; pdb.set_trace()
+#with request:
+#    handle.remote()
 
 
 ##############################
@@ -103,7 +106,7 @@ for i in range(1000):
     # )
     # print(resp)
     # resp = resp.json()
-
+"""
 
 # assert len(num_unload) == 6
 # print("Unload metrics: ", sum(num_unload.values()))

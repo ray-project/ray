@@ -140,10 +140,8 @@ class ReplicaSet:
         """
 
         # Find replica by tag
-        tag = query.kwargs.get("request_routing_tags", None)
-        # k = self.in_flight_queries.keys()
-        # for item in k:
-        #    print(item)
+        _request_context = ray.serve.context._serve_request_context.get()
+        tag = _request_context.tag
         replica_candidate = None
         if tag:
             for _ in range(len(self.in_flight_queries.keys())):

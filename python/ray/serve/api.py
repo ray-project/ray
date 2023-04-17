@@ -202,7 +202,7 @@ def multiplex(num_models_per_replicas=1):
                 if "__serve_fastapi_wrapper__" in self.model_instance.__dict__:
                     await model.__init__(tag, servable_object=model)
                 else:
-                    await model.__init__(tag)
+                    await sync_to_async(model.__init__)(tag=tag)
                 return model
 
             def _should_unload_model(self):
