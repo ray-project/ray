@@ -5,11 +5,10 @@ import errno
 import json
 import os
 import re
-import subprocess
 import stat
+import subprocess
 import sys
-
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 
 
 def textproto_format(space, key, value, json_encoder):

@@ -1,8 +1,8 @@
 import datetime
-import json
 import functools
 import glob
 import itertools
+import json
 import os
 import platform
 import re
@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import List, Optional, Tuple
 
 import click
+
 import docker
 
 print = functools.partial(print, file=sys.stderr, flush=True)
