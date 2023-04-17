@@ -20,7 +20,7 @@ from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
@@ -31,8 +31,8 @@ if TYPE_CHECKING:
     from ray.data.dataset import TensorFlowTensorBatchType
 
 
-def _is_tensor_dataset(schema) -> bool:
-    """Return ``True`` if this is an iterator over a tensor dataset."""
+def _is_tensor_datastream(schema) -> bool:
+    """Return ``True`` if this is an iterator over a tensor datastream."""
     if schema is None or isinstance(schema, type):
         return False
     return _is_tensor_schema(schema.names)
@@ -40,13 +40,13 @@ def _is_tensor_dataset(schema) -> bool:
 
 @PublicAPI(stability="beta")
 class DataIterator(abc.ABC):
-    """An iterator for reading items from a :class:`~Dataset` or
+    """An iterator for reading items from a :class:`~Datastream` or
     :class:`~DatasetPipeline`.
 
-    For Datasets, each iteration call represents a complete read of all items in the
-    Dataset. For DatasetPipelines, each iteration call represents one pass (epoch)
-    over the base Dataset. Note that for DatasetPipelines, each pass iterates over
-    the original Dataset, instead of a window (if ``.window()`` was used).
+    For Datastreams, each iteration call represents a complete read of all items in the
+    Datastream. For DatasetPipelines, each iteration call represents one pass (epoch)
+    over the base Datastream. Note that for DatasetPipelines, each pass iterates over
+    the original Datastream, instead of a window (if ``.window()`` was used).
 
     If using Ray AIR, each trainer actor should get its own iterator by calling
     :meth:`session.get_dataset_shard("train")
@@ -56,9 +56,9 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
         >>> ds.iterator()
-        DataIterator(Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>))
+        DataIterator(Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>))
         >>> ds = ds.repeat(); ds
         DatasetPipeline(num_windows=inf, num_stages=2)
         >>> ds.iterator()
@@ -67,22 +67,24 @@ class DataIterator(abc.ABC):
     .. tip::
         For debugging purposes, use
         :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
-        local `DataIterator` from a :class:`~ray.data.Dataset`, a
-        :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
+        local `DataIterator` from a :class:`~ray.data.Datastream`, a
+        :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatastreamConfig`.
     """
 
     @abc.abstractmethod
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
             A tuple. The first item of the tuple is an iterator over pairs of Block
             object references and their corresponding metadata. The second item of the
-            tuple is a DatasetStats object used for recording stats during iteration.
+            tuple is a DatastreamStats object used for recording stats during iteration.
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
         """
@@ -101,7 +103,7 @@ class DataIterator(abc.ABC):
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
-        """Return a local batched iterator over the dataset.
+        """Return a local batched iterator over the datastream.
 
         Examples:
             >>> import ray
@@ -127,8 +129,8 @@ class DataIterator(abc.ABC):
                 Specify "default" to use the default block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets, or None to return
+                to select ``numpy.ndarray`` for tensor datastreams and
+                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None to return
                 the underlying block exactly as is with no additional formatting.
                 The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -199,16 +201,16 @@ class DataIterator(abc.ABC):
             stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
-        """Return a local row iterator over the dataset.
+        """Return a local row iterator over the datastream.
 
-        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
-        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
-        If the dataset is not tabular, the raw row is yielded.
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
+        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
+        iterator. If the datastream is not tabular, the raw row is yielded.
 
         Examples:
             >>> import ray
-            >>> dataset = ray.data.range(10)
-            >>> next(iter(dataset.iterator().iter_rows()))
+            >>> datastream = ray.data.range(10)
+            >>> next(iter(datastream.iterator().iter_rows()))
             0
 
         Time complexity: O(1)
@@ -218,7 +220,7 @@ class DataIterator(abc.ABC):
                 current block during the scan.
 
         Returns:
-            An iterator over rows of the dataset.
+            An iterator over rows of the datastream.
         """
         iter_batch_args = {"batch_size": None, "batch_format": None}
 
@@ -241,7 +243,7 @@ class DataIterator(abc.ABC):
 
     @abc.abstractmethod
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
-        """Return the schema of the dataset iterated over."""
+        """Return the schema of the datastream iterated over."""
         raise NotImplementedError
 
     def iter_torch_batches(
@@ -260,9 +262,9 @@ class DataIterator(abc.ABC):
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator["TorchTensorBatchType"]:
-        """Return a local batched iterator of Torch Tensors over the dataset.
+        """Return a local batched iterator of Torch Tensors over the datastream.
 
-        This iterator will yield single-tensor batches if the underlying dataset
+        This iterator will yield single-tensor batches if the underlying datastream
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors. If looking for more flexibility in the tensor conversion (e.g.
         casting dtypes) or the batch format, try using `.iter_batches` directly.
@@ -361,15 +363,15 @@ class DataIterator(abc.ABC):
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator["TensorFlowTensorBatchType"]:
-        """Return a local batched iterator of TensorFlow Tensors over the dataset.
+        """Return a local batched iterator of TensorFlow Tensors over the datastream.
 
-        This iterator will yield single-tensor batches of the underlying dataset
+        This iterator will yield single-tensor batches of the underlying datastream
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors.
 
         .. tip::
             If you don't need the additional flexibility provided by this method,
-            consider using :meth:`~ray.data.Dataset.to_tf` instead. It's easier
+            consider using :meth:`~ray.data.Datastream.to_tf` instead. It's easier
             to use.
 
         Examples:
@@ -447,9 +449,9 @@ class DataIterator(abc.ABC):
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
-        """Return a Torch IterableDataset over this dataset.
+        """Return a Torch IterableDataset over this datastream.
 
-        This is only supported for datasets convertible to Arrow records.
+        This is only supported for datastreams convertible to Arrow records.
 
         It is recommended to use the returned ``IterableDataset`` directly
         instead of passing it into a torch ``DataLoader``.
@@ -479,10 +481,10 @@ class DataIterator(abc.ABC):
         If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
         of shape (N, 1). Otherwise, it will be of shape (N,).
         If ``label_column`` is specified as ``None``, then no column from the
-        ``Dataset`` will be treated as the label, and the output label tensor
+        ``Datastream`` will be treated as the label, and the output label tensor
         will be ``None``.
 
-        Note that you probably want to call ``.split()`` on this dataset if
+        Note that you probably want to call ``.split()`` on this datastream if
         there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
@@ -513,8 +515,8 @@ class DataIterator(abc.ABC):
                 prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DataContext.
             drop_last: Set to True to drop the last incomplete batch,
-                if the dataset size is not divisible by the batch size. If
-                False and the size of dataset is not divisible by the batch
+                if the datastream size is not divisible by the batch size. If
+                False and the size of datastream is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -635,10 +637,10 @@ class DataIterator(abc.ABC):
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
-        """Return a TF Dataset over this dataset.
+        """Return a TF Dataset over this datastream.
 
         .. warning::
-            If your dataset contains ragged tensors, this method errors. To prevent
+            If your datastream contains ragged tensors, this method errors. To prevent
             errors, resize tensors or
             :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
 
@@ -648,7 +650,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(
+            DataIterator(Datastream(
                num_blocks=1,
                num_rows=150,
                schema={
@@ -670,7 +672,7 @@ class DataIterator(abc.ABC):
             >>> it.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
-            If your dataset contains multiple features but your model accepts a single
+            If your datastream contains multiple features but your model accepts a single
             tensor as input, combine features with
             :class:`~ray.data.preprocessors.Concatenator`.
 
@@ -679,7 +681,7 @@ class DataIterator(abc.ABC):
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
-            +- Dataset(
+            +- Datastream(
                   num_blocks=1,
                   num_rows=150,
                   schema={
@@ -708,8 +710,8 @@ class DataIterator(abc.ABC):
                 `use_legacy_iter_batches` to True in the DataContext.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
-                if the dataset size is not divisible by the batch size. If
-                False and the size of dataset is not divisible by the batch
+                if the datastream size is not divisible by the batch size. If
+                False and the size of datastream is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -737,15 +739,15 @@ class DataIterator(abc.ABC):
 
         schema = self.schema()
 
-        if _is_tensor_dataset(schema):
+        if _is_tensor_datastream(schema):
             raise NotImplementedError(
-                "`to_tf` doesn't support single-column tensor datasets. Call the "
+                "`to_tf` doesn't support single-column tensor datastreams. Call the "
                 "more-flexible `iter_batches` instead."
             )
 
         if isinstance(schema, type):
             raise NotImplementedError(
-                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
+                "`to_tf` doesn't support simple datastreams. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
                 "flexible `iter_batches` in place of `to_tf`."
             )
@@ -757,7 +759,7 @@ class DataIterator(abc.ABC):
                 raise ValueError(
                     f"You specified '{column}' in `feature_columns` or "
                     f"`label_columns`, but there's no column named '{column}' in the "
-                    f"dataset. Valid column names are: {valid_columns}."
+                    f"datastream. Valid column names are: {valid_columns}."
                 )
 
         def validate_columns(columns: Union[str, List]) -> None:
@@ -808,7 +810,7 @@ class DataIterator(abc.ABC):
         label_type_spec = get_type_spec(schema, columns=label_columns)
         output_signature = (feature_type_spec, label_type_spec)
 
-        dataset = tf.data.Dataset.from_generator(
+        datastream = tf.data.Dataset.from_generator(
             generator, output_signature=output_signature
         )
 
@@ -816,7 +818,7 @@ class DataIterator(abc.ABC):
         options.experimental_distribute.auto_shard_policy = (
             tf.data.experimental.AutoShardPolicy.OFF
         )
-        return dataset.with_options(options)
+        return datastream.with_options(options)
 
     def iter_epochs(self, max_epoch: int = -1) -> None:
         raise DeprecationWarning(

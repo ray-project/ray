@@ -23,14 +23,14 @@ from ray.data._internal.execution.legacy_compat import (
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
-    from ray.data import Dataset
+    from ray.data import Datastream
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +43,14 @@ class StreamSplitDataIterator(DataIterator):
 
     @staticmethod
     def create(
-        base_dataset: "Dataset",
+        base_datastream: "Datastream",
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDataIterator"]:
-        """Create a split iterator from the given base Dataset and options.
+        """Create a split iterator from the given base Datastream and options.
 
-        See also: `Dataset.streaming_split`.
+        See also: `Datastream.streaming_split`.
         """
         ctx = DataContext.get_current()
 
@@ -60,24 +60,28 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(ctx, base_dataset, n, equal, locality_hints)
+        ).remote(ctx, base_datastream, n, equal, locality_hints)
 
-        return [StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)]
+        return [
+            StreamSplitDataIterator(base_datastream, coord_actor, i) for i in range(n)
+        ]
 
     def __init__(
         self,
-        base_dataset: "Dataset",
+        base_datastream: "Datastream",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
     ):
-        self._base_dataset = base_dataset
+        self._base_datastream = base_datastream
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
 
     def _to_block_iterator(
         self,
     ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]], Optional[DatasetStats], bool
+        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        Optional[DatastreamStats],
+        bool,
     ]:
         def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
             cur_epoch = ray.get(
@@ -102,11 +106,11 @@ class StreamSplitDataIterator(DataIterator):
 
     def stats(self) -> str:
         """Implements DataIterator."""
-        return self._base_dataset.stats()
+        return self._base_datastream.stats()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
-        return self._base_dataset.schema()
+        return self._base_datastream.schema()
 
 
 @ray.remote(num_cpus=0)
@@ -120,7 +124,7 @@ class SplitCoordinator:
     def __init__(
         self,
         ctx: DataContext,
-        dataset: "Dataset",
+        datastream: "Datastream",
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
@@ -131,7 +135,7 @@ class SplitCoordinator:
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
         DataContext._set_current(ctx)
-        self._base_dataset = dataset
+        self._base_datastream = datastream
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
@@ -151,9 +155,9 @@ class SplitCoordinator:
 
                 output_iterator = execute_to_legacy_bundle_iterator(
                     executor,
-                    dataset._plan,
+                    datastream._plan,
                     True,
-                    dataset._plan._dataset_uuid,
+                    datastream._plan._datastream_uuid,
                     dag_rewrite=add_split_op,
                 )
                 yield output_iterator

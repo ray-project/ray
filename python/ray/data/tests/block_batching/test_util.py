@@ -47,15 +47,15 @@ def test_blocks_to_batches(block_size, drop_last):
         full_batches = 0
         leftover_batches = 0
 
-        dataset_size = block_size * num_blocks
+        datastream_size = block_size * num_blocks
         for batch in batch_iter:
             if len(batch.data) == batch_size:
                 full_batches += 1
-            if len(batch.data) == (dataset_size % batch_size):
+            if len(batch.data) == (datastream_size % batch_size):
                 leftover_batches += 1
 
         assert leftover_batches == 1
-        assert full_batches == (dataset_size // batch_size)
+        assert full_batches == (datastream_size // batch_size)
 
     assert [batch.batch_idx for batch in batch_iter] == list(range(len(batch_iter)))
 
