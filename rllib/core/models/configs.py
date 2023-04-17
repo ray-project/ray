@@ -712,8 +712,8 @@ class RecurrentEncoderConfig(ModelConfig):
             or self.view_requirements_dict is not None
         ):
             raise NotImplementedError(
-                "LSTMEncoderConfig does not support configuring LSTMs that encode "
-                "depending on view_requirements or have a custom tokenizer. "
+                "RecurrentEncoderConfig does not support configuring Models that "
+                "encode depending on view_requirements or have a custom tokenizer. "
                 "Therefore, this config expects `view_requirements_dict=None` and "
                 "`get_tokenizer_config=None`."
             )
