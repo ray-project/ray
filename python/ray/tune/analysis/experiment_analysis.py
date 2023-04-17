@@ -235,7 +235,7 @@ class ExperimentAnalysis:
         local_path = os.path.join(self._temp_local_experiment_path, relative_path)
         try:
             download_from_uri(experiment_checkpoint_path, local_path)
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             return None
 
         return local_path

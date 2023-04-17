@@ -1,14 +1,12 @@
 import os
 import tempfile
 from contextlib import contextmanager
-from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune.execution.trial_runner import TrialRunner, _TuneControllerBase
 from ray.tune.experiment import Trial
-from ray.tune.trainable import TrainableUtil
 
 
 class _ExperimentCheckpointCreator:
@@ -56,11 +54,6 @@ class _ExperimentCheckpointCreator:
             dir_or_data=checkpoint_data,
             storage_mode=checkpoint_storage,
             metrics=trial.last_result,
-            local_to_remote_path_fn=partial(
-                TrainableUtil.get_remote_storage_path,
-                logdir=trial.local_path,
-                remote_checkpoint_dir=trial.remote_path,
-            ),
         )
         trial.on_checkpoint(checkpoint)
         trial.invalidate_json_state()

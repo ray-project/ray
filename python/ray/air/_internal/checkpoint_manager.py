@@ -69,16 +69,12 @@ class _TrackedCheckpoint:
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
-        local_to_remote_path_fn: Optional[Callable[[str], str]] = None,
     ):
         from ray.tune.result import NODE_IP
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
-        # This is a function because dir_or_data may be an object ref
-        # and we need to wait until its resolved first.
-        self.local_to_remote_path_fn = local_to_remote_path_fn
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
@@ -142,7 +138,9 @@ class _TrackedCheckpoint:
         except Exception as e:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
-    def to_air_checkpoint(self) -> Optional[Checkpoint]:
+    def to_air_checkpoint(
+        self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
+    ) -> Optional[Checkpoint]:
         from ray.tune.trainable.util import TrainableUtil
 
         checkpoint_data = self.dir_or_data
@@ -158,9 +156,9 @@ class _TrackedCheckpoint:
 
         if isinstance(checkpoint_data, str):
             # Prefer cloud checkpoints.
-            if self.local_to_remote_path_fn:
+            if local_to_remote_path_fn:
                 checkpoint = Checkpoint.from_uri(
-                    self.local_to_remote_path_fn(checkpoint_data)
+                    local_to_remote_path_fn(checkpoint_data)
                 )
             else:
                 try:
