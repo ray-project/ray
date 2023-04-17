@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
 
-
 class ResultStatus(enum.Enum):
     """
     Overall status of the result test run
@@ -18,7 +17,6 @@ class ResultStatus(enum.Enum):
     INFRA_TIMEOUT = "infra_timeout"
     ERROR = "error"
     TIMEOUT = "timeout"
-
 
 
 @dataclass
@@ -88,7 +86,7 @@ def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
     the status of its previous retries, and its runtime.
     """
     if result_status not in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
-        # Not even an infra failure 
+        # Not even an infra failure
         return False
     retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
     max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
