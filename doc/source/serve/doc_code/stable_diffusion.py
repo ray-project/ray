@@ -59,7 +59,7 @@ class StableDiffusionV2:
         return image
 
 
-my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
+entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # __example_code_end__
 
