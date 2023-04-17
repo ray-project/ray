@@ -4,7 +4,7 @@ Troubleshooting Failures
 What Kind of Failures Exist in Ray?
 -----------------------------------
 
-Ray consists of 2 major APIs. :func:`ray.remote <ray.remote>` to create a task/actor and :func:`ray.get <ray.get>` to get the result. 
+Ray consists of 2 major APIs. ``.remote()`` to create a task/actor and :func:`ray.get <ray.get>` to get the result. 
 Debugging Ray means identifying and fixing failures from remote processes that run functions and classes (task and actor) created by the ``.remote`` API. 
 
 Ray APIs are future APIs (indeed, it is :ref:`possible to convert Ray object references to standard Python future APIs <async-ref-to-futures>`), 
@@ -23,12 +23,13 @@ When you call ``get`` API to the object ref, it raises an exception.
 
 In Ray, there are 3 types of failures. See exception APIs for more details. 
 
-- **Application failures**: This means the remote task/actor fails by the user code. In this case, ``get`` API will raise the ``RayTaskError`` which includes the exception raised from the remote process.
+- **Application failures**: This means the remote task/actor fails by the user code. In this case, ``get`` API will raise the :func:`RayTaskError <ray.exceptions.RayTaskError>` which includes the exception raised from the remote process.
 - **Intentional system failures**: This means Ray is failed, but the failure is intended. For example, when you call cancellation APIs like ``ray.cancel`` (for task) or ``ray.kill`` (for actors), the system fails remote tasks and actors, but it is intentional.
 - **Unintended system failures**: This means the remote tasks and actors failed due to unexpected system failures such as processes crashing (for example, by out-of-memory error) or nodes failing. There are 4 common types.
+
   1. `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_ or :ref:`Ray OOM killer <ray-oom-monitor>` kills processes with high memory usages to avoid out-of-memory.
-  2. The machine shuts down (e.g., spot instance termination) or a raylet is crashed (e.g., by an unexpected failure). 
-  3. System is highly overloaded or stressed (either machine or system components like Raylet or GCS), which makes the system unstable and fail.
+  2. The machine shuts down (e.g., spot instance termination) or a :term:`raylet <raylet>` is crashed (e.g., by an unexpected failure). 
+  3. System is highly overloaded or stressed (either machine or system components like Raylet or :term:`GCS <GCS / Global Control Service>`), which makes the system unstable and fail.
 
 Debugging Application Failures
 ------------------------------
@@ -56,6 +57,12 @@ Debugging Out of Memory
 
 Before reading this section, it is recommended to understand Ray's :ref:`Memory Management <memory>` model.
 
+- To find if your cluster has out-of-memory problems, view :ref:`How to Detect Out-of-Memory Errors? <troubleshooting-out-of-memory-how-to-detect>`.
+- To find what leaks the memory, view :ref:`Find per Task and Actor Memory Usage <troubleshooting-out-of-memory-task-actor-mem-usage>`.
+- If your head node has high memory usage, view :ref:`Head Node Out-of-Memory Error <troubleshooting-out-of-memory-head>`.
+- If your memory usage is high due to high parallelism, view :ref:`Reduce Parallelism <troubleshooting-out-of-memory-reduce-parallelism>`.
+- If you want to profile per task and actor memory usage, view :ref:`Profile Task and Actor Memory Usage <troubleshooting-out-of-memory-profile>`.
+
 What's the Out-of-Memory Error?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -65,13 +72,13 @@ by killing a process that has high memory usage (via SIGKILL) to avoid the OS be
 One of the common problems of the Linux out-of-memory killer is that processes are killed by a SIGKILL without Ray noticing it. 
 Since SIGKILL cannot be handled by processes, it makes Ray difficult to raise a proper error message
 and take proper actions for fault tolerance.
-To solve this problem, Ray built and enalbed (from Ray 2.2) an application-level :ref:`memory monitor <ray-oom-monitor>`,
+To solve this problem, Ray built and enabled (from Ray 2.2) an application-level :ref:`memory monitor <ray-oom-monitor>`,
 which keeps monitoring the memory usage of the host and kills the Ray workers before the Linux out-of-memory killer kicks in. 
+
+.. _troubleshooting-out-of-memory-how-to-detect:
 
 How to Detect Out-of-Memory Errors?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Linux out-of-memory killer**
 
 If tasks or actors are killed by the Linux out-of-memory killer, Ray worker processes are unable to catch and display an exact root cause
 because SIGKILL cannot be handled by processes. If you call ``ray.get`` into the tasks and actors that were executed from the dead worker,
@@ -90,9 +97,7 @@ Also, you can use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%
 .. image:: ../images/dmsg.png
     :align: center
 
-**Ray out-of-memory killer**
-
-If the worker is killed by Ray's memory monitor, they are automatically retried (see the :ref:`link <ray-oom-retry-policy:>` for the detail).
+If the worker is killed by Ray's memory monitor, they are automatically retried (see the :ref:`link <ray-oom-retry-policy>` for the detail).
 If tasks or actors cannot be retried, they raise an exception with 
 a much cleaner error message when you call ``ray.get`` to it.
 
@@ -129,14 +134,14 @@ Ray Dashboard's :ref:`metrics page <dash-metrics-view>` and :ref:`event page <da
 .. image:: ../images/oom-events.png
     :align: center
 
-Debug Out-of-Memory Errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _troubleshooting-out-of-memory-task-actor-mem-usage:
+
+Find per Task and Actor Memory Usage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If tasks or actors are failed by Out-of-memory errors, they are retried based on :ref:`retry policies <ray-oom-retry-policy:>`. 
 However, it is often more desirable to find the root causes of memory issues and fix them instead of relying on fault tolerance mechanisms.
 This section explains how to debug out-of-memory errors in Ray.
-
-**Step 1: Find tasks and actors that use high memory**
 
 First, find the tasks and actors that use high memory usage. View the :ref:`per task and actor memory usage graph <dash-workflow-cpu-memory-analysis>` for more details.
 The memory usage from the per component graph uses RSS - SHR. See the below for reasoning.
@@ -159,7 +164,10 @@ It means when there are out-of-memory issues from a host, it is due to RSS usage
 process memory usage by RSS - SHR because SHR is for Ray object store as explained above. That said, the total memory usage is typically
 ``SHR (object store memory usage, 30% of memory) + sum(RSS - SHR from each ray proc) + sum(RSS - SHR from system components. e.g., raylet, GCS. Usually small)``.
 
-**Step 2 Debug memory problems, head node**
+.. _troubleshooting-out-of-memory-head:
+
+Head Node Out-of-Memory Error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, check the head node memory usage from the metrics page. Find the head node address from the cluster page.
 
@@ -174,9 +182,12 @@ And then check the memory usage from the head node from the node memory usage vi
 Ray head node has more memory-demanding system components such as GCS or the dashboard. 
 Also, driver runs from a head node by default. If the head node has the same memory capacity as worker nodes
 and if you execute the same number of tasks and actors from a head node, it can easily have out-of-memory problems.
-In this case, we recommend you to not run any tasks and actors to the head node. This is achievable by specifying ``--num-cpus=0`` when starting a head node by ``ray start --head``.
+In this case, we recommend you not running any tasks and actors to the head node. This is achievable by specifying ``--num-cpus=0`` when starting a head node by ``ray start --head`` (if you use Kuberay, view `<specify-node-resources>`).
 
-**Step 3 Debug memory problems, parallelism**
+.. _troubleshooting-out-of-memory-reduce-parallelism:
+
+Reduce Parallelism
+~~~~~~~~~~~~~~~~~~
 
 High parallelism can trigger out-of-memory errors. For example, imagine 
 you have 8 training workers that perform the data preprocessing -> training. 
@@ -185,7 +196,7 @@ memory capacity.
 
 You can verify it by looking at the :ref:`per task and actor memory usage graph <dash-workflow-cpu-memory-analysis>`. And the task metrics.
 
-First, see the memory usage of a ``allocate_memory`` task. It is total 21GB.
+First, see the memory usage of a ``allocate_memory`` task. It is total 18GB.
 At the same time, you can verify 15 concurrent tasks running.
 
 .. image:: ../images/component-memory.png
@@ -194,9 +205,15 @@ At the same time, you can verify 15 concurrent tasks running.
 .. image:: ../images/tasks-graph.png
     :align: center
 
-It means each task uses about 21GB / 15 == 1.4 GB. You can increase the ``num_cpus`` requirement of each task to reduce the parallelism to solve the problem.
+It means each task uses about 18GB / 15 == 1.2 GB. To reduce the parallelism,
 
-**Step 4 Debug memory problems, Profiling memory leak**
+- `Limit the max number of running tasks <https://docs.ray.io/en/latest/ray-core/patterns/limit-running-tasks.html>`_. 
+- increase the ``num_cpus`` options for :func:`ray.remote`. Modern hardware typically has 4GB of memory per CPU, so you can choose the CPU requirements accordingly. For this example, we specified 1 CPU per each ``allocate_memory`` task. If we double the CPU requirements, you can only run half of tasks (7) at the same time, meaning memory usage won't exceed 9GB.
+
+.. _troubleshooting-out-of-memory-profile:
+
+Profile Task and Actor Memory Usage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 It is also possible tasks and actors use more memory than you expect. For example, actors or tasks can have a memory leak or have unnecessary copies.
 
