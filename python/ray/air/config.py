@@ -417,12 +417,13 @@ class DatasetConfig:
 
     @staticmethod
     def validated(
-        config: Dict[str, "DatasetConfig"], datasets: Dict[str, "Dataset"]
+        config: Dict[str, "DatasetConfig"], datasets: Optional[Dict[str, "Dataset"]]
     ) -> Dict[str, "DatasetConfig"]:
         """Validate the given config and datasets are usable.
 
         Returns dict of validated configs with defaults filled out.
         """
+        datasets = datasets or {}
         has_wildcard = WILDCARD_KEY in config
         fittable = set()
         result = {k: v.fill_defaults() for k, v in config.items()}
