@@ -51,6 +51,7 @@ describe("RecentJobsCard", () => {
       jobList: JOB_LIST,
     } as any);
   });
+
   it("renders", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
@@ -62,6 +63,7 @@ describe("RecentJobsCard", () => {
     expect(screen.getByText("06000000")).toBeVisible();
     expect(screen.queryByText("07000000")).toBeNull();
   });
+
   it("the link is active when job_id is not null", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
@@ -70,13 +72,11 @@ describe("RecentJobsCard", () => {
     const link = screen.getByRole("link", { name: "05000000" });
     expect(link).toHaveAttribute("href");
   });
+
   it("disables link when job_id is null", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
-    const jobDiv = screen.getByText("raysubmit_23456");
-
-    fireEvent.click(jobDiv);
-    expect(window.location.pathname).not.toBe("/jobs/null");
+    expect(screen.queryByRole("link", { name: "raysubmit_23456" })).toBeNull();
   });
 });
