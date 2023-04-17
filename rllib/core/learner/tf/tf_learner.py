@@ -107,27 +107,30 @@ class TfLearner(Learner):
         # Clip by value (each gradient individually).
         grad_clip_by_value = self._optimizer_config.get("grad_clip_by_value", None)
         if grad_clip_by_value is not None:
-            gradients_dict = tree.map_structure(
-                lambda v: tf.clip_by_value(
+            gradients_dict = {
+                k: tf.clip_by_value(
                     v, -grad_clip_by_value, grad_clip_by_value
-                ),
-                gradients_dict,
-            )
+                ) for k, v in gradients_dict.items()
+            }
 
         # Clip by L2-norm (per gradient tensor).
         grad_clip_by_norm = self._optimizer_config.get("grad_clip_by_norm", None)
         if grad_clip_by_norm is not None:
-            gradients_dict = tree.map_structure(
-                lambda v: tf.clip_by_norm(v, grad_clip_by_norm), gradients_dict
-            )
+            gradients_dict = {
+                k: tf.clip_by_norm(
+                    v, grad_clip_by_norm
+                ) for k, v in gradients_dict.items()
+            }
 
         # Clip by global L2-norm (across all gradient tensors).
-        grad_clip_by_global_norm = self._optimizer_config.get("grad_clip_by_global_norm", None)
+        grad_clip_by_global_norm = self._optimizer_config.get(
+            "grad_clip_by_global_norm", None
+        )
         if grad_clip_by_global_norm is not None:
-            clipped_grads = tf.clip_by_global_norm(
-                tree.flatten(gradients_dict), grad_clip_by_global_norm
+            clipped_grads, _ = tf.clip_by_global_norm(
+                list(gradients_dict.values()), grad_clip_by_global_norm
             )
-            gradients_dict = tree.unflatten_as(gradients_dict, clipped_grads)
+            gradients_dict = {k: v for k, v in zip(gradients_dict.keys(), clipped_grads)}
 
         return gradients_dict
 

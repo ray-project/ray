@@ -91,19 +91,20 @@ class TorchLearner(Learner):
         # Clip by value (each gradient individually).
         grad_clip_by_value = self._optimizer_config.get("grad_clip_by_value", None)
         if grad_clip_by_value is not None:
-            gradients_dict = tree.map_structure(
-                lambda v: torch.clip(
+            gradients_dict = {
+                k: torch.clip(
                     v, -grad_clip_by_value, grad_clip_by_value
-                ),
-                gradients_dict,
-            )
+                ) for k, v in gradients_dict.items()
+            }
 
         # Clip by L2-norm (per gradient tensor).
         grad_clip_by_norm = self._optimizer_config.get("grad_clip_by_norm", None)
         if grad_clip_by_norm is not None:
-            gradients_dict = tree.map_structure(
-                lambda v: nn.utils.clip_grad_norm_(v, grad_clip_by_norm), gradients_dict
-            )
+            gradients_dict = {
+                k: nn.utils.clip_grad_norm_(
+                    v, grad_clip_by_norm
+                ) for k, v in gradients_dict.items()
+            }
 
         # Clip by global L2-norm (across all gradient tensors).
         grad_clip_by_global_norm = self._optimizer_config.get(
