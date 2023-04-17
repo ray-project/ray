@@ -23,6 +23,10 @@ class RayInstaller(object):
         self._node_config_provider = node_config_provider
 
     def install_ray(self, instance: Instance, head_node_ip: str) -> bool:
+        """
+        Install ray on the target instance synchronously.
+        """
+
         setup_commands = self._node_config_provider.get_worker_setup_commands(instance)
         ray_start_commands = self._node_config_provider.get_worker_start_ray_commands(
             instance
@@ -63,3 +67,4 @@ class RayInstaller(object):
             node_resources=instance.node_resources,
         )
         updater.run()
+        # TODO: handle failures

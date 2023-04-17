@@ -20,14 +20,30 @@ class NodeProvider(metaclass=ABCMeta):
     def create_nodes(
         self, instance_type: InstanceType, count: int
     ) -> Dict[str, Instance]:
+        """Create new nodes synchronously, returns all non-terminated nodes in the cluster.
+        Note that create_nodes could fail partially.
+        """
         pass
 
     @abstractmethod
-    def terminate_nodes(self, instance_ids: List[str]):
+    def async_terminate_nodes(self, instance_ids: List[str]) -> None:
+        """
+        Terminate nodes asynchronously, returns immediately."""
         pass
 
     @abstractmethod
-    def get_nodes(self, instance_ids: List[str]) -> Dict[str, Instance]:
+    def get_non_terminated_nodes(
+        self,
+    ) -> Dict[str, Instance]:
+        """Get all non-terminated nodes in the cluster"""
+        pass
+
+    @abstractmethod
+    def get_nodes_by_id(
+        self,
+        node_ids: List[str],
+    ) -> Dict[str, Instance]:
+        """Get nodes by node ids, including terminated nodes"""
         pass
 
     @abstractmethod
@@ -36,6 +52,10 @@ class NodeProvider(metaclass=ABCMeta):
 
 
 class NodeProviderAdapter(NodeProvider):
+    """
+    Warps a NodeProviderV1 to a NodeProvider.
+    """
+
     def __init__(
         self,
         provider: NodeProviderV1,
@@ -67,27 +87,23 @@ class NodeProviderAdapter(NodeProvider):
         return self._get_none_terminated_instances()
 
     @override
-    def terminate_nodes(self, instance_ids: List[str]) -> None:
+    def async_terminate_nodes(self, instance_ids: List[str]) -> None:
         self._provider.terminate_node(instance_ids)
-
-    @override
-    def get_nodes(
-        self,
-        instance_ids_filter: Optional[Set[str]],
-        instance_states_filter: Optional[Set[int]],
-    ):
-        # TODO: more efficient implementation.
-        instances = self._provider.non_terminated_nodes()
-        return self._filter_instances(
-            instances, instance_ids_filter, instance_states_filter
-        )
 
     @override
     def is_readonly(self) -> bool:
         return self._provider.is_readonly()
 
-    def _get_none_terminated_instances(self):
+    @override
+    def get_non_terminated_nodes(self):
         instance_ids = self._provider.non_terminated_nodes()
+        return self.get_nodes_by_id(instance_ids)
+
+    @abstractmethod
+    def get_nodes_by_id(
+        self,
+        instance_ids: List[str],
+    ) -> Dict[str, Instance]:
         instances = {}
         for instance_id in instance_ids:
             instances[instance_id] = self._get_instance(instance_id)

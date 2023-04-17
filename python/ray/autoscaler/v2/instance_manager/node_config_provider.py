@@ -4,9 +4,17 @@ from typing import Any, Dict, List
 from ray.autoscaler._private.util import hash_runtime_conf
 from ray.core.generated.instance_manager_pb2 import Instance
 
+
 class NodeConfigProvider(object):
+    """
+    NodeConfigProvider is responsible for providing node config for
+    """
+
     def __init__(self, node_configs: Dict[str, Any]) -> None:
         self._sync_continuously = False
+        self.update_configs(node_configs)
+
+    def update_configs(self, node_configs: Dict[str, Any]) -> None:
         self._node_configs = node_configs
         self._calculate_hashes()
         self._sync_continuously = self._node_configs.get(
