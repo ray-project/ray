@@ -1141,7 +1141,7 @@ def get_log(
     follow: bool = False,
     tail: int = -1,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    suffix: Optional[str] = None,
+    suffix: str = "out",
     encoding: Optional[str] = "utf-8",
     errors: Optional[str] = "strict",
     _interval: Optional[float] = None,
@@ -1174,7 +1174,7 @@ def get_log(
         tail: Number of lines to get from the end of the log file. Set to -1 for getting
             the entire log.
         timeout: Max timeout for requests made when getting the logs.
-        suffix: The suffix of the log file if query by id of tasks/workers/actors.
+        suffix: The suffix of the log file if query by id of tasks/workers/actors. Default to "out".
         encoding: The encoding used to decode the content of the log file. Default is
             "utf-8". Use None to get binary data directly.
         errors: The error handling scheme to use for decoding errors. Default is
