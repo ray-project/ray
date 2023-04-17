@@ -211,7 +211,12 @@ class StateSchema(ABC):
 
     @classmethod
     def humanify(cls, state: dict) -> dict:
-        """Return a human readable state object ready for printing. Subclasses should override this method."""
+        """Convert the given state object into something human readable."""
+        if not cls.is_valid_state(state):
+            return state  # return the original state
+        for f in fields(cls):
+            if f.metadata.get("format_fn") is not None:
+                state[f.name] = f.metadata["format_fn"](state[f.name])
         return state
 
     @classmethod
@@ -529,15 +534,6 @@ class ClusterEventState(StateSchema):
 @dataclass(init=True)
 class TaskState(StateSchema):
     """Task State"""
-
-    @classmethod
-    def humanify(cls, state: dict) -> dict:
-        if not cls.is_valid_state(state):
-            return state  # return the original state
-        for f in fields(cls):
-            if f.metadata.get("format_fn") is not None:
-                state[f.name] = f.metadata["format_fn"](state[f.name])
-        return state
 
     #: The id of the task.
     task_id: str = state_column(filterable=True)
