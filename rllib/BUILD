@@ -1895,6 +1895,13 @@ py_test(
     srcs = ["core/models/tests/test_mlp_heads.py"]
 )
 
+py_test(
+    name = "test_recurrent_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_recurrent_encoders.py"]
+)
+
 # Specs
 py_test(
     name = "test_check_specs",
@@ -3300,6 +3307,14 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/env/greyscale_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/env/greyscale_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
 py_test(

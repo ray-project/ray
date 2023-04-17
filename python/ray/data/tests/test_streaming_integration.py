@@ -212,7 +212,7 @@ def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
         )
 
 
-def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):
+def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
@@ -229,7 +229,7 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_contex
         run()
 
 
-def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_dataset_context):
+def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     from ray import remote_function
 
     tasks = []
@@ -251,7 +251,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_dataset_context)
 
 
 def test_scheduling_progress_when_output_blocked(
-    ray_start_10_cpus_shared, restore_dataset_context
+    ray_start_10_cpus_shared, restore_data_context
 ):
     # Processing stages should fully finish even if output is completely stalled.
 
@@ -288,7 +288,7 @@ def test_scheduling_progress_when_output_blocked(
     assert list(it) == [[x] for x in range(1, 100)]
 
 
-def test_backpressure_from_output(ray_start_10_cpus_shared, restore_dataset_context):
+def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
 
@@ -333,7 +333,7 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_dataset_cont
 
 
 def test_e2e_liveness_with_output_backpressure_edge_case(
-    ray_start_10_cpus_shared, restore_dataset_context
+    ray_start_10_cpus_shared, restore_data_context
 ):
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DataContext.get_current()
@@ -346,7 +346,7 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     assert ds.take_all() == list(range(10000))
 
 
-def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
+def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
@@ -421,7 +421,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
         ).take_all()
 
 
-def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_dataset_context):
+def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
@@ -439,7 +439,7 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_dataset_context)
     ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
 
 
-def test_can_pickle(ray_start_10_cpus_shared, restore_dataset_context):
+def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
@@ -452,7 +452,7 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_dataset_context):
     assert ds2.count() == 1000000
 
 
-def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_dataset_context):
+def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
