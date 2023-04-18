@@ -31,7 +31,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.dataset import DataBatch, Datastream
+from ray.data.datastream import DataBatch, Datastream
 from ray.util.annotations import PublicAPI
 
 
@@ -188,7 +188,7 @@ class GroupedData(Generic[T]):
             if len(aggs) == 0:
                 raise ValueError("Aggregate requires at least one aggregation")
             for agg in aggs:
-                agg._validate(self._datastream)
+                agg._validate(self._datastream.schema(fetch_if_missing=True))
             # Handle empty datastream.
             if blocks.initial_num_blocks() == 0:
                 return blocks, stage_info

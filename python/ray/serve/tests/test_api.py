@@ -695,6 +695,19 @@ def test_application_route_prefix_override1(serve_instance, ingress_route):
         assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
 
 
+def test_invalid_driver_deployment_class():
+    """Test invalid driver deployment class"""
+
+    @serve.deployment(is_driver_deployment=True)
+    def f():
+        pass
+
+    with pytest.raises(ValueError):
+        f.options(num_replicas=2)
+    with pytest.raises(ValueError):
+        f.options(autoscaling_config={"min_replicas": "1"})
+
+
 if __name__ == "__main__":
     import sys
 

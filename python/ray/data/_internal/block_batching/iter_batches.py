@@ -1,5 +1,4 @@
 import collections
-import sys
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
 import ray
@@ -22,15 +21,7 @@ from ray.data._internal.block_batching.util import (
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatastreamStats
 from ray.data.context import DataContext
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
+from contextlib import nullcontext
 
 
 def iter_batches(

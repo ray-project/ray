@@ -82,6 +82,12 @@ class Deployment:
         if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
             raise TypeError("ray_actor_options must be a dict.")
 
+        if is_driver_deployment is True:
+            if config.num_replicas != 1:
+                raise ValueError("num_replicas should not be set for driver deployment")
+            if config.autoscaling_config:
+                raise ValueError("autoscaling should not be set for driver deployment")
+
         if init_args is None:
             init_args = ()
         if init_kwargs is None:
@@ -425,7 +431,7 @@ class Deployment:
             new_config.health_check_timeout_s = health_check_timeout_s
 
         if is_driver_deployment is DEFAULT.VALUE:
-            self._is_driver_deployment = False
+            is_driver_deployment = self._is_driver_deployment
 
         return Deployment(
             func_or_class,
@@ -437,7 +443,7 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
-            is_driver_deployment=self._is_driver_deployment,
+            is_driver_deployment=is_driver_deployment,
         )
 
     @PublicAPI(stability="alpha")
@@ -587,6 +593,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
+    if s.is_driver_deployment is DEFAULT.VALUE:
+        is_driver_deployment = False
+    else:
+        is_driver_deployment = s.is_driver_deployment
+
     config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -608,5 +619,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         _internal=True,
-        is_driver_deployment=s.is_driver_deployment,
+        is_driver_deployment=is_driver_deployment,
     )
