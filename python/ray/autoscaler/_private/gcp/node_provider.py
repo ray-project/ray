@@ -1,7 +1,6 @@
 import concurrent.futures
 import logging
 import time
-from contextlib import contextmanager
 from functools import wraps
 from threading import RLock
 from typing import Dict, List, Tuple
@@ -57,24 +56,10 @@ def _retry(method, max_tries=5, backoff_s=1):
     return method_with_retries
 
 
-def _update_locks(method):
-    """Update locks decorator for methods of GCPNodeProvider
-
-    Used in GCPNodeProvider.create_node method
-    """
-
-    def wrapper(self, *args, **kwargs):
-        result = method(self, *args, **kwargs)  # type:Dict[str, dict]
-        self.locks.update({node_id: RLock() for node_id in result.keys()})
-        return result
-
-    return wrapper
-
-
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config: dict, cluster_name: str):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.locks: Dict[str, RLock] = {}
+        self.lock = RLock()
         self._construct_clients()
 
         # Cache of node objects from the last nodes() call. This avoids
@@ -117,7 +102,7 @@ class GCPNodeProvider(NodeProvider):
 
     @_retry
     def non_terminated_nodes(self, tag_filters: dict):
-        with self._multiple_locks_context([lock for lock in self.locks.keys()]):
+        with self.lock:
             instances = []
 
             for resource in self.resources.values():
@@ -129,23 +114,23 @@ class GCPNodeProvider(NodeProvider):
             return [i["name"] for i in instances]
 
     def is_running(self, node_id: str):
-        with self.locks[node_id]:
+        with self.lock:
             node = self._get_cached_node(node_id)
             return node.is_running()
 
     def is_terminated(self, node_id: str):
-        with self.locks[node_id]:
+        with self.lock:
             node = self._get_cached_node(node_id)
             return node.is_terminated()
 
     def node_tags(self, node_id: str):
-        with self.locks[node_id]:
+        with self.lock:
             node = self._get_cached_node(node_id)
             return node.get_labels()
 
     @_retry
     def set_node_tags(self, node_id: str, tags: dict):
-        with self.locks[node_id]:
+        with self.lock:
             labels = tags
             node = self._get_node(node_id)
 
@@ -156,7 +141,7 @@ class GCPNodeProvider(NodeProvider):
             return result
 
     def external_ip(self, node_id: str):
-        with self.locks[node_id]:
+        with self.lock:
             node = self._get_cached_node(node_id)
 
             ip = node.get_external_ip()
@@ -167,7 +152,7 @@ class GCPNodeProvider(NodeProvider):
             return ip
 
     def internal_ip(self, node_id: str):
-        with self.locks[node_id]:
+        with self.lock:
             node = self._get_cached_node(node_id)
 
             ip = node.get_internal_ip()
@@ -177,7 +162,6 @@ class GCPNodeProvider(NodeProvider):
 
             return ip
 
-    @_update_locks
     @_retry
     def create_node(self, base_config: dict, tags: dict, count: int) -> Dict[str, dict]:
         """Creates instances.
@@ -185,7 +169,7 @@ class GCPNodeProvider(NodeProvider):
         Returns dict mapping instance id to each create operation result for the created
         instances.
         """
-        with self._multiple_locks_context([lock for lock in self.locks.keys()]):
+        with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
 
             node_type = get_node_type(base_config)
@@ -196,41 +180,44 @@ class GCPNodeProvider(NodeProvider):
             )  # type: List[Tuple[dict, str]]
             return {instance_id: result for result, instance_id in results}
 
+    def _thread_unsafe_terminate_node(self, node_id: str):
+        # Assumes the global lock is held for the duration of this operation.
+        # The lock may be held by a different thread if in `terminate_nodes()` case.
+        logger.info("NodeProvider: {}: Terminating node".format(node_id))
+        resource = self._get_resource_depending_on_node_name(node_id)
+        try:
+            result = resource.delete_instance(
+                node_id=node_id,
+            )
+        except googleapiclient.errors.HttpError as http_error:
+            if http_error.resp.status == 404:
+                logger.warning(
+                    f"Tried to delete the node with id {node_id} "
+                    "but it was already gone."
+                )
+            else:
+                raise http_error from None
+        return result
+
     @_retry
     def terminate_node(self, node_id: str):
-        with self.locks[node_id]:
-            logger.info("NodeProvider: {}: Terminating node".format(node_id))
-            resource = self._get_resource_depending_on_node_name(node_id)
-            try:
-                result = resource.delete_instance(
-                    node_id=node_id,
-                )
-
-                del self.locks[node_id]
-            except googleapiclient.errors.HttpError as http_error:
-                if http_error.resp.status == 404:
-                    logger.warning(
-                        f"Tried to delete the node with id {node_id} "
-                        "but it was already gone."
-                    )
-                else:
-                    raise http_error from None
-            return result
+        with self.lock:
+            self._thread_unsafe_terminate_node(node_id)
 
     def terminate_nodes(self, node_ids: List[str]):
         if not node_ids:
             return None
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            _ = executor.map(self.terminate_node, node_ids)
+        with self.lock, concurrent.futures.ThreadPoolExecutor() as executor:
+            result = executor.map(self._thread_unsafe_terminate_node, node_ids)
 
-        return None
+        return list(result)
 
     @_retry
     def _get_node(self, node_id: str) -> GCPNode:
         self.non_terminated_nodes({})  # Side effect: updates cache
 
-        with self.locks[node_id]:
+        with self.lock:
             if node_id in self.cached_nodes:
                 return self.cached_nodes[node_id]
 
@@ -244,21 +231,6 @@ class GCPNodeProvider(NodeProvider):
             return self.cached_nodes[node_id]
 
         return self._get_node(node_id)
-
-    @contextmanager
-    def _multiple_locks_context(self, locks: List[RLock]):
-        """A handy context manager for a list of locks
-
-        Args:
-            locks (List[RLock]): a list of reentrant locks
-        """
-        try:
-            for lock in locks:
-                lock.acquire()
-            yield
-        finally:
-            for lock in reversed(locks):
-                lock.release()
 
     @staticmethod
     def bootstrap_config(cluster_config):
