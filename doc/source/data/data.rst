@@ -2,9 +2,9 @@
 
 .. _data:
 
-========================================
-Ray Data: Distributed Data Preprocessing
-========================================
+======================================
+Ray Data: Distributed ML Preprocessing
+======================================
 
 .. _data-intro:
 
@@ -28,9 +28,9 @@ is already supported.
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
---------------------
-Streaming ML Compute
---------------------
+-------------------------
+Streaming Batch Inference
+-------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
 powerful :ref:`Datastream <datastream_concept>` primitive. This allows users to execute workloads such as 
@@ -38,9 +38,12 @@ powerful :ref:`Datastream <datastream_concept>` primitive. This allows users to 
 the pipelined loading, processing, and output of data in the cluster, maximizing resource utilization
 by keeping the working data fitting into Ray object store memory.
 
-.. image:: images/dataset-compute-1.png
-   :width: 500px
+.. image:: images/stream-example.png
+   :width: 650px
    :align: center
+
+..
+ https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
 
 As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ray's distributed scheduler,
 e.g., using actors for optimizing setup time and GPU scheduling.
