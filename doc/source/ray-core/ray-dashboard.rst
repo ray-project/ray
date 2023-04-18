@@ -162,6 +162,8 @@ The Overview Metrics page provides the cluster-level hardware utilization and au
 
 The Recent Jobs card provides a list of recently submitted Ray jobs.
 
+.. _dash-event:
+
 **Event View**
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/event-page.png
