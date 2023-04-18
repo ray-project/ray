@@ -54,7 +54,7 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 ds.map_batches(single_col_udf)
 ds.materialize()
 # -> Dataset(num_blocks=17, num_rows=1000,
-#            schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
+#            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
 
 # __create_pandas_2_begin__
@@ -76,8 +76,8 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 ds.map_batches(multi_col_udf)
 ds.materialize()
 # -> Dataset(num_blocks=17, num_rows=1000,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64),
-#                    embed: TensorDtype(shape=(256,), dtype=uint8)})
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=int64),
+#                    embed: numpy.ndarray(shape=(256,), dtype=uint8)})
 # __create_pandas_2_end__
 
 # __create_numpy_begin__
@@ -354,7 +354,7 @@ next(ds.iter_batches(batch_format="pyarrow"))
 # Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
 def add_one(batch: pyarrow.Table) -> pyarrow.Table:
     np_col = np.array(
@@ -420,7 +420,7 @@ next(ds.iter_batches(batch_format="numpy"))
 # Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
 def add_one(batch: Dict[str, Any]) -> Dict[str, Any]:
     assert isinstance(batch, dict)
@@ -456,7 +456,7 @@ shutil.rmtree("/tmp/some_path")
 # Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
 # You can write the dataset to Parquet.
 ds.write_parquet("/tmp/some_path")
@@ -493,7 +493,7 @@ ragged_array = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
 df = pd.DataFrame({"feature": ragged_array, "label": [1, 1]})
 ds = ray.data.from_pandas([df, df])
 # -> Dataset(num_blocks=2, num_rows=4,
-#            schema={feature: TensorDtype(shape=(None, None), dtype=float64), 
+#            schema={feature: numpy.ndarray(shape=(None, None), dtype=float64), 
 #            label: int64})
 
 ds.take(2)
