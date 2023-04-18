@@ -6,16 +6,18 @@ Eventually, these use cases should be consolidated.
 """
 
 from abc import ABC
+from collections import defaultdict
 from datetime import timedelta
 import os
+import torch
 import torch.distributed as dist
 from typing import Callable, List, T
 
 import ray
 from ray.actor import ActorHandle
-from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.train._internal.utils import get_address_and_port
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
+from ray.train.torch.train_loop_utils import get_device
 
 
 class TorchDistributedWorker(ABC):
@@ -32,11 +34,7 @@ class TorchDistributedWorker(ABC):
             func: The function to execute.
             args, kwargs: The arguments to pass into func.
         """
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            skipped = skip_exceptions(e)
-            raise skipped from exception_cause(skipped)
+        return func(*args, **kwargs)
 
 
 def _init_torch_distributed(
@@ -122,12 +120,17 @@ def init_torch_dist_process_group(
         [w.execute.remote(_get_node_and_gpu_ids) for w in workers]
     )
     # All the workers on a specific node.
-    node_to_workers = {}
+    node_to_workers = defaultdict(list)
     # All the gpu ids visible to all the workers on a specific node.
-    node_to_gpu_ids = {}
+    node_to_gpu_ids = defaultdict(set)
     for i, (node_id, gpu_ids) in enumerate(node_and_gpu_ids):
-        node_to_workers.setdefault(node_id, []).append(i)
-        node_to_gpu_ids.setdefault(node_id, []).extend(gpu_ids)
+        node_to_workers[node_id].append(i)
+        # Force list.
+        if not isinstance(gpu_ids, list):
+            gpu_ids = [gpu_ids]
+        # It is possible for a worker to have access to multiple GPUs.
+        for gpu_id in gpu_ids:
+            node_to_gpu_ids[node_id].add(gpu_id)
 
     # Assume the first worker is the master.
     master_addr, master_port = ray.get(workers[0].execute.remote(get_address_and_port))
@@ -150,7 +153,9 @@ def init_torch_dist_process_group(
                 local_world_size=local_world_size,
                 master_addr=master_addr,
                 master_port=master_port,
-                gpu_ids=node_to_gpu_ids[node_id],
+                # list(set) will sort the gpu ids, so VISIBLE_CUDA_DEVICES
+                # is always sorted.
+                gpu_ids=list(node_to_gpu_ids[node_id]),
             )
         )
         local_ranks.append(local_rank)
@@ -159,3 +164,23 @@ def init_torch_dist_process_group(
     ray.get(setup_futures)
 
     return local_ranks
+
+
+def _shutdown_torch_distributed():
+    """Shutdown torch distributed backend"""
+    dist.destroy_process_group()
+
+    if not torch.cuda.is_available():
+        return
+
+    # Clean up cuda memory.
+    devices = get_device()
+    if not isinstance(devices, list):
+        devices = [devices]
+    for device in devices:
+        with torch.cuda.device(device):
+            torch.cuda.empty_cache()
+
+
+def shutdown_torch_dist_process_group(workers: List[ActorHandle]):
+    ray.get([w.execute.remote(_shutdown_torch_distributed) for w in workers])

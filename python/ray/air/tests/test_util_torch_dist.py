@@ -6,6 +6,7 @@ import torch.distributed as dist
 import ray
 from ray.air.util.torch_dist import (
     init_torch_dist_process_group,
+    shutdown_torch_dist_process_group,
     TorchDistributedWorker,
 )
 
@@ -32,9 +33,11 @@ def test_torch_process_group_gloo():
         # All-reduce. Each tensor contributed 1.0. 5 tensors in total.
         assert r[0] == 5.0
 
+    shutdown_torch_dist_process_group(workers)
+
 
 def test_torch_process_group_nccl():
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_gpus=2)
     class TestWorker(TorchDistributedWorker):
         def __init__(self):
             super().__init__()
@@ -58,6 +61,8 @@ def test_torch_process_group_nccl():
         assert r.dtype == np.float32
         # All-reduce. Each tensor contributed 1.0. 5 tensors in total.
         assert r[0] == 2.0
+
+    shutdown_torch_dist_process_group(workers)
 
 
 if __name__ == "__main__":
