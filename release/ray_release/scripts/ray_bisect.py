@@ -75,6 +75,14 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
         commit_list = commit_list[passing_idx : failing_idx + 1]
     return commit_list[-1]
 
+def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
+    logger.info(
+        f"Sanity check passing revision: {passing_revision}"
+        f" and failing revision: {failing_revision})"
+    )
+    _run_test(test, passing_revision)
+    _run_test(test, failing_revision)
+    return True
 
 def _run_test(test: Test, commit: str) -> bool:
     logger.info(f'Running test {test["name"]} on commit {commit}')
