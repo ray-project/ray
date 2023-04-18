@@ -44,7 +44,7 @@ void ClusterResourceManager::AddOrUpdateNode(
 
 void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
                                              const NodeResources &node_resources) {
-  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt()
+  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.Binary()
                  << ", node_resources: " << node_resources.DebugString();
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
