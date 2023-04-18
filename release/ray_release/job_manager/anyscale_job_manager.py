@@ -262,7 +262,8 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
-    def _get_ray_error_logs(self) -> Optional[str]:
+    @staticmethod
+    def _get_ray_error_logs(cluster_id: str) -> Optional[str]:
         """
         Obtain any ray logs that contain keywords that indicate a crash, such as
         ERROR or Traceback
@@ -270,7 +271,7 @@ class AnyscaleJobManager:
         tmpdir = tempfile.mktemp()
         try:
             subprocess.check_output(
-                f"anyscale logs cluster --id {self.cluster_manager.cluster_id} "
+                f"anyscale logs cluster --id {cluster_id} "
                 f"--head-only --download --download-dir {tmpdir}",
                 shell=True,
             )
@@ -321,7 +322,8 @@ class AnyscaleJobManager:
                     print("", flush=True)
             output = buf.getvalue().strip()
             if "### Starting ###" not in output:
-                output = self._get_ray_error_logs()
+                output = AnyscaleJobManager._get_ray_error_logs(
+                    self.cluster_manager.cluster_id)
             assert output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
 
