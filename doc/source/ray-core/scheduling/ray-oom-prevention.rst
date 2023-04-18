@@ -11,6 +11,10 @@ In this section we will go over:
 
 - How to use the memory monitor to detect and resolve memory issues
 
+Also view :ref:`Debugging Out of Memory <troubleshooting-out-of-memory>` to learn how to troubleshoot out-of-memory issues.
+
+.. _ray-oom-monitor:
+
 What is the memory monitor?
 ---------------------------
 
@@ -35,6 +39,8 @@ The memory monitor is controlled by the following environment variables:
 
 Using the Memory Monitor
 ------------------------
+
+.. _ray-oom-retry-policy:
 
 Retry policy
 ~~~~~~~~~~~~
