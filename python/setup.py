@@ -548,8 +548,8 @@ def build(build_python, build_java, build_cpp):
         # Python 3.10 build of psutil 5.9.5 seems to fail (minimal install test
         # fails). Until investigated, we exclude that version.
         pip_packages = [
-            "psutil; python_version != 3.10",
-            "psutil!=5.9.5; python_version == 3.10",
+            "psutil; python_version < 3.10",
+            "psutil!=5.9.5; python_version >= 3.10",
             "setproctitle==1.2.2",
             "colorama",
         ]
