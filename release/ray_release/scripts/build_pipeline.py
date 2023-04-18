@@ -188,7 +188,7 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
 
             ray_commit = parse_commit_from_wheel_url(this_ray_wheels_url)
             if ray_commit:
-                env.update({"RAY_TEST_COMMIT": ray_commit})
+                env.update({"RAY_COMMIT_OF_WHEEL": ray_commit})
             step = get_step(
                 test,
                 report=report,

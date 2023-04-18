@@ -78,13 +78,13 @@ if [ -z "${NO_CLONE}" ]; then
   # this racing condition, ignoring for now.
   if [ "${RAY_TEST_REPO}" == "https://github.com/ray-project/ray.git" ] && \
   [[ "${PARSED_RAY_WHEELS}" == *"master"*  ]] && \
-  [ "${RAY_TEST_BRANCH-}" == "master" ] && [ -n "${RAY_TEST_COMMIT-}" ] && \
-  [ "${HEAD_COMMIT}" != "${RAY_TEST_COMMIT}" ]; then
+  [ "${RAY_TEST_BRANCH-}" == "master" ] && [ -n "${RAY_COMMIT_OF_WHEEL-}" ] && \
+  [ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" ]; then
     echo "The checked out test code doesn't match with the installed wheel. \
 This is likely due to a racing condition when a PR is landed between \
 a wheel is installed and test code is checked out."
-    echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_TEST_COMMIT}."
-    git reset --hard "${RAY_TEST_COMMIT}"
+    echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_COMMIT_OF_WHEEL}."
+    git reset --hard "${RAY_COMMIT_OF_WHEEL}"
   fi
 fi
 
