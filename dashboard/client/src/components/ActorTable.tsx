@@ -18,6 +18,7 @@ import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink } from "../common/links";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
@@ -184,8 +185,8 @@ const ActorTable = ({
       ),
     },
     { label: "Uptime" },
-    { label: "Job Id" },
-    { label: "Pid" },
+    { label: "Job ID" },
+    { label: "PID" },
     { label: "IP" },
     {
       label: "Restarted",
@@ -196,16 +197,19 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Placement Group Id",
+      label: "Placement group ID",
       helpInfo: (
         <Typography>
-          The id of the placement group this actor is scheduled to.
+          The ID of the placement group this actor is scheduled to.
           <br />
         </Typography>
       ),
     },
     {
-      label: "Required Resources",
+      label: "Runtime environment",
+    },
+    {
+      label: "Required resources",
       helpInfo: (
         <Typography>
           The required Ray resources to start an actor.
@@ -223,7 +227,7 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Exit Detail",
+      label: "Exit detail",
       helpInfo: (
         <Typography>
           The detail of an actor exit. Only available when an actor is dead.
@@ -383,6 +387,7 @@ const ActorTable = ({
                 startTime,
                 endTime,
                 exitDetail,
+                serializedRuntimeEnv,
                 requiredResources,
               }) => (
                 <ExpandableTableRow
@@ -488,6 +493,12 @@ const ActorTable = ({
                     >
                       <div>{placementGroupId ? placementGroupId : "-"}</div>
                     </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <CodeDialogButton
+                      title="Runtime environment"
+                      code={serializedRuntimeEnv}
+                    />
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip

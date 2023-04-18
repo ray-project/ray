@@ -2,6 +2,7 @@ import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -9,6 +10,7 @@ import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
+import { filterRuntimeEnvSystemVariables } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -205,6 +207,23 @@ export const JobDetailChartsPage = () => {
               content: {
                 value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
               },
+            },
+            {
+              label: "Runtime environemnt",
+              ...(job.runtime_env
+                ? {
+                    content: (
+                      <CodeDialogButton
+                        title="Runtime environment"
+                        code={filterRuntimeEnvSystemVariables(job.runtime_env)}
+                      />
+                    ),
+                  }
+                : {
+                    content: {
+                      value: "-",
+                    },
+                  }),
             },
             {
               label: "Actions",

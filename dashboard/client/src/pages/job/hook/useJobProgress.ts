@@ -52,7 +52,7 @@ const useFetchStateApiProgressByTaskName = (
         const summary = formatSummaryToTaskProgress(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.total };
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);
@@ -263,7 +263,7 @@ export const useJobProgressByLineage = (
         const summary = formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.total };
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);

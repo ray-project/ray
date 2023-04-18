@@ -18,6 +18,7 @@ import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { CodeDialogButton } from "../common/CodeDialogButton";
 import DialogWithTitle from "../common/DialogWithTitle";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
@@ -60,7 +61,7 @@ const TaskTable = ({
   const columns = [
     { label: "ID" },
     { label: "Name" },
-    { label: "Job Id" },
+    { label: "Job ID" },
     { label: "State" },
     {
       label: "Actions",
@@ -77,13 +78,14 @@ const TaskTable = ({
       ),
     },
     { label: "Duration" },
-    { label: "Function or Class Name" },
-    { label: "Node Id" },
-    { label: "Actor_id" },
-    { label: "Worker_id" },
+    { label: "Function or class name" },
+    { label: "Node ID" },
+    { label: "Actor ID" },
+    { label: "Worker ID" },
     { label: "Type" },
-    { label: "Placement Group Id" },
-    { label: "Required Resources" },
+    { label: "Placement group ID" },
+    { label: "Runtime environment" },
+    { label: "Required resources" },
   ];
 
   return (
@@ -218,6 +220,7 @@ const TaskTable = ({
                 placement_group_id,
                 type,
                 required_resources,
+                runtime_env_info,
                 start_time_ms,
                 end_time_ms,
                 worker_id,
@@ -297,6 +300,12 @@ const TaskTable = ({
                     >
                       <div>{placement_group_id ? placement_group_id : "-"}</div>
                     </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <CodeDialogButton
+                      title="Runtime environment"
+                      code={runtime_env_info}
+                    />
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip

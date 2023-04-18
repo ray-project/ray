@@ -24,6 +24,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     requiredResources: {},
     placementGroupId: "123",
     reprName: ",",
+    serializedRuntimeEnv: "{}",
   },
   ACTOR_2: {
     actorId: "ACTOR_2",
@@ -45,6 +46,7 @@ const MOCK_ACTORS: { [actorId: string]: Actor } = {
     requiredResources: {},
     placementGroupId: "123",
     reprName: ",",
+    serializedRuntimeEnv: "{}",
   },
 };
 describe("ActorTable", () => {

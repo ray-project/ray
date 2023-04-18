@@ -24,6 +24,7 @@ describe("sortActors", () => {
     requiredResources: {},
     placementGroupId: "123",
     reprName: "repr1",
+    serializedRuntimeEnv: "{}",
   };
   const actor2: Actor = {
     actorId: "2a77333eac321119fae2f60601000000",
@@ -45,6 +46,7 @@ describe("sortActors", () => {
     requiredResources: {},
     placementGroupId: "123",
     reprName: "repr2",
+    serializedRuntimeEnv: "{}",
   };
   const actorList: Actor[] = [actor1, actor2];
 
