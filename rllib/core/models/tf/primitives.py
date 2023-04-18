@@ -1,6 +1,6 @@
 from typing import Callable, List, Optional, Tuple, Union
 
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -25,8 +25,10 @@ class TfMLP(tf.keras.Model):
         hidden_layer_dims: List[int],
         hidden_layer_use_layernorm: bool = False,
         hidden_layer_activation: Union[str, Callable] = "relu",
+        hidden_layer_weight_initializer: Optional[Union[str, Callable]] = None,
         output_dim: Optional[int] = None,
         output_activation: Union[str, Callable] = "linear",
+        output_layer_weight_initializer: Optional[Union[str, Callable]] = None,
         use_bias: bool = True,
     ):
         """Initialize a TfMLP object.
@@ -41,6 +43,10 @@ class TfMLP(tf.keras.Model):
                 (except for the output). Either a tf.nn.[activation fn] callable or a
                 string that's supported by tf.keras.layers.Activation(activation=...),
                 e.g. "relu", "ReLU", "silu", or "linear".
+            hidden_layer_weight_initializer: The initializer to use for the weights of
+                all layers but the output layer. Either a torch.nn.[initializer fn]
+                callable or an RLlib recognized initializer name,
+                e.g. "xavier_uniform".
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -48,6 +54,10 @@ class TfMLP(tf.keras.Model):
                 (if any). Either a tf.nn.[activation fn] callable or a string that's
                 supported by tf.keras.layers.Activation(activation=...), e.g. "relu",
                 "ReLU", "silu", or "linear".
+            output_layer_weight_initializer: The initializer to use for the weights of
+                the output layer. Either a torch.nn.[initializer fn] callable or an
+                RLlib recognized initializer name, e.g. "xavier_uniform".
+                The default is a truncated normal initializer with std=0.01.
             use_bias: Whether to use bias on all dense layers (including the possible
                 output layer).
         """
@@ -59,8 +69,26 @@ class TfMLP(tf.keras.Model):
         layers.append(tf.keras.Input(shape=(input_dim,)))
 
         hidden_activation = get_activation_fn(hidden_layer_activation, framework="tf2")
+        hidden_layer_weight_initializer = get_initializer(
+            hidden_layer_weight_initializer, framework="tf2"
+        )
+
+        # We have a different default initializer for the output layer.
+        if output_layer_weight_initializer is None:
+            output_layer_weight_initializer = tf.keras.initializers.TruncatedNormal(
+                stddev=0.01
+            )
+        else:
+            output_layer_weight_initializer = get_initializer(
+                output_layer_weight_initializer, framework="tf2"
+            )
 
         for i in range(len(hidden_layer_dims)):
+            if output_dim is None and i == len(hidden_layer_dims) - 1:
+                initializer = output_layer_weight_initializer
+            else:
+                initializer = hidden_layer_weight_initializer
+
             # Dense layer with activation (or w/o in case we use LayerNorm, in which
             # case the activation is applied after the layer normalization step).
             layers.append(
@@ -70,6 +98,7 @@ class TfMLP(tf.keras.Model):
                         hidden_activation if not hidden_layer_use_layernorm else None
                     ),
                     use_bias=use_bias,
+                    kernel_initializer=initializer,
                 )
             )
             # Add LayerNorm and activation.
@@ -86,6 +115,7 @@ class TfMLP(tf.keras.Model):
                     output_dim,
                     activation=output_activation,
                     use_bias=use_bias,
+                    kernel_initializer=output_layer_weight_initializer,
                 )
             )
 

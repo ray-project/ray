@@ -5,7 +5,7 @@ from ray.rllib.models.torch.misc import (
     same_padding,
     same_padding_transpose_after_stride,
 )
-from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.utils import get_activation_fn, get_initializer
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -28,10 +28,12 @@ class TorchMLP(nn.Module):
         *,
         input_dim: int,
         hidden_layer_dims: List[int],
-        hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_layernorm: bool = False,
+        hidden_layer_activation: Union[str, Callable] = "relu",
+        hidden_layer_weight_initializer: Optional[Union[str, Callable]] = None,
         output_dim: Optional[int] = None,
         output_activation: Union[str, Callable] = "linear",
+        output_layer_weight_initializer: Optional[Union[str, Callable]] = None,
         use_bias: bool = True,
     ):
         """Initialize a TorchMLP object.
@@ -46,6 +48,10 @@ class TorchMLP(nn.Module):
                 (except for the output). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            hidden_layer_weight_initializer: The initializer to use for the weights of
+                all layers but the output layer. Either a torch.nn.[initializer fn]
+                callable or an RLlib recognized initializer name,
+                e.g. "xavier_uniform".
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -53,6 +59,10 @@ class TorchMLP(nn.Module):
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            output_layer_weight_initializer: The initializer to use for the weights of
+                the output layer. Either a torch.nn.[initializer fn] callable or an
+                RLlib recognized initializer name, e.g. "xavier_uniform".
+                The default is a truncated normal initializer with std=0.01.
             use_bias: Whether to use bias on all dense layers (including the possible
                 output layer).
         """
@@ -65,6 +75,10 @@ class TorchMLP(nn.Module):
             hidden_layer_activation, framework="torch"
         )
 
+        hidden_layer_weight_initializer = get_initializer(
+            hidden_layer_weight_initializer, framework="torch"
+        )
+
         layers = []
         dims = (
             [self.input_dim]
@@ -72,7 +86,22 @@ class TorchMLP(nn.Module):
             + ([output_dim] if output_dim else [])
         )
         for i in range(0, len(dims) - 1):
-            layers.append(nn.Linear(dims[i], dims[i + 1], bias=use_bias))
+            linear = nn.Linear(dims[i], dims[i + 1], bias=use_bias)
+
+            if i == len(dims) - 1:
+                # We have a different default initializer for the output layer.
+                if output_layer_weight_initializer is None:
+                    nn.init.trunc_normal_(linear.weight, std=0.01)
+                else:
+                    output_layer_weight_initializer = get_initializer(
+                        output_layer_weight_initializer, framework="torch"
+                    )
+                    output_layer_weight_initializer(linear.weight)
+            else:
+                initializer = hidden_layer_weight_initializer
+                initializer(linear.weight)
+
+            layers.append(linear)
 
             # We are still in the hidden layer section: Possibly add layernorm and
             # hidden activation.
