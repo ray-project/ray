@@ -259,10 +259,14 @@ def test_random_shuffle_e2e(
     _check_usage_record(["ReadRange", "RandomShuffle"])
 
 
-def test_repartition_operator(ray_start_regular_shared, enable_optimizer):
+@pytest.mark.parametrize(
+    "shuffle",
+    [True, False],
+)
+def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffle):
     planner = Planner()
     read_op = Read(ParquetDatasource())
-    op = Repartition(read_op, num_outputs=5, shuffle=True)
+    op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
@@ -271,23 +275,17 @@ def test_repartition_operator(ray_start_regular_shared, enable_optimizer):
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
-    # Check error is thrown for non-shuffle repartition.
-    op = Repartition(read_op, num_outputs=5, shuffle=False)
-    plan = LogicalPlan(op)
-    with pytest.raises(AssertionError):
-        planner.plan(plan)
 
-
+@pytest.mark.parametrize(
+    "shuffle",
+    [True, False],
+)
 def test_repartition_e2e(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, shuffle
 ):
     ds = ray.data.range(10000, parallelism=10)
-    ds1 = ds.repartition(20, shuffle=True)
+    ds1 = ds.repartition(20, shuffle=shuffle)
     assert ds1._block_num_rows() == [500] * 20, ds
-
-    # Check error is thrown for non-shuffle repartition.
-    with pytest.raises(AssertionError):
-        ds.repartition(20, shuffle=False).take_all()
 
     _check_usage_record(["ReadRange", "Repartition"])
 
