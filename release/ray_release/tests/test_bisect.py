@@ -93,11 +93,11 @@ def test_bisect():
 
 def test_bisect():
     commit_to_test_result = {
-        "c0": True,
-        "c1": True,
-        "c2": True,
-        "c3": False,
-        "c4": False,
+        "c0": "passed",
+        "c1": "passed",
+        "c2": "passed",
+        "c3": "hard_failed",
+        "c4": "soft_failed",
     }
     def _mock_get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
         commits = []
