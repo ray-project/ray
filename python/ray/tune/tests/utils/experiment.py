@@ -5,8 +5,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.tune import SyncConfig
+from ray.tune.callback import CallbackList
 from ray.tune.execution.trial_runner import TrialRunner, _TuneControllerBase
 from ray.tune.experiment import Trial
+from ray.tune.utils.callback import _create_default_callbacks
 
 
 class _ExperimentCheckpointCreator:
@@ -28,6 +31,11 @@ class _ExperimentCheckpointCreator:
             experiment_path=experiment_path, experiment_dir_name=experiment_name
         )
 
+        # Also, create any default logger callback artifacts.
+        self.callbacks = CallbackList(
+            _create_default_callbacks([], sync_config=SyncConfig(syncer=None))
+        )
+
     def save_checkpoint(self):
         self.runner.save_to_dir()
 
@@ -42,6 +50,12 @@ class _ExperimentCheckpointCreator:
     def trial_result(self, trial: Trial, result: Dict):
         trial.update_last_result(result)
         trial.invalidate_json_state()
+        self.callbacks.on_trial_result(
+            iteration=-1,  # Dummy value
+            trials=self.get_trials(),
+            trial=trial,
+            result=result,
+        )
 
     def trial_checkpoint(
         self,
@@ -76,6 +90,11 @@ class _ExperimentCheckpointCreator:
         )
         trial.init_local_path()
         self.runner.add_trial(trial)
+        self.callbacks.on_trial_start(
+            iteration=-1,  # Dummy value
+            trials=self.get_trials(),
+            trial=trial,
+        )
 
         return trial
 
