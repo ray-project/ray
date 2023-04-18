@@ -57,7 +57,7 @@ Other Examples
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
-    :img-top: ../images/dataset-arch.svg
+    :img-top: ../images/datastream-arch.svg
 
     +++
     .. link-button:: random-access

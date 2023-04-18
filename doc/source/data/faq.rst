@@ -162,7 +162,7 @@ NVTabular
   operations; this is currently WIP for Ray Data:
   :ref:`Ray AIR preprocessors <air-key-concepts>`.
 
-.. _datasets_streaming_faq:
+.. _streaming_faq:
 
 For batch (offline) inference, why should I use Ray Data instead of an actor pool?
 ======================================================================================
@@ -241,7 +241,7 @@ Pipelining is useful in a few scenarios:
   inference).
 * You want to do streaming data loading and processing in order to keep the size of the
   working set small; see previous FAQ on
-  :ref:`how to do streaming data loading and processing <datasets_streaming_faq>`.
+  :ref:`how to do streaming data loading and processing <streaming_faq>`.
 * You want to decrease the time-to-first-batch (latency) for a certain operation at the
   end of your workload. This is the case for training and inference since this prevents
   GPUs from being idle (which is costly), and can be advantageous for some other

@@ -34,7 +34,9 @@ Streaming Parallel Compute
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
 powerful :ref:`Datastream <datastream_concept>` primitive. This allows users to execute workloads such as 
-:ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets.
+:ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets. Ray Data manages
+the pipelined loading, processing, and output of data in the cluster, maximizing resource utilization
+by keeping the working data fitting into Ray object store memory.
 
 .. image:: images/dataset-compute-1.png
    :width: 500px
@@ -179,17 +181,6 @@ If your use case isn't supported, reach out on `Discourse <https://discuss.ray.i
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
 our :ref:`guide for implementing a custom datasource <data_custom_datasource>`
 if you're interested in rolling your own integration!
-
-.. _data-talks:
-
-----------
-Learn More
-----------
-
-- [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
-- [blog] `Data Ingest in a Third Generation ML Architecture <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`_
-- [blog] `Building an end-to-end ML pipeline using Mars and XGBoost on Ray <https://www.anyscale.com/blog/building-an-end-to-end-ml-pipeline-using-mars-and-xgboost-on-ray>`_
-- [blog] `Ray Data for large-scale machine learning ingest and scoring <https://www.anyscale.com/blog/ray-data-for-machine-learning-training-and-scoring>`_
 
 ----------
 Contribute

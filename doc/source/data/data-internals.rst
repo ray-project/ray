@@ -59,7 +59,7 @@ placement group. If you want to force Datasets to schedule tasks within the curr
 
 This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <datasets_tune>` section.
 
-.. _datasets_execution:
+.. _datastream_execution:
 
 Execution
 =========
@@ -98,7 +98,7 @@ Check the API docs for Datasets methods to see if they
 trigger execution. Those that do trigger execution will have a ``Note`` indicating as
 much.
 
-.. _datasets_streaming_execution:
+.. _streaming_execution:
 
 Streaming Execution
 ~~~~~~~~~~~~~~~~~~~

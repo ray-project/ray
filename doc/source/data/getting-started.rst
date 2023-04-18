@@ -7,6 +7,12 @@ A :class:`Datastream <ray.data.Datastream>` is a distributed data transformation
 pipeline. It provides APIs for loading external data into the Ray object store in *blocks*,
 and exposes APIs for streaming processing of these data blocks in the cluster.
 
+.. tip::
+
+    Ray Data is designed for high-throughput execution over *finite* datasets for ML training and
+    batch inference. This is unlike frameworks such as Apache Flink, which are designed for
+    relational data processing over infinite data streams.
+
 Install Ray Data
 ----------------
 
