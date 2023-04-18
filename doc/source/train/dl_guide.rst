@@ -995,7 +995,7 @@ A Train experiment may be interrupted due to one of the following reasons:
 
 Trainer restoration is possible for all of Ray Train's built-in trainers,
 but we use ``TorchTrainer`` in the examples for demonstration.
-We also use ``FrameworkTrainer`` to refer to methods that are shared across all
+We also use ``<Framework>Trainer`` to refer to methods that are shared across all
 built-in trainers.
 
 Let's say your initial Train experiment is configured as follows.
@@ -1039,7 +1039,7 @@ Auto-resume
 
 Adding the branching logic below will allow you to run the same script after the interrupt,
 picking up training from where you left on the previous run. Notice that we use the
-:meth:`FrameworkTrainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
+:meth:`<Framework>Trainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
 to determine the existence and validity of the given experiment directory.
 
 .. literalinclude:: doc_code/dl_guide.py
@@ -1054,12 +1054,12 @@ to determine the existence and validity of the given experiment directory.
 
 .. note::
 
-    `FrameworkTrainer.restore` is different from
-    :class:`FrameworkTrainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`.
+    `<Framework>Trainer.restore` is different from
+    :class:`<Framework>Trainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`.
     `resume_from_checkpoint` is meant to be used to start a *new* Train experiment,
     which writes results to a new directory and starts over from iteration 0.
 
-    `FrameworkTrainer.restore` is used to continue an existing experiment, where
+    `<Framework>Trainer.restore` is used to continue an existing experiment, where
     new results will continue to be appended to existing logs.
 
 .. Running on pre-emptible machines
