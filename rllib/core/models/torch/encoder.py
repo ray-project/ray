@@ -13,8 +13,8 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
-    LSTMEncoderConfig,
     MLPEncoderConfig,
+    RecurrentEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
@@ -162,10 +162,85 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
 
+class TorchGRUEncoder(TorchModel, Encoder):
+    """An encoder that uses one or more GRU cells and a linear output layer."""
+
+    def __init__(self, config: RecurrentEncoderConfig) -> None:
+        TorchModel.__init__(self, config)
+
+        # Create the torch LSTM layer.
+        self.gru = nn.GRU(
+            config.input_dims[0],
+            config.hidden_dim,
+            config.num_layers,
+            batch_first=config.batch_major,
+            bias=config.use_bias,
+        )
+        # Create the final dense layer.
+        self.linear = nn.Linear(
+            config.hidden_dim,
+            config.output_dims[0],
+            bias=config.use_bias,
+        )
+
+    @override(Model)
+    def get_input_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                # b, t for batch major; t, b for time major.
+                SampleBatch.OBS: TorchTensorSpec(
+                    "b, t, d", d=self.config.input_dims[0]
+                ),
+                STATE_IN: {
+                    "h": TorchTensorSpec(
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    ),
+                },
+            }
+        )
+
+    @override(Model)
+    def get_output_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                ENCODER_OUT: TorchTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                STATE_OUT: {
+                    "h": TorchTensorSpec(
+                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    ),
+                },
+            }
+        )
+
+    @override(Model)
+    def get_initial_state(self):
+        return {
+            "h": torch.zeros(self.config.num_layers, self.config.hidden_dim),
+        }
+
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        out = inputs[SampleBatch.OBS].float()
+
+        # States are batch-first when coming in. Make them layers-first.
+        states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
+
+        out, states_out = self.gru(out, states_in["h"])
+        states_out = {"h": states_out}
+
+        out = self.linear(out)
+
+        return {
+            ENCODER_OUT: out,
+            # Make states layer-first again.
+            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
+        }
+
+
 class TorchLSTMEncoder(TorchModel, Encoder):
     """An encoder that uses an LSTM cell and a linear layer."""
 
-    def __init__(self, config: LSTMEncoderConfig) -> None:
+    def __init__(self, config: RecurrentEncoderConfig) -> None:
         TorchModel.__init__(self, config)
 
         # Create the torch LSTM layer.
@@ -173,7 +248,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             # We only support 1D spaces right now.
             config.input_dims[0],
             config.hidden_dim,
-            config.num_lstm_layers,
+            config.num_layers,
             batch_first=config.batch_major,
             bias=config.use_bias,
         )
@@ -196,13 +271,13 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
-                        l=self.config.num_lstm_layers,
+                        l=self.config.num_layers,
                         framework="torch",
                     ),
                     "c": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
-                        l=self.config.num_lstm_layers,
+                        l=self.config.num_layers,
                         framework="torch",
                     ),
                 },
@@ -220,13 +295,13 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
-                        l=self.config.num_lstm_layers,
+                        l=self.config.num_layers,
                         framework="torch",
                     ),
                     "c": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
-                        l=self.config.num_lstm_layers,
+                        l=self.config.num_layers,
                         framework="torch",
                     ),
                 },
