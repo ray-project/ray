@@ -14,11 +14,20 @@ from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from torch.utils.data import IterableDataset, DataLoader
-from ray.data.dataset import DataIterator
+from ray.data.datastream import DataIterator
 
 logger = logging.getLogger(__name__)
 
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
+
+
+def get_worker_root_device():
+    """Get the first torch device of the current worker if there are multiple."""
+    devices = ray.train.torch.get_device()
+    if isinstance(devices, list):
+        return devices[0]
+    else:
+        return devices
 
 
 class RayDDPStrategy(DDPStrategy):
@@ -26,7 +35,7 @@ class RayDDPStrategy(DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return ray.train.torch.get_device()
+        return get_worker_root_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:

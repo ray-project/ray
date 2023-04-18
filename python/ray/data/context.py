@@ -58,7 +58,7 @@ DEFAULT_ACTOR_PREFETCHER_ENABLED = True
 
 # Whether to use push-based shuffle by default.
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
-    os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
+    os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
 # The default global scheduling strategy.
@@ -69,23 +69,21 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_BACKEND", "1"))
 )
 
 # Whether to use the streaming executor. This only has an effect if the new execution
 # backend is enabled.
 DEFAULT_USE_STREAMING_EXECUTOR = bool(
-    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "1"))
+    int(os.environ.get("RAY_DATA_USE_STREAMING_EXECUTOR", "1"))
 )
 
 # Whether to eagerly free memory (new backend only).
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATASET_EAGER_FREE", "1")))
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 # Whether to trace allocations / eager free (new backend only). This adds significant
 # performance overheads and should only be used for debugging.
-DEFAULT_TRACE_ALLOCATIONS = bool(
-    int(os.environ.get("RAY_DATASET_TRACE_ALLOCATIONS", "0"))
-)
+DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
@@ -100,11 +98,15 @@ DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
 DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
 )
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
+
+# Enable strict schema mode (experimental). In this mode, we only allow structured
+# schemas, and default to numpy as the batch format.
+DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "0")))
 
 # Set this to True to use the legacy iter_batches codepath prior to 2.4.
 DEFAULT_USE_LEGACY_ITER_BATCHES = False
@@ -155,6 +157,7 @@ class DataContext:
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
+        strict_mode: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -186,6 +189,7 @@ class DataContext:
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
+        self.strict_mode = strict_mode
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -233,6 +237,7 @@ class DataContext:
                     execution_options=ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
+                    strict_mode=DEFAULT_STRICT_MODE,
                 )
 
             return _default_context
