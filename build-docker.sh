@@ -2,7 +2,7 @@
 # shellcheck disable=SC2086
 # This script is for users to build docker images locally. It is most useful for users wishing to edit the
 # base-deps, ray-deps, or ray images. This script is *not* tested, so please look at the 
-# scripts/build-docker-images.py if there are problems with using this script.
+# ci/build/build-docker-images.py if there are problems with using this script.
 
 set -x
 
