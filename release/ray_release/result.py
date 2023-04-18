@@ -80,7 +80,28 @@ class ExitCode(enum.Enum):
     PREPARE_ERROR = 43
 
 
-def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
+def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
+    """
+    Classify whether an infra-failure issue is a transient issue. This is based on
+    the status of its previous retries, and its runtime.
+    """
+    if result_status not in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
+        # Not even an infra failure
+        return False
+    retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
+    max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
+    if retry_count >= max_retry:
+        # Already reach retry limit
+        return False
+    if runtime > int(os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0)):
+        # Take too long to run
+        return False
+    return True
+
+
+def handle_exception(
+    e: Exception, run_duration: int
+) -> Tuple[ExitCode, ResultStatus, Optional[int]]:
     from ray_release.exception import ReleaseTestError
 
     if not isinstance(e, ReleaseTestError):
@@ -104,10 +125,7 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, ResultStatus, Optional[int
 
     # if this result is to be retried, mark its status as transient
     # this logic should be in-sync with run_release_test.sh
-    if result_status in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
-        retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
-        max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
-        if retry_count < max_retry:
-            result_status = ResultStatus.TRANSIENT_INFRA_ERROR
+    if _is_transient_error(result_status, run_duration):
+        result_status = ResultStatus.TRANSIENT_INFRA_ERROR
 
     return exit_code, result_status, runtime
