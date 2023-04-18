@@ -89,7 +89,7 @@ from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
-    apply_strict_mode_batch_format,
+    _apply_strict_mode_batch_format,
     BatchUDF,
     Block,
     BlockAccessor,
@@ -591,7 +591,7 @@ class Datastream(Generic[T]):
                 :meth:`~Datastream.map_batches` instead.
         """  # noqa: E501
 
-        batch_format = apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
@@ -2262,7 +2262,7 @@ class Datastream(Generic[T]):
         Raises:
             ValueError if the datastream is empty.
         """
-        batch_format = apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_strict_mode_batch_format(batch_format)
         try:
             res = next(
                 self.iter_batches(
@@ -3102,7 +3102,7 @@ class Datastream(Generic[T]):
         Returns:
             An iterator over record batches.
         """
-        batch_format = apply_strict_mode_batch_format(batch_format)
+        batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
         return self.iterator().iter_batches(
