@@ -292,8 +292,8 @@ def build_model(
     tokenizer.padding_side = "left"
 
     device_map = {
-        "transformer": _get_device_name,
-        "lm_head": _get_device_name,
+        "transformer": _get_device_name(),
+        "lm_head": _get_device_name(),
     }
 
     # model_start = AutoModelForCausalLM.from_config(config)
