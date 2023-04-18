@@ -26,7 +26,7 @@ if __name__ == "__main__":
     runtime_env = {
         "env_vars": {
             "RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200",
-            "NCCL_SOCKET_IFNAME": "ens3",
+            # "NCCL_SOCKET_IFNAME": "ens3",
         },
         "working_dir": os.path.dirname(__file__),
     }

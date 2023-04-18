@@ -17,7 +17,7 @@ if __name__ == "__main__":
     # Passing in runtime_env to ray.init() will also set it for all the
     # workers.
     runtime_env = {
-        "env_vars": {"NCCL_SOCKET_IFNAME": "ens3"},
+        # "env_vars": {"NCCL_SOCKET_IFNAME": "ens3"},
         "working_dir": os.path.dirname(__file__),
     }
 
