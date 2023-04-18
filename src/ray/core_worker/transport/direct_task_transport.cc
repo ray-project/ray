@@ -21,27 +21,16 @@
 namespace ray {
 namespace core {
 
-constexpr uint64_t NANOS_PER_SECOND = 1000 * 1000 * 1000;
-
-google::protobuf::Timestamp CurrentTimestamp() {
+int64_t CurrentTimestampMs() {
   // NOTE: Using high_resolution_clock for consistnecy with the rest of this
   // file, but this should probably use stead_clock.
   // https://en.cppreference.com/w/cpp/chrono/high_resolution_clock
   auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
-  auto ts = google::protobuf::Timestamp();
-  ts.set_seconds(std::chrono::duration_cast<std::chrono::seconds>(time).count());
-  ts.set_nanos(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count() %
-               NANOS_PER_SECOND);
-  return ts;
+  return std::chrono::duration_cast<std::chrono::milliseconds>(time).count();
 }
 
 void RecordTaskMetrics(const TaskSpecification &task_spec) {
-  double duration_s = task_spec.GetMessage().lease_grant_time().nanos() -
-                      task_spec.GetMessage().dependency_resolution_time().nanos();
-  duration_s /= NANOS_PER_SECOND;
-
-  duration_s += task_spec.GetMessage().lease_grant_time().seconds() -
-                task_spec.GetMessage().dependency_resolution_time().seconds();
+  double duration_s = ( task_spec.GetMessage().lease_grant_timestamp_ms() - task_spec.GetMessage().dependency_resolution_timestamp_ms() ) / 1000;
 
   stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
 }
@@ -121,8 +110,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         keep_executing = false;
       }
       if (keep_executing) {
-        *task_spec.GetMutableMessage().mutable_dependency_resolution_time() =
-            CurrentTimestamp();
+        task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+                                                                              CurrentTimestampMs());
         RecordTaskMetrics(task_spec);
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
@@ -242,8 +231,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
 
-      *task_spec.GetMutableMessage().mutable_dependency_resolution_time() =
-          CurrentTimestamp();
+      task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+                                                                            CurrentTimestampMs());
       lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the

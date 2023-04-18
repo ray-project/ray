@@ -18,7 +18,6 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/runtime_env_common.proto";
-import "google/protobuf/timestamp.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -425,10 +424,10 @@ message TaskSpec {
   bytes submitter_task_id = 33;
   // Some timestamps of the task's lifetime, useful for metrics.
   // The time the task's dependencies have been resolved.
-  google.protobuf.Timestamp dependency_resolution_time = 34;
+  int64 dependency_resolution_timestamp_ms = 34;
   // The time that the task is given a lease, and sent to the executing core
   // worker.
-  google.protobuf.Timestamp lease_grant_time = 35;
+  int64 lease_grant_timestamp_ms = 35;
 
 }
 
