@@ -154,6 +154,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def numpy_to_block(
         batch: Union[np.ndarray, Dict[str, np.ndarray]],
+        passthrough_arrow_not_implemented_errors: bool = False,
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
@@ -161,7 +162,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}
-        elif not isinstance(batch, dict) or any(
+        elif not isinstance(batch, collections.abc.Mapping) or any(
             not isinstance(col, np.ndarray) for col in batch.values()
         ):
             raise ValueError(
@@ -175,6 +176,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 try:
                     col = ArrowTensorArray.from_numpy(col)
                 except pa.ArrowNotImplementedError as e:
+                    if passthrough_arrow_not_implemented_errors:
+                        raise e
                     raise ValueError(
                         "Failed to convert multi-dimensional ndarray of dtype "
                         f"{col.dtype} to our tensor extension since this dtype is not "
