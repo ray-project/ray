@@ -1,4 +1,4 @@
-.. _datasets_glossary:
+.. _datastreams_glossary:
 
 =====================
 Ray Data Glossary
@@ -17,13 +17,13 @@ Ray Data Glossary
         .. doctest::
 
             >>> import ray
-            >>> # Dataset is executed by streaming executor by default, which doesn't
+            >>> # Datastream is executed by streaming executor by default, which doesn't
             >>> # preserve the order, so we explicitly set it here.
             >>> ray.data.context.DataContext.get_current().execution_options.preserve_order = True
-            >>> dataset = ray.data.range_table(10)
-            >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
+            >>> datastream = ray.data.range_table(10)
+            >>> next(iter(datastream.iter_batches(batch_format="numpy", batch_size=5)))
             {'value': array([0, 1, 2, 3, 4])}
-            >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
+            >>> next(iter(datastream.iter_batches(batch_format="pandas", batch_size=5)))
                value
             0      0
             1      1
@@ -83,24 +83,24 @@ Ray Data Glossary
     Record
         A single data item.
 
-        If your dataset is :term:`tabular <Tabular Dataset>`, then records are :class:`TableRows <ray.data.row.TableRow>`.
-        If your dataset is :term:`simple <Simple Dataset>`, then records are arbitrary Python objects.
-        If your dataset is :term:`tensor <Tensor Dataset>`, then records are `NumPy ndarrays <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_.
+        If your datastream is :term:`tabular <Tabular Datastream>`, then records are :class:`TableRows <ray.data.row.TableRow>`.
+        If your datastream is :term:`simple <Simple Datastream>`, then records are arbitrary Python objects.
+        If your datastream is :term:`tensor <Tensor Datastream>`, then records are `NumPy ndarrays <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_.
 
     Schema
-        The data type of a dataset.
+        The data type of a datastream.
 
-        If your dataset is :term:`tabular <Tabular Dataset>`, then the schema describes
-        the column names and data types. If your dataset is :term:`simple <Simple Dataset>`,
-        then the schema describes the Python object type. If your dataset is
-        :term:`tensor <Tensor Dataset>`, then the schema describes the per-element
+        If your datastream is :term:`tabular <Tabular Datastream>`, then the schema describes
+        the column names and data types. If your datastream is :term:`simple <Simple Datastream>`,
+        then the schema describes the Python object type. If your datastream is
+        :term:`tensor <Tensor Datastream>`, then the schema describes the per-element
         tensor shape and data type.
 
-        To determine a dataset's schema, call
-        :meth:`Dataset.schema() <ray.data.Datastream.schema>`.
+        To determine a datastream's schema, call
+        :meth:`Datastream.schema() <ray.data.Datastream.schema>`.
 
-    Simple Dataset
-        A Dataset that represents a collection of arbitrary Python objects.
+    Simple Datastream
+        A Datastream that represents a collection of arbitrary Python objects.
 
         .. doctest::
 
@@ -108,10 +108,10 @@ Ray Data Glossary
             >>> ray.data.from_items(["spam", "ham", "eggs"])
             MaterializedDatastream(num_blocks=3, num_rows=3, schema=<class 'str'>)
 
-    Tensor Dataset
-        A Dataset that represents a collection of ndarrays.
+    Tensor Datastream
+        A Datastream that represents a collection of ndarrays.
 
-        :term:`Tabular datasets <Tabular Dataset>` that contain tensor columns aren’t tensor datasets.
+        :term:`Tabular datastreams <Tabular Datastream>` that contain tensor columns aren’t tensor datastreams.
 
         .. doctest::
 
@@ -124,8 +124,8 @@ Ray Data Glossary
                schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=double)}
             )
 
-    Tabular Dataset
-        A Dataset that represents columnar data.
+    Tabular Datastream
+        A Datastream that represents columnar data.
 
         .. doctest::
 
@@ -144,10 +144,10 @@ Ray Data Glossary
             )
 
     User-defined function (UDF)
-        A callable that transforms batches or :term:`records <Record>` of data. UDFs let you arbitrarily transform datasets.
+        A callable that transforms batches or :term:`records <Record>` of data. UDFs let you arbitrarily transform datastreams.
 
-        Call :meth:`Dataset.map_batches() <ray.data.Datastream.map_batches>`,
-        :meth:`Dataset.map() <ray.data.Datastream.map>`, or
-        :meth:`Dataset.flat_map() <ray.data.Datastream.flat_map>` to apply UDFs.
+        Call :meth:`Datastream.map_batches() <ray.data.Datastream.map_batches>`,
+        :meth:`Datastream.map() <ray.data.Datastream.map>`, or
+        :meth:`Datastream.flat_map() <ray.data.Datastream.flat_map>` to apply UDFs.
 
         To learn more about UDFs, read :ref:`Writing User-Defined Functions <transform_datastreams_writing_udfs>`.
