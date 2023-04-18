@@ -599,7 +599,7 @@ class StateAPIManager:
         all_events = await self._client.get_all_cluster_events()
         for _, events in all_events.items():
             for _, event in events.items():
-                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
                 result.append(event)
 
         num_after_truncation = len(result)

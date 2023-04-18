@@ -4568,6 +4568,14 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: inference_gce.yaml
 
 - name: shuffle_data_loader
   group: data-tests
@@ -4583,6 +4591,15 @@
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
 
+  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
+  # variations:
+  #   - __suffix__: aws
+  #   - __suffix__: gce
+  #     env: gce
+  #     frequency: manual
+  #     cluster:
+  #       cluster_env: shuffle_app_config.yaml
+  #       cluster_compute: shuffle_compute_gce.yaml
 
 - name: parquet_metadata_resolution
   group: data-tests
@@ -4599,6 +4616,15 @@
     timeout: 100
     script: python parquet_metadata_resolution.py --num-files 915
 
+  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
+  # variations:
+  #   - __suffix__: aws
+  #   - __suffix__: gce
+  #     env: gce
+  #     frequency: manual
+  #     cluster:
+  #       cluster_env: app_config.yaml
+  #       cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: dataset_random_access
   group: data-tests
@@ -4617,6 +4643,14 @@
     wait_for_nodes:
       num_nodes: 15
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: pipelined_training_app.yaml
+        cluster_compute: pipelined_training_compute_gce.yaml
 
 - name: pipelined_data_ingest_benchmark_1tb
   group: data-tests
@@ -4682,6 +4716,14 @@
     timeout: 1800
     script: python aggregate_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_parquet_benchmark_single_node
   group: data-tests
@@ -4698,6 +4740,14 @@
     timeout: 400
     script: python read_parquet_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_images_benchmark_single_node
   group: data-tests
@@ -4713,6 +4763,14 @@
     timeout: 1800
     script: python read_images_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
@@ -4729,6 +4787,14 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: read_tfrecords_benchmark_app.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: map_batches_benchmark_single_node
   group: data-tests
@@ -4745,6 +4811,14 @@
     timeout: 2400
     script: python map_batches_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: iter_tensor_batches_benchmark_single_node
   group: data-tests
@@ -4761,6 +4835,15 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
 - name: iter_tensor_batches_benchmark_multi_node
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4775,6 +4858,15 @@
     # Expect the benchmark to finish around 30 minutes.
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py --data-size-gb=10
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4791,6 +4883,14 @@
     timeout: 1080
     script: python iter_batches_benchmark.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: pipelined_training_50_gb
   group: data-tests
@@ -4808,6 +4908,14 @@
     wait_for_nodes:
       num_nodes: 15
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: pipelined_training_app.yaml
+        cluster_compute: pipelined_training_compute_gce.yaml
 
 - name: pipelined_ingestion_1500_gb
   group: data-tests
@@ -4827,6 +4935,14 @@
     wait_for_nodes:
       num_nodes: 21
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: pipelined_training_app.yaml
+        cluster_compute: pipelined_training_compute_gce.yaml
 
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests
@@ -4844,6 +4960,15 @@
     wait_for_nodes:
       num_nodes: 20
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+
 - name: dataset_shuffle_sort_1tb
   group: data-tests
   working_dir: nightly_tests
@@ -4859,6 +4984,15 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
@@ -4885,7 +5019,6 @@
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
-
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
   working_dir: nightly_tests
@@ -4901,6 +5034,15 @@
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: shuffle/shuffle_app_config.yaml
+        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
