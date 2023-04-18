@@ -121,6 +121,6 @@ if __name__ == "__main__":
     # Invocation from workspace root:
     # bazel query 'kind(py_test.*, tests(python/...) intersect
     # attr(tags, "\bteam:ml\b", python/...) except attr(tags, "\bno_main\b",
-    # python/...))' --output xml | xq | python scripts/pytest_checker.py
+    # python/...))' --output xml | xq | python ci/lint/pytest_checker.py
     data = sys.stdin.read()
     main(data)
