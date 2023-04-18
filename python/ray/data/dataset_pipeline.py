@@ -33,7 +33,16 @@ from ray.data._internal.iterator.pipelined_iterator import (
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
-from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF, T, U
+from ray.data.block import (
+    BatchUDF,
+    Block,
+    DataBatch,
+    KeyFn,
+    RowUDF,
+    T,
+    U,
+    apply_strict_mode_batch_format,
+)
 from ray.data.context import DataContext
 from ray.data.datastream import Datastream
 from ray.data.iterator import DataIterator
@@ -219,6 +228,7 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        batch_format = apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             warnings.warn(
                 "The 'native' batch format has been renamed 'default'.",
@@ -809,6 +819,8 @@ class DatasetPipeline(Generic[T]):
     ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.map_batches <ray.data.Datastream.map_batches>` to each
         datastream/window in this pipeline."""
+
+        batch_format = apply_strict_mode_batch_format(batch_format)
         return self.foreach_window(
             lambda ds: ds.map_batches(
                 fn,
@@ -1077,6 +1089,7 @@ class DatasetPipeline(Generic[T]):
         """Call
         :py:meth:`Datastream.iter_tf_batches <ray.data.Datastream.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
+        batch_format = apply_strict_mode_batch_format(batch_format)
         return DataIterator.iter_tf_batches(
             self,
             prefetch_blocks=prefetch_blocks,
