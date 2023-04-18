@@ -979,6 +979,84 @@ class TestDeployApp:
             == "3 pizzas please!"
         )
 
+    def test_deploy_multi_app_deployments_removed(self, client: ServeControllerClient):
+        """Test redeploying applications will remove old deployments."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        world_deployments = ["f", "BasicDriver"]
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        pizza_deployments = [
+            "Adder",
+            "Multiplier",
+            "Router",
+            "create_order",
+            "DAGDriver",
+        ]
+        test_config = ServeDeploySchema.parse_obj(
+            {
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": pizza_import_path,
+                    },
+                ],
+            }
+        )
+        # Deploy with pizza graph first
+        client.deploy_apps(test_config)
+
+        def check_pizza():
+            # Check that the live deployments and actors are what we expect: exactly the
+            # set of deployments in the pizza graph
+            actor_class_names = {
+                actor["class_name"]
+                for actor in list_actors(filters=[("state", "=", "ALIVE")])
+            }
+            deployment_replicas = set(
+                ray.get(client._controller._all_running_replicas.remote()).keys()
+            )
+            assert {
+                f"app1_{deployment}" for deployment in pizza_deployments
+            } == deployment_replicas
+            assert {"HTTPProxyActor", "ServeController"}.union(
+                {f"ServeReplica:app1_{deployment}" for deployment in pizza_deployments}
+            ) == actor_class_names
+            return True
+
+        wait_for_condition(check_pizza)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Redeploy with world graph
+        test_config.applications[0].import_path = world_import_path
+        client.deploy_apps(test_config)
+
+        def check_world():
+            # Check that the live deployments and actors are what we expect: exactly the
+            # set of deployments in the world graph
+            actor_class_names = {
+                actor["class_name"]
+                for actor in list_actors(filters=[("state", "=", "ALIVE")])
+            }
+            deployment_replicas = set(
+                ray.get(client._controller._all_running_replicas.remote()).keys()
+            )
+            assert {
+                f"app1_{deployment}" for deployment in world_deployments
+            } == deployment_replicas
+            assert {"HTTPProxyActor", "ServeController"}.union(
+                {f"ServeReplica:app1_{deployment}" for deployment in world_deployments}
+            ) == actor_class_names
+            return True
+
+        wait_for_condition(check_world)
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+
     def test_controller_recover_and_deploy(self, client: ServeControllerClient):
         """Ensure that in-progress deploy can finish even after controller dies."""
 
