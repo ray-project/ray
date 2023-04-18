@@ -5156,7 +5156,7 @@
       frequency: manual
       cluster:
         cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
-        cluster_compute: chaos_test/dask_on_ray_stress_compute_gce.yaml
+        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
   group: data-tests
