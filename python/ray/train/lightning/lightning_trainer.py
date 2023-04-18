@@ -1,5 +1,4 @@
 import os
-import ray
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 import pytorch_lightning as pl
@@ -27,6 +26,7 @@ from ray.train.lightning._lightning_utils import (
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
+    get_worker_root_device,
 )
 
 
@@ -517,7 +517,7 @@ def _lightning_train_loop_per_worker(config):
 
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
-        current_device = ray.train.torch.get_device()
+        current_device = get_worker_root_device()
         trainer_config["devices"] = [current_device.index]
 
     # Setup ray cluster environment info
