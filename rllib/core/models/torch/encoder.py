@@ -188,12 +188,17 @@ class TorchGRUEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TorchTensorSpec(
-                    "b, t, d", d=self.config.input_dims[0]
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d",
+                    d=self.config.input_dims[0],
+                    framework="tf2",
                 ),
                 STATE_IN: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -203,10 +208,15 @@ class TorchGRUEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
