@@ -2,17 +2,9 @@ import { Box, makeStyles, Typography } from "@material-ui/core";
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
-import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
-import { DurationText } from "../../common/DurationText";
-import { formatDateFromTimeMs } from "../../common/formatUtils";
-import {
-  CpuProfilingLink,
-  CpuStackTraceLink,
-} from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
-import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
