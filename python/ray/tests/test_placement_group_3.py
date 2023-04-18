@@ -511,7 +511,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
             wait_for_condition(is_pg_created_number_correct, timeout=10)
         except Exception:
             print("Failed!!")
-            import time
+            # import time
             # time.sleep(600)
         # Make sure the node add event will cause a waiting actor
         # to create successfully in time.
