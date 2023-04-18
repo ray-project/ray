@@ -168,13 +168,20 @@ class ExperimentAnalysis:
         return self._remote_path or self._local_path
 
     def _convert_local_to_cloud_path(self, local_path: str):
-        """Convert local path into cloud storage path"""
+        """Convert local path into cloud storage path.
+
+        Example:
+        local_path = "/a/b/c.json"
+        self._remote_experiment_path = "s3://bucket?param=abcd"
+        self._local_experiment_path = "/a/b"
+
+        -> "s3://bucket/c?param=abcd"
+        """
         if not self._remote_experiment_path:
             return None
 
-        return local_path.replace(
-            self._local_experiment_path, self._remote_experiment_path
-        )
+        rel_path = str(Path(local_path).relative_to(self._local_experiment_path))
+        return str(URI(self._remote_experiment_path) / rel_path)
 
     def _load_checkpoints(self, experiment_checkpoint_path: str) -> List[str]:
         # Get the latest checkpoints from the checkpoint_path.
