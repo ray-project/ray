@@ -1,7 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
-from ray import tune
 
 
 register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 1}))
