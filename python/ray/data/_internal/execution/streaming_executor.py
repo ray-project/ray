@@ -6,7 +6,7 @@ from typing import Iterator, Optional
 
 import ray
 from ray.data.context import DataContext
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -35,7 +35,7 @@ from ray.data._internal.stats import DatastreamStats
 logger = DatastreamLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
-DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
+DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.
@@ -86,6 +86,11 @@ class StreamingExecutor(Executor, threading.Thread):
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
             logger.get_logger().info("Execution config: %s", self._options)
+            if not self._options.verbose_progress:
+                logger.get_logger().info(
+                    "Tip: To enable per-operator progress reporting, set "
+                    "RAY_DATA_VERBOSE_PROGRESS=1."
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
         _validate_dag(dag, self._get_or_refresh_resource_limits())
@@ -118,7 +123,9 @@ class StreamingExecutor(Executor, threading.Thread):
                         if self._outer._global_info:
                             self._outer._global_info.update(1)
                         return item
-                except Exception:
+                # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
+                # can leave dangling progress bars by skipping shutdown.
+                except BaseException:
                     self._outer.shutdown()
                     raise
 
