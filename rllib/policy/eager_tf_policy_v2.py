@@ -455,6 +455,7 @@ class EagerTFPolicyV2(Policy):
         episodes: Optional[List[Episode]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
         self._is_training = False
 
         explore = explore if explore is not None else self.explore
@@ -827,9 +828,6 @@ class EagerTFPolicyV2(Policy):
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
         # calling the already traced function after that.
-        # NOTE: On the new RLModule API, we won't trace the sampling side, so we should
-        # not increment this counter to trigger excess re-tracing error.
-        #if not self.config.get("_enable_rl_module_api", False):
         self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
