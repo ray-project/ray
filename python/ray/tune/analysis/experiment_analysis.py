@@ -13,7 +13,7 @@ from ray.air._internal.remote_storage import (
     is_local_path,
     list_at_uri,
 )
-from ray.air._internal.uri_utils import URI
+from ray.air._internal.uri_utils import _join_path_or_uri, URI
 from ray.air.checkpoint import Checkpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
@@ -283,9 +283,10 @@ class ExperimentAnalysis:
             # the same root. In this case the length of `latest_checkpoint`
             # will be greater than 1.
             for subdir in list_at_uri(experiment_checkpoint_path):
-                if is_directory(subdir):
+                full_path = _join_path_or_uri(experiment_checkpoint_path, subdir)
+                if is_directory(full_path):
                     latest_checkpoints.extend(
-                        self._get_latest_checkpoint_from_dir(subdir, top_level=False)
+                        self._get_latest_checkpoint_from_dir(full_path, top_level=False)
                     )
 
         return latest_checkpoints

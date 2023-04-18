@@ -9,7 +9,7 @@ import time
 import warnings
 
 from ray.air._internal.remote_storage import is_local_path, list_at_uri
-from ray.air._internal.uri_utils import URI
+from ray.air._internal.uri_utils import _join_path_or_uri, URI
 
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
@@ -83,11 +83,7 @@ def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
     """
 
     def construct(file: str) -> str:
-        return (
-            str(URI(experiment_dir) / file)
-            if not is_local_path(experiment_dir)
-            else os.path.join(experiment_dir, file)
-        )
+        return _join_path_or_uri(experiment_dir, file)
 
     candidate_paths = [
         construct(file)
