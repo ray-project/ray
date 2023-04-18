@@ -265,6 +265,9 @@ class ExperimentAnalysis:
 
         latest_checkpoints = []
         if latest_checkpoint:
+            assert not is_directory(
+                latest_checkpoint
+            ), "This should point to an actual experiment checkpoint file."
             latest_checkpoints.extend(self._get_latest_checkpoint(latest_checkpoint))
 
         if not latest_checkpoint and top_level:

@@ -85,7 +85,7 @@ def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
     def construct(file: str) -> str:
         return (
             str(URI(experiment_dir) / file)
-            if not is_local_path(file)
+            if not is_local_path(experiment_dir)
             else os.path.join(experiment_dir, file)
         )
 
