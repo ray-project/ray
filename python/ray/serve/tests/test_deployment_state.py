@@ -2067,7 +2067,15 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             mock_long_poll,
             all_current_actor_names,
         )
-        yield deployment_state_manager, timer
+        deployment_state = DeploymentState(
+            "test",
+            "name",
+            True,
+            mock_long_poll,
+            deployment_state_manager._save_checkpoint_func,
+        )
+
+        yield deployment_state_manager, deployment_state, timer
     ray.shutdown()
 
 
@@ -2077,7 +2085,7 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
     """
-    deployment_state_manager, timer = mock_deployment_state_manager
+    deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
 
     tag = "test"
 
@@ -2086,10 +2094,10 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
         graceful_shutdown_timeout_s=grace_period_s,
         is_driver_deployment=is_driver_deployment,
     )
-    updating = deployment_state_manager.deploy(tag, b_info_1)
+    updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state = deployment_state_manager._deployment_states[tag]
+    deployment_state_manager._deployment_states[tag] = deployment_state
 
     # Single replica should be created.
     deployment_state_manager.update()
@@ -2125,7 +2133,7 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
 def test_resume_deployment_state_from_replica_tags(
     mock_get_all_node_ids, is_driver_deployment, mock_deployment_state_manager
 ):
-    deployment_state_manager, timer = mock_deployment_state_manager
+    deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
     mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     tag = "test"
@@ -2134,10 +2142,10 @@ def test_resume_deployment_state_from_replica_tags(
     b_info_1, b_version_1 = deployment_info(
         version="1", is_driver_deployment=is_driver_deployment
     )
-    updating = deployment_state_manager.deploy(tag, b_info_1)
+    updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state = deployment_state_manager._deployment_states[tag]
+    deployment_state_manager._deployment_states[tag] = deployment_state
 
     # Single replica should be created.
     deployment_state_manager.update()

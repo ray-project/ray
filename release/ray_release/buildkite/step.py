@@ -50,6 +50,14 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     ],
     "artifact_paths": [f"{DEFAULT_ARTIFACTS_DIR_HOST}/**/*"],
     "priority": 0,
+    "retry": {
+        "automatic": [
+            {
+                "exit_status": os.environ.get("BUILDKITE_RETRY_CODE", 79),
+                "limit": os.environ.get("BUILDKITE_MAX_RETRIES", 1),
+            }
+        ]
+    },
 }
 
 
