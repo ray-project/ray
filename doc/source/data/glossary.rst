@@ -32,7 +32,7 @@ Ray Data Glossary
             4      4
 
         To learn more about batch formats, read
-        :ref:`UDF Input Batch Formats <transform_datasets_batch_formats>`.
+        :ref:`UDF Input Batch Formats <transform_datastreams_batch_formats>`.
 
     Block
         A processing unit of data. A :class:`~ray.data.Datastream` consists of a
@@ -151,4 +151,4 @@ Ray Data Glossary
         :meth:`Dataset.map() <ray.data.Datastream.map>`, or
         :meth:`Dataset.flat_map() <ray.data.Datastream.flat_map>` to apply UDFs.
 
-        To learn more about UDFs, read :ref:`Writing User-Defined Functions <transform_datasets_writing_udfs>`.
+        To learn more about UDFs, read :ref:`Writing User-Defined Functions <transform_datastreams_writing_udfs>`.

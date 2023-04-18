@@ -182,7 +182,7 @@ Supported File Formats
   Read binary files into a ``Dataset``. Each binary file will be treated as a single row
   of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
   kind of data using :meth:`~ray.data.Datastream.map_batches` to apply a per-row decoding
-  :ref:`user-defined function <transform_datasets_writing_udfs>`.
+  :ref:`user-defined function <transform_datastreams_writing_udfs>`.
 
   Although this simple example demonstrates reading a single file, note that Datasets
   can also read directories of binary files, with one bytes block created per file.

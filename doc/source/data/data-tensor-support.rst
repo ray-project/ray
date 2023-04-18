@@ -30,7 +30,7 @@ This section shows how to create single and multi-column tensor datasets.
 .. tabbed:: Pandas UDF
 
   Create tensor datasets by returning ``List[np.ndarray]`` columns from a Pandas
-  :ref:`user-defined function <transform_datasets_writing_udfs>`.
+  :ref:`user-defined function <transform_datastreams_writing_udfs>`.
 
   **Single-column**:
 
@@ -62,7 +62,7 @@ This section shows how to create single and multi-column tensor datasets.
   There are two ways to construct a Parquet tensor dataset: (1) loading a
   previously-saved tensor dataset, or (2) casting non-tensor Parquet columns to tensor
   type. When casting data, a tensor schema or deserialization
-  :ref:`user-defined function <transform_datasets_writing_udfs>`  must be provided. The
+  :ref:`user-defined function <transform_datastreams_writing_udfs>`  must be provided. The
   following are examples for each method.
 
   **Previously-saved tensor datasets**:
@@ -85,7 +85,7 @@ This section shows how to create single and multi-column tensor datasets.
   **Cast from data stored in custom formats**:
 
   For tensors stored in other formats (e.g., pickled), you can specify a deserializer
-  :ref:`user-defined function <transform_datasets_writing_udfs>` that returns
+  :ref:`user-defined function <transform_datastreams_writing_udfs>` that returns
   :class:`~ray.data.extensions.tensor_extension.TensorArray` columns:
 
   .. literalinclude:: ./doc_code/tensor.py

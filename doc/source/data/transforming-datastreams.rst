@@ -6,7 +6,7 @@ Transforming Datasets
 
 Datasets transformations take in datasets and produce new datasets. For example, *map*
 is a transformation that applies a
-:ref:`user-defined function <transform_datasets_writing_udfs>` on each dataset record
+:ref:`user-defined function <transform_datastreams_writing_udfs>` on each dataset record
 and returns a new dataset as the result. Datasets transformations can be composed to
 express a chain of computations.
 
@@ -16,7 +16,7 @@ express a chain of computations.
     encoding, create a :class:`~ray.data.preprocessor.Preprocessor` instead. To learn 
     more, read :ref:`Using Preprocessors <air-preprocessors>`.
 
-.. _transform_datasets_transformations:
+.. _transform_datastreams_transformations:
 
 ---------------
 Transformations
@@ -80,7 +80,7 @@ the Iris dataset.
    :start-after: __dataset_transformation_begin__
    :end-before: __dataset_transformation_end__
 
-.. _transform_datasets_writing_udfs:
+.. _transform_datastreams_writing_udfs:
 
 -------------------------------------
 Writing User-defined Functions (UDFs)
@@ -95,11 +95,11 @@ API in Datasets.
 
 Here are the basics that you need to know about UDFs:
 
-* A UDF can be either a function, a generator, or if using the :ref:`actor compute strategy <transform_datasets_compute_strategy>`, a :ref:`callable class <transform_datasets_callable_classes>`.
-* Select the UDF input :ref:`batch format <transform_datasets_batch_formats>` using the ``batch_format`` argument.
+* A UDF can be either a function, a generator, or if using the :ref:`actor compute strategy <transform_datastreams_compute_strategy>`, a :ref:`callable class <transform_datastreams_callable_classes>`.
+* Select the UDF input :ref:`batch format <transform_datastreams_batch_formats>` using the ``batch_format`` argument.
 * The UDF output type determines the Dataset schema of the transformation result.
 
-.. _transform_datasets_callable_classes:
+.. _transform_datastreams_callable_classes:
 
 Types of UDFs
 =============
@@ -107,7 +107,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 
 .. tabbed:: "Function UDFs"
 
-  The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datasets_batch_formats` for the supported batch formats.
+  The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datastreams_batch_formats` for the supported batch formats.
 
   .. literalinclude:: ./doc_code/transforming_datastreams.py
     :language: python
@@ -145,7 +145,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
     :end-before: __writing_generator_udfs_end__
 
 
-.. _transform_datasets_batch_formats:
+.. _transform_datastreams_batch_formats:
 
 UDF Input Batch Format
 ======================
@@ -287,7 +287,7 @@ is given in the below table:
   batches. See the :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` docstring for
   more information.
 
-.. _transform_datasets_batch_output_types:
+.. _transform_datastreams_batch_output_types:
 
 Batch UDF Output Types
 ======================
@@ -346,7 +346,7 @@ how they are interpreted to create the transformation result:
     :start-after: __writing_simple_out_udfs_begin__
     :end-before: __writing_simple_out_udfs_end__
 
-.. _transform_datasets_row_output_types:
+.. _transform_datastreams_row_output_types:
 
 Row UDF Output Types
 ====================
@@ -383,7 +383,7 @@ The following output types are allowed for per-row UDFs (e.g.,
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
 
-.. _transform_datasets_configuring_batch_size:
+.. _transform_datastreams_configuring_batch_size:
 
 ----------------------
 Configuring Batch Size
@@ -434,7 +434,7 @@ are too small, try decreasing ``parallelism`` during the read to create larger b
   in that task will the same size as the block, and will therefore be smaller than the
   default ``batch_size``.
 
-.. _transform_datasets_compute_strategy:
+.. _transform_datastreams_compute_strategy:
 
 ----------------
 Compute Strategy
