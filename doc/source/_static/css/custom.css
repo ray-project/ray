@@ -79,6 +79,19 @@ div.navbar-brand-box {
     }
 }
 
+@media screen and (max-width: 767px) {
+    .remove-mobile {
+      display: none;
+    }
+  }
+
+  @media screen and (max-width: 767px) {
+    .row-2-column {
+      flex-direction: column;
+      margin-top: 20px;
+    }
+  }
+
 /* Make Algolia search box scrollable */
 .algolia-autocomplete .ds-dropdown-menu {
     height: 60vh !important;
@@ -521,3 +534,102 @@ span.rst-current-version > span.fa.fa-book {
 .rst-versions {
     z-index: 1200 !important;
 }
+
+.image-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 16px;
+    padding-right:16px;
+    gap: 16px;
+}
+
+.info-box {
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.info-box:hover{
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.no-underline{
+    text-decoration: none;  
+}
+.no-underline:hover{
+    text-decoration: none;
+}
+
+.icon-hover:hover{
+    height: 30px ;
+    width: 30px;
+}
+
+.info-box-2 {
+    background-color: #F9FAFB;
+    border-radius: 8px;
+    padding-right: 16px;
+    padding-left: 16px;
+    padding-bottom: 24px;
+    padding-top: 4px;
+}
+
+
+.bold-link {
+    color: #000000 !important;
+    font-weight: 600;
+}
+
+.community-box {
+    border: 1px solid #D2DCE6;
+    border-radius: 8px;
+    display: flex;
+    margin-bottom: 16px;
+}
+
+.community-box:hover {
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+    text-decoration: none;
+}
+
+.community-box p {
+    margin-top: 1rem !important;
+}
+
+.tab-pane pre {
+    margin: 0;
+    padding: 0;
+    max-height: 252px;
+    overflow-y: auto;
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px,1fr));
+    grid-gap: 16px;
+}
+
+.grid-item {
+padding: 20px;
+}
+
+
+.nav-pills {
+    background-color: #F9FAFB;
+    color: #000000;
+    padding: 8px;
+    border-bottom:none;
+    border-radius: 8px;
+}
+
+.nav-pills .nav-link.active {
+    background-color: #FFFFFF !important;
+    box-shadow: 0px 3px 14px 2px rgba(3,28,74,0.12);
+    border-radius: 8px;
+    padding: 20px;
+    color: #000000;
+    font-weight: 500;
+}
+
+
