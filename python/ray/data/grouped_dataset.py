@@ -31,7 +31,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.dataset import DataBatch, Datastream
+from ray.data.datastream import DataBatch, Datastream
 from ray.util.annotations import PublicAPI
 
 
