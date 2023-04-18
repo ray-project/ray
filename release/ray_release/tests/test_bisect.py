@@ -103,5 +103,5 @@ def test_bisect():
         "ray_release.scripts.ray_bisect._run_test",
         side_effect=_mock_run_test,
     ):
-        blamed_commit = _bisect("test", list(commit_to_test_result.keys()))
+        blamed_commit = _bisect({}, list(commit_to_test_result.keys()))
         assert blamed_commit == "c3"
