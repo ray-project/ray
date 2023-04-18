@@ -7,7 +7,7 @@ The following overviews how to configure scale-out, run options, and fault-toler
 For more details on how to configure data ingest, also refer to :ref:`air-ingest`.
 
 Scaling Configurations in Train (``ScalingConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------------------------
 
 The scaling configuration specifies distributed training properties like the number of workers or the
 resources per worker.
@@ -26,14 +26,19 @@ The properties of the scaling configuration are :ref:`tunable <air-tuner-search-
 .. _train-run-config:
 
 Run Configuration in Train (``RunConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------------------
 
-The run configuration specifies distributed training properties like the number of workers or the
-resources per worker.
+``RunConfig`` is a configuration object used in Ray Train to define the experiment
+spec that corresponds to a call to ``trainer.fit()``.
+
+It includes settings such as the experiment name, storage path for results,
+stopping conditions, custom callbacks, checkpoint configuration, verbosity level,
+and logging options.
+
+Many of these settings are configured through other config objects and passed through
+the ``RunConfig``. The following sub-sections contain descriptions of these configs.
 
 The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
-
-.. _train-config-sync:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -64,6 +69,7 @@ are :ref:`not tunable <air-tuner-search-space>`.
 .. seealso::
 
     See the :class:`~ray.air.FailureConfig` API reference.
+
 
 Checkpoint configurations in Train (``CheckpointConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -98,3 +104,22 @@ enabled by setting the checkpoint frequency within the :class:`~ray.air.Checkpoi
 .. seealso::
 
     See the :class:`~ray.air.CheckpointConfig` API reference.
+
+
+Synchronization configurations in Train (``tune.SyncConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``tune.SyncConfig`` specifies how synchronization of results
+and checkpoints should happen in a distributed Ray cluster.
+
+As part of the RunConfig, the properties of the failure configuration
+are :ref:`not tunable <air-tuner-search-space>`.
+
+.. note::
+
+    This configuration is mostly relevant to running multiple Train runs with a
+    Ray Tune. See :ref:`tune-storage-options` for a guide on using the ``SyncConfig``.
+
+.. seealso::
+
+    See the :class:`~ray.tune.syncer.SyncConfig` API reference.
