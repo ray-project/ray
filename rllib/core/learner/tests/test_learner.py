@@ -5,15 +5,19 @@ import tempfile
 import unittest
 
 import ray
-
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.core.learner.learner import Learner, FrameworkHyperparameters
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.utils.test_utils import (
+    check,
+    framework_iterator,
+    get_cartpole_dataset_reader,
+)
 from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
 def get_learner(learning_rate=1e-3) -> Learner:
@@ -72,7 +76,21 @@ class TestLearner(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        learner = get_learner()
+        learner = BCTfLearner(
+            module_spec=SingleAgentRLModuleSpec(
+                module_class=DiscreteBCTFModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            ),
+            # made this a configurable hparam to avoid information leakage in tests where we
+            # need to know what the learning rate is.
+            optimizer_config={"lr": learning_rate},
+            learner_scaling_config=LearnerGroupScalingConfig(),
+            framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+        )
+
+        learner.build()
 
         with tf.GradientTape() as tape:
             params = learner.module[DEFAULT_POLICY_ID].trainable_variables
@@ -84,6 +102,101 @@ class TestLearner(unittest.TestCase):
 
         for grad in gradients.values():
             check(grad, np.ones(grad.shape))
+
+    def test_postprocess_gradients(self):
+        """Tests the postprocess_gradients correctness."""
+        env = gym.make("CartPole-v1")
+
+        config = (
+            APPOConfig()
+                .environment("CartPole-v1")
+                .framework(eager_tracing=True)
+                .rollouts(rollout_fragment_length=50)
+        )
+
+        # TODO (sven): Enable torch once available for APPO.
+        for fw in framework_iterator(config, frameworks=("tf2")):
+            # Clip by value only.
+            config.training(
+                grad_clip_by_value=0.75,
+                grad_clip_by_norm=None,
+                grad_clip_by_global_norm=None,
+            )
+            # TODO (sven): remove this once validation does NOT cause HPs to be
+            #  generated anymore.
+            config.validate()
+            config.freeze()
+            module_spec = config.get_default_rl_module_spec()
+            module_spec.model_config_dict = {"fcnet_hiddens": [10]}
+            module_spec.observation_space = env.observation_space
+            module_spec.action_space = env.action_space
+            learner_group = (
+                config
+                .get_learner_group_config(module_spec=module_spec)
+                .learner(learner_class=config.get_default_learner_class())
+                .build()
+            )
+            learner = learner_group._learner
+            # Pretend our computed gradients are our weights + 1.0.
+            grads = {
+                v.ref(): v + 1.0 for v in learner.module[DEFAULT_POLICY_ID].trainable_variables
+            }
+            # Call the learner's postprocessing method.
+            processed_grads = list(learner.postprocess_gradients(grads).values())
+            # Check clipped gradients.
+            # No single gradient must be larger than 0.1 or smaller than -0.1:
+            self.assertTrue(all(
+                np.max(grad) <= 0.75 and np.min(grad) >= -0.75 for grad in processed_grads
+            ))
+
+            # Clip by norm.
+            config = config.copy(copy_frozen=False).training(
+                grad_clip_by_value=None,
+                grad_clip_by_norm=1.0,
+                grad_clip_by_global_norm=None,
+            )
+            # TODO (sven): remove this once validation does NOT cause HPs to be
+            #  generated anymore.
+            config.validate()
+            config.freeze()
+            learner_group = (
+                config
+                .get_learner_group_config(module_spec=module_spec)
+                .learner(learner_class=config.get_default_learner_class())
+                .build()
+            )
+            learner = learner_group._learner
+            # Call the learner's postprocessing method.
+            processed_grads = list(learner.postprocess_gradients(grads).values())
+            # Check clipped gradients.
+            for proc_grad, grad in zip(processed_grads, grads.values()):
+                l2_norm = np.sqrt(np.sum(grad ** 2.0))
+                if l2_norm > 1.0:
+                    check(proc_grad, grad * (1.0 / l2_norm))
+
+            # Clip by global norm.
+            config = config.copy(copy_frozen=False).training(
+                grad_clip_by_value=None,
+                grad_clip_by_norm=None,
+                grad_clip_by_global_norm=5.0,
+            )
+            # TODO: remove this once validation does NOT cause HPs to be generated anymore
+            config.validate()
+            config.freeze()
+            learner_group = (
+                config
+                .get_learner_group_config(module_spec=module_spec)
+                .learner(learner_class=config.get_default_learner_class())
+                .build()
+            )
+            learner = learner_group._learner
+            # Call the learner's postprocessing method.
+            processed_grads = list(learner.postprocess_gradients(grads).values())
+            # Check clipped gradients.
+            global_norm = np.sqrt(np.sum([np.sum(grad ** 2.0) for grad in grads.values()]))
+            if global_norm > 5.0:
+                for proc_grad, grad in zip(processed_grads, grads.values()):
+                    check(proc_grad, grad * (5.0 / global_norm))
 
     def test_apply_gradients(self):
         """Tests the apply_gradients correctness.

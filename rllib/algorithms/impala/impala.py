@@ -412,16 +412,6 @@ class ImpalaConfig(AlgorithmConfig):
                 )
 
     @override(AlgorithmConfig)
-    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-        lg_config = super().get_learner_group_config(module_spec)
-        optim_config = lg_config.optimizer_config
-        # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
-        #  class
-        optim_config.update({"grad_clip": self.grad_clip})
-        lg_config = lg_config.learner(optimizer_config=optim_config)
-        return lg_config
-
-    @override(AlgorithmConfig)
     def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
         learner_hps = ImpalaHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
