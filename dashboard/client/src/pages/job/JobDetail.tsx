@@ -9,6 +9,7 @@ import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
+import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -27,6 +28,10 @@ import { TaskTimeline } from "./TaskTimeline";
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
+    backgroundColor: "white",
+  },
+  section: {
+    marginBottom: theme.spacing(4),
   },
 }));
 
@@ -146,118 +151,131 @@ export const JobDetailChartsPage = () => {
 
   return (
     <div className={classes.root}>
-      <TitleCard title={`JOB - ${params.id}`}>
-        <MetadataSection
-          metadataList={[
-            {
-              label: "Entrypoint",
-              content: job.entrypoint
-                ? {
-                    value: job.entrypoint,
-                    copyableValue: job.entrypoint,
-                  }
-                : { value: "-" },
+      <MetadataSection
+        metadataList={[
+          {
+            label: "Entrypoint",
+            content: job.entrypoint
+              ? {
+                  value: job.entrypoint,
+                  copyableValue: job.entrypoint,
+                }
+              : { value: "-" },
+          },
+          {
+            label: "Status",
+            content: <StatusChip type="job" status={job.status} />,
+          },
+          {
+            label: "Job ID",
+            content: job.job_id
+              ? {
+                  value: job.job_id,
+                  copyableValue: job.job_id,
+                }
+              : { value: "-" },
+          },
+          {
+            label: "Submission ID",
+            content: job.submission_id
+              ? {
+                  value: job.submission_id,
+                  copyableValue: job.submission_id,
+                }
+              : {
+                  value: "-",
+                },
+          },
+          {
+            label: "Duration",
+            content: job.start_time ? (
+              <DurationText startTime={job.start_time} endTime={job.end_time} />
+            ) : (
+              <React.Fragment>-</React.Fragment>
+            ),
+          },
+          {
+            label: "Started at",
+            content: {
+              value: job.start_time
+                ? formatDateFromTimeMs(job.start_time)
+                : "-",
             },
-            {
-              label: "Status",
-              content: <StatusChip type="job" status={job.status} />,
+          },
+          {
+            label: "Ended at",
+            content: {
+              value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
             },
-            {
-              label: "Job ID",
-              content: job.job_id
-                ? {
-                    value: job.job_id,
-                    copyableValue: job.job_id,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Submission ID",
-              content: job.submission_id
-                ? {
-                    value: job.submission_id,
-                    copyableValue: job.submission_id,
-                  }
-                : {
-                    value: "-",
-                  },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
+          },
+          {
+            label: "Actions",
+            content: (
+              <div>
+                <JobLogsLink job={job} />
+                <br />
+                <CpuProfilingLink
+                  pid={job.driver_info?.pid}
+                  ip={job.driver_info?.node_ip_address}
+                  type="Driver"
                 />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
-            },
-            {
-              label: "Started at",
-              content: {
-                value: job.start_time
-                  ? formatDateFromTimeMs(job.start_time)
-                  : "-",
-              },
-            },
-            {
-              label: "Ended at",
-              content: {
-                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
-              },
-            },
-            {
-              label: "Actions",
-              content: (
-                <div>
-                  <JobLogsLink job={job} />
-                  <br />
-                  <CpuProfilingLink
-                    pid={job.driver_info?.pid}
-                    ip={job.driver_info?.node_ip_address}
-                    type="Driver"
-                  />
-                  <br />
-                  <CpuStackTraceLink
-                    pid={job.driver_info?.pid}
-                    ip={job.driver_info?.node_ip_address}
-                    type="Driver"
-                  />
-                </div>
-              ),
-            },
-          ]}
-        />
-      </TitleCard>
-      <TitleCard>
-        <CollapsibleSection title="Tasks (beta)" startExpanded>
+                <br />
+                <CpuStackTraceLink
+                  pid={job.driver_info?.pid}
+                  ip={job.driver_info?.node_ip_address}
+                  type="Driver"
+                />
+              </div>
+            ),
+          },
+        ]}
+      />
+
+      <CollapsibleSection
+        title="Tasks (beta)"
+        startExpanded
+        className={classes.section}
+      >
+        <Section>
           <JobProgressBar
             jobId={jobId}
             job={job}
             onClickLink={handleClickLink}
           />
-        </CollapsibleSection>
-      </TitleCard>
+        </Section>
+      </CollapsibleSection>
+
       {job.type === "SUBMISSION" && (
-        <TitleCard>
-          <CollapsibleSection title="Driver logs" startExpanded>
+        <CollapsibleSection
+          title="Driver logs"
+          startExpanded
+          className={classes.section}
+        >
+          <Section>
             <JobDriverLogs job={job} />
-          </CollapsibleSection>
-        </TitleCard>
-      )}
-      <TitleCard>
-        <CollapsibleSection title="Task Timeline (beta)" startExpanded>
-          <TaskTimeline jobId={jobId} />
+          </Section>
         </CollapsibleSection>
-      </TitleCard>
-      <Grid container>
-        <Grid item xs={4}>
-          <TitleCard title="">
+      )}
+
+      <CollapsibleSection
+        title="Task Timeline (beta)"
+        startExpanded
+        className={classes.section}
+      >
+        <Section>
+          <TaskTimeline jobId={jobId} />
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Autoscaler"
+        startExpanded
+        className={classes.section}
+      >
+        <Box display="flex" flexDirection="row" gridGap={16}>
+          <Section flex="1 1 500px">
             <Box
               mb={2}
-              display="flex"
-              flexDirection="column"
               height="300px"
               style={{
                 overflow: "hidden",
@@ -269,14 +287,10 @@ export const JobDetailChartsPage = () => {
                 ? formatNodeStatus(cluster_status?.data.clusterStatus)
                 : "No cluster status."}
             </Box>
-          </TitleCard>
-        </Grid>
-        <Grid item xs={4}>
-          <TitleCard title="">
+          </Section>
+          <Section flex="1 1 500px">
             <Box
               mb={2}
-              display="flex"
-              flexDirection="column"
               height="300px"
               style={{
                 overflow: "hidden",
@@ -288,47 +302,52 @@ export const JobDetailChartsPage = () => {
                 ? formatResourcesStatus(cluster_status?.data.clusterStatus)
                 : "No cluster status."}
             </Box>
-          </TitleCard>
-        </Grid>
-      </Grid>
-      <TitleCard>
-        <CollapsibleSection
-          ref={taskTableRef}
-          title="Task Table"
-          expanded={taskTableExpanded}
-          onExpandButtonClick={() => {
-            setTaskTableExpanded(!taskTableExpanded);
-          }}
-        >
+          </Section>
+        </Box>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        ref={taskTableRef}
+        title="Task Table"
+        expanded={taskTableExpanded}
+        onExpandButtonClick={() => {
+          setTaskTableExpanded(!taskTableExpanded);
+        }}
+        className={classes.section}
+      >
+        <Section>
           <TaskList
             jobId={jobId}
             filterToTaskId={taskListFilter}
             onFilterChange={handleTaskListFilterChange}
           />
-        </CollapsibleSection>
-      </TitleCard>
-      <TitleCard>
-        <CollapsibleSection
-          ref={actorTableRef}
-          title="Actors"
-          expanded={actorTableExpanded}
-          onExpandButtonClick={() => {
-            setActorTableExpanded(!actorTableExpanded);
-          }}
-        >
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        ref={actorTableRef}
+        title="Actors"
+        expanded={actorTableExpanded}
+        onExpandButtonClick={() => {
+          setActorTableExpanded(!actorTableExpanded);
+        }}
+        className={classes.section}
+      >
+        <Section>
           <ActorList
             jobId={jobId}
             filterToActorId={actorListFilter}
             onFilterChange={handleActorListFilterChange}
             detailPathPrefix="actors"
           />
-        </CollapsibleSection>
-      </TitleCard>
-      <TitleCard>
-        <CollapsibleSection title="Placement Groups">
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Placement Groups" className={classes.section}>
+        <Section>
           <PlacementGroupList jobId={jobId} />
-        </CollapsibleSection>
-      </TitleCard>
+        </Section>
+      </CollapsibleSection>
     </div>
   );
 };
