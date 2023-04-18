@@ -21,6 +21,8 @@
 namespace ray {
 namespace core {
 
+constexpr uint64_t NANOS_PER_SECOND = 1000 * 1000 * 1000;
+
 google::protobuf::Timestamp CurrentTimestamp() {
   // NOTE: Using high_resolution_clock for consistnecy with the rest of this
   // file, but this should probably use stead_clock.
@@ -28,17 +30,17 @@ google::protobuf::Timestamp CurrentTimestamp() {
   auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
   auto ts = google::protobuf::Timestamp();
   ts.set_seconds(std::chrono::duration_cast<std::chrono::seconds>(time).count());
-  ts.set_nanos(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count());
+  ts.set_nanos(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count() % NANOS_PER_SECOND);
   return ts;
 }
 
 void RecordTaskMetrics(const TaskSpecification &task_spec) {
-  float duration_s = task_spec.GetMessage().dependency_resolution_time().seconds() -
-                     task_spec.GetMessage().lease_grant_time().seconds();
+  double duration_s = task_spec.GetMessage().lease_grant_time().nanos() -
+                       task_spec.GetMessage().dependency_resolution_time().nanos();
+  duration_s /= NANOS_PER_SECOND;
 
-  duration_s += (task_spec.GetMessage().dependency_resolution_time().nanos() -
-                 task_spec.GetMessage().lease_grant_time().nanos()) *
-                (1e-9);
+  duration_s += task_spec.GetMessage().lease_grant_time().seconds() -
+    task_spec.GetMessage().dependency_resolution_time().seconds();
 
   stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
 }

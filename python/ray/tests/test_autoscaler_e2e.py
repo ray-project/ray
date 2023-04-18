@@ -86,6 +86,12 @@ def test_metrics(shutdown_only):
             info.address_info["node_ip_address"], AUTOSCALER_METRIC_PORT
         )
 
+        @ray.remote(num_cpus=0)
+        def foo():
+            pass
+
+        ray.get(foo.remote())
+
         @ray.remote(num_cpus=1)
         class Foo:
             def ping(self):
