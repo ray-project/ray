@@ -67,6 +67,7 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
       log={log}
       path={path}
       downloadUrl={downloadUrl}
+      height={300}
       onRefreshClick={() => {
         refresh();
       }}

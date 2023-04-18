@@ -192,7 +192,7 @@ export const MetadataSection = ({
   metadataList: Metadata[];
 }) => {
   return (
-    <Section title={header} marginBottom={4}>
+    <Section title={header} marginTop={1} marginBottom={4}>
       <MetadataList metadataList={metadataList} />
     </Section>
   );

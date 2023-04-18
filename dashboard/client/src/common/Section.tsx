@@ -13,6 +13,7 @@ const useStyles = makeStyles((theme) =>
   createStyles({
     contentContainer: {
       padding: theme.spacing(2),
+      height: "100%",
     },
   }),
 );
@@ -31,7 +32,7 @@ export const Section = ({
   const classes = useStyles();
 
   return (
-    <Box className={className} marginTop={1} {...props}>
+    <Box className={className} {...props}>
       {title && (
         <Box paddingBottom={2}>
           <Typography variant="h4">{title}</Typography>

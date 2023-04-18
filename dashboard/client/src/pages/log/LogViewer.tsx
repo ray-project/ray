@@ -45,6 +45,7 @@ type LogViewerProps = {
   log: string;
   downloadUrl?: string;
   onRefreshClick?: () => void;
+  height?: number;
 };
 
 export const LogViewer = ({
@@ -52,6 +53,7 @@ export const LogViewer = ({
   log,
   downloadUrl,
   onRefreshClick,
+  height = 600,
 }: LogViewerProps) => {
   const classes = useStyles();
 
@@ -170,7 +172,7 @@ export const LogViewer = ({
             </div>
           </div>
           <LogVirtualView
-            height={600}
+            height={height}
             revert={search?.revert}
             keywords={search?.keywords}
             focusLine={Number(search?.lineNumber) || undefined}

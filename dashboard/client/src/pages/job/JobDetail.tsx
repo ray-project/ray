@@ -17,6 +17,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
 import ActorList from "../actor/ActorList";
+import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
 
@@ -33,6 +34,15 @@ const useStyle = makeStyles((theme) => ({
   },
   section: {
     marginBottom: theme.spacing(4),
+  },
+  autoscalerSection: {
+    flexWrap: "wrap",
+    [theme.breakpoints.up("md")]: {
+      flexWrap: "nowrap",
+    },
+  },
+  nodeCountCard: {
+    flex: "1 0 500px",
   },
 }));
 
@@ -78,23 +88,21 @@ export const JobDetailChartsPage = () => {
 
     return (
       <div>
-        <Typography variant="h6">
-          <b>{title}</b>
-        </Typography>
+        <Box marginBottom={2}>
+          <Typography variant="h6">{title}</Typography>
+        </Box>
         {cluster_status_rows.map((i, key) => {
           // Format the output.
           // See format_info_string in util.py
-          if (i.startsWith("-----") || i.startsWith("=====")) {
-            // Separator
-            return <div key={key} />;
+          if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
+            // Ignore separators
+            return null;
           } else if (i.endsWith(":")) {
             return (
               <div key={key}>
                 <b>{i}</b>
               </div>
             );
-          } else if (i === "") {
-            return <br key={key} />;
           } else {
             return <div key={key}>{i}</div>;
           }
@@ -283,16 +291,23 @@ export const JobDetailChartsPage = () => {
         startExpanded
         className={classes.section}
       >
-        <Box display="flex" flexDirection="row" gridGap={16}>
+        <Box
+          display="flex"
+          flexDirection="row"
+          gridGap={24}
+          alignItems="stretch"
+          className={classes.autoscalerSection}
+        >
+          <NodeCountCard className={classes.nodeCountCard} />
           <Section flex="1 1 500px">
             <Box
-              mb={2}
-              height="300px"
               style={{
                 overflow: "hidden",
                 overflowY: "scroll",
               }}
               sx={{ borderRadius: "16px" }}
+              marginLeft={1}
+              marginRight={1}
             >
               {cluster_status?.data
                 ? formatNodeStatus(cluster_status?.data.clusterStatus)
@@ -301,13 +316,13 @@ export const JobDetailChartsPage = () => {
           </Section>
           <Section flex="1 1 500px">
             <Box
-              mb={2}
-              height="300px"
               style={{
                 overflow: "hidden",
                 overflowY: "scroll",
               }}
               sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
+              marginLeft={1}
+              marginRight={1}
             >
               {cluster_status?.data
                 ? formatResourcesStatus(cluster_status?.data.clusterStatus)
