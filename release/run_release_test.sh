@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2317
 
 set -e
 
@@ -30,13 +31,16 @@ RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
+BUILDKITE_MAX_RETRIES=1
+BUILDKITE_RETRY_CODE=79
+BUILDKITE_TIME_LIMIT_FOR_RETRY=1800
 
 # This is not a great idea if your OS is different to the one
 # used in the product clusters. However, we need this in CI as reloading
 # Ray within the python process does not work for protobuf changes.
 INSTALL_MATCHING_RAY=${BUILDKITE-false}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY
 
 if [ -z "${NO_INSTALL}" ]; then
   pip install --use-deprecated=legacy-resolver -q -r requirements.txt
@@ -109,6 +113,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     wait "$proc"
   }
 
+  START=$(date +%s)
   set +e
 
   trap _term SIGINT SIGTERM
@@ -119,8 +124,10 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   EXIT_CODE=$?
 
   set -e
+  END=$(date +%s)
 
   REASON=$(reason "${EXIT_CODE}")
+  RUNTIME=$((END-START))
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 
   case ${EXIT_CODE} in
@@ -158,7 +165,7 @@ done
 echo "----------------------------------------"
 
 REASON=$(reason "${EXIT_CODE}")
-echo "Final release test exit code is ${EXIT_CODE} (${REASON})"
+echo "Final release test exit code is ${EXIT_CODE} (${REASON}). Took ${RUNTIME}s"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "RELEASE MANAGER: This test seems to have passed."
@@ -173,4 +180,8 @@ if [ -z "${NO_CLONE}" ]; then
   rm -rf "${TMPDIR}" || true
 fi
 
-exit $EXIT_CODE
+if [[ ("$REASON" == "infra error" || "$REASON" == "infra timeout") && ("$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY") ]]; then
+  exit "$BUILDKITE_RETRY_CODE"
+else
+  exit "$EXIT_CODE"
+fi

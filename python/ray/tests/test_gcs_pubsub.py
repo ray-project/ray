@@ -142,9 +142,6 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     await subscriber.close()
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 7, 0), reason="no asyncio.all_tasks in py3.6"
-)
 @pytest.mark.asyncio
 async def test_aio_poll_no_leaks(ray_start_regular):
     """Test that polling doesn't leak memory."""
