@@ -10,7 +10,7 @@ Ray Dataset Ingest into AIR Trainers
 .. autosummary::
 
     air.session.get_dataset_shard
-    ~data.DatasetIterator
+    ~data.DataIterator
     ~air.DatasetConfig
 
 Debugging Utilities

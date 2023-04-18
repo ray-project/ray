@@ -1,6 +1,9 @@
 ```{include} /_includes/overview/announcement.md
 ```
 
+```{title} Welcome to Ray!
+```
+
 ```{raw} html
 
 <link rel="stylesheet"
@@ -84,6 +87,7 @@
 </div>
   
 <div class="container remove-mobile" style="margin-bottom:30px; margin-top:80px; padding:0px;">
+
 
 <h2 style="font-weight:600;">Scaling with Ray</h2>
 
@@ -190,7 +194,8 @@ trainer = LightGBMTrainer(
 tuner = tune.Tuner(
     trainer=trainer,
     param_space=hyper_param_space,
-    tune_config=tune.TuneConfig(num_samples=1000),
+    tune_config=tune.TuneConfig(num_sa
+    les=1000),
 )
 
 # Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs

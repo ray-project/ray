@@ -14,7 +14,6 @@ from ray._private.ray_constants import (
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._private.async_compat import create_task
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.container import ContainerManager
@@ -344,15 +343,10 @@ class RuntimeEnvAgent(
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    # python 3.6 requires the type of input is `Future`,
-                    # python 3.7+ only requires the type of input is `Awaitable`
-                    # TODO(Catch-Bull): remove create_task when ray drop python 3.6
-                    runtime_env_setup_task = create_task(
-                        _setup_runtime_env(
-                            runtime_env,
-                            serialized_env,
-                            request.serialized_allocated_resource_instances,
-                        )
+                    runtime_env_setup_task = _setup_runtime_env(
+                        runtime_env,
+                        serialized_env,
+                        request.serialized_allocated_resource_instances,
                     )
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds

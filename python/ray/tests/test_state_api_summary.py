@@ -441,7 +441,7 @@ def test_object_summary(monkeypatch, ray_start_cluster):
             assert deserialized_task_arg_summary["total_objects"] == 2
             assert deserialized_task_arg_summary["total_num_workers"] == 2
             assert deserialized_task_arg_summary["total_num_nodes"] == 1
-            assert deserialized_task_arg_summary["task_state_counts"]["-"] == 2
+            assert deserialized_task_arg_summary["task_state_counts"]["NIL"] == 2
             assert (
                 deserialized_task_arg_summary["ref_type_counts"]["PINNED_IN_MEMORY"]
                 == 2
