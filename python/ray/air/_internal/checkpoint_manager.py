@@ -157,7 +157,7 @@ class _TrackedCheckpoint:
             return checkpoint_data
 
         if isinstance(checkpoint_data, str):
-            # Prefer cloud checkpoints.
+            # Prefer cloud checkpoints
             if self.local_to_remote_path_fn:
                 checkpoint = Checkpoint.from_uri(
                     self.local_to_remote_path_fn(checkpoint_data)

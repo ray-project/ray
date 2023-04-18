@@ -1,4 +1,5 @@
 import copy
+import logging
 import os
 import warnings
 from collections import defaultdict
@@ -16,6 +17,7 @@ from typing import (
     Tuple,
 )
 
+from ray._private.storage import _get_storage_uri
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
@@ -39,6 +41,9 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
@@ -798,6 +803,14 @@ class RunConfig:
                 "the local cache location."
             )
             self.local_dir = None
+
+        if not remote_path:
+            remote_path = _get_storage_uri()
+            if remote_path:
+                logger.info(
+                    "Using configured Ray storage URI as storage path: "
+                    f"{remote_path}"
+                )
 
         if remote_path:
             self.storage_path = remote_path
