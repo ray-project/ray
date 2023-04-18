@@ -23,6 +23,7 @@ from typing import (
 )
 
 import ray
+from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
@@ -617,6 +618,14 @@ def run(
             "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
         )
         local_path = local_dir
+
+    if not remote_path:
+        # If no remote path is set, try to get Ray Storage URI
+        remote_path = _get_storage_uri()
+        if remote_path:
+            logger.info(
+                "Using configured Ray storage URI as storage path: " f"{remote_path}"
+            )
 
     sync_config.validate_upload_dir(remote_path)
 
