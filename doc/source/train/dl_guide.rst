@@ -1023,8 +1023,14 @@ If the experiment has been interrupted due to one of the reasons listed above, u
     .. literalinclude:: doc_code/dl_guide.py
         :language: python
         :dedent:
-        :start-after: __ft_restore_from_cloud_start__
-        :end-before: __ft_restore_from_cloud_end__
+        :start-after: __ft_restore_from_cloud_initial_start__
+        :end-before: __ft_restore_from_cloud_initial_end__
+
+    .. literalinclude:: doc_code/dl_guide.py
+        :language: python
+        :dedent:
+        :start-after: __ft_restore_from_cloud_restored_start__
+        :end-before: __ft_restore_from_cloud_restored_end__
 
 .. note::
 

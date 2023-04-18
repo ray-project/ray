@@ -58,7 +58,7 @@ restored_trainer = TorchTrainer.restore(
 
 
 if not MOCK:
-    # __ft_restore_from_cloud_start__
+    # __ft_restore_from_cloud_initial_start__
     original_trainer = TorchTrainer(
         # ...
         run_config=air.RunConfig(
@@ -68,14 +68,14 @@ if not MOCK:
         ),
     )
     result = trainer.fit()
+    # __ft_restore_from_cloud_initial_end__
 
-    # ...
-
+    # __ft_restore_from_cloud_restored_start__
     restored_trainer = TorchTrainer.restore(
         "s3://results-bucket/dl_trainer_restore",
         datasets=get_datasets(),
     )
-    # __ft_restore_from_cloud_end__
+    # __ft_restore_from_cloud_restored_end__
 
 
 # __ft_autoresume_start__
