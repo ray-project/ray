@@ -35,7 +35,7 @@ Streaming Batch Inference
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
 powerful :ref:`Datastream <datastream_concept>` primitive. This allows users to execute workloads such as 
 :ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets. Ray Data manages
-the pipelined loading, processing, and output of data in the cluster, maximizing resource utilization
+the pipelined processing of data in the cluster, maximizing resource utilization
 by keeping the working data fitting into Ray object store memory.
 
 .. image:: images/stream-example.png
@@ -46,7 +46,8 @@ by keeping the working data fitting into Ray object store memory.
  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
 
 As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ray's distributed scheduler,
-e.g., using actors for optimizing setup time and GPU scheduling.
+e.g., using actors for optimizing setup time and GPU scheduling, and supports data throughputs of
+100GiB/s or more for common inference workloads.
 
 To learn more about the features Ray Data supports, read the 
 :ref:`Data User Guide <data_user_guide>`.
