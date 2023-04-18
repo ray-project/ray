@@ -23,6 +23,7 @@ import TaskList from "../state/task";
 
 import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
+import { JobMetadataSection } from "./JobDetailInfoPage";
 import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
@@ -160,99 +161,7 @@ export const JobDetailChartsPage = () => {
 
   return (
     <div className={classes.root}>
-      <MetadataSection
-        metadataList={[
-          {
-            label: "Entrypoint",
-            content: job.entrypoint
-              ? {
-                  value: job.entrypoint,
-                  copyableValue: job.entrypoint,
-                }
-              : { value: "-" },
-          },
-          {
-            label: "Status",
-            content: <StatusChip type="job" status={job.status} />,
-          },
-          {
-            label: "Job ID",
-            content: job.job_id
-              ? {
-                  value: job.job_id,
-                  copyableValue: job.job_id,
-                }
-              : { value: "-" },
-          },
-          {
-            label: "Submission ID",
-            content: job.submission_id
-              ? {
-                  value: job.submission_id,
-                  copyableValue: job.submission_id,
-                }
-              : {
-                  value: "-",
-                },
-          },
-          {
-            label: "Duration",
-            content: job.start_time ? (
-              <DurationText startTime={job.start_time} endTime={job.end_time} />
-            ) : (
-              <React.Fragment>-</React.Fragment>
-            ),
-          },
-          {
-            label: "Started at",
-            content: {
-              value: job.start_time
-                ? formatDateFromTimeMs(job.start_time)
-                : "-",
-            },
-          },
-          {
-            label: "Ended at",
-            content: {
-              value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
-            },
-          },
-          ...(job.type === "SUBMISSION"
-            ? [
-                {
-                  label: "User metadata",
-                  content:
-                    job.metadata && Object.keys(job.metadata).length ? (
-                      <CodeDialogButtonWithPreview
-                        title="User provided metadata"
-                        code={JSON.stringify(job.metadata, undefined, 2)}
-                      />
-                    ) : undefined,
-                },
-              ]
-            : []),
-          {
-            label: "Actions",
-            content: (
-              <div>
-                <JobLogsLink job={job} />
-                <br />
-                <CpuProfilingLink
-                  pid={job.driver_info?.pid}
-                  ip={job.driver_info?.node_ip_address}
-                  type="Driver"
-                />
-                <br />
-                <CpuStackTraceLink
-                  pid={job.driver_info?.pid}
-                  ip={job.driver_info?.node_ip_address}
-                  type="Driver"
-                />
-              </div>
-            ),
-          },
-        ]}
-      />
+      <JobMetadataSection job={job} />
 
       <CollapsibleSection
         title="Tasks/actor overview (beta)"
