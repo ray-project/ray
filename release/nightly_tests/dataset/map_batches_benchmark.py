@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
-from ray.data.dataset import Dataset, MaterializedDatastream
+from ray.data.datastream import Dataset, MaterializedDatastream
 
 from benchmark import Benchmark
 

@@ -137,8 +137,10 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
+    # Schema information is available from Parquet metadata, so
+    # we do not need to compute the first block.
     assert ds.schema() is not None
-    check_num_computed(ds, 1, 1)
+    check_num_computed(ds, 0, 0)
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
@@ -151,11 +153,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
         repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
-    check_num_computed(ds, 1, 1)
+    check_num_computed(ds, 0, 0)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
-    check_num_computed(ds, 2, 2)
+    check_num_computed(ds, 2, 0)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -442,9 +444,13 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
+    # Schema information and input files are available from Parquet metadata,
+    # so we do not need to compute the first block.
     assert ds.schema() is not None
+    check_num_computed(ds, 0, 0)
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
+    check_num_computed(ds, 0, 0)
     assert str(ds) == (
         "Datastream(\n"
         "   num_blocks=2,\n"
@@ -461,11 +467,10 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
         ")"
     ), ds
-    check_num_computed(ds, 1, 1)
+    check_num_computed(ds, 0, 0)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2, 2)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -474,11 +479,13 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         [3, "f"],
         [3, "g"],
     ]
+    check_num_computed(ds, 2, 0)
 
     # Test column selection.
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 1, 1, 3, 3, 3]
+    check_num_computed(ds, 2, 0)
 
 
 def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path):
@@ -536,6 +543,9 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     check_num_computed(ds, 0, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
+    # Schema information and input files are available from Parquet metadata,
+    # so we do not need to compute the first block.
+    check_num_computed(ds, 0, 0)
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
@@ -547,11 +557,11 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
-    check_num_computed(ds, 1, 1)
+    check_num_computed(ds, 0, 0)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2, 2)
+    check_num_computed(ds, 2, 0)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -634,14 +644,16 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     check_num_computed(ds, 0, 0)
     assert ds.count() == num_dfs * 3
     assert ds.size_bytes() > 0
+    # Schema information and input files are available from Parquet metadata,
+    # so we do not need to compute the first block.
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == num_dfs, input_files
-    check_num_computed(ds, 1, 1)
+    check_num_computed(ds, 0, 0)
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    check_num_computed(ds, parallelism, parallelism)
+    check_num_computed(ds, parallelism, 0)
     assert sorted(values) == list(range(3 * num_dfs))
 
 
