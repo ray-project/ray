@@ -56,7 +56,7 @@ class RayFSDPStrategy(FSDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return ray.train.torch.get_device()
+        return get_worker_root_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
