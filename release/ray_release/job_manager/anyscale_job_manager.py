@@ -24,6 +24,7 @@ from ray_release.logger import logger
 from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
     ANYSCALE_HOST,
+    ERROR_LOG_PATTERNS,
     exponential_backoff_retry,
     anyscale_job_url,
     format_link,
@@ -282,23 +283,17 @@ class AnyscaleJobManager:
             "event_AUTOSCALER.log",
             "event_JOBS.log",
         ]
-        # Logs that can indicate there are crashes
-        error_log_patterns = [
-            "ERROR",
-            "Traceback (most recent call last)",
-        ]
         error_output = None
         matched_pattern_count = 0
         for root, _, files in os.walk(tmpdir):
             for file in files:
-                logger.info(f"Ray log: {os.path.join(root, file)}")
                 if file in ignored_ray_files:
                     continue
                 with open(os.path.join(root, file)) as lines:
                     output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
                     # favor error logs that match with the most number of error patterns
                     if (
-                        len([error for error in error_log_patterns if error in output])
+                        len([error for error in ERROR_LOG_PATTERNS if error in output])
                         > matched_pattern_count
                     ):
                         error_output = output
