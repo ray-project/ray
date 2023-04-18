@@ -783,7 +783,7 @@ def deploy_serve_application(
         # Import and build the application.
         app = build(import_attr(import_path), name)
 
-        # Override options for each deployment.
+        # Override options for each deployment listed in the config.
         for options in deployment_override_options:
             deployment_name = options["name"]
             unique_deployment_name = (
@@ -812,11 +812,16 @@ def deploy_serve_application(
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
-            options["version"] = code_version
             options["name"] = unique_deployment_name
             # Update the deployment's options
             app.deployments[unique_deployment_name].set_options(
                 **options, _internal=True
+            )
+
+        # Set code version for each deployment
+        for deployment_name in app.deployments:
+            app.deployments[deployment_name].set_options(
+                version=code_version, _internal=True
             )
 
         # Run the application locally on the cluster.

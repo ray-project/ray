@@ -1305,7 +1305,9 @@ class TestDeployApp:
         assert info_valid
 
     def test_deploy_nonexistent_deployment(self, client: ServeControllerClient):
-        """Remove an application from a config, it should reach a deleting state."""
+        """Apply a config that lists a deployment that doesn't exist in the application.
+        The error message should be descriptive.
+        """
 
         config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
         # Change names to invalid names that don't contain "deployment" or "application"
@@ -1323,6 +1325,36 @@ class TestDeployApp:
             )
 
         wait_for_condition(check_app_message)
+
+    def test_deployments_not_listed_in_config(self, client: ServeControllerClient):
+        """Apply a config without the app's deployments listed. The deployments should
+        not redeploy.
+        """
+
+        def deployment_running():
+            serve_status = client.get_serve_status()
+            return (
+                serve_status.get_deployment_status("f") is not None
+                and serve_status.app_status.status == ApplicationStatus.RUNNING
+                and serve_status.get_deployment_status("f").status
+                == DeploymentStatus.HEALTHY
+            )
+
+        config = {"import_path": "ray.serve.tests.test_config_files.pid.node"}
+        client.deploy_apps(ServeApplicationSchema(**config))
+        wait_for_condition(deployment_running, timeout=15)
+        pid1 = int(requests.get("http://localhost:8000/f").text)
+
+        client.deploy_apps(ServeApplicationSchema(**config))
+        wait_for_condition(deployment_running, timeout=15)
+
+        # This assumes that Serve implements round-robin routing for its replicas. As
+        # long as that doesn't change, this test shouldn't be flaky; however if that
+        # routing ever changes, this test could become mysteriously flaky
+        pids = []
+        for _ in range(4):
+            pids.append(int(requests.get("http://localhost:8000/f").text))
+        assert all(pid == pid1 for pid in pids)
 
 
 class TestServeRequestProcessingTimeoutS:
