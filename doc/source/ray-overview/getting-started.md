@@ -182,7 +182,7 @@ Datastreams also supports ``.filter()`` and ``.flat_map()``.
 :end-before: __data_transform_end__
 ```
 
-```{link-button} ../data/dataset
+```{link-button} ../data/data
 :type: ref
 :text: Learn more about Ray Data
 :classes: btn-outline-primary btn-block

@@ -15,7 +15,7 @@ global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.Grou
 shuffling operations (:meth:`random_shuffle <ray.data.Datastream.random_shuffle>`,
 :meth:`sort <ray.data.Datastream.sort>`,
 :meth:`repartition <ray.data.Datastream.repartition>`),
-and are compatible with a variety of file formats, data sources, and distributed frameworks.
+and is compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
 as well as a glimpse at the Ray Data API.
@@ -28,14 +28,30 @@ is already supported.
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
+--------------------------
+Streaming Parallel Compute
+--------------------------
 
---------------------------------------------------------
-Streaming Data Loading and Preprocessing for ML Training
---------------------------------------------------------
+Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
+powerful :ref:`Datastream <datastream_concept>` primitive. This allows users to execute workloads such as 
+:ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets.
+
+.. image:: images/dataset-compute-1.png
+   :width: 500px
+   :align: center
+
+As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ray's distributed scheduler,
+e.g., using actors for optimizing setup time and GPU scheduling.
+
+To learn more about the features Ray Data supports, read the 
+:ref:`Data User Guide <data_user_guide>`.
+
+---------------------------------------
+Streaming Preprocessing for ML Training
+---------------------------------------
 
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
-
-Use Ray Data as a last-mile bridge from storage or ETL pipeline outputs to distributed 
+Ray Data is intended to serve as a last-mile bridge from storage or ETL pipeline outputs to distributed 
 applications and libraries in Ray. Don't use it as a replacement for more general data 
 processing systems.
 
@@ -45,24 +61,6 @@ processing systems.
 
 ..
   https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
-
-To learn more about the features Ray Data supports, read the 
-:ref:`Data User Guide <data_user_guide>`.
-
---------------------------
-Streaming Parallel Compute
---------------------------
-
-Ray Data also simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful ``Datastream`` abstraction. This allows users to execute workloads such as 
-:ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets.
-
-.. image:: images/dataset-compute-1.png
-   :width: 500px
-   :align: center
-
-As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ray's distributed scheduler,
-e.g., using actors for optimizing setup time and GPU scheduling.
 
 ----------------------
 Where to Go from Here?
