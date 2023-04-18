@@ -284,7 +284,7 @@ install_npm_project() {
 build_dashboard_front_end() {
   if [ "${OSTYPE}" = msys ]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
-  elif [ "${NO_DASHBOARD}" = "1" ]; then
+  elif [ "${NO_DASHBOARD-}" = "1" ]; then
     echo "Skipping dashboard build"
   else
     (
