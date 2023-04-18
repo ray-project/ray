@@ -243,7 +243,7 @@ export const JobDetailChartsPage = () => {
       />
 
       <CollapsibleSection
-        title="Tasks (beta)"
+        title="Tasks/actor overview (beta)"
         startExpanded
         className={classes.section}
       >
