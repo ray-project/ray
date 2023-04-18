@@ -20,9 +20,7 @@ config = (
         model={"fcnet_hiddens": [128, 128]},
         vf_clip_param=10.0,
     )
-    .rl_module(_enable_rl_module_api=tune.grid_search([True, False]))
 )
-config._enable_learner_api = False
 
 stop = {
     "timesteps_total": 500000,
