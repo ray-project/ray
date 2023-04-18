@@ -62,6 +62,7 @@ export const ServeReplicaDetailPage = () => {
         pageInfo={{
           id: "serveReplicaDetail",
           title: replica_id,
+          pageTitle: `${replica_id} | Serve Replica`,
           path: `/serve/applications/${encodeURIComponent(
             appName,
           )}/${encodeURIComponent(deployment.name)}/${encodeURIComponent(

@@ -48,9 +48,8 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
-  PY_MMS=("3.6.13"
-          "3.7.10"
+  PY_WHEEL_VERSIONS=("37" "38" "39")
+  PY_MMS=("3.7.10"
           "3.8.10"
           "3.9.5")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
@@ -103,9 +102,8 @@ elif [[ "$platform" == "macosx" ]]; then
             "3.10"
             )
   else
-    PY_WHEEL_VERSIONS=("36" "37" "38" "39" "310")
-    PY_MMS=("3.6"
-            "3.7"
+    PY_WHEEL_VERSIONS=("37" "38" "39" "310")
+    PY_MMS=("3.7"
             "3.8"
             "3.9"
             "3.10"
