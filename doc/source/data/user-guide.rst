@@ -15,6 +15,6 @@ This user guide will help you navigate the Ray Data project and show you how ach
     consuming-datastreams
     data-tensor-support
     custom-datasource
-    pipelining-compute
     data-internals
     performance-tips
+    pipelining-compute

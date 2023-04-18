@@ -1,15 +1,13 @@
 .. _pipelining_datasets:
 
-.. note::
+.. warning::
 
-  The DatasetPipeline is expected to be deprecated in Ray 2.5. If your use case doesn't
-  need per-window shuffle, we recommend using just plain Datasets, which supports the
-  streaming execution by default in Ray 2.4. For more detail, see
-  :ref:`Streaming Execution <streaming_execution>`.
+  DatasetPipelines are deprecated, since Datastream now provides pipelined execution
+  by default. For more detail, see :ref:`Streaming Execution <streaming_execution>`.
 
-==================
-Pipelining Compute 
-==================
+=============================
+DatasetPipelines (deprecated)
+=============================
 
 Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
 
