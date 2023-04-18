@@ -455,7 +455,7 @@ for batch inference:
    :start-after: __dataset_compute_strategy_begin__
    :end-before: __dataset_compute_strategy_end__
 
-.. _datasets-groupbys:
+.. _data-groupbys:
 
 --------------------------
 Group-bys and aggregations

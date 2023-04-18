@@ -1,4 +1,4 @@
-.. _datasets_faq:
+.. _data_faq:
 
 ===
 FAQ
@@ -193,7 +193,7 @@ throughput improvement (4-8x) and model accuracy improvement (due to global per-
 shuffling) using Ray Data.
 
 Please see our
-`recent blog post on Ray Data <https://www.anyscale.com/blog/ray-datasets-for-machine-learning-training-and-scoring>`__
+`recent blog post on Ray Data <https://www.anyscale.com/blog/ray-data-for-machine-learning-training-and-scoring>`__
 for more information on this benchmarking.
 
 Does all of my data need to fit into memory?

@@ -1,4 +1,4 @@
-.t. _data_user_guide :
+.. _data_user_guide:
 
 ===========
 User Guides

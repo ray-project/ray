@@ -691,7 +691,7 @@ def read_images(
     Returns:
         A :class:`~ray.data.Datastream` producing tensors that represent the images at
         the specified paths. For information on working with tensors, read the
-        :ref:`tensor data guide <datasets_tensor_support>`.
+        :ref:`tensor data guide <data_tensor_support>`.
 
     Raises:
         ValueError: if ``size`` contains non-positive numbers.

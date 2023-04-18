@@ -1,4 +1,4 @@
-.. _datasets-examples-ref:
+.. _data-examples-ref:
 
 ========
 Examples
@@ -7,7 +7,7 @@ Examples
 .. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
   Datasets' features in-depth.
 
-.. _datasets-recipes:
+.. _data-recipes:
 
 Simple Data Processing Examples
 -------------------------------

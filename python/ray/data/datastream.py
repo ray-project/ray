@@ -4326,7 +4326,7 @@ class Datastream(Generic[T]):
             If your datastream contains a single ``numpy.ndarray``
             column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
             the default batch format is ``np.ndarray``. For more information on tensor
-            formats, read the :ref:`tensor support guide <datasets_tensor_support>`.
+            formats, read the :ref:`tensor support guide <data_tensor_support>`.
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
