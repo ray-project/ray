@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
@@ -453,21 +454,21 @@ def run_release_test(
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
-
-    buildkite_group(":spiral_note_pad: Loading test configuration")
-    cluster_manager, command_runner, artifact_path = _load_test_configuration(
-        test,
-        anyscale_project,
-        result,
-        ray_wheels_url,
-        smoke_test,
-        no_terminate,
-    )
-
+    command_runner = None
+    cluster_manager = None
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
+        buildkite_group(":spiral_note_pad: Loading test configuration")
+        cluster_manager, command_runner, artifact_path = _load_test_configuration(
+            test,
+            anyscale_project,
+            result,
+            ray_wheels_url,
+            smoke_test,
+            no_terminate,
+        )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
         (
             prepare_cmd,
@@ -525,7 +526,6 @@ def run_release_test(
             smoke_test,
             start_time_unix,
         )
-
     except Exception as e:
         logger.exception(e)
         buildkite_open_last()
@@ -540,9 +540,9 @@ def run_release_test(
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
-    result.last_logs = command_runner.get_last_logs()
+    result.last_logs = command_runner.get_last_logs() if command_runner else None
 
-    if not no_terminate:
+    if not no_terminate and cluster_manager:
         buildkite_group(":earth_africa: Terminating cluster")
         cluster_manager.terminate_cluster(wait=False)
 
@@ -570,12 +570,20 @@ def run_release_test(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, error_type, runtime = handle_exception(pipeline_exception)
+        exit_code, result_status, runtime = handle_exception(
+            pipeline_exception,
+            result.runtime,
+        )
 
         result.return_code = exit_code.value
-        result.status = error_type
+        result.status = result_status.value
         if runtime is not None:
             result.runtime = runtime
+        try:
+            raise pipeline_exception
+        except Exception:
+            if not result.last_logs:
+                result.last_logs = traceback.format_exc()
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:
