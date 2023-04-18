@@ -3006,8 +3006,6 @@ class Algorithm(Trainable):
             episodes_this_iter,
             self.config.keep_per_episode_custom_metrics,
         )
-        # TODO: Don't dump sampler results into top-level.
-        results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
@@ -3023,23 +3021,29 @@ class Algorithm(Trainable):
             NUM_ENV_STEPS_TRAINED,
         ]:
             results[c] = self._counters[c]
+        time_taken_sec = step_ctx.get_time_taken_sec()
         if self.config.count_steps_by == "agent_steps":
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_AGENT_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_AGENT_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_ENV_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_ENV_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
-
-        # TODO: Backward compatibility.
-        results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
         # Process timer results.
         timers = {}
@@ -3054,8 +3058,6 @@ class Algorithm(Trainable):
         for k, counter in self._counters.items():
             counters[k] = counter
         results["counters"] = counters
-        # TODO: Backward compatibility.
-        results["info"].update(counters)
 
         return results
 
@@ -3102,6 +3104,8 @@ COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 class TrainIterCtx:
     def __init__(self, algo: Algorithm):
         self.algo = algo
+        self.time_start = None
+        self.time_stop = None
 
     def __enter__(self):
         # Before first call to `step()`, `results` is expected to be None ->
@@ -3122,7 +3126,11 @@ class TrainIterCtx:
         return self
 
     def __exit__(self, *args):
-        pass
+        self.time_stop = time.time()
+
+    def get_time_taken_sec(self) -> float:
+        """Returns the time we spent in the context in seconds."""
+        return self.time_stop - self.time_start
 
     def should_stop(self, results):
 
