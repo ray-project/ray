@@ -51,8 +51,8 @@ def test_torch_process_group_nccl():
 
     reduced = ray.get([w.run.remote() for w in workers])
 
-    # One tensor from each worker.
-    assert len(reduced) == 5
+    # One tensor from each worker (2 workers total).
+    assert len(reduced) == 2
     for r in reduced:
         assert len(r) == 1
         assert r.dtype == np.float32
