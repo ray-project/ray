@@ -10,7 +10,7 @@ Key Concepts
 Datastream
 ----------
 
-A :term:`Datastream <Datastream (object)>` produces a sequence of Ray object references to :term:`blocks <Block>`.
+A :term:`Datastream <Datastream (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
 Each block holds a set of items in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_,
 `pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
 Having multiple blocks in a datastream allows for parallel transformation and ingest.
@@ -31,7 +31,7 @@ Reading Data
 
 Datastream uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
 
-.. image:: images/dataset-read.svg
+.. image:: images/datastream-read.svg
    :align: center
 
 ..
@@ -51,7 +51,7 @@ To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
 pool of Ray actors. This allows you to cache expensive state initialization
 (e.g., model loading for GPU-based tasks).
 
-.. image:: images/dataset-map.svg
+.. image:: images/datastream-map.svg
    :align: center
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
@@ -72,7 +72,7 @@ Repartition has two modes:
 * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
 * ``shuffle=True`` - performs a full distributed shuffle
 
-.. image:: images/dataset-shuffle.svg
+.. image:: images/datastream-shuffle.svg
    :align: center
 
 ..
