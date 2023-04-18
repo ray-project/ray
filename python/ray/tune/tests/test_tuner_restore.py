@@ -356,7 +356,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
         param_space={
-            # First trial succeeds, second hangs, third fails, fourth hangs
+            # First trial succeeds, second hangs, third fails, fourth hangs.
             "failing_hanging": tune.grid_search(
                 [
                     (None, None),
