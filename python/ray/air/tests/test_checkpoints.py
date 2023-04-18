@@ -887,7 +887,11 @@ class TestCheckpointURIConstantUUID(unittest.TestCase):
             checkpoint2 = URITestCheckpoint.from_uri(uri)
             assert checkpoint._uuid == checkpoint2._uuid
 
-            tasks = [download_uri_checkpoint.remote(checkpoint) for _ in range(4)]
+            # Create a separate checkpoint for each task
+            tasks = [
+                download_uri_checkpoint.remote(URITestCheckpoint.from_uri(uri))
+                for _ in range(4)
+            ]
             ray.get(tasks)
 
 
