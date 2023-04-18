@@ -2,6 +2,7 @@ import { Box, makeStyles, Typography } from "@material-ui/core";
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -207,6 +208,16 @@ export const JobDetailChartsPage = () => {
             content: {
               value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
             },
+          },
+          {
+            label: "User metadata",
+            content:
+              job.metadata && Object.keys(job.metadata).length ? (
+                <CodeDialogButtonWithPreview
+                  title="User provided metadata"
+                  code={JSON.stringify(job.metadata, undefined, 2)}
+                />
+              ) : undefined,
           },
           {
             label: "Actions",
