@@ -98,21 +98,18 @@ scaling_config = ScalingConfig(
 
 # __run_config_start__
 from ray.air import RunConfig
-from ray.tune.logger import TBXLoggerCallback
+from ray.air.integrations.wandb import WandbLoggerCallback
 
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-    # Path to store the experiment directory, which contains all
-    # the results and checkpoints.
-    # The experiment directory will be at: storage_path/name
+    # The experiment results will be saved to: storage_path/name
     storage_path="~/ray_results",
-    # This can also be a remote path!
     # storage_path="s3://my_bucket/tune_results",
     # Low training verbosity.
     verbose=1,
     # Custom and built-in callbacks
-    callbacks=[TBXLoggerCallback()],
+    callbacks=[WandbLoggerCallback()],
     # Stopping criteria
     stop={"training_iteration": 10},
 )
