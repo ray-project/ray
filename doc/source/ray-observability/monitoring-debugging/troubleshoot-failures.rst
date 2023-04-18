@@ -25,7 +25,7 @@ In Ray, there are 3 types of failures. See exception APIs for more details.
 
 - **Application failures**: This means the remote task/actor fails by the user code. In this case, ``get`` API will raise the :func:`RayTaskError <ray.exceptions.RayTaskError>` which includes the exception raised from the remote process.
 - **Intentional system failures**: This means Ray is failed, but the failure is intended. For example, when you call cancellation APIs like ``ray.cancel`` (for task) or ``ray.kill`` (for actors), the system fails remote tasks and actors, but it is intentional.
-- **Unintended system failures**: This means the remote tasks and actors failed due to unexpected system failures such as processes crashing (for example, by out-of-memory error) or nodes failing. There are 4 common types.
+- **Unintended system failures**: This means the remote tasks and actors failed due to unexpected system failures such as processes crashing (for example, by out-of-memory error) or nodes failing.
 
   1. `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_ or :ref:`Ray OOM killer <ray-oom-monitor>` kills processes with high memory usages to avoid out-of-memory.
   2. The machine shuts down (e.g., spot instance termination) or a :term:`raylet <raylet>` is crashed (e.g., by an unexpected failure). 
@@ -139,7 +139,7 @@ Ray Dashboard's :ref:`metrics page <dash-metrics-view>` and :ref:`event page <da
 Find per Task and Actor Memory Usage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If tasks or actors are failed by Out-of-memory errors, they are retried based on :ref:`retry policies <ray-oom-retry-policy:>`. 
+If tasks or actors are failed by Out-of-memory errors, they are retried based on :ref:`retry policies <ray-oom-retry-policy>`. 
 However, it is often more desirable to find the root causes of memory issues and fix them instead of relying on fault tolerance mechanisms.
 This section explains how to debug out-of-memory errors in Ray.
 
