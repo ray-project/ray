@@ -1,10 +1,10 @@
 .. _consuming_datastreams:
 
-==================
-Consuming Datasets
-==================
+=====================
+Consuming Datastreams
+=====================
 
-The data underlying a ``Dataset`` can be consumed in several ways:
+The data underlying a ``Datastream`` can be consumed in several ways:
 
 * Retrieving a limited prefix of rows.
 * Iterating over rows and batches.
@@ -13,7 +13,7 @@ The data underlying a ``Dataset`` can be consumed in several ways:
 Retrieving a limited set of rows
 ================================
 
-A limited set of rows can be retrieved from a ``Dataset`` via the
+A limited set of rows can be retrieved from a ``Datastream`` via the
 :meth:`ds.take() <ray.data.Datastream.take>` or :meth:`ds.take_batch() <ray.data.Datastream.take_batch>`
 APIs, and :meth:`ds.show() <ray.data.Datastream.show>`, for printing a limited set of rows. These
 methods are convenient for quickly inspecting a subset (prefix) of rows. They have the
@@ -26,10 +26,10 @@ often only the first file will need to be read.
   :start-after: __take_begin__
   :end-before: __take_end__
 
-Iterating over Datasets
-=======================
+Iterating over Datastreams
+==========================
 
-Datasets can be consumed a row at a time using the
+Datastreams can be consumed a row at a time using the
 :meth:`ds.iter_rows() <ray.data.Datastream.iter_rows>` API
 
 .. literalinclude:: ./doc_code/consuming_datastreams.py
@@ -49,8 +49,8 @@ objects, it's a list.
   :end-before: __iter_batches_end__
 
 
-Datasets can be passed to Ray tasks or actors and accessed by these iteration methods.
-This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
+Datastreams can be passed to Ray tasks or actors and accessed by these iteration methods.
+This does not incur a copy, since the blocks of the Datastream are passed by reference as Ray objects:
 
 .. literalinclude:: ./doc_code/consuming_datastreams.py
   :language: python
@@ -61,15 +61,13 @@ This does not incur a copy, since the blocks of the Dataset are passed by refere
 Splitting Into and Consuming Shards
 ===================================
 
-Datasets can be split up into disjoint sub-datasets, or shards.
-Locality-aware splitting is supported if you pass in a list of actor handles to the
-:meth:`ds.split() <ray.data.Datastream.split>` function along with the number of desired splits.
+Datastreams can be split up into disjoint iterators, or shards.
 This is a common pattern useful for loading and sharding data between distributed training actors:
 
 .. note::
 
-  If using :ref:`Ray Train <train-docs>` for distributed training, you do not need to split the dataset; Ray
-  Train will automatically do locality-aware splitting into per-trainer shards for you!
+  If using :ref:`Ray Train <train-docs>` for distributed training, you do not need to split the datastream; Ray
+  Train will automatically do locality-aware splitting into per-trainer shards for you.
 
 .. literalinclude:: ./doc_code/consuming_datastreams.py
   :language: python
@@ -78,13 +76,13 @@ This is a common pattern useful for loading and sharding data between distribute
 
 .. _saving_datastreams:
 
-Saving Datasets
-===============
+Saving Datastreams
+==================
 
-Datasets can be written to local or remote storage in the desired data format.
+Datastreams can be written to local or remote storage in the desired data format.
 The supported formats include Parquet, CSV, JSON, NumPy. To control the number
 of output files, you may use :meth:`ds.repartition() <ray.data.Datastream.repartition>`
-to repartition the Dataset before writing out.
+to repartition the Datastream before writing out.
 
 .. tabbed:: Parquet
 
