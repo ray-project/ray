@@ -8,8 +8,8 @@ import os
 import time
 import warnings
 
-from ray.air._internal.remote_storage import is_local_path, list_at_uri
-from ray.air._internal.uri_utils import _join_path_or_uri, URI
+from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.uri_utils import _join_path_or_uri
 
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
