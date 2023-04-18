@@ -865,6 +865,7 @@ def download_uri_checkpoint(checkpoint: URITestCheckpoint):
 
 class TestCheckpointURIConstantUUID(unittest.TestCase):
     def setUp(self) -> None:
+        ray.shutdown()
         ray.init(num_cpus=4)
 
     def tearDown(self) -> None:
