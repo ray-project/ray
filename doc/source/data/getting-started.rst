@@ -3,9 +3,9 @@
 Getting Started
 ===============
 
-A :class:`ray.data.Datastream <ray.data.Datastream>` is a distributed data transformation
-pipeline. It operates over references to distributed data *blocks*, and exposes APIs
-for loading and processing these data blocks.
+A :class:`Datastream <ray.data.Datastream>` is a distributed data transformation
+pipeline. It provides APIs for loading external data into the Ray object store in *blocks*,
+and exposes APIs for streaming processing of these data blocks in the cluster.
 
 Install Ray Data
 ----------------
@@ -121,13 +121,13 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
         @ray.remote
         class Worker:
 
-            def train(self, shard) -> int:
-                for batch in shard.iter_batches(batch_size=8):
+            def train(self, data_iterator) -> int:
+                for batch in data_iterator.iter_batches(batch_size=8):
                     pass
                 return shard.count()
 
         workers = [Worker.remote() for _ in range(4)]
-        shards = transformed_ds.split(n=4, locality_hints=workers)
+        shards = transformed_ds.streaming_split(n=4, equal=True)
         ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
 
