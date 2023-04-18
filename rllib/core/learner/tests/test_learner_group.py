@@ -315,6 +315,7 @@ class TestLearnerGroup(unittest.TestCase):
             results_with_break = new_learner_group.update(
                 batch.as_multi_agent(), reduce_fn=None
             )
+            weights_after_1_update_with_break = new_learner_group.get_weights()
             new_learner_group.shutdown()
             del new_learner_group
 
@@ -328,11 +329,15 @@ class TestLearnerGroup(unittest.TestCase):
             results_without_break = learner_group.update(
                 batch.as_multi_agent(), reduce_fn=None
             )
+            weights_after_1_update_without_break = learner_group.get_weights()
             learner_group.shutdown()
             del learner_group
 
             # compare the results of the two updates
             check(results_with_break, results_without_break)
+            check(
+                weights_after_1_update_with_break, weights_after_1_update_without_break
+            )
 
 
 if __name__ == "__main__":

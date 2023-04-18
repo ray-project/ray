@@ -68,7 +68,10 @@ class TfLearner(Learner):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
-        self._strategy = None
+
+        # this is a placeholder which will be filled by
+        # `_make_distributed_strategy_if_necessary`
+        self._strategy: tf.distribute.Strategy = None
 
     @override(Learner)
     def configure_optimizer_per_module(
@@ -347,10 +350,19 @@ class TfLearner(Learner):
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
-    def _make_distributed_strategy(self):
-        """Create a distributed strategy for the learner."""
+    def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
+        """Create a distributed strategy for the learner.
+
+        A stratgey is a tensorflow object that is used for distributing training and
+        gradient computation across multiple devices. By default a no-op strategy is
+        that is not distributed is used.
+
+        Returns:
+            A strategy for the learner to use for distributed training.
+
+        """
         if self._distributed:
-            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
+            strategy = tf.distribute.MultiWorkerMirroredStrategy()
         elif self._use_gpu:
             # mirrored strategy is typically used for multi-gpu training
             # on a single machine, however we can use it for single-gpu
@@ -360,11 +372,12 @@ class TfLearner(Learner):
                 " not available."
             )
             local_gpu = [devices[self._local_gpu_idx].name]
-            self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+            strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
         else:
             # the default strategy is a no-op that can be used in the local mode
             # cpu only case, build will override this if needed.
-            self._strategy = tf.distribute.get_strategy()
+            strategy = tf.distribute.get_strategy()
+        return strategy
 
     @override(Learner)
     def build(self) -> None:
@@ -380,7 +393,7 @@ class TfLearner(Learner):
         # we can't make a new strategy every time we build, so we only make one the
         # first time build is called.
         if not self._strategy:
-            self._make_distributed_strategy()
+            self._strategy = self._make_distributed_strategy_if_necessary()
 
         with self._strategy.scope():
             super().build()

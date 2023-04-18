@@ -48,7 +48,7 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
         # we do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
-        self.config = self.module.config
+        self.config = self.unwrapped().config
 
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
@@ -56,39 +56,39 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
 
     @override(RLModule)
     def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
-        return self.module._forward_inference(*args, **kwargs)
+        return self.unwrapped()._forward_inference(*args, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
-        return self.module._forward_exploration(*args, **kwargs)
+        return self.unwrapped()._forward_exploration(*args, **kwargs)
 
     @override(RLModule)
     def get_state(self, *args, **kwargs):
-        return self.module.get_state(*args, **kwargs)
+        return self.unwrapped().get_state(*args, **kwargs)
 
     @override(RLModule)
     def set_state(self, *args, **kwargs):
-        self.module.set_state(*args, **kwargs)
+        self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
     def save_state(self, *args, **kwargs):
-        self.module.save_state(*args, **kwargs)
+        self.unwrapped().save_state(*args, **kwargs)
 
     @override(RLModule)
     def load_state(self, *args, **kwargs):
-        self.module.load_state(*args, **kwargs)
+        self.unwrapped().load_state(*args, **kwargs)
 
     @override(RLModule)
     def save_to_checkpoint(self, *args, **kwargs):
-        self.module.save_to_checkpoint(*args, **kwargs)
+        self.unwrapped().save_to_checkpoint(*args, **kwargs)
 
     @override(RLModule)
     def _save_module_metadata(self, *args, **kwargs):
-        self.module._save_module_metadata(*args, **kwargs)
+        self.unwrapped()._save_module_metadata(*args, **kwargs)
 
     @override(RLModule)
     def _module_metadata(self, *args, **kwargs):
-        return self.module._module_metadata(*args, **kwargs)
+        return self.unwrapped()._module_metadata(*args, **kwargs)
 
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
