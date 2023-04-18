@@ -164,6 +164,7 @@ type WorkerRowProps = {
  * A single row that represents the data of a Worker
  */
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
+  console.log("worker: ", worker);
   const classes = rowStyles();
 
   const { ip, mem, logUrl, state } = node;
