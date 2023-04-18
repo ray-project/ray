@@ -97,7 +97,6 @@ parts:
                 title: Batch Training with Ray Data
               - file: data/examples/ocr_example
                 title: Scaling OCR with Ray Data
-              - file: data/examples/advanced-pipelines
               - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api
