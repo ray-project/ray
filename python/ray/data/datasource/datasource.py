@@ -239,15 +239,23 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         n: int,
         block_format: str = "list",
         tensor_shape: Tuple = (1,),
+        column_name: Optional[str] = None,
     ) -> List[ReadTask]:
-        return _RangeDatasourceReader(n, block_format, tensor_shape)
+        return _RangeDatasourceReader(n, block_format, tensor_shape, column_name)
 
 
 class _RangeDatasourceReader(Reader):
-    def __init__(self, n: int, block_format: str = "list", tensor_shape: Tuple = (1,)):
+    def __init__(
+        self,
+        n: int,
+        block_format: str = "list",
+        tensor_shape: Tuple = (1,),
+        column_name: Optional[str] = None,
+    ):
         self._n = n
         self._block_format = block_format
         self._tensor_shape = tensor_shape
+        self._column_name = column_name
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
@@ -273,7 +281,8 @@ class _RangeDatasourceReader(Reader):
                 import pyarrow as pa
 
                 return pa.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"]
+                    [np.arange(start, start + count)],
+                    names=[self._column_name or "value"],
                 )
             elif block_format == "tensor":
                 import pyarrow as pa
@@ -282,7 +291,9 @@ class _RangeDatasourceReader(Reader):
                     np.arange(start, start + count),
                     tuple(range(1, 1 + len(tensor_shape))),
                 )
-                return BlockAccessor.batch_to_block(tensor)
+                return BlockAccessor.batch_to_block(
+                    {self._column_name: tensor} if self._column_name else tensor
+                )
             else:
                 return list(builtins.range(start, start + count))
 
@@ -290,7 +301,7 @@ class _RangeDatasourceReader(Reader):
             _check_pyarrow_version()
             import pyarrow as pa
 
-            schema = pa.Table.from_pydict({"value": [0]}).schema
+            schema = pa.Table.from_pydict({self._column_name or "value": [0]}).schema
         elif block_format == "tensor":
             _check_pyarrow_version()
             import pyarrow as pa
@@ -298,7 +309,9 @@ class _RangeDatasourceReader(Reader):
             tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
                 np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
             )
-            schema = BlockAccessor.batch_to_block(tensor).schema
+            schema = BlockAccessor.batch_to_block(
+                {self._column_name: tensor} if self._column_name else tensor
+            ).schema
         elif block_format == "list":
             schema = int
         else:

@@ -1,9 +1,11 @@
+import collections
 from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.util import _truncated_repr
 from ray.data.block import BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
@@ -32,7 +34,14 @@ def generate_map_batches_fn(
 
         def validate_batch(batch: Block) -> None:
             if not isinstance(
-                batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
+                batch,
+                (
+                    list,
+                    pa.Table,
+                    np.ndarray,
+                    collections.abc.Mapping,
+                    pd.core.frame.DataFrame,
+                ),
             ):
                 raise ValueError(
                     "The `fn` you passed to `map_batches` returned a value of type "
@@ -41,10 +50,11 @@ def generate_map_batches_fn(
                     "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                 )
 
-            if isinstance(batch, dict):
+            if isinstance(batch, collections.abc.Mapping):
                 for key, value in batch.items():
                     if not isinstance(value, np.ndarray):
                         raise ValueError(
+                            f"Error validating {_truncated_repr(batch)}: "
                             "The `fn` you passed to `map_batches` returned a "
                             f"`dict`. `map_batches` expects all `dict` values "
                             f"to be of type `numpy.ndarray`, but the value "
