@@ -1,6 +1,5 @@
 import copy
 import os
-import re
 from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
@@ -62,15 +61,6 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 }
 
 
-def parse_commit_from_wheel_url(url) -> str:
-    # url is expected to be in the format of
-    # https://s3-us-west-2.amazonaws.com/ray-wheels/master/0e0c15065507f01e8bfe78e49b0d0de063f81164/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl  # noqa
-    regex = r"/([0-9a-f]{40})/"
-    match = re.search(regex, url)
-    if match:
-        return match.group(1)
-
-
 def get_step(
     test: Test,
     report: bool = False,
@@ -93,9 +83,6 @@ def get_step(
 
     if ray_wheels:
         cmd += ["--ray-wheels", ray_wheels]
-        commit = parse_commit_from_wheel_url(ray_wheels)
-        if commit:
-            cmd += ["--ray-commit", commit]
 
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
