@@ -1,26 +1,30 @@
+from collections import namedtuple
+import functools
 import itertools
 import unittest
-import functools
-from collections import namedtuple
 
 import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.models.base import ModelConfig, Encoder
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
-from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.models.base import (
+    ModelConfig,
+    Encoder,
+    STATE_IN,
+    ENCODER_OUT,
+    STATE_OUT,
+)
 from ray.rllib.core.models.catalog import (
     Catalog,
     _multi_action_dist_partial_helper,
     _multi_categorical_dist_partial_helper,
 )
+from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
@@ -36,8 +40,8 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchMultiDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -80,7 +84,9 @@ class TestCatalog(unittest.TestCase):
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
         tree.map_structure_with_path(
-            lambda p, v: self.assertEqual(v.shape, states[p].shape),
+            lambda p, v: (
+                self.assertEqual(v.shape, states[p].shape) if v is not None else True
+            ),
             outputs[STATE_OUT],
         )
 
@@ -172,9 +178,6 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf2":
-                # TODO (Artur): Enable this once we have TF implementations
-                continue
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
                 f"and config: \n{model_config_dict}\n"
@@ -197,8 +200,8 @@ class TestCatalog(unittest.TestCase):
             # Do a forward pass and check if the output has the correct shape
             self._check_model_outputs(model, framework, model_config_dict, input_space)
 
-        # TODO(Artur): Add support for composite spaces and test here
-        # Today, Catalog does not handle composite spaces, so we can't test them
+        # TODO(Artur): Add support for composite spaces and test here.
+        #  Today, Catalog does not handle composite spaces, so we can't test them.
 
     def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.

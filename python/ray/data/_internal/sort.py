@@ -14,7 +14,7 @@ This is an all-to-all shuffle.
 
 Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
-block and becomes part of the new, sorted dataset.
+block and becomes part of the new, sorted datastream.
 """
 from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 
@@ -28,7 +28,7 @@ from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -113,7 +113,7 @@ def sample_boundaries(
         sample_bar.close()
     del sample_results
     samples = [s for s in samples if len(s) > 0]
-    # The dataset is empty
+    # The datastream is empty
     if len(samples) == 0:
         return [None] * (num_reducers - 1)
     builder = DelegatingBlockBuilder()
@@ -158,7 +158,7 @@ def sort_impl(
     if descending:
         boundaries.reverse()
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if context.use_push_based_shuffle:
         sort_op_cls = PushBasedSortOp
     else:

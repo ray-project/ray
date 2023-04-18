@@ -559,7 +559,7 @@ From Torch and TensorFlow
         dataset = ray.data.from_tf(dataset)
 
         dataset
-        # -> Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        # -> Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
 
 .. _dataset_from_huggingface:
 
@@ -884,4 +884,4 @@ inspection functions like :meth:`ds.schema() <ray.data.Dataset.schema>` and
 :meth:`ds.show() <ray.data.Dataset.show>` will trigger execution of only one or some
 tasks, instead of all tasks. This allows metadata to be inspected right away. Execution
 of all read tasks can be triggered manually using the
-:meth:`ds.cache() <ray.data.Dataset.cache>` API.
+:meth:`ds.materialize() <ray.data.Dataset.materialize>` API.

@@ -1677,14 +1677,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_local_inference_unity3d",
-    tags = ["team:rllib", "env"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d", "8850"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_local_inference_unity3d",
+#     tags = ["team:rllib", "env"],
+#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["local", "unity3d", "8850"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_multi_agent_env",
@@ -1720,14 +1722,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_remote_inference_unity3d",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "small",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "unity3d", "8860"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_remote_inference_unity3d",
+#     tags = ["team:rllib", "env", "exclusive"],
+#     size = "small",
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["remote", "unity3d", "8860"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1864,31 +1868,38 @@ py_test(
 
 # Default Models
 py_test(
-    name = "test_tf_mlp_head",
+    name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
     size = "medium",
-    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
+    srcs = ["core/models/tests/test_cnn_encoders.py"]
 )
 
 py_test(
-    name = "test_torch_cnn_encoder",
+    name = "test_cnn_transpose_heads",
     tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_transpose_heads.py"]
 )
 
 py_test(
-    name = "test_torch_mlp_encoder",
+    name = "test_mlp_encoders",
     tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_encoders.py"]
 )
 
 py_test(
-    name = "test_torch_mlp_head",
+    name = "test_mlp_heads",
     tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_heads.py"]
+)
+
+py_test(
+    name = "test_recurrent_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_recurrent_encoders.py"]
 )
 
 # Specs
@@ -3296,6 +3307,14 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/env/greyscale_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/env/greyscale_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
 py_test(

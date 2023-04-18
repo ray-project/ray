@@ -4,7 +4,6 @@ import signal
 import subprocess
 import sys
 import time
-import importlib
 
 import pytest
 
@@ -12,8 +11,6 @@ import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    has_no_words,
-    has_all_words,
 )
 
 
@@ -39,18 +36,19 @@ ray.get([verbose.remote() for _ in range(10)])
     assert out_str.count("[repeated 9x across cluster]") == 1
 
 
-def test_logger_config_with_ray_init():
-    """Test that the logger is correctly configured when ray.init is called."""
-
+def test_logger_config():
     script = """
 import ray
 
 ray.init(num_cpus=1)
     """
 
-    out_str = run_string_as_driver(script)
-    assert "INFO" in out_str, out_str
-    assert "ray._private.worker" in out_str, out_str
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "INFO worker.py:" in err_str, err_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -364,7 +362,6 @@ ray._private.utils.push_error_to_driver(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.skipif(sys.version_info < (3, 7), reason="requires python3.7+")
 def test_disable_driver_logs_breakpoint():
     script = """
 import time
@@ -504,23 +501,17 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
+    for line in lines:
+        print(line)
     lines = [line for line in lines if "The object store is using /tmp" not in line]
-    assert len(lines) >= 1
-
-    try:
-        importlib.import_module("rich")
-        assert has_all_words(output, "Started a local Ray instance.")
-
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert has_no_words(output, "View the dashboard"), output
-        else:
-            assert has_all_words(output, "View the dashboard"), output
-    except ModuleNotFoundError:
-        assert "Started a local Ray instance." in output
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert "View the dashboard" not in output
-        else:
-            assert "View the dashboard" in output
+    assert len(lines) == 1
+    line = lines[0]
+    print(line)
+    assert "Started a local Ray instance." in line
+    if os.environ.get("RAY_MINIMAL") == "1":
+        assert "View the dashboard" not in line
+    else:
+        assert "View the dashboard" in line
 
 
 def test_output_ray_cluster(call_ray_start):
@@ -530,26 +521,15 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
-    assert len(lines) >= 1
-
-    try:
-        importlib.import_module("rich")
-        assert has_all_words(
-            output, "Connecting to existing Ray cluster at address:"
-        ), output
-        assert has_all_words(output, "Connected to Ray cluster."), output
-
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert has_no_words(output, "View the dashboard"), output
-        else:
-            assert has_all_words(output, "View the dashboard"), output
-    except ModuleNotFoundError:
-        assert "Connecting to existing Ray cluster at address:" in output
-        assert "Connected to Ray cluster." in output
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert "View the dashboard" not in output
-        else:
-            assert "View the dashboard" in output
+    for line in lines:
+        print(line)
+    assert len(lines) == 2
+    assert "Connecting to existing Ray cluster at address:" in lines[0]
+    assert "Connected to Ray cluster." in lines[1]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        assert "View the dashboard" not in lines[1]
+    else:
+        assert "View the dashboard" in lines[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

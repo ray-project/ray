@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
@@ -7,9 +8,9 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsDict
+from ray.data._internal.stats import DatastreamStats, StatsDict
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
@@ -78,7 +79,7 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        should_free = self.owns_blocks and DatasetContext.get_current().eager_free
+        should_free = self.owns_blocks and DataContext.get_current().eager_free
         for b in self.blocks:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
@@ -203,6 +204,9 @@ class ExecutionOptions:
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
             actors (on by default). This applies to both ActorPoolStrategy map and
             streaming_split operations.
+        verbose_progress: Whether to report progress individually per operator. By
+            default, only AllToAll operators and global progress is reported. This
+            option is useful for performance debugging. Off by default.
     """
 
     resource_limits: ExecutionResources = ExecutionResources()
@@ -212,6 +216,8 @@ class ExecutionOptions:
     preserve_order: bool = False
 
     actor_locality_enabled: bool = True
+
+    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
 
 
 @dataclass
@@ -244,7 +250,7 @@ class PhysicalOperator(Operator):
     output stream of RefBundles.
 
     Physical operators are stateful and non-serializable; they live on the driver side
-    of the Dataset only.
+    of the Datastream only.
 
     Here's a simple example of implementing a basic "Map" operator:
 
@@ -289,7 +295,7 @@ class PhysicalOperator(Operator):
         )
 
     def get_stats(self) -> StatsDict:
-        """Return recorded execution stats for use with DatasetStats."""
+        """Return recorded execution stats for use with DatastreamStats."""
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
@@ -330,6 +336,14 @@ class PhysicalOperator(Operator):
             options: The global options used for the overall execution.
         """
         self._started = True
+
+    def should_add_input(self) -> bool:
+        """Return whether it is desirable to add input to this operator right now.
+
+        Operators can customize the implementation of this method to apply additional
+        backpressure (e.g., waiting for internal actors to be created).
+        """
+        return True
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
@@ -439,11 +453,22 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        """Called periodically by the executor.
+
+        Args:
+            input_queue_size: The number of inputs queued outside this operator.
+            under_resource_limits: Whether this operator is under resource limits.
+        """
+        pass
+
 
 class OutputIterator(Iterator[RefBundle]):
     """Iterator used to access the output of an Executor execution.
 
-    This is a blocking iterator. Datasets guarantees that all its iterators are
+    This is a blocking iterator. Datastreams guarantees that all its iterators are
     thread-safe (i.e., multiple threads can block on them at the same time).
     """
 
@@ -458,7 +483,7 @@ class OutputIterator(Iterator[RefBundle]):
 
         Args:
             output_split_idx: The output split index to get results for. This arg is
-                only allowed for iterators created by `Dataset.streaming_split()`.
+                only allowed for iterators created by `Datastream.streaming_split()`.
 
         Raises:
             StopIteration if there are no more outputs to return.
@@ -484,13 +509,13 @@ class Executor:
         self._options = options
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
     ) -> OutputIterator:
         """Start execution.
 
         Args:
             dag: The operator graph to execute.
-            initial_stats: The DatasetStats to prepend to the stats returned by the
+            initial_stats: The DatastreamStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
         """
         raise NotImplementedError
@@ -502,7 +527,7 @@ class Executor:
         """
         pass
 
-    def get_stats(self) -> DatasetStats:
+    def get_stats(self) -> DatastreamStats:
         """Return stats for the execution so far.
 
         This is generally called after `execute` has completed, but may be called
