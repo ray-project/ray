@@ -766,13 +766,14 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--log-dir={log_dir}",
         f"--gcs-address={address_info['gcs_address']}",
         f"--session-dir={session_dir}",
+        "--node-ip-address=127.0.0.1",
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
-    p = subprocess.Popen(dashboard_cmd)
-    p.wait(5)
+    dashboard_process = subprocess.Popen(dashboard_cmd)
+    dashboard_process.wait(5)
 
     dashboard_cmd.append("--port-retries=10")
-    subprocess.Popen(dashboard_cmd)
+    conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
 
     timeout_seconds = 10
     start_time = time.time()
@@ -792,6 +793,10 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
+    dashboard_process.kill()
+    conflicting_dashboard_process.kill()
+    dashboard_process.wait()
+    conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
