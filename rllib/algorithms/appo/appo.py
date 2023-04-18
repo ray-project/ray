@@ -283,9 +283,8 @@ class APPO(Impala):
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
-        This method is called from within the `training_iteration` method after each
-        train update.
-
+        This method is called from within the `training_step` method after each train
+        update.
         The target network update frequency is calculated automatically by the product
         of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
 
@@ -300,7 +299,7 @@ class APPO(Impala):
             pass
         elif self.config._enable_learner_api:
             # using steps trained here instead of sampled ... I'm not sure why the
-            # other implemenetation uses sampled.
+            # other implementation uses sampled.
             # to be quite frank, im not sure if I understand how their target update
             # freq would work. The difference in steps sampled/trained is pretty
             # much always going to be larger than self.config.num_sgd_iter *

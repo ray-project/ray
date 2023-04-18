@@ -738,7 +738,7 @@ class FaultTolerantActorManager:
         Automatically mark actors unhealthy if they fail to respond.
 
         Note: If tags is an empty tuple then results from all ready async requests are
-            returned.
+        returned.
 
         Args:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are

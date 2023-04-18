@@ -238,7 +238,7 @@ class LearnerGroup:
         if block:
             results = []
             for batch in batches:
-                results.append(self._worker_manager.foreach_actor([
+                results.extend(self._get_results(self._worker_manager.foreach_actor([
                     lambda w: w.update(
                         minibatch,
                         minibatch_size=minibatch_size,
@@ -246,7 +246,8 @@ class LearnerGroup:
                         reduce_fn=reduce_fn,
                     )
                     for minibatch in ShardBatchIterator(batch, len(self._workers))
-                ]))
+                ])))
+            return results
         else:
             if batches is not None:
                 self._in_queue.extend(batches)
