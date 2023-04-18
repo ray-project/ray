@@ -22,7 +22,7 @@
 
 <title>Welcome to Ray!</title>
 
-<div style = "background-image: url(/_static/img/LandingPageBG.JPG); background-repeat:no-repeat; background-size:cover;">
+<div style = "background-image: url(_static/img/LandingPageBG.JPG); background-repeat:no-repeat; background-size:cover;">
 <div class="container remove-mobile">
   <div class="row">
     <div class="col-6">
@@ -33,13 +33,13 @@
       </p>
       <div class="image-header" style="padding:0px;">
         <a href="https://github.com/ray-project/ray">
-            <img class="icon-hover" src="/_static/img/github-fill.png" width="25px" height="25px" />
+            <img class="icon-hover" src="_static/img/github-fill.png" width="25px" height="25px" />
         </a>
         <a href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform">
-            <img class="icon-hover" src="/_static/img/slack-fill.png" width="25px" height="25px" />
+            <img class="icon-hover" src="_static/img/slack-fill.png" width="25px" height="25px" />
         </a>
         <a href="https://twitter.com/raydistributed">
-            <img class="icon-hover" src="/_static/img/twitter-fill.png" width="25px" height="25px" />
+            <img class="icon-hover" src="_static/img/twitter-fill.png" width="25px" height="25px" />
         </a>
       </div>
     </div>
@@ -61,7 +61,7 @@
 <div class="grid-container">
   <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box">
         <div class="image-header" style="padding:0px;">
-            <img src="/_static/img/ray_logo.png" width="44px" height="44px" />
+            <img src="_static/img/ray_logo.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Learn basics</h3>
         </div>
         <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
@@ -69,7 +69,7 @@
   </div> </a>  
    <div class="info-box">
         <div class="image-header" style="padding:0px;">
-            <img src="/_static/img/download.png" width="44px" height="44px" />
+            <img src="_static/img/download.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Install Ray</h3>
         </div>
         <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
@@ -78,7 +78,7 @@
   <a class="no-underline" href="https://colab.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb"  target="_blank" 
         ><div class="info-box">
         <div class="image-header" style="padding:0px;">
-            <img src="/_static/img/code.png" width="44px" height="44px" />
+            <img src="_static/img/code.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Try it out</h3>
         </div>
         <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
@@ -137,7 +137,7 @@ dataset_transformed = preprocessor.fit_transform(dataset=dataset)
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://colab.research.google.com/github/ray-project/ray/blob/master/doc/source/data/examples/nyc_taxi_basic_processing.ipynb" target="_blank" style="color:black;">
-                        <img src="/_static/img/colab.png" height="25px" /> Open in colab
+                        <img src="_static/img/colab.png" height="25px" /> Open in colab
                     </a>
                 </div>
               </div>
@@ -170,7 +170,7 @@ result = trainer.fit()
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_model_training_colab.ipynb" style="color:black;" target="_blank">
-                        <img src="/_static/img/colab.png" height="25px" /> Open in colab
+                        <img src="_static/img/colab.png" height="25px" /> Open in colab
                     </a>
                 </div>
               </div>
@@ -208,7 +208,7 @@ result_grid = tuner.fit()
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/lightgbm_example.ipynb" style="color:black;" target="_blank">
-                        <img src="/_static/img/github-fill.png" height="25px" /> Open in Github
+                        <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
               </div>
@@ -234,7 +234,7 @@ results = batch_predictor.predict(dataset, batch_size=512, num_gpus_per_worker=6
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference_colab.ipynb" style="color:black;" target="_blank">
-                        <img src="/_static/img/colab.png" height="25px" /> Open in colab
+                        <img src="_static/img/colab.png" height="25px" /> Open in colab
                     </a>
                 </div>
               </div>
@@ -264,7 +264,7 @@ serve.run(
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://github.com/ray-project/ray/blob/master/doc/source/ray-air/examples/gptj_serving.ipynb" style="color:black;" target="_blank">
-                        <img src="/_static/img/colab.png" height="25px" /> Open in colab
+                        <img src="_static/img/colab.png" height="25px" /> Open in colab
                     </a>
                 </div>
               </div>          
@@ -297,7 +297,7 @@ ppo_algo.evaluate()
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://github.com/anyscale/ray-summit-2022-training/blob/main/ray-rllib/ex_01_intro_gym_and_rllib.ipynb" style="color:black;" target="_blank">
-                        <img src="/_static/img/github-fill.png" height="25px" /> Open in Github
+                        <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
               </div>       
@@ -318,7 +318,7 @@ ppo_algo.evaluate()
 <div class = "grid-container">
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
-            <img src="/_static/img/AIR.png" width="32px" height="32px" />
+            <img src="_static/img/AIR.png" width="32px" height="32px" />
             <h3 style="font-size:20px; font-weight:600;">Ray AI Runtime</h3>
         </div>
         <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
@@ -326,7 +326,7 @@ ppo_algo.evaluate()
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
-            <img src="/_static/img/Core.png" width="32px" height="32px" />
+            <img src="_static/img/Core.png" width="32px" height="32px" />
             <h3 style="font-size:20px; font-weight:600;">Ray Core</h3>
         </div>
         <p>Scale generic Python code with simple, foundational primitives that enable a high degree of control for building distributed applications or custom platforms.</p>
@@ -334,7 +334,7 @@ ppo_algo.evaluate()
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
-            <img src="/_static/img/rayclusters.png" width="32px" height="32px" />
+            <img src="_static/img/rayclusters.png" width="32px" height="32px" />
             <h3 style="font-size:20px; font-weight:600;">Ray Clusters</h3>
         </div>
         <p>Deploy a Ray cluster on AWS, GCP, Azure or kubernetes from a laptop to a large cluster to seamlessly scale workloads for production</p>      
@@ -351,19 +351,19 @@ ppo_algo.evaluate()
     <h4> Join the community </h4>
     <a class="no-underline" href="https://www.meetup.com/Bay-Area-Ray-Meetup/" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/meetup.png" width="24px" height="24px" />
+            <img src="_static/img/meetup.png" width="24px" height="24px" />
             <p>Attend community events</p>
         </div>    
     </div></a>
     <a class="no-underline" href="https://share.hsforms.com/1Ee3Gh8c9TY69ZQib-yZJvgc7w85" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/mail.png" width="24px" height="24px" />
+            <img src="_static/img/mail.png" width="24px" height="24px" />
             <p>Subscribe to the newsletter</p>
         </div>  
     </div></a> 
     <a class="no-underline" href="https://twitter.com/raydistributed" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/twitter-fill.png" width="24px" height="24px" />
+            <img src="_static/img/twitter-fill.png" width="24px" height="24px" />
             <p>Follow us on Twitter</p>
         </div> 
     </div></a> 
@@ -372,19 +372,19 @@ ppo_algo.evaluate()
     <h4> Get Support </h4>
      <a class="no-underline" href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/slack-fill.png" width="24px" height="24px" />
+            <img src="_static/img/slack-fill.png" width="24px" height="24px" />
             <p>Find community on Slack</p>
         </div>     
     </div></a>
     <a class="no-underline" href="https://discuss.ray.io/" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/chat.png" width="24px" height="24px" />
+            <img src="_static/img/chat.png" width="24px" height="24px" />
             <p>Ask questions to the forum</p>
         </div>     
     </div></a>
     <a class="no-underline" href="https://github.com/ray-project/ray/issues/new/choose" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/github-fill.png" width="24px" height="24px" />
+            <img src="_static/img/github-fill.png" width="24px" height="24px" />
             <p>Open an issue</p>
         </div>  
     </div></a>
@@ -393,13 +393,13 @@ ppo_algo.evaluate()
     <h4> Contribute to Ray </h4>
     <a class="no-underline" href="https://docs.ray.io/en/latest/ray-contribute/getting-involved.html" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/mail.png" width="24px" height="24px" />
+            <img src="_static/img/mail.png" width="24px" height="24px" />
             <p>Contributor's guide</p>
         </div>     
     </div></a>
     <a class="no-underline" href="https://github.com/ray-project/ray/pulls" target="_blank"> <div class="community-box">
         <div class="image-header">
-            <img src="/_static/img/github-fill.png" width="24px" height="24px" />
+            <img src="_static/img/github-fill.png" width="24px" height="24px" />
             <p>Create a pull request</p>
         </div>     
     </div></a>
