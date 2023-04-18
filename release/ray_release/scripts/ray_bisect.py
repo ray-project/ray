@@ -86,10 +86,15 @@ def _get_test(test_name: str) -> Test:
 
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
-    commit_lists = subprocess.check_output(
-        f"git rev-list --ancestry-path {passing_commit}..{failing_commit}",
-        shell=True,
-    ).decode("utf-8").strip().split("\n")
+    commit_lists = (
+        subprocess.check_output(
+            f"git rev-list --ancestry-path {passing_commit}..{failing_commit}",
+            shell=True,
+        )
+        .decode("utf-8")
+        .strip()
+        .split("\n")
+    )
     commit_lists.reverse()
     return commit_lists
 
