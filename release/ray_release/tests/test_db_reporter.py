@@ -3,13 +3,13 @@ from ray_release.reporter.db import DBReporter
 
 def test_compute_stack_pattern():
     assert (DBReporter()).compute_crash_pattern(
-        "\n".join(
+        "\n".join([
             "haha",
             "Traceback (most recent call last):",
             '    File "/tmp/something", line 584',
             "Exception: yaya45",
             "hehe",
-        )
+        ])
     ) == "somethingline Exception: yaya"
 
 
