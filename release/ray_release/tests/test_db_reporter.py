@@ -2,18 +2,15 @@ from ray_release.reporter.db import DBReporter
 
 
 def test_compute_stack_pattern():
-    assert (
-        (DBReporter()).compute_crash_pattern(
-            """
-haha
-Traceback (most recent call last):
-    File "/tmp/something", line 584
-Exception: yaya45
-hehe
-"""
+    assert (DBReporter()).compute_crash_pattern(
+        "\n".join(
+            "haha",
+            "Traceback (most recent call last):",
+            '    File "/tmp/something", line 584',
+            "Exception: yaya45",
+            "hehe",
         )
-        == "somethingline Exception: yaya"
-    )
+    ) == "somethingline Exception: yaya"
 
 
 def test_compute_signature():

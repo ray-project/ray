@@ -10,7 +10,6 @@ from ray_release.result import Result
 from ray_release.config import Test
 from ray_release.logger import logger
 
-CRASH_PATTERN_MAX_LENGTH = 4000
 TRACEBACK_PATTERN = "Traceback (most recent call last)"
 
 
@@ -20,7 +19,7 @@ class DBReporter(Reporter):
 
     def compute_crash_pattern(self, logs: str) -> str:
         stack_trace = self._compute_stack_trace(logs.splitlines())
-        return self._compute_signature(stack_trace)[:CRASH_PATTERN_MAX_LENGTH]
+        return self._compute_signature(stack_trace)[:4000]  # limit of databrick field
 
     def _compute_signature(self, stack_trace: List[str]) -> str:
         """
@@ -35,6 +34,9 @@ class DBReporter(Reporter):
                 continue
             file_line = re.search(r'File "(.*)", (.*)', line)
             if file_line:
+                # append the file's base name and caller information; the result string
+                # is not something meaningful to human, we just need something that
+                # uniquely represent the stack trace
                 line = f'{file_line.group(1).split("/")[-1]}{file_line.group(2)}'
             massaged_trace.append(line)
         return "".join(massaged_trace)
