@@ -412,10 +412,10 @@ class ExecutionPlan:
             fetch_if_missing: Whether to execute the blocks to fetch the schema.
         """
 
-        # Only trigger the execution of first block in case it's a lazy block list.
-        # Don't trigger full execution for a schema read.
+        # Ensure the first block has schema information available in the metadata.
+        # Otherwise, this will trigger computation on the first block
+        # for a schema read.
         if isinstance(blocks, LazyBlockList):
-            blocks.compute_first_block()
             blocks.ensure_metadata_for_first_block()
 
         metadata = blocks.get_metadata(fetch_if_missing=False)

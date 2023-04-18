@@ -240,9 +240,11 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
     assert schema == int
-    assert ds._plan._in_blocks._num_computed() == 1
+    # Fetching the schema does not trigger execution, since
+    # the schema is known beforehand for RangeDatasource.
+    assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
-    assert ds._plan.execute()._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 0
 
 
 def test_count_lazy(ray_start_regular_shared):
