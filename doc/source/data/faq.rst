@@ -35,9 +35,9 @@ internally handling data batching, task parallelism and pipelining, and memory
 management.
 
 Who is using Ray Data?
-==========================
+======================
 
-To give an idea of Datasets use cases, we list a few notable users running Datasets
+To give an idea of Ray Data use cases, we list a few notable users running Ray Data
 integrations in production below:
 
 * Predibase is using Ray Data for ML ingest and batch inference in their OSS
@@ -58,11 +58,11 @@ If you're using Ray Data, please let us know about your experience on the
 `Discourse <https://discuss.ray.io/>`__; we'd love to hear from you!
 
 What should I use Ray Data for?
-===================================
+===============================
 
 Ray Data is the standard way to load, process, and exchange data in Ray libraries
 and applications, with a particular emphasis on ease-of-use, performance, and
-scalability in both data size and cluster size. Within that, Datasets is designed for
+scalability in both data size and cluster size. Within that, Datastreams is designed for
 two core uses cases:
 
 * **ML (training) ingest:** Loading, preprocessing, and ingesting data into one or more
@@ -70,23 +70,23 @@ two core uses cases:
 * **Batch inference:** Loading, preprocessing, and performing parallel batch
   inference on data.
 
-We have designed the Datasets APIs, data model, execution model, and
+We have designed the Datastream APIs, data model, execution model, and
 integrations with these use cases in mind, and have captured these use cases in
 large-scale nightly tests to ensure that we're hitting our scalability, performance,
 and efficiency marks for these use cases.
 
 What should I not use Ray Data for?
-=======================================
+===================================
 
 Ray Data is not meant to be used for generic ETL pipelines (like Spark) or
 scalable data science (like Dask, Modin, or Mars). However, each of these frameworks
-are :ref:`runnable on Ray <data_integrations>`, and Datasets integrates tightly with
+are :ref:`runnable on Ray <data_integrations>`, and Datastreams integrates tightly with
 these frameworks, allowing for efficient exchange of distributed data partitions often
 with zero-copy. Check out the
-:ref:`dataset creation feature guide <dataset_from_in_memory_data_distributed>` to learn
+:ref:`datastream creation feature guide <datastream_from_in_memory_data_distributed>` to learn
 more about these integrations.
 
-Datasets is specifically targeting
+Datastreams is specifically targeting
 the ML ingest and batch inference use cases, with focus on data loading and last-mile
 preprocessing for ML pipelines.
 
@@ -94,19 +94,19 @@ For data loading for training, how does Ray Data compare to other solutions?
 ================================================================================
 
 There are several ML framework-specific and general solutions for loading data into
-model trainers. Below, we summarize some advantages Datasets offers over these more
+model trainers. Below, we summarize some advantages Datastreams offers over these more
 specific ingest frameworks.
 
 Torch datasets (and data loaders)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* **Framework-agnostic:** Datasets is framework-agnostic and portable between different
+* **Framework-agnostic:** Datastreams is framework-agnostic and portable between different
   distributed training frameworks, while
   `Torch datasets <https://pytorch.org/docs/stable/data.html>`__ are specific to Torch.
 * **No built-in IO layer:** Torch datasets do not have an I/O layer for common file formats or in-memory exchange
   with other frameworks; users need to bring in other libraries and roll this
   integration themselves.
-* **Generic distributed data processing:** Datasets is more general: it can handle
+* **Generic distributed data processing:** Datastreams is more general: it can handle
   generic distributed operations, including global per-epoch shuffling,
   which would otherwise have to be implemented by stitching together two separate
   systems. Torch datasets would require such stitching for anything more involved
@@ -114,22 +114,22 @@ Torch datasets (and data loaders)
   shards. See our
   `blog post <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`__
   on why this shared infrastructure is important for 3rd generation ML architectures.
-* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines of Torch datasets.
 
 TensorFlow datasets
 ~~~~~~~~~~~~~~~~~~~
 
-* **Framework-agnostic:** Datasets is framework-agnostic and portable between different
+* **Framework-agnostic:** Datastreams is framework-agnostic and portable between different
   distributed training frameworks, while
   `TensorFlow datasets <https://www.tensorflow.org/api_docs/python/tf/data/Dataset>`__
   is specific to TensorFlow.
-* **Unified single-node and distributed:** Datasets unifies single and multi-node training under
+* **Unified single-node and distributed:** Datastreams unifies single and multi-node training under
   the same abstraction. TensorFlow datasets presents
-  `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__
+  `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDatastream>`__
   for distributed data loading and prevents code from being seamlessly scaled to larger
   clusters.
-* **Generic distributed data processing:** Datasets is more general: it can handle
+* **Generic distributed data processing:** Datastreams is more general: it can handle
   generic distributed operations, including global per-epoch shuffling,
   which would otherwise have to be implemented by stitching together two separate
   systems. TensorFlow datasets would require such stitching for anything more involved
@@ -137,7 +137,7 @@ TensorFlow datasets
   shards; only file interleaving is supported. See our
   `blog post <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`__
   on why this shared infrastructure is important for 3rd generation ML architectures.
-* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines of TensorFlow datasets.
 
 Petastorm
@@ -145,7 +145,7 @@ Petastorm
 
 * **Supported data types:** `Petastorm <https://github.com/uber/petastorm>`__ only supports Parquet data, while
   Ray Data supports many file formats.
-* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines used by Petastorm.
 * **No data processing:** Petastorm does not expose any data processing APIs.
 
@@ -154,9 +154,9 @@ NVTabular
 
 * **Supported data types:** `NVTabular <https://github.com/NVIDIA-Merlin/NVTabular>`__ only supports tabular
   (Parquet, CSV, Avro) data, while Ray Data supports many other file formats.
-* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines used by Petastorm.
-* **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g.
+* **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in datastream transforms (e.g.
   both CPU and GPU transformations), while Ray Data supports this.
 * **ML-specific ops:** NVTabular has a bunch of great ML-specific preprocessing
   operations; this is currently WIP for Ray Data:
@@ -177,9 +177,6 @@ has a few advantages:
   prefetching, pipelining data transfer with compute.
 * Ray Data takes care of orchestrating the tasks, batching the data, and managing
   the memory.
-* With Ray Data pipelining, you can
-  precisely configure pipelining of preprocessing with batch inference, allowing you to
-  easily tweak parallelism vs. pipelining to maximize your GPU utilization.
 * Ray Data provides a broad and performant I/O layer, which you would otherwise have
   to roll yourself.
 
@@ -192,9 +189,12 @@ multi-processing data loader, and TensorFlow datasets that have seen a big train
 throughput improvement (4-8x) and model accuracy improvement (due to global per-epoch
 shuffling) using Ray Data.
 
-Please see our
-`recent blog post on Ray Data <https://www.anyscale.com/blog/ray-data-for-machine-learning-training-and-scoring>`__
+Please see this
+`blog post on Ray Data <https://www.anyscale.com/blog/ray-data-for-machine-learning-training-and-scoring>`__
 for more information on this benchmarking.
+
+The new streaming backend for Ray Data (Datastream) supports throughputs of up to
+hundreds of gigabytes per second in a large cluster.
 
 Does all of my data need to fit into memory?
 ============================================
@@ -202,50 +202,25 @@ Does all of my data need to fit into memory?
 No, with Ray's support for :ref:`spilling objects to disk <object-spilling>`, you only
 need to be able to fit your data into memory OR disk. However, keeping your data in
 distributed memory may speed up your workload, which can be done on arbitrarily large
-datasets by windowing them, creating pipelines.
+datastreams by windowing them, creating pipelines.
 
 How much data can Ray Data handle?
-======================================
+==================================
 
 Ray Data has been tested at multi-petabyte scale for I/O and multi-terabyte scale for
 shuffling, and we're continuously working on improving this scalability. If you have a
-very large dataset that you'd like to process and you're running into scalability
+very large datastream that you'd like to process and you're running into scalability
 issues, please reach out to us on our `Discourse <https://discuss.ray.io/>`__.
 
 How do I get my data into Ray Data?
-=======================================
+===================================
 
-Ray Data supports creating a ``Dataset`` from local and distributed in-memory data
+Ray Data supports creating a ``Datastream`` from local and distributed in-memory data
 via integrations with common data libraries, as well as from local and remote storage
 systems via our support for many common file formats and storage backends.
 
-Check out our :ref:`feature guide for creating datasets <creating_datastreams>` for
+Check out our :ref:`feature guide for creating datastreams <creating_datastreams>` for
 details.
-
-How do I do streaming/online data loading and processing?
-=========================================================
-
-Streaming data loading and data processing can be accomplished by using
-dataset pipelines. By windowing a dataset, you can
-stream data transformations across subsets of the data, even windowing down to the
-reading of each file.
-
-When should I use pipelining?
-=============================
-
-Pipelining is useful in a few scenarios:
-
-* You have two chained operations using different resources (e.g. CPU and GPU) that you
-  want to saturate; this is the case for both ML ingest (CPU-based preprocessing and
-  GPU-based training) and batch inference (CPU-based preprocessing and GPU-based batch
-  inference).
-* You want to do streaming data loading and processing in order to keep the size of the
-  working set small; see previous FAQ on
-  :ref:`how to do streaming data loading and processing <streaming_faq>`.
-* You want to decrease the time-to-first-batch (latency) for a certain operation at the
-  end of your workload. This is the case for training and inference since this prevents
-  GPUs from being idle (which is costly), and can be advantageous for some other
-  latency-sensitive consumers of datasets.
 
 When should I use global per-epoch shuffling?
 =============================================
@@ -253,7 +228,7 @@ When should I use global per-epoch shuffling?
 Background
 ~~~~~~~~~~
 
-When training a machine learning model, shuffling your training dataset is important in
+When training a machine learning model, shuffling your training datastream is important in
 general in order to ensure that your model isn't overfitting on some unintended pattern
 in your data, e.g. sorting on the label column, or time-correlated samples. Per-epoch
 shuffling in particular can improve your model's precision gain per epoch by reducing
@@ -265,7 +240,7 @@ status quo solution is typically to have a per-shard in-memory shuffle buffer th
 fill up and pop random batches from, without mixing data across shards between epochs.
 Ray Data also offers fully global random shuffling via
 :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle()>`, and doing so on an
-epoch-repeated dataset pipeline to provide global per-epoch shuffling is as simple as
+epoch-repeated datastream pipeline to provide global per-epoch shuffling is as simple as
 ``ray.data.read().repeat().random_shuffle_each_window()``. But when should you opt for
 global per-epoch shuffling instead of local shuffle buffer shuffling?
 
@@ -279,7 +254,7 @@ gradient-descent-based model trainers benefiting from improved (global) shuffle 
 and we've found that this is particular pronounced for tabular data/models in practice.
 However, the more global your shuffle is, the expensive the shuffling operation, and
 this compounds when doing distributed data-parallel training on a multi-node cluster due
-to data transfer costs, and this cost can be prohibitive when using very large datasets.
+to data transfer costs, and this cost can be prohibitive when using very large datastreams.
 
 The best route for determining the best tradeoff between preprocessing time + cost and
 per-epoch shuffle quality is to measure the precision gain per training step for your

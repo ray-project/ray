@@ -9,7 +9,7 @@ and exposes APIs for streaming processing of these data blocks in the cluster.
 
 .. tip::
 
-    Ray Data is designed for efficient processing of *finite* datasets for ML training and
+    Ray Data is designed for processing of *finite* datasets for ML training and
     batch inference. This is unlike frameworks such as Apache Flink, which are designed for
     data processing over infinite data streams.
 
