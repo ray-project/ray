@@ -30,7 +30,9 @@ int64_t CurrentTimestampMs() {
 }
 
 void RecordTaskMetrics(const TaskSpecification &task_spec) {
-  double duration_s = ( task_spec.GetMessage().lease_grant_timestamp_ms() - task_spec.GetMessage().dependency_resolution_timestamp_ms() ) / 1000;
+  double duration_s = (task_spec.GetMessage().lease_grant_timestamp_ms() -
+                       task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
+                      1000;
 
   stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
 }
@@ -111,7 +113,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
       if (keep_executing) {
         task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-                                                                              CurrentTimestampMs());
+            CurrentTimestampMs());
         RecordTaskMetrics(task_spec);
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
@@ -232,7 +234,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       auto task_spec = current_queue.front();
 
       task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-                                                                            CurrentTimestampMs());
+          CurrentTimestampMs());
       lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the
