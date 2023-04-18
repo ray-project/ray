@@ -1,5 +1,5 @@
 from unittest import mock
-from typing import List
+from typing import List, Dict
 from ray_release.scripts.ray_bisect import _bisect
 
 
@@ -97,7 +97,7 @@ def test_bisect():
         "c4": "soft_failed",
     }
 
-    def _mock_run_test(test_name: str, commit: List[str]) -> dict[str, str]:
+    def _mock_run_test(test_name: str, commit: List[str]) -> Dict[str, str]:
         return commit_to_test_result
 
     with mock.patch(
