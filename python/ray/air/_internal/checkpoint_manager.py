@@ -55,11 +55,6 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
-        local_dir_to_remote_uri_fn: Function that takes in this checkpoint's local
-            directory path and returns the corresponding remote URI in the cloud.
-            This should only be specified if the data was synced to cloud.
-            Only applied during conversion to AIR checkpoint and only
-            if ``dir_or_data`` is or resolves to a directory path.
     """
 
     def __init__(
@@ -141,6 +136,28 @@ class _TrackedCheckpoint:
     def to_air_checkpoint(
         self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
     ) -> Optional[Checkpoint]:
+        """Converter from a `_TrackedCheckpoint` to a `ray.air.Checkpoint`.
+
+        This method Resolves the checkpoint data if it is an object reference.
+
+        This method handles multiple types of checkpoint data:
+        - If the data is a string (local checkpoint path), this returns a
+          directory-backed checkpoint.
+            - If a `local_to_remote_path_fn` is provided, this converts
+              local path to a remote URI, then returns a URI-backed checkpoint.
+        - If the data is bytes or a dictionary, it returns an in-memory
+          bytes/dict-backed checkpoint.
+
+        Args:
+            local_to_remote_path_fn: Function that takes in this checkpoint's local
+                directory path and returns the corresponding remote URI in the cloud.
+                This should only be specified if the data was synced to cloud.
+                Only applied during conversion to AIR checkpoint and only
+                if ``dir_or_data`` is or resolves to a directory path.
+
+        Returns:
+            Checkpoint: The AIR checkpoint backed by the resolved data.
+        """
         from ray.tune.trainable.util import TrainableUtil
 
         checkpoint_data = self.dir_or_data
