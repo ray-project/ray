@@ -24,7 +24,7 @@ from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.data._internal.usage import record_block_format_usage
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import psutil
 
@@ -59,6 +59,7 @@ AggType = TypeVar("AggType")
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
+@PublicAPI
 class StrictModeError(ValueError):
     pass
 
@@ -160,7 +161,7 @@ VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
 VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
 
-def apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
     ctx = ray.data.DatasetContext.get_current()
     if ctx.strict_mode:
         if given_batch_format == "default":

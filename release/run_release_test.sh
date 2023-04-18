@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2317
 
 set -e
 
@@ -112,7 +113,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     wait "$proc"
   }
 
-  START=`date +%s`
+  START=$(date +%s)
   set +e
 
   trap _term SIGINT SIGTERM
@@ -123,7 +124,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   EXIT_CODE=$?
 
   set -e
-  END=`date +%s`
+  END=$(date +%s)
 
   REASON=$(reason "${EXIT_CODE}")
   RUNTIME=$((END-START))
@@ -180,7 +181,7 @@ if [ -z "${NO_CLONE}" ]; then
 fi
 
 if [[ ("$REASON" == "infra error" || "$REASON" == "infra timeout") && ("$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY") ]]; then
-  exit $BUILDKITE_RETRY_CODE
+  exit "$BUILDKITE_RETRY_CODE"
 else
-  exit $EXIT_CODE
+  exit "$EXIT_CODE"
 fi
