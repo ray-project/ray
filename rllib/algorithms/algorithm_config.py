@@ -959,7 +959,7 @@ class AlgorithmConfig(_Config):
         ) and self._load_only_minibatch_onto_device:
             raise ValueError(
                 "`load_only_minibatch_onto_device` is only supported for "
-                f"config.framework({self.framework_str}) and without simple_optimizer!"
+                f"config.framework({self.framework_str}) and without simple_optimizer."
             )
 
         # Detect if specified env is an Atari env.
