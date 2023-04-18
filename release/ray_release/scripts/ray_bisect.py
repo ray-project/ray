@@ -89,7 +89,7 @@ def _trigger_test_run(test: Test, commit: str) -> None:
     )
 
 
-def _obtain_test_result(buildkite_step_keys: List[str]) -> dict[str, str]:
+def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
     outcomes = {}
     wait = 30
     total_wait = 0
