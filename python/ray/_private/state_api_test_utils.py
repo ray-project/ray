@@ -402,10 +402,10 @@ def verify_tasks_running_or_terminated(
         task = tasks[0]
         pid, expected_state = pid_and_state
 
-        # If it's windows, we don't have a way to check if the process is actually
-        # running the task since the process name is just python.exe, rather than
-        # the actual task name.
-        if sys.platform == "win32":
+        # If it's windows/macos, we don't have a way to check if the process
+        # is actually running the task since the process name is just python,
+        # rather than the actual task name.
+        if sys.platform in ["win32", "darwin"]:
             if expected_state is not None:
                 assert task["state"] == expected_state, task
             continue
