@@ -1,7 +1,7 @@
 .. _data-representations:
 
-Data Representations
-====================
+Data Representations (internal)
+===============================
 
 .. currentmodule:: ray.data
 

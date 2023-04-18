@@ -4,8 +4,8 @@
 Examples
 ========
 
-.. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
-  Datasets' features in-depth.
+.. tip:: Check out the Datastreams :ref:`User Guide <data_user_guide>` to learn more about
+  Datastream features in-depth.
 
 .. _data-recipes:
 

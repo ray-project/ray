@@ -9,7 +9,6 @@ Ray Data API
     input_output.rst
     datastream.rst
     data_iterator.rst
-    dataset_pipeline.rst
     execution_options.rst
     grouped_data.rst
     data_context.rst
