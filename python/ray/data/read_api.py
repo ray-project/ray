@@ -1,3 +1,4 @@
+import collections
 import logging
 from typing import (
     TYPE_CHECKING,
@@ -16,10 +17,9 @@ import numpy as np
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
@@ -35,10 +35,9 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
 )
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
@@ -47,9 +46,10 @@ from ray.data._internal.util import (
     ndarray_to_block,
     get_table_block_metadata,
 )
+from ray.data.row import TableRow
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
-from ray.data.dataset import Datastream, MaterializedDatastream
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
+from ray.data.datastream import Datastream, MaterializedDatastream
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     BinaryDatasource,
@@ -110,7 +110,7 @@ def from_items(
     *,
     parallelism: int = -1,
     output_arrow_format: bool = False,
-) -> MaterializedDatastream[Any]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of local Python objects.
 
     Examples:
@@ -131,6 +131,10 @@ def from_items(
     Returns:
         MaterializedDatastream holding the items.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        output_arrow_format = True
+
     import builtins
 
     if parallelism == 0:
@@ -139,7 +143,7 @@ def from_items(
     detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
-        DatasetContext.get_current(),
+        DataContext.get_current(),
     )
     # Truncate parallelism to number of items to avoid empty blocks.
     detected_parallelism = min(len(items), detected_parallelism)
@@ -154,7 +158,11 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        if output_arrow_format:
+        if ctx.strict_mode:
+            # In strict mode, we will fallback from Arrow -> Pandas automatically in
+            # the delegating block builder, and never use simple blocks.
+            builder = DelegatingBlockBuilder()
+        elif output_arrow_format:
             builder = ArrowBlockBuilder()
         else:
             builder = DelegatingBlockBuilder()
@@ -162,14 +170,21 @@ def from_items(
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
-            if output_arrow_format and not isinstance(items[j], (dict, np.ndarray)):
-                raise ValueError(
-                    "Arrow block format can only be used if all items are "
-                    "either dicts or Numpy arrays. Received data of type: "
-                    f"{type(items[j])}. Set `output_arrow_format` to "
-                    "False to not use Arrow blocks."
-                )
-            builder.add(items[j])
+            item = items[j]
+            if ctx.strict_mode:
+                if not isinstance(item, collections.abc.Mapping):
+                    item = {"item": item}
+            else:
+                if output_arrow_format and not isinstance(
+                    item, (collections.abc.Mapping, np.ndarray)
+                ):
+                    raise ValueError(
+                        "Arrow block format can only be used if all items are "
+                        "either dicts or Numpy arrays. Received data of type: "
+                        f"{type(items[j])}. Set `output_arrow_format` to "
+                        "False to not use Arrow blocks."
+                    )
+            builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
@@ -183,7 +198,7 @@ def from_items(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromItems": metadata}, parent=None),
+            DatastreamStats(stages={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -193,16 +208,16 @@ def from_items(
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
+def range(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     """Create a datastream from a range of integers [0..n).
 
     Examples:
         >>> import ray
         >>> ds = ray.data.range(10000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-        >>> ds.map(lambda x: x * 2).take(4) # doctest: +SKIP
-        [0, 2, 4, 6]
+        Datastream(num_blocks=200, num_rows=10000, schema={id: int64})
+        >>> ds.map(lambda x: {"id": x["id"] * 2}).take(4) # doctest: +SKIP
+        [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}]
 
     Args:
         n: The upper bound of the range of integers.
@@ -212,13 +227,22 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[int]:
     Returns:
         Datastream producing the integers.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        return read_datasource(
+            RangeDatasource(),
+            parallelism=parallelism,
+            n=n,
+            block_format="arrow",
+            column_name="id",
+        )
     return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
     )
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
+def range_table(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     """Create a tabular stream from a range of integers [0..n).
 
     Examples:
@@ -240,8 +264,17 @@ def range_table(n: int, *, parallelism: int = -1) -> Datastream[ArrowRow]:
     Returns:
         Datastream producing the integers as Arrow records.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        raise DeprecationWarning(
+            "In strict mode, use range() instead of range_table()."
+        )
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
+        RangeDatasource(),
+        parallelism=parallelism,
+        n=n,
+        block_format="arrow",
+        column_name="value",
     )
 
 
@@ -253,17 +286,17 @@ def range_arrow(*args, **kwargs):
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = -1
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create a Tensor stream from a range of integers [0..n).
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_tensor(1000, shape=(2, 2)) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
+        >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
+        >>> ds  # doctest: +ellipsis
         Datastream(
-            num_blocks=200,
+            num_blocks=...,
             num_rows=1000,
-            schema={__value__: <ArrowTensorType: shape=(2, 2), dtype=int64>},
+            schema={__value__: numpy.ndarray(shape=(2, 2), dtype=int64)}
         )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
@@ -284,11 +317,13 @@ def range_tensor(
     Returns:
         Datastream producing the integers as Arrow tensor records.
     """
+    ctx = ray.data.DatasetContext.get_current()
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="tensor",
+        column_name="data" if ctx.strict_mode else "__value__",
         tensor_shape=tuple(shape),
     )
 
@@ -315,7 +350,7 @@ def read_datasource(
     Returns:
         Datastream that reads data from the datasource.
     """
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
 
     if ray_remote_args is None:
         ray_remote_args = {}
@@ -450,7 +485,7 @@ def read_mongo(
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from MongoDB.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
@@ -483,7 +518,7 @@ def read_mongo(
         ... )
 
     Args:
-        uri: The URI of the source MongoDB where the dataset will be
+        uri: The URI of the source MongoDB where the datastream will be
             read from. For the URI format, see details in
             https://www.mongodb.com/docs/manual/reference/connection-string/.
         database: The name of the database hosted in the MongoDB. This database
@@ -530,7 +565,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
     **arrow_parquet_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from parquet files.
 
     Examples:
@@ -621,7 +656,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Read images from the specified paths.
 
     Examples:
@@ -629,13 +664,13 @@ def read_images(
         >>> path = "s3://anonymous@air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        Datastream(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -729,7 +764,7 @@ def read_parquet_bulk(
         ParquetBaseDatasource.file_extension_filter()
     ),
     **arrow_parquet_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from a large number (such as >1K) of parquet files
     quickly.
 
@@ -826,7 +861,7 @@ def read_json(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     **arrow_json_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from json files.
 
     Examples:
@@ -903,7 +938,7 @@ def read_csv(
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
     **arrow_csv_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     r"""Create an Arrow datastream from csv files.
 
     Examples:
@@ -1010,7 +1045,7 @@ def read_text(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-) -> Datastream[str]:
+) -> Datastream[TableRow]:
     """Create a datastream from lines stored in text files.
 
     Examples:
@@ -1078,7 +1113,7 @@ def read_numpy(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     **numpy_load_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from numpy files.
 
     Examples:
@@ -1141,7 +1176,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
-) -> Datastream[PandasRow]:
+) -> Datastream[TableRow]:
     """Create a datastream from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
@@ -1246,7 +1281,7 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
-) -> Datastream[PandasRow]:
+) -> Datastream[TableRow]:
     """Create a datastream from WebDataset files.
 
     Args:
@@ -1305,7 +1340,7 @@ def read_binary_files(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     output_arrow_format: bool = False,
-) -> Datastream[Union[Tuple[str, bytes], bytes]]:
+) -> Datastream[TableRow]:
     """Create a datastream from binary files of arbitrary contents.
 
     Examples:
@@ -1343,6 +1378,10 @@ def read_binary_files(
     Returns:
         Datastream producing records read from the specified paths.
     """
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        output_arrow_format = True
+
     if not output_arrow_format:
         logger.warning(
             "read_binary_files() returns Datastream in Python list format as of Ray "
@@ -1449,7 +1488,7 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
+def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[TableRow]:
     """Create a datastream from a Dask DataFrame.
 
     Args:
@@ -1487,7 +1526,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDatastream[ArrowRow]:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[TableRow]:
     """Create a datastream from a MARS dataframe.
 
     Args:
@@ -1507,7 +1546,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDatastream[ArrowRow]:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
+def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[TableRow]:
     """Create a datastream from a Modin dataframe.
 
     Args:
@@ -1530,7 +1569,7 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDatastream[ArrowRow]:
 @PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of Pandas dataframes.
 
     Args:
@@ -1548,7 +1587,7 @@ def from_pandas(
         _cast_ndarray_columns_to_tensor_extension,
     )
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
@@ -1557,7 +1596,7 @@ def from_pandas(
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of Ray object references to Pandas
     dataframes.
 
@@ -1583,14 +1622,14 @@ def from_pandas_refs(
         )
 
     logical_plan = LogicalPlan(FromPandasRefs(dfs))
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return MaterializedDatastream(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+                DatastreamStats(stages={"FromPandasRefs": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1606,7 +1645,7 @@ def from_pandas_refs(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+            DatastreamStats(stages={"FromPandasRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1618,7 +1657,7 @@ def from_pandas_refs(
 @PublicAPI
 def from_numpy(
     ndarrays: Union[np.ndarray, List[np.ndarray]]
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of NumPy ndarrays.
 
     Args:
@@ -1636,7 +1675,7 @@ def from_numpy(
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of NumPy ndarray futures.
 
     Args:
@@ -1660,9 +1699,13 @@ def from_numpy_refs(
             f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}"
         )
 
+    ctx = DataContext.get_current()
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-    res = [ndarray_to_block_remote.remote(ndarray) for ndarray in ndarrays]
+    res = [
+        ndarray_to_block_remote.remote(ndarray, strict_mode=ctx.strict_mode)
+        for ndarray in ndarrays
+    ]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
@@ -1672,7 +1715,7 @@ def from_numpy_refs(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
+            DatastreamStats(stages={"FromNumpyRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1684,7 +1727,7 @@ def from_numpy_refs(
 @PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a list of Arrow tables.
 
     Args:
@@ -1707,7 +1750,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ],
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a set of Arrow tables.
 
     Args:
@@ -1727,7 +1770,7 @@ def from_arrow_refs(
     return MaterializedDatastream(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
+            DatastreamStats(stages={"FromArrowRefs": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1739,7 +1782,7 @@ def from_arrow_refs(
 @PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
-) -> MaterializedDatastream[ArrowRow]:
+) -> MaterializedDatastream[TableRow]:
     """Create a datastream from a Spark dataframe.
 
     Args:
@@ -1761,7 +1804,7 @@ def from_spark(
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
 ) -> Union[
-    MaterializedDatastream[ArrowRow], Dict[str, MaterializedDatastream[ArrowRow]]
+    MaterializedDatastream[TableRow], Dict[str, MaterializedDatastream[TableRow]]
 ]:
     """Create a datastream from a Hugging Face Datasets Dataset.
 
@@ -1779,7 +1822,7 @@ def from_huggingface(
     """
     import datasets
 
-    def convert(ds: "datasets.Dataset") -> Datastream[ArrowRow]:
+    def convert(ds: "datasets.Dataset") -> Datastream[TableRow]:
         ray_ds = from_arrow(ds.data.table)
         logical_plan = LogicalPlan(FromHuggingFace(ds))
         ray_ds._logical_plan = logical_plan
@@ -1820,7 +1863,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        Datastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
@@ -1889,7 +1932,7 @@ def from_torch(
 
 def _get_read_tasks(
     ds: Datasource,
-    ctx: DatasetContext,
+    ctx: DataContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     local_uri: bool,
@@ -1899,7 +1942,7 @@ def _get_read_tasks(
 
     Args:
         ds: Datasource to read from.
-        ctx: Dataset config to use.
+        ctx: Datastream config to use.
         cur_pg: The current placement group, if any.
         parallelism: The user-requested parallelism, or -1 for autodetection.
         kwargs: Additional kwargs to pass to the reader.
@@ -1911,10 +1954,10 @@ def _get_read_tasks(
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
         kwargs["local_uri"] = local_uri
-    DatasetContext._set_current(ctx)
+    DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
-        parallelism, cur_pg, DatasetContext.get_current(), reader
+        parallelism, cur_pg, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,

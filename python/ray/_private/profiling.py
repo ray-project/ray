@@ -155,13 +155,6 @@ def chrome_tracing_dump(
     worker_idx = 0
 
     for task in tasks:
-        if task.get("task_id") is None:
-            # If we have a missing data due to data report issue
-            # we just skip this entry.
-            # This shouldn't happen after merging
-            # https://github.com/ray-project/ray/pull/31837
-            continue
-
         profiling_data = task.get("profiling_data", [])
         if profiling_data:
             node_ip_address = profiling_data["node_ip_address"]

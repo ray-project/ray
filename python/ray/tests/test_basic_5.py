@@ -6,6 +6,7 @@ import sys
 import time
 import subprocess
 from unittest.mock import Mock, patch
+import unittest
 
 import pytest
 
@@ -114,13 +115,13 @@ def test_internal_kv(ray_start_regular):
     assert kv._internal_kv_get("k2", namespace="n") is None
     assert kv._internal_kv_get("k3", namespace="n") is None
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_put("@namespace_", "x", True)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_get("@namespace_", namespace="n")
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_del("@namespace_def", namespace="n")
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
@@ -234,7 +235,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
         from time import sleep
 
         sleep(2)
-        return ray._private.gcs_utils._called_freq
+        return ray._private.utils._CALLED_FREQ
 
     freqs = ray.get(get_kv_metrics.remote())
     # So far we have the following gets
@@ -359,6 +360,16 @@ def test_preload_workers(ray_start_cluster, preload):
     actor = Actor.remote()
     futures = [verify_imports.remote(latch), actor.verify_imports.remote(latch)]
     ray.get(futures)
+
+
+def test_gcs_port_env():
+    try:
+        with unittest.mock.patch.dict(os.environ):
+            os.environ["RAY_GCS_SERVER_PORT"] = "12345"
+            ray.init()
+    except RuntimeError:
+        pass
+        # it's ok to throw runtime error for port conflicts
 
 
 if __name__ == "__main__":

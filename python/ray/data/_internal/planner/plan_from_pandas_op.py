@@ -12,7 +12,7 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
     FromModin,
     FromMars,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 
 FromPandasRefsOperators = Union[FromPandasRefs, FromDask, FromModin, FromMars]
 
@@ -75,7 +75,7 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
             # to avoid object GC, so this operator cannot not own the blocks.
             owns_blocks = False
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
 
         if context.enable_pandas_block:
             get_metadata = cached_remote_fn(get_table_block_metadata)

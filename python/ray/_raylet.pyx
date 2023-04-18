@@ -7,6 +7,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+from functools import wraps
 import gc
 import inspect
 import logging
@@ -61,6 +62,8 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
+    CGcsNodeInfo,
+    CJobTableData,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
@@ -127,6 +130,7 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
+    RpcError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -207,6 +211,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
+    elif status.IsRpcError():
+        raise RpcError(message, rpc_code=status.rpc_code())
     else:
         raise RaySystemError(message)
 
@@ -1518,6 +1524,209 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+
+def _auto_reconnect(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            ray._private.utils._CALLED_FREQ[f.__name__] += 1
+        remaining_retry = self._nums_reconnect_retry
+        while True:
+            try:
+                return f(self, *args, **kwargs)
+            except RpcError as e:
+                import grpc
+                if e.rpc_code in [
+                    grpc.StatusCode.UNAVAILABLE.value[0],
+                    grpc.StatusCode.UNKNOWN.value[0],
+                ]:
+                    if remaining_retry <= 0:
+                        logger.error(
+                            "Failed to connect to GCS. Please check"
+                            " `gcs_server.out` for more details."
+                        )
+                        raise
+                    logger.debug(
+                        f"Failed to send request to gcs, reconnecting. Error {e}"
+                    )
+                    try:
+                        self._connect()
+                    except Exception:
+                        logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
+                    remaining_retry -= 1
+                    continue
+                raise
+
+    return wrapper
+
+
+cdef class GcsClient:
+    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+    cdef:
+        shared_ptr[CPythonGcsClient] inner
+        object address
+        object _nums_reconnect_retry
+
+    def __cinit__(self, address, nums_reconnect_retry=5):
+        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
+        self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
+        self.address = address
+        self._nums_reconnect_retry = nums_reconnect_retry
+        self._connect()
+
+    def _connect(self):
+        check_status(self.inner.get().Connect())
+
+    @property
+    def address(self):
+        return self.address
+
+    @property
+    def _nums_reconnect_retry(self):
+        return self._nums_reconnect_retry
+
+    @_auto_reconnect
+    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string value
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
+        if status.IsKeyError():
+            return None
+        else:
+            check_status(status)
+            return value
+
+    @_auto_reconnect
+    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            c_vector[c_string] c_keys
+            c_string c_key
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            unordered_map[c_string, c_string] c_result
+            unordered_map[c_string, c_string].iterator it
+
+        for c_key in keys:
+            c_keys.push_back(c_key)
+        with nogil:
+            check_status(self.inner.get().InternalKVMultiGet(
+                ns, c_keys, timeout_ms, c_result))
+
+        result = {}
+        it = c_result.begin()
+        while it != c_result.end():
+            key = dereference(it).first
+            value = dereference(it).second
+            result[key] = value
+            postincrement(it)
+        return result
+
+    @_auto_reconnect
+    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
+                        namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int num_added
+        with nogil:
+            check_status(self.inner.get().InternalKVPut(
+                ns, key, value, overwrite, timeout_ms, num_added))
+
+        return num_added
+
+    @_auto_reconnect
+    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
+                        namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int num_deleted
+        with nogil:
+            check_status(self.inner.get().InternalKVDel(
+                ns, key, del_by_prefix, timeout_ms, num_deleted))
+
+        return num_deleted
+
+    @_auto_reconnect
+    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] keys
+            c_string key
+
+        with nogil:
+            check_status(self.inner.get().InternalKVKeys(
+                ns, prefix, timeout_ms, keys))
+
+        result = []
+
+        for key in keys:
+            result.append(key)
+
+        return result
+
+    @_auto_reconnect
+    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool exists
+        with nogil:
+            check_status(self.inner.get().InternalKVExists(
+                ns, key, timeout_ms, exists))
+        return exists
+
+    @_auto_reconnect
+    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string c_uri = uri.encode()
+        with nogil:
+            check_status(self.inner.get().PinRuntimeEnvUri(
+                c_uri, expiration_s, timeout_ms))
+
+    @_auto_reconnect
+    def get_all_node_info(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CGcsNodeInfo node_info
+            c_vector[CGcsNodeInfo] node_infos
+        with nogil:
+            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+
+        result = {}
+        for node_info in node_infos:
+            result[node_info.node_id()] = {
+                "node_name": node_info.node_name(),
+                "state": node_info.state()
+            }
+        return result
+
+    @_auto_reconnect
+    def get_all_job_info(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CJobTableData job_info
+            c_vector[CJobTableData] job_infos
+        with nogil:
+            check_status(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
+
+        result = {}
+        for job_info in job_infos:
+            result[job_info.job_id()] = {
+                "is_dead": job_info.is_dead(),
+                "config": {
+                    "ray_namespace": job_info.config().ray_namespace().decode()
+                }
+            }
+        return result
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -1954,6 +2163,8 @@ cdef class CoreWorker:
                 NodeID.from_hex(python_scheduling_strategy.node_id).binary())
             c_node_affinity_scheduling_strategy[0].set_soft(
                 python_scheduling_strategy.soft)
+            c_node_affinity_scheduling_strategy[0].set_spill_on_unavailable(
+                python_scheduling_strategy._spill_on_unavailable)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
