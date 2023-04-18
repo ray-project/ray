@@ -5,9 +5,10 @@ import pandas  # noqa
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
-from ray.data.dataset import Dataset, Datastream
+from ray.data.dataset import Dataset
+from ray.data.datastream import Datastream
 from ray.data.context import DatasetContext, DataContext
-from ray.data.dataset_iterator import DatasetIterator, DataIterator
+from ray.data.iterator import DatasetIterator, DataIterator
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.preprocessor import Preprocessor

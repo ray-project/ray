@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
@@ -209,7 +209,7 @@ class ExecutionOptions:
             option is useful for performance debugging. Off by default.
     """
 
-    resource_limits: ExecutionResources = ExecutionResources()
+    resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 
