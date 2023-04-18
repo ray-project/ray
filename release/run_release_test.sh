@@ -40,6 +40,15 @@ INSTALL_MATCHING_RAY=${BUILDKITE-false}
 
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE
 
+# Find the commit corresponding to ray wheel if available
+for arg in "$@"; do
+  j=$((i+1))
+  if [ "$arg" == "--ray-commit" ]; then
+    RAY_COMMIT="${!j}"
+  fi
+  i=$j
+done
+
 if [ -z "${NO_INSTALL}" ]; then
   pip install --use-deprecated=legacy-resolver -q -r requirements.txt
   pip install -q -U boto3 botocore
@@ -78,13 +87,13 @@ if [ -z "${NO_CLONE}" ]; then
   # this racing condition, ignoring for now.
   if [ "${RAY_TEST_REPO}" == "https://github.com/ray-project/ray.git" ] && \
   [[ "${PARSED_RAY_WHEELS}" == *"master"*  ]] && \
-  [ "${RAY_TEST_BRANCH}" == "master" ] && [ "${BUILDKITE_COMMIT}" ] && \
-  [ "${HEAD_COMMIT}" != "${BUILDKITE_COMMIT}" ]; then
+  [ "${RAY_TEST_BRANCH-}" == "master" ] && [ -n "${RAY_COMMIT-}" ] && \
+  [ "${HEAD_COMMIT}" != "${RAY_COMMIT}" ]; then
     echo "The checked out test code doesn't match with the installed wheel. \
 This is likely due to a racing condition when a PR is landed between \
 a wheel is installed and test code is checked out."
-    echo "Hard resetting from ${HEAD_COMMIT} to ${BUILDKITE_COMMIT}."
-    git reset --hard "${BUILDKITE_COMMIT}"
+    echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_COMMIT}."
+    git reset --hard "${RAY_COMMIT}"
   fi
 fi
 
