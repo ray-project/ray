@@ -217,6 +217,10 @@ class Checkpoint:
 
         # When using a cloud URI, we make sure that the uuid is constant.
         # This ensures we do not download the data multiple times on one node.
+        # Note that this is not a caching mechanism - instead, this
+        # only ensures that if there are several processes downloading
+        # from the same URI, only one process does the actual work
+        # while the rest waits (FileLock). This also means data will not be duplicated.
         self._uuid = (
             uuid.uuid4()
             if not self._uri
