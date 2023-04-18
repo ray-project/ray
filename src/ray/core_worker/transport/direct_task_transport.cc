@@ -30,17 +30,18 @@ google::protobuf::Timestamp CurrentTimestamp() {
   auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
   auto ts = google::protobuf::Timestamp();
   ts.set_seconds(std::chrono::duration_cast<std::chrono::seconds>(time).count());
-  ts.set_nanos(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count() % NANOS_PER_SECOND);
+  ts.set_nanos(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count() %
+               NANOS_PER_SECOND);
   return ts;
 }
 
 void RecordTaskMetrics(const TaskSpecification &task_spec) {
   double duration_s = task_spec.GetMessage().lease_grant_time().nanos() -
-                       task_spec.GetMessage().dependency_resolution_time().nanos();
+                      task_spec.GetMessage().dependency_resolution_time().nanos();
   duration_s /= NANOS_PER_SECOND;
 
   duration_s += task_spec.GetMessage().lease_grant_time().seconds() -
-    task_spec.GetMessage().dependency_resolution_time().seconds();
+                task_spec.GetMessage().dependency_resolution_time().seconds();
 
   stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
 }
