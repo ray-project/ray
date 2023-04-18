@@ -392,7 +392,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   int32_t num_status_event_limit = 0;
 
   // A lambda filter fn, where it returns true for task events to be included in the
-  // result.
+  // result. Task ids and job ids are already filtered by the storage with indexing above.
   auto filter_fn = [&filters](const rpc::TaskEvents &task_event) {
     if (!task_event.has_task_info()) {
       // Skip task events w/o task info.

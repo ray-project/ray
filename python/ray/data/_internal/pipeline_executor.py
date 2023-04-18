@@ -6,7 +6,7 @@ import logging
 import ray
 from ray.data.block import T
 from ray.data.context import DataContext
-from ray.data.dataset import Datastream
+from ray.data.datastream import Datastream
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal import progress_bar
 

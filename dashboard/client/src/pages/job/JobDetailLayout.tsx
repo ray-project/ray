@@ -13,12 +13,13 @@ export const JobDetailLayout = () => {
 
   const pageInfo = job
     ? {
-        title: job.job_id ?? "Job details",
+        title: job.job_id ?? "Job",
+        pageTitle: job.job_id ? `${job.job_id} | Job` : undefined,
         id: "job-detail",
         path: job.job_id ? `/jobs/${job.job_id}` : undefined,
       }
     : {
-        title: "Job details",
+        title: "Job",
         id: "job-detail",
         path: undefined,
       };
