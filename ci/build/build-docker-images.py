@@ -887,6 +887,7 @@ def main(
 
 def fix_docker_images(
     image: str = "ray-ml",
+    version: str = "nightly",
     repo: str = DOCKER_HUB_REPO,
 ):
     tags = create_image_tags(
@@ -894,7 +895,7 @@ def fix_docker_images(
         py_versions=list(PY_MATRIX.keys()),
         image_types=list(BASE_IMAGES.keys()),
         specific_tag=None,  # Set to `latest` for latest image fixes
-        version="2.3.1",
+        version=version,
         suffix=None,
     )
     print(dict(tags))
@@ -940,4 +941,4 @@ if __name__ == "__main__":
     if not fix_image:
         main()
     else:
-        fix_docker_images(fix_image)
+        fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))
