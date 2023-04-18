@@ -101,6 +101,9 @@ def init_torch_dist_process_group(
 ) -> List[int]:
     """Initialize a torch distributed process group.
 
+    Note: this util assumes that the order of the workers passed in
+    are their global ranks.
+
     Args:
         workers: A list of TorchDistributedWorker actors.
         backend: The torch distributed backend to use,
