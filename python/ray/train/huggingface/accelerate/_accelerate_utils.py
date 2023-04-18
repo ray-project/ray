@@ -16,21 +16,13 @@
 
 import logging
 import os
-import sys
 from argparse import Namespace
 from typing import Optional, Tuple, Union
 import tempfile
 from pathlib import Path
 
 
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
+from contextlib import nullcontext
 
 
 try:
