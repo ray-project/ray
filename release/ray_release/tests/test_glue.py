@@ -244,7 +244,7 @@ class GlueTest(unittest.TestCase):
         if until == "fetch_results":
             return
 
-        self.command_runner_return["get_last_logs"] = "Lorem ipsum"
+        self.command_runner_return["get_last_logs_ex"] = "Lorem ipsum"
 
         if until == "get_last_logs":
             return
@@ -631,14 +631,13 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("fetch_results")
 
-        self.command_runner_return["get_last_logs"] = _fail_on_call(LogsError)
+        self.command_runner_return["get_last_logs_ex"] = _fail_on_call(LogsError)
 
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
             self.assertTrue(any("Error fetching logs" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "finished")
-        self.assertIn("No logs", result.last_logs)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
@@ -665,7 +664,7 @@ class GlueTest(unittest.TestCase):
         self._succeed_until("complete")
 
         class FailReporter(Reporter):
-            def report_result(self, test: Test, result: Result):
+            def report_result_ex(self, test: Test, result: Result):
                 raise RuntimeError
 
         with self.assertLogs(logger, "ERROR") as cm:

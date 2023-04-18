@@ -385,7 +385,12 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id, timeout, glob_filter=glob_filter
             )
         except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+            return self._reply(
+                success=False,
+                error_message=str(e),
+                result=None,
+                reason=str(e),
+            )
 
         return self._reply(success=True, error_message="", result=result)
 
@@ -404,7 +409,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
-            suffix=req.query.get("suffix", None),
+            suffix=req.query.get("suffix", "out"),
         )
 
         response = aiohttp.web.StreamResponse()

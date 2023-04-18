@@ -1,7 +1,7 @@
 .. _dataset-context-api:
 
-DatasetContext API
-==================
+DataContext API
+===============
 
 .. currentmodule:: ray.data
 
@@ -10,14 +10,13 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
-   DatasetContext
+   DataContext
 
-Get DatasetContext
-------------------
+Get DataContext
+---------------
 
 .. autosummary::
    :toctree: doc/
 
-   DatasetContext.get_current
+   DataContext.get_current

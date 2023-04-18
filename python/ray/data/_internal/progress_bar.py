@@ -44,12 +44,14 @@ def set_progress_bars(enabled: bool) -> bool:
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
-    def __init__(self, name: str, total: int, position: int = 0):
+    def __init__(
+        self, name: str, total: int, position: int = 0, enabled: bool = _enabled
+    ):
         self._desc = name
-        if not _enabled:
+        if not enabled:
             self._bar = None
         elif tqdm:
-            ctx = ray.data.context.DatasetContext.get_current()
+            ctx = ray.data.context.DataContext.get_current()
             if ctx.use_ray_tqdm:
                 self._bar = tqdm_ray.tqdm(total=total, position=position)
             else:
@@ -58,7 +60,9 @@ class ProgressBar:
         else:
             global needs_warning
             if needs_warning:
-                print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
+                print(
+                    "[datastream]: Run `pip install tqdm` to enable progress reporting."
+                )
                 needs_warning = False
             self._bar = None
 
