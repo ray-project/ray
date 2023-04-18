@@ -4,7 +4,6 @@ import {
   IconButton,
   Link,
   makeStyles,
-  Paper,
   Tooltip,
   Typography,
 } from "@material-ui/core";

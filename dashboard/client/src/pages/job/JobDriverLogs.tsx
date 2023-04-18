@@ -1,11 +1,10 @@
 import { Typography } from "@material-ui/core";
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext } from "react";
+import useSWR from "swr";
 import { GlobalContext } from "../../App";
 import { getLogDetail, getLogDownloadUrl } from "../../service/log";
 import { UnifiedJob } from "../../type/job";
 import { LogViewer } from "../log/LogViewer";
-
-// https://session-ea89fl9yr56lxmwrtwywn44yv7.i.anyscaleuserdata-staging.com/log_proxy?url=http%3A%2F%2F10.0.59.114%3A52365%2Flogs%2Fdashboard_agent.log
 
 const useDriverLogs = (
   job: Pick<
@@ -24,37 +23,31 @@ const useDriverLogs = (
   })();
   const path = `job-driver-${submission_id}.log`;
 
-  const [log, setLogs] =
-    useState<undefined | string | { [key: string]: string }[]>();
-  const [downloadUrl, setDownloadUrl] = useState<string>();
+  const url = host ? `${host}${path}` : undefined;
+  const downloadUrl = url ? getLogDownloadUrl(url) : undefined;
 
-  useEffect(() => {
-    setLogs("Loading...");
-    if (host) {
-      let url = host;
-      if (path) {
-        url += path;
-      }
-      setDownloadUrl(getLogDownloadUrl(url));
-      getLogDetail(url)
-        .then((res) => {
-          if (res) {
-            setLogs(res);
-          } else {
-            setLogs("(null)");
-          }
-        })
-        .catch(() => {
-          setLogs("Failed to load");
-        });
-    } else {
-      setLogs("Failed to load");
-    }
-  }, [host, path]);
+  const {
+    data: log,
+    isLoading,
+    mutate,
+  } = useSWR(url ? ["useDriverLogs", url] : null, async ([_, url]) =>
+    getLogDetail(url)
+      .then((res) => {
+        if (res) {
+          return res;
+        } else {
+          return "(This file is empty.)";
+        }
+      })
+      .catch(() => {
+        return "(Failed to load)";
+      }),
+  );
 
   return {
-    log,
+    log: isLoading ? "Loading..." : log,
     downloadUrl,
+    refresh: mutate,
     host,
     path,
   };
@@ -68,9 +61,16 @@ type JobDriverLogsProps = {
 };
 
 export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
-  const { downloadUrl, log, path } = useDriverLogs(job);
+  const { downloadUrl, log, path, refresh } = useDriverLogs(job);
   return typeof log === "string" ? (
-    <LogViewer log={log} path={path} downloadUrl={downloadUrl} />
+    <LogViewer
+      log={log}
+      path={path}
+      downloadUrl={downloadUrl}
+      onRefreshClick={() => {
+        refresh();
+      }}
+    />
   ) : (
     <Typography color="error">Failed to load</Typography>
   );

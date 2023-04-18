@@ -44,9 +44,15 @@ type LogViewerProps = {
   path?: string;
   log: string;
   downloadUrl?: string;
+  onRefreshClick?: () => void;
 };
 
-export const LogViewer = ({ path, log, downloadUrl }: LogViewerProps) => {
+export const LogViewer = ({
+  path,
+  log,
+  downloadUrl,
+  onRefreshClick,
+}: LogViewerProps) => {
   const classes = useStyles();
 
   const { search, setSearch, startTime, setStart, endTime, setEnd } =
@@ -128,6 +134,15 @@ export const LogViewer = ({ path, log, downloadUrl }: LogViewerProps) => {
                 checked={search?.revert}
                 onChange={(e, v) => setSearch({ ...search, revert: v })}
               />
+              {onRefreshClick && (
+                <Button
+                  className={classes.search}
+                  variant="contained"
+                  onClick={onRefreshClick}
+                >
+                  Refresh
+                </Button>
+              )}
               <Button
                 className={classes.search}
                 variant="contained"
