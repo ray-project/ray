@@ -465,7 +465,9 @@ install_pip_packages() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  # Python 3.10 build of psutil 5.9.5 seems to fail (minimal install test
+  # fails). Until investigated, we exclude that version.
+  CC=gcc pip install "psutil!=5.9.5" setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies() {
