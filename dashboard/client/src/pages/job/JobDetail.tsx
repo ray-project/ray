@@ -20,6 +20,7 @@ import TaskList from "../state/task";
 
 import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
+import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
@@ -229,11 +230,26 @@ export const JobDetailChartsPage = () => {
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks (beta)">
-        <JobProgressBar jobId={jobId} job={job} onClickLink={handleClickLink} />
+      <TitleCard>
+        <CollapsibleSection title="Tasks (beta)" startExpanded>
+          <JobProgressBar
+            jobId={jobId}
+            job={job}
+            onClickLink={handleClickLink}
+          />
+        </CollapsibleSection>
       </TitleCard>
-      <TitleCard title="Task Timeline (beta)">
-        <TaskTimeline jobId={jobId} />
+      {job.type === "SUBMISSION" && (
+        <TitleCard>
+          <CollapsibleSection title="Driver logs" startExpanded>
+            <JobDriverLogs job={job} />
+          </CollapsibleSection>
+        </TitleCard>
+      )}
+      <TitleCard>
+        <CollapsibleSection title="Task Timeline (beta)" startExpanded>
+          <TaskTimeline jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
       <Grid container>
         <Grid item xs={4}>
