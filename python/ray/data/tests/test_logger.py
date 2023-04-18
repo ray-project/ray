@@ -8,10 +8,10 @@ import logging
 from datetime import datetime
 
 import ray
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 
 
-def test_dataset_logger(shutdown_only):
+def test_datastream_logger(shutdown_only):
     ray.init()
     log_name, msg = "test_name", "test_message_1234"
     logger = DatastreamLogger(log_name)
@@ -40,7 +40,7 @@ def test_dataset_logger(shutdown_only):
         raise Exception(f"Invalid log timestamp: {logged_ds} {logged_ts}")
 
     assert logged_level == logging.getLevelName(logging.INFO)
-    assert re.match(r"test_dataset_logger.py:\d+", logged_filepath)
+    assert re.match(r"test_logger.py:\d+", logged_filepath)
     assert logged_msg == msg
 
 

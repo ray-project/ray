@@ -13,12 +13,12 @@ from unittest.mock import patch
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.dataset import Dataset, MaterializedDatastream, _sliding_window
+from ray.data.datastream import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.row import TableRow
@@ -240,9 +240,11 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
     assert schema == int
-    assert ds._plan._in_blocks._num_computed() == 1
+    # Fetching the schema does not trigger execution, since
+    # the schema is known beforehand for RangeDatasource.
+    assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
-    assert ds._plan.execute()._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 0
 
 
 def test_count_lazy(ray_start_regular_shared):
