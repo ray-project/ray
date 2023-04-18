@@ -428,7 +428,6 @@ message TaskSpec {
   // The time that the task is given a lease, and sent to the executing core
   // worker.
   int64 lease_grant_timestamp_ms = 35;
-
 }
 
 message TaskInfoEntry {
