@@ -3,7 +3,7 @@ import subprocess
 import os
 import json
 import time
-from typing import List
+from typing import List, dict
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -40,6 +40,14 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
             commit_list = commit_list[: middle_commit_idx + 1]
     return commit_list[-1]
 
+def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
+    logger.info(
+        f"Sanity check passing revision: {passing_revision}"
+        f" and failing revision: {failing_revision})"
+    )
+    _run_test(test, passing_revision)
+    _run_test(test, failing_revision)
+    return True
 
 def _run_test(test: Test, commit: str) -> bool:
     logger.info(f'Running test {test["name"]} on commit {commit}')
@@ -68,19 +76,22 @@ def _trigger_test_run(test: Test, commit: str) -> None:
     )
 
 
-def _obtain_test_result(buildkite_step_key: str) -> bool:
-    outcome = None
+def _obtain_test_result(buildkite_step_keys: List[str]) -> dict[str, str]:
+    outcomes = {}
     wait = 30
     total_wait = 0
-    while outcome not in ["passed", "hard_failed", "soft_failed"]:
+    while len(outcome) != len(buildkite_step_keys):
         logger.info(f"... waiting for test result ...({total_wait} seconds)")
-        outcome = subprocess.check_output(
-            f'buildkite-agent step get "outcome" --step "{buildkite_step_key}"',
-            shell=True,
-        ).decode("utf-8")
+        for key in buildkite_step_keys:
+            outcome = subprocess.check_output(
+                f'buildkite-agent step get "outcome" --step "{key}"',
+                shell=True,
+            ).decode("utf-8")
+            if outcome: 
+                outcomes[key] = outcome
         time.sleep(wait)
         total_wait = total_wait + wait
-    logger.info(f"Final test outcome: {outcome}")
+    logger.info(f"Final test outcomes: {outcomes}")
     return outcome == "passed"
 
 
