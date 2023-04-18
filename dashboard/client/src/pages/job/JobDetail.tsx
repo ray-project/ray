@@ -217,16 +217,20 @@ export const JobDetailChartsPage = () => {
               value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
             },
           },
-          {
-            label: "User metadata",
-            content:
-              job.metadata && Object.keys(job.metadata).length ? (
-                <CodeDialogButtonWithPreview
-                  title="User provided metadata"
-                  code={JSON.stringify(job.metadata, undefined, 2)}
-                />
-              ) : undefined,
-          },
+          ...(job.type === "SUBMISSION"
+            ? [
+                {
+                  label: "User metadata",
+                  content:
+                    job.metadata && Object.keys(job.metadata).length ? (
+                      <CodeDialogButtonWithPreview
+                        title="User provided metadata"
+                        code={JSON.stringify(job.metadata, undefined, 2)}
+                      />
+                    ) : undefined,
+                },
+              ]
+            : []),
           {
             label: "Actions",
             content: (
