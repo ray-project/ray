@@ -3,7 +3,7 @@
 Configuring Training Datasets
 =============================
 
-AIR builds its training data pipeline on :ref:`Ray Data <datasets>`, which is a scalable, framework-agnostic data loading and preprocessing library. Datasets enables AIR to seamlessly load data for local and distributed training with Train.
+AIR builds its training data pipeline on :ref:`Ray Data <data>`, which is a scalable, framework-agnostic data loading and preprocessing library. Ray Data enables AIR to seamlessly load data for local and distributed training with Train.
 
 This page describes how to setup and configure these datasets in Train under different scenarios and scales.
 
