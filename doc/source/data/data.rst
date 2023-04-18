@@ -28,9 +28,9 @@ is already supported.
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
---------------------------
-Streaming Parallel Compute
---------------------------
+--------------------
+Streaming ML Compute
+--------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
 powerful :ref:`Datastream <datastream_concept>` primitive. This allows users to execute workloads such as 
