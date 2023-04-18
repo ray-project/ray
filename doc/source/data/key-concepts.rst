@@ -78,8 +78,8 @@ Repartition has two modes:
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
-Datastream can shuffle hundreds of terabytes of data. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
-Note that operations like shuffle materialize the entire Datastream into memory prior to their execution (shuffle execution is not streamed through memory).
+Datastream can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
+Note that operations like shuffle materialize the entire Datastream prior to their execution (shuffle execution is not streamed through memory).
 
 Iteration and materialization
 =============================
@@ -91,7 +91,6 @@ object store memory.
 
 Datastream transformations are executed in a streaming way, incrementally on the data and
 with operators processed in parallel, see :ref:`Streaming Execution <streaming_execution>`.
-For an in-depth guide on Datastream execution, read :ref:`Execution <datastream_execution>`.
 
 Datastreams and MaterializedDatastreams can be freely passed between Ray tasks, actors, and libraries without
 incurring copies of the underlying block data (pass by reference semantics).
