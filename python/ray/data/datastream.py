@@ -89,6 +89,7 @@ from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
+    apply_strict_mode_batch_format,
     BatchUDF,
     Block,
     BlockAccessor,
@@ -590,6 +591,7 @@ class Datastream(Generic[T]):
                 :meth:`~Datastream.map_batches` instead.
         """  # noqa: E501
 
+        batch_format = apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
@@ -731,7 +733,7 @@ class Datastream(Generic[T]):
 
         return self.map_batches(
             process_batch,
-            batch_format="pandas",
+            batch_format="pandas",  # TODO(ekl) we should make this configurable.
             compute=compute,
             zero_copy_batch=False,
             **ray_remote_args,
@@ -2260,6 +2262,7 @@ class Datastream(Generic[T]):
         Raises:
             ValueError if the datastream is empty.
         """
+        batch_format = apply_strict_mode_batch_format(batch_format)
         try:
             res = next(
                 self.iter_batches(
@@ -2287,6 +2290,11 @@ class Datastream(Generic[T]):
         Returns:
             A list of up to ``limit`` records from the datastream.
         """
+        if ray.util.log_once("datastream_take"):
+            logger.info(
+                "Tip: Use `take_batch()` instead of `take() / show()` to return "
+                "records in pandas or numpy batch format."
+            )
         output = []
         for row in self.iter_rows():
             output.append(row)
@@ -2388,7 +2396,12 @@ class Datastream(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        return self._plan.schema(fetch_if_missing=fetch_if_missing)
+        ctx = DataContext.get_current()
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        if ctx.strict_mode:
+            return Schema(base_schema)
+        else:
+            return base_schema
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this datastream.
@@ -2942,14 +2955,17 @@ class Datastream(Generic[T]):
                 logical_plan = LogicalPlan(write_op)
 
             try:
+                import pandas as pd
+
                 self._write_ds = Datastream(
                     plan, self._epoch, self._lazy, logical_plan
                 ).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
-                    isinstance(block, list) and len(block) == 1 for block in blocks
+                    isinstance(block, pd.DataFrame) and len(block) == 1
+                    for block in blocks
                 )
-                write_results = [block[0] for block in blocks]
+                write_results = [block["write_result"][0] for block in blocks]
                 datasource.on_write_complete(write_results)
             except Exception as e:
                 datasource.on_write_failed([], e)
@@ -3086,9 +3102,9 @@ class Datastream(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        batch_format = apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
-
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
@@ -4645,6 +4661,31 @@ class MaterializedDatastream(Datastream, Generic[T]):
     """
 
     pass
+
+
+@PublicAPI(stability="beta")
+class Schema:
+    """Datastream schema.
+    Attributes:
+        names: List of column names of this Datastream.
+        base_schema: The underlying Arrow or Pandas schema.
+    """
+
+    def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
+        self.base_schema = base_schema
+
+    @property
+    def names(self) -> List[str]:
+        """Lists the columns of this Datastream."""
+        return self.base_schema.names
+
+    def __str__(self):
+        # TODO(ekl) we should canonicalize Pandas vs Pyarrow dtypes, which will be
+        # possible one we support Python objects in Arrow via an extension type.
+        return f"Schema({dict(zip(self.base_schema.names, self.base_schema.types))})"
+
+    def __repr__(self):
+        return str(self)
 
 
 def _get_size_bytes(block: Block) -> int:
