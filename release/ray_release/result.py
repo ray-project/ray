@@ -87,25 +87,6 @@ def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
     the status of its previous retries, and its runtime.
     """
     if result_status not in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
-        # Not even an infra failure 
-        return False
-    retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
-    max_retry = int(os.environ.get("BUILDKITE_MAX_RETRIES", 1))
-    if retry_count >= max_retry:
-        # Already reach retry limit
-        return False
-    if runtime > int(os.environ.get("BUILDKITE_TIME_LIMIT_FOR_RETRY", 0)):
-        # Take too long to run
-        return False
-    return True
-
-
-def _is_transient_error(result_status: ResultStatus, runtime: int) -> bool:
-    """
-    Classify whether an infra-failure issue is a transient issue. This is based on
-    the status of its previous retries, and its runtime.
-    """
-    if result_status not in [ResultStatus.INFRA_ERROR, ResultStatus.INFRA_TIMEOUT]:
         # Not even an infra failure
         return False
     retry_count = int(os.environ.get("BUILDKITE_RETRY_COUNT", 0))
