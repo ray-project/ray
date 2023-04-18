@@ -88,7 +88,7 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
 
 
-def _run_test(test: Test, commits: List[str]) -> dict[str, str]:
+def _run_test(test: Test, commits: List[str]) -> Dict[str, str]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
         _trigger_test_run(test, commit)
