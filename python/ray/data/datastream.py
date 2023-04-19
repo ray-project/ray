@@ -597,6 +597,11 @@ class Datastream(Generic[T]):
 
         target_block_size = None
         if batch_size == "default":
+            ctx = DataContext.get_current()
+            if ctx.strict_mode:
+                raise ValueError(
+                    "`batch_size` must be specified when using strict " "mode "
+                )
             batch_size = DEFAULT_BATCH_SIZE
         elif batch_size is not None:
             if batch_size < 1:

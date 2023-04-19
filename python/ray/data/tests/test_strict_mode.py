@@ -111,6 +111,12 @@ def test_strict_default_batch_format(ray_start_regular_shared):
     assert isinstance(batch["id"], np.ndarray), batch
 
 
+def test_strict_require_batch_size(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    with pytest.raises(ValueError):
+        ds.map_batches(lambda x: x)
+
+
 def test_strict_tensor_support(ray_start_regular_shared):
     ds = ray.data.from_items([np.ones(10), np.ones(10)])
     assert np.array_equal(ds.take()[0]["item"], np.ones(10))
