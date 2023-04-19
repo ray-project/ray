@@ -54,7 +54,7 @@ Or connecting to a Mars on Ray runtime which is already initialized:
     # perform computation
 
 
-Interact with Ray Datastream:
+Interact with Datastream:
 
 
 .. code-block:: python

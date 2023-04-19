@@ -169,7 +169,7 @@ a ``MongoDatasource``.
     :start-after: __mongo_datasource_start__
     :end-before: __mongo_datasource_end__
 
-Now you can create a Ray Datastream from and write back to MongoDB, just like 
+Now you can create a Datastream from and write back to MongoDB, just like 
 any other datasource!
 
 .. code-block:: python

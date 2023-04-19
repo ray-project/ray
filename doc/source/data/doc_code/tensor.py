@@ -508,7 +508,7 @@ ds.take(2)
 
 # fmt: off
 # __tf_variable_shaped_tensors_begin___
-# Convert Ray Datastream to a TensorFlow Dataset.
+# Convert Datastream to a TensorFlow Dataset.
 tf_ds = ds.to_tf(
     batch_size=2,
     feature_columns="feature",

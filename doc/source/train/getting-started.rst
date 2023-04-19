@@ -29,7 +29,7 @@ Here are examples for some of the commonly used trainers:
     We then instantiate our XGBoostTrainer by passing in:
 
     - The aforementioned ``ScalingConfig``.
-    - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
+    - The ``label_column`` refers to the column name containing the labels in the Datastream
     - The ``params`` are `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
 
     .. literalinclude:: doc_code/gbdt_user_guide.py
@@ -67,7 +67,7 @@ Here are examples for some of the commonly used trainers:
     We then instantiate our LightGBMTrainer by passing in:
 
     - The aforementioned ``ScalingConfig``
-    - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
+    - The ``label_column`` refers to the column name containing the labels in the Datastream
     - The ``params`` are core `LightGBM training parameters <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__
 
     .. literalinclude:: doc_code/gbdt_user_guide.py

@@ -5,7 +5,7 @@
 import ray
 from ray import tune
 
-# This Dataset workload will use spare cluster resources for execution.
+# This workload will use spare cluster resources for execution.
 def objective(*args):
     ray.data.range(10).show()
 
@@ -33,7 +33,7 @@ ray.shutdown()
 import ray
 from ray import tune
 
-# This Dataset workload will use reserved cluster resources for execution.
+# This workload will use reserved cluster resources for execution.
 def objective(*args):
     ray.data.range(10).show()
 

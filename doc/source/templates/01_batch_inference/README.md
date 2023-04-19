@@ -1,7 +1,7 @@
 # Scaling Batch Inference with Ray Data
 
 This template is a quickstart to using [Ray
-Data](https://docs.ray.io/en/latest/data/dataset.html) for batch
+Data](https://docs.ray.io/en/latest/data/data.html) for batch
 inference. Ray Data is one of many libraries under the [Ray AI
 Runtime](https://docs.ray.io/en/latest/ray-air/getting-started.html).
 See [this blog
