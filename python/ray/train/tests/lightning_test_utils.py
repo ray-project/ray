@@ -4,13 +4,16 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
+from packaging.version import Version
 
+IS_LIGHTING_V2 = Version(pl.__version__) >= Version("2.0.0")
 
 class LinearModule(pl.LightningModule):
-    def __init__(self, input_dim, output_dim) -> None:
+    def __init__(self, input_dim, output_dim, strategy="ddp") -> None:
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
+        self.strategy = strategy
 
     def forward(self, input):
         return self.linear(input)
@@ -35,7 +38,10 @@ class LinearModule(pl.LightningModule):
         return self.forward(batch)
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=0.1)
+        if self.strategy == "fsdp":
+            return torch.optim.SGD(self.trainer.model.parameters(), lr=0.1)
+        else:    
+            return torch.optim.SGD(self.parameters(), lr=0.1)
 
 
 class DoubleLinearModule(pl.LightningModule):
