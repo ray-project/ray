@@ -134,12 +134,21 @@
 
   cluster:
     cluster_env: frequent_pausing/app_config.yaml
-    cluster_compute: frequent_pausing/compute_config.yaml
+    cluster_compute: frequent_pausing/compute_config_aws.yaml
 
   run:
     timeout: 600  # 10min
     long_running: true
     script: python frequent_pausing/script.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: frequent_pausing/app_config.yaml
+        cluster_compute: frequent_pausing/compute_config_gce.yaml
 
   alert: default
 
@@ -2064,20 +2073,21 @@
     wait_for_nodes:
       num_nodes: 16
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      run:
-        timeout: 5400
-        script: python workloads/test_tune_worker_fault_tolerance.py --bucket gs://tune-cloud-tests/worker_fault_tolerance
-
-        wait_for_nodes:
-          num_nodes: 16
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_gce_16x1.yaml
+# Disabled until we can kill nodes in GCE
+#  variations:
+#    - __suffix__: aws
+#    - __suffix__: gce
+#      env: gce
+#      frequency: manual
+#      run:
+#        timeout: 5400
+#        script: python workloads/test_tune_worker_fault_tolerance.py --bucket gs://tune-cloud-tests/worker_fault_tolerance
+#
+#        wait_for_nodes:
+#          num_nodes: 16
+#      cluster:
+#        cluster_env: app_config.yaml
+#        cluster_compute: tpl_gce_16x1.yaml
 
 ########################
 # Golden Notebook tests
