@@ -284,7 +284,7 @@ def get_initializer(name, framework="tf"):
         elif name == "xavier_normal":
             return tf.keras.initializers.GlorotNormal
         elif name == "truncate_normal":
-            return tf.keras.initializers.TruncatedNormal
+            return tf.keras.initializers.TruncatedNormal(stddev=1.0)
 
     raise ValueError(
         "Unknown initializer ({}) for framework={}!".format(name, framework)
