@@ -1,12 +1,10 @@
 package io.ray.serve.replica;
 
-import io.ray.serve.config.DeploymentConfig;
-
 public interface RayServeReplica {
 
   Object handleRequest(Object requestMetadata, Object requestArgs);
 
-  default Object reconfigure(DeploymentConfig deploymentConfig) {
+  default Object reconfigure(byte[] deploymentConfigBytes) {
     return null;
   }
 

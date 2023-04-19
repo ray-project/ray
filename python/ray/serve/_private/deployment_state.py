@@ -398,7 +398,7 @@ class ActorReplicaWrapper:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
             self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                deployment_config.user_config
+                deployment_config.to_proto_bytes()
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()

@@ -189,8 +189,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
    *
    * @return
    */
-  public Object isInitialized(DeploymentConfig deploymentConfig) {
-    Object deploymentVersion = reconfigure(deploymentConfig);
+  public Object isInitialized(byte[] deploymentConfigBytes) {
+    Object deploymentVersion = reconfigure(deploymentConfigBytes);
     checkHealth();
     return deploymentVersion;
   }
@@ -213,8 +213,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
    *     DeploymentVersion is serialized to protobuf byte[].
    */
   @Override
-  public Object reconfigure(DeploymentConfig deploymentConfig) {
-    DeploymentVersion deploymentVersion = replica.reconfigure(deploymentConfig);
+  public Object reconfigure(byte[] deploymentConfigBytes) {
+    DeploymentVersion deploymentVersion = replica.reconfigure(deploymentConfigBytes);
     return deploymentVersion.toProtoBytes();
   }
 

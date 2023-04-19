@@ -2,7 +2,6 @@ package io.ray.serve.deployment;
 
 import com.google.gson.Gson;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.exception.RayServeException;
 import java.io.Serializable;
@@ -47,13 +46,7 @@ public class DeploymentVersion implements Serializable {
     }
     this.deploymentConfig = deploymentConfig;
     this.rayActorOptions = rayActorOptions;
-    this.userConfig =
-        (deploymentConfig.getUserConfig() != null && deploymentConfig.getUserConfig().size() != 0
-            ? new Object[] {
-              MessagePackSerializer.decode(
-                  deploymentConfig.getUserConfig().toByteArray(), Object.class) // TODO-xlang
-            }
-            : null);
+    this.userConfig = deploymentConfig.getUserConfig();
   }
 
   public String getCodeVersion() {
