@@ -153,6 +153,14 @@ class TestJobSubmit:
         )
         stdout, _ = _run_cmd(f"ray job submit -- {cmd}")
         assert "succeeded" in stdout
+    
+    def test_metadata(self, ray_start_stop):
+        cmd = "echo hello"
+        stdout, _ = _run_cmd(
+            f"ray job submit --metadata='{{\"key\": \"value\"}}' -- {cmd}"
+        )
+        assert "hello" in stdout
+        assert "succeeded" in stdout
 
 
 class TestRuntimeEnv:
