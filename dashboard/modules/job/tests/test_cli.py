@@ -399,7 +399,7 @@ class TestSubmit:
                 job_cli_group,
                 [
                     "submit",
-                    "--metadata-json",
+                    "--metadata",
                     '{"key": "value"}',
                     "--",
                     "echo hello",
@@ -424,7 +424,7 @@ class TestSubmit:
                 job_cli_group,
                 [
                     "submit",
-                    "--metadata-json",
+                    "--metadata",
                     '{"key": "value"',
                     "--",
                     "echo hello",
