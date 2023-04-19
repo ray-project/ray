@@ -70,7 +70,7 @@ public class RayServeReplicaTest {
 
       // reconfigure
       ObjectRef<Object> versionRef =
-          replicHandle.task(RayServeWrappedReplica::reconfigure, (DeploymentConfig) null).remote();
+          replicHandle.task(RayServeWrappedReplica::reconfigure, new DeploymentConfig()).remote();
       Assert.assertEquals(
           DeploymentVersion.fromProtoBytes((byte[]) (versionRef.get())).getCodeVersion(), version);
 
