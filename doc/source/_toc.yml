@@ -9,10 +9,23 @@ parts:
         title: "Getting Started"
       - file: ray-overview/installation
         title: "Installation"
-      - file: ray-overview/use-cases
-        title: "Use Cases"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
+      - file: ray-overview/use-cases
+        title: "Use Cases"
+        sections:
+          - file: ray-overview/batch_inference/index
+            title: "Batch Inference"
+            sections:
+              - file: ray-overview/batch_inference/inference
+                title: "Simple Model Inference"
+              - file: ray-overview/batch_inference/preprocessing
+                title: "Complex Preprocessing"
+              - file: ray-overview/batch_inference/examples/index
+                title: "Examples"
+                sections:
+                  - file : ray-overview/batch_inference/examples/pytorch_object_detection
+                    title: "PyTorch Object Detection Inference"
 
       - file: ray-core/walkthrough
         title: "Ray Core"

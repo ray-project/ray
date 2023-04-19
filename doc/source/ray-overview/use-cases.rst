@@ -3,64 +3,23 @@
 Ray Use Cases
 =============
 
-This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
+This page indexes common Ray use cases for scaling ML.
+It contains highlighted references to blogs, examples, and tutorials also located
+elsewhere in the Ray documentation.
 
 .. _ref-use-cases-batch-infer:
 
 Batch Inference
 ---------------
 
-Batch inference refers to generating model predictions over a set of input observations. The model could be a regression model, neural network, or simply a Python function. Ray can scale batch inference from single GPU machines to large clusters.
+Batch inference is the process of generating model predictions on a large "batch" of input data.
+Ray for batch inference works with any cloud provider and ML framework,
+and is fast and cheap for modern deep learning applications.
+It scales from single machines to large clusters with minimal code changes.
+As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray.
+To learn more about running batch inference with Ray, see the :ref:`batch inference guide<batch_inference_home>`.
 
-Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's :ref:`Batch Predictor <air-predictors>` scales predictions on batches across workers.
-
-.. figure:: /images/batch_inference.png
-  
-  Using Ray AIR's ``BatchPredictor`` for batch inference.
-
-Learn more about batch inference with the following resources.
-
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
-
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
-        :type: url
-        :text: [Tutorial] Architectures for Scalable Batch Inference with Ray
-        :classes: btn-link btn-block stretched-link scalableBatchInference
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
-        :type: url
-        :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
-        :classes: btn-link btn-block stretched-link batchActorPool
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: /ray-core/examples/batch_prediction
-        :type: ref
-        :text: [Example] Batch Prediction using Ray Core
-        :classes: btn-link btn-block stretched-link batchCore
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: /data/examples/nyc_taxi_basic_processing
-        :type: ref
-        :text: [Example] Batch Inference on NYC taxi data using Ray Data
-        :classes: btn-link btn-block stretched-link nycTaxiData
-
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: /data/examples/ocr_example
-        :type: ref
-        :text: [Example] Batch OCR processing using Ray Data
-        :classes: btn-link btn-block stretched-link batchOcr
+.. figure:: batch_inference/images/batch_inference.png
 
 .. _ref-use-cases-mmt:
 
