@@ -431,7 +431,7 @@ class TestSubmit:
                 ],
             )
             print(result.output)
-            assert result.exit_code == 1
+            check_exit_code(result, 1)
             assert "not a valid JSON string" in result.output
 
 
