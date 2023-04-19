@@ -127,7 +127,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        # TODO(ml-team): Remove in 2.7
+        # TODO(ml-team): Remove in 2.7 along with sync_config parameter
         if sync_config and sync_config.upload_dir:
             remote_storage_path = sync_config.upload_dir
 
