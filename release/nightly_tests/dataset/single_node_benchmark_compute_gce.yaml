@@ -9,9 +9,4 @@ head_node_type:
     name: head_node
     instance_type: n2-standard-16 # m5.4xlarge
 
-worker_node_types:
-    - name: worker_node
-      instance_type: n2-standard-16 # m5.4xlarge
-      max_workers: 0
-      min_workers: 0
-      use_spot: false
+worker_node_types: []
