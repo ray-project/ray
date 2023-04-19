@@ -204,13 +204,11 @@ def deploy(config_file_name: str, address: str):
         # Error deploying application
         raise
 
-    cli_logger.newline()
     cli_logger.success(
-        "\nSent deploy request successfully!\n "
-        "* Use `serve status` to check deployments' statuses.\n "
-        "* Use `serve config` to see the current config(s).\n"
+        "\nSent deploy request successfully.\n "
+        "* Use `serve status` to check applications' statuses.\n "
+        "* Use `serve config` to see the current application config(s).\n"
     )
-    cli_logger.newline()
 
 
 @cli.command(
@@ -580,7 +578,9 @@ def shutdown(address: str, yes: bool):
 
     ServeSubmissionClient(address).delete_application()
 
-    cli_logger.success("Sent shutdown request; applications will be deleted asynchronously.")
+    cli_logger.success(
+        "Sent shutdown request; applications will be deleted asynchronously."
+    )
 
 
 @cli.command(
