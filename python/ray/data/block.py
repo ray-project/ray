@@ -22,7 +22,6 @@ import numpy as np
 import ray
 from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
-from ray.data._internal.usage import record_block_format_usage
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -433,31 +432,18 @@ class BlockAccessor(Generic[T]):
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            record_block_format_usage("arrow")
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
-            record_block_format_usage("pandas")
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            record_block_format_usage("arrow")
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
-            ctx = ray.data.DatasetContext.get_current()
-            if ctx.strict_mode:
-                raise StrictModeError(
-                    f"Error validating {_truncated_repr(block)}: "
-                    "Standalone Python objects are not "
-                    "allowed in strict mode. To use Python objects in a datastream, "
-                    "wrap them in a dict of numpy arrays, e.g., "
-                    "return `{'item': np.array(batch)}` instead of just `batch`."
-                )
-            record_block_format_usage("simple")
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
