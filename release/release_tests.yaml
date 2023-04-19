@@ -4360,6 +4360,43 @@
       smoke_test:
         frequency: manual
 
+- name: stress_test_state_api_scale
+  group: core-daily-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/state_api_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_compute_large.yaml
+
+  run:
+    timeout: 3600
+    script: python stress_tests/test_state_api_scale.py
+    wait_for_nodes:
+      num_nodes: 7
+
+  smoke_test:
+    frequency: nightly
+    cluster:
+      app_config: stress_tests/state_api_app_config.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
+      script: python stress_tests/test_state_api_scale.py --smoke-test
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: stress_tests/state_api_app_config.yaml
+        cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
+
 
 - name: shuffle_20gb_with_state_api
   group: core-daily-test
