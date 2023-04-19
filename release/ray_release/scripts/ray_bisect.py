@@ -3,7 +3,7 @@ import subprocess
 import os
 import json
 import time
-from typing import Dict, List
+from typing import List, Dict, Set
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -28,7 +28,7 @@ def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
         )
         return
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
-    blamed_commit = _bisect(test, commit_lists)
+    blamed_commit = _bisect(test, commit_lists, 3)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
@@ -44,7 +44,7 @@ def _bisect(test: Test, commit_list: List[str]) -> str:
         if is_passing:
             commit_list = commit_list[middle_commit_idx:]
         else:
-            commit_list = commit_list[: middle_commit_idx + 1]
+            commit_list = commit_list[passing_inx+1:failing_inx]
     return commit_list[-1]
 
 
@@ -64,7 +64,7 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
 
 
-def _run_test(test: Test, commits: List[str]) -> Dict[str, str]:
+def _run_test(test: Test, commits: Set[str]) -> Dict[str, str]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
         _trigger_test_run(test, commit)
