@@ -2,7 +2,7 @@ cartpole-appo-vtrace-fake-gpus:
     env: CartPole-v1
     run: APPO
     stop:
-        episode_reward_mean: 150
+        sampler_results/episode_reward_mean: 150
         training_iteration: 400
     config:
         # Works for both torch and tf.

@@ -48,9 +48,6 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
-)
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_dataset_and_shards
@@ -3006,6 +3003,10 @@ class Algorithm(Trainable):
             episodes_this_iter,
             self.config.keep_per_episode_custom_metrics,
         )
+        # TODO: Don't dump sampler results into top-level.
+        results["episode_reward_mean"] = results["sampler_results"][
+            "episode_reward_mean"
+        ]
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
         results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()

@@ -2,7 +2,7 @@ pong-deterministic-rainbow:
     env: ALE/Pong-v5
     run: DQN
     stop:
-        episode_reward_mean: 20
+        sampler_results/episode_reward_mean: 20
     config:
         env_config:
             nondeterministic: False  # deterministic
