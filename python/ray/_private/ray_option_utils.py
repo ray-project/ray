@@ -20,6 +20,8 @@ class Option:
     # Type constraint of an option.
     type_constraint: Optional[Union[type, Tuple[type]]] = None
     # Value constraint of an option.
+    # The callable should return None if there is no error.
+    # Otherwise, return the error message.
     value_constraint: Optional[Callable[[Any], Optional[str]]] = None
     # Default value.
     default_value: Any = None
