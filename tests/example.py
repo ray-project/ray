@@ -47,6 +47,7 @@ class BenchmarkingActor:
 
         self.durations = []
         
+        # One process used by benchmarking actor.
         self.num_to_run = os.cpu_count() - 1
         print(f'Running {self.num_to_run} {self.tasks_or_actors}')
         self.completed = 0
