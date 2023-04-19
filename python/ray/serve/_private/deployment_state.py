@@ -8,7 +8,7 @@ import random
 import time
 import traceback
 from collections import defaultdict, OrderedDict
-from copy import copy
+from copy import copy, deepcopy
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -101,7 +101,7 @@ class DeploymentTargetState:
             version = DeploymentVersion(
                 info.version,
                 deployment_config=info.deployment_config,
-                replica_config=info.replica_config,
+                ray_actor_options=info.replica_config.ray_actor_options,
             )
 
         return cls(info, num_replicas, version, deleting)
@@ -390,17 +390,20 @@ class ActorReplicaWrapper:
 
         # Perform auto method name translation for java handles.
         # See https://github.com/ray-project/ray/issues/21474
-        user_config = self._format_user_config(
-            deployment_info.deployment_config.user_config
+        deployment_config = copy(deployment_info.deployment_config)
+        deployment_config.user_config = self._format_user_config(
+            deployment_config.user_config
         )
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(user_config)
+            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                deployment_config
+            )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
             self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                user_config,
+                deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
                 # asyncio loop. If that happens before `is_allocated` is executed,
@@ -417,14 +420,17 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def update_user_config(self, user_config: Any):
+    def reconfigure(self, deployment_config: DeploymentConfig):
         """
         Update user config of existing actor behind current
         DeploymentReplica instance.
         """
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            self._format_user_config(user_config)
+        # Call into replica actor with updated user config and
+        # graceful_shutdown_wait_loop_s
+        deployment_config.user_config = self._format_user_config(
+            deployment_config.user_config
         )
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(deployment_config)
 
     def recover(self):
         """
@@ -763,19 +769,30 @@ class DeploymentReplica(VersionedReplica):
         self._prev_slow_startup_warning_time = time.time()
         self._version = version
 
-    def update_user_config(self, user_config: Any):
+    def reconfigure(self, version: DeploymentVersion):
         """
-        Update user config of existing actor behind current
+        Update deployment config of existing actor behind current
         DeploymentReplica instance.
         """
-        self._actor.update_user_config(user_config)
-        deployment_config = copy(self._version.deployment_config)
-        deployment_config.user_config = user_config
-        self._version = DeploymentVersion(
-            self._version.code_version,
-            deployment_config,
-            self._version.replica_config,
+        # Update options from deployment config that are tracked in ActorReplicaWrapper
+        self._actor._max_concurrent_queries = (
+            version.deployment_config.max_concurrent_queries
         )
+        self._actor._graceful_shutdown_timeout_s = (
+            version.deployment_config.graceful_shutdown_timeout_s
+        )
+        self._actor._health_check_period_s = (
+            version.deployment_config.health_check_period_s
+        )
+        self._actor._health_check_timeout_s = (
+            version.deployment_config.health_check_timeout_s
+        )
+
+        # Call into replica actor reconfigure() with updated config options
+        if self._version.reconfigure_actor_hash != version.reconfigure_actor_hash:
+            self._actor.reconfigure(version.deployment_config)
+
+        self._version = deepcopy(version)
 
     def recover(self):
         """
@@ -1269,30 +1286,30 @@ class DeploymentState:
         )
         replicas_stopped = False
         code_version_changes = 0
-        user_config_changes = 0
+        reconfigure_changes = 0
         for replica in replicas_to_update:
-            # If only the user_config is a mismatch, we update it dynamically
-            # without restarting the replica.
+            # If code version or ray actor options change, stop the replica. A new one
+            # with the correct version will be started later as part of the normal
+            # scale-up process.
             if (
-                replica.version.user_config_hash
-                != self._target_state.version.user_config_hash
-                and replica.version.hash_excluding_user_config
-                == self._target_state.version.hash_excluding_user_config
+                replica.version.code_version != self._target_state.version.code_version
+                or replica.version.ray_actor_options_hash
+                != self._target_state.version.ray_actor_options_hash
             ):
-                user_config_changes += 1
-                replica.update_user_config(self._target_state.version.user_config)
+                code_version_changes += 1
+                replica.stop()
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                replicas_stopped = True
+            # Otherwise, only certain options in deployment config is a mismatch, so we
+            # update it dynamically without restarting the replica.
+            else:
+                reconfigure_changes += 1
+                replica.reconfigure(self._target_state.version)
                 self._replicas.add(ReplicaState.UPDATING, replica)
                 logger.debug(
                     "Adding UPDATING to replica_tag: "
                     f"{replica.replica_tag}, deployment_name: {self._name}"
                 )
-            # Otherwise, stop the replica. A new one with the correct version will be
-            # started later as part of the normal scale-up process.
-            else:
-                code_version_changes += 1
-                replica.stop()
-                self._replicas.add(ReplicaState.STOPPING, replica)
-                replicas_stopped = True
 
         if code_version_changes > 0:
             logger.info(
@@ -1300,11 +1317,10 @@ class DeploymentState:
                 f"deployment '{self._name}' with outdated versions."
             )
 
-        if user_config_changes > 0:
+        if reconfigure_changes > 0:
             logger.info(
-                f"Updating {user_config_changes} replicas of "
-                f"deployment '{self._name}' with outdated "
-                f"user_configs."
+                f"Updating {reconfigure_changes} replicas of deployment '{self._name}' "
+                "with outdated deployment configs."
             )
             # Record user config lightweight update
             record_extra_usage_tag(TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED, "True")

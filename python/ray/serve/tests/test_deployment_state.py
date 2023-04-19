@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import copy
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -123,14 +122,12 @@ class MockReplicaActorWrapper:
         self.version = version
         self.deployment_info = deployment_info
 
-    def update_user_config(self, user_config: Any):
+    def reconfigure(self, deployment_config: Any):
         self.started = True
-        deployment_config = copy.copy(self.version.deployment_config)
-        deployment_config.user_config = user_config
         self.version = DeploymentVersion(
             self.version.code_version,
             deployment_config,
-            self.version.replica_config,
+            self.version.ray_actor_options,
         )
 
     def recover(self):
@@ -200,16 +197,14 @@ def deployment_info(
         code_version = get_random_letters()
 
     version = DeploymentVersion(
-        code_version, info.deployment_config, info.replica_config
+        code_version, info.deployment_config, info.replica_config.ray_actor_options
     )
 
     return info, version
 
 
 def deployment_version(code_version) -> DeploymentVersion:
-    return DeploymentVersion(
-        code_version, DeploymentConfig(), ReplicaConfig.create(lambda x: x, (), {}, {})
-    )
+    return DeploymentVersion(code_version, DeploymentConfig(), {})
 
 
 class MockTimer:
@@ -260,11 +255,7 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
     if version is None:
-        version = DeploymentVersion(
-            get_random_letters(),
-            DeploymentConfig(),
-            ReplicaConfig.create(lambda x: x, (), {}, {}),
-        )
+        version = DeploymentVersion(get_random_letters(), DeploymentConfig(), {})
 
     class MockVersionedReplica(VersionedReplica):
         def __init__(self, version: DeploymentVersion):
