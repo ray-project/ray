@@ -67,6 +67,7 @@ def test_load_from_path():
 def test_from_directory():
     print("Begin tests: \n")
     with tempfile.TemporaryDirectory() as tmpdir:
+        raise RuntimeError("bbb")
         print("tmpdir", str(tmpdir))
         model = Net(input_dim=3, output_dim=3)
 
@@ -80,7 +81,6 @@ def test_from_directory():
         )
         print("begin fitting \n")
         trainer.fit(model=model, train_dataloaders=dataloader)
-        raise RuntimeError("bbb")
         print("save checkpoint \n")
         trainer.save_checkpoint(f"{tmpdir}/{MODEL_KEY}")
 
