@@ -80,11 +80,11 @@ def test_from_directory():
         )
         print("begin fitting \n")
         trainer.fit(model=model, train_dataloaders=dataloader)
+        raise RuntimeError("bbb")
         print("save checkpoint \n")
         trainer.save_checkpoint(f"{tmpdir}/{MODEL_KEY}")
 
         # Load the checkpoint from directory
-        raise RuntimeError("bbb")
         print("loading checkpoint \n")
         lightning_checkpoint = LightningCheckpoint.from_directory(tmpdir)
 
