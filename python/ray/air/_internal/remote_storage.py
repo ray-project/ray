@@ -131,8 +131,9 @@ def get_fs_and_path(
     if not pyarrow:
         return None, None
 
-    if is_local_path(uri):
-        # Append protocol such that the downstream operations work
+    scheme = urllib.parse.urlparse(uri).scheme
+    if is_local_path(uri) and not scheme:
+        # Append local filesys scheme such that the downstream operations work
         # properly on Linux and Windows.
         uri = "file://" + pathlib.Path(uri).as_posix()
 
