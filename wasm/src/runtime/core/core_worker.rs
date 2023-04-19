@@ -46,6 +46,7 @@ extern "C" {
     pub fn CoreWorkerProcessOptions_SetRuntimeEnvHash(runtime_env_hash: i32);
     pub fn CoreWorkerProcessOptions_SetSerializedJobConfig(buf: *const u8, len: usize);
     pub fn CoreWorkerProcessOptions_SetTaskExecutionCallback();
+    pub fn CoreWorkerProcessOptions_SetGcsOptions();
 
     // TODO: more stuff
     pub fn CoreWorkerProcessOptions_UpdateGcsClientOptions(gcs_address: *const u8, len: usize);
@@ -173,9 +174,9 @@ extern "C" {
     pub fn TaskArg_Vec_Destroy(task_args: *mut c_void);
     pub fn TaskArg_Vec_PushByValue(
         task_args: *mut c_void,
-        buf: *mut u8,
+        buf: *const u8,
         len: usize,
-        meta: *mut u8,
+        meta: *const u8,
         meta_len: usize,
     ) -> i32;
 

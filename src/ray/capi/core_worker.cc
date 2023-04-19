@@ -158,10 +158,11 @@ Status ExecuteTask(
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
     bool is_reattempt) {
+  RAY_LOG(INFO) << "ExecuteTask called";
   if (execute_task_function == nullptr) {
     return ray::Status::Invalid("execute_task_function is not set");
   }
-  RAY_LOG(INFO) << "ExecuteTask called";
+
   // TODO: more stuff here, we need to convert the arguments to a TaskExecutionInfo
   execute_task_function((TaskExecutionInfo *)nullptr);
   return ray::Status::OK();
@@ -280,6 +281,11 @@ void CoreWorkerProcessOptions_SetSerializedJobConfig(const uint8_t *buf, size_t 
 // set the task execution callback
 void CoreWorkerProcessOptions_SetTaskExecutionCallback() {
   options.task_execution_callback = ExecuteTask;
+}
+
+// set the gcs client options
+void CoreWorkerProcessOptions_SetGcsOptions() {
+  options.gcs_options = client_options;
 }
 
 // TODO: more stuff
@@ -499,6 +505,8 @@ int CoreWorker_SubmitTask(void *ray_function,
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+
   auto return_refs =
       core_worker.SubmitTask(*(RayFunction *)ray_function,
                              *(std::vector<std::unique_ptr<TaskArg>> *)task_args_vec,
@@ -715,8 +723,10 @@ int TaskArg_Vec_PushByValue(void *task_args,
     return -1;
   }
   // convert data and meta to LocalMemoryBuffers
-  auto data_buffer = std::make_shared<LocalMemoryBuffer>(data, data_len);
-  auto metadata_buffer = std::make_shared<LocalMemoryBuffer>(metadata, metadata_len);
+  auto data_buffer =
+      std::make_shared<LocalMemoryBuffer>(data, data_len, true/* copy data */);
+  auto metadata_buffer =
+      metadata ? std::make_shared<LocalMemoryBuffer>(metadata, metadata_len) : nullptr;
 
   auto task_arg = std::make_unique<TaskArgByValue>(std::make_shared<RayObject>(
       data_buffer, metadata_buffer, std::vector<rpc::ObjectReference>()));

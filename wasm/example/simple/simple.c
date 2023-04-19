@@ -2,12 +2,15 @@
 
 __attribute__((import_module("ray"), import_name("test"))) void test();
 
+__attribute__((import_module("ray"), import_name("sleep"))) void sleep(int);
+
 __attribute__((import_module("ray"), import_name("call"))) int rcall(void *, ...);
 
-int my_func() { return 0; }
+int test2(int a, short b, char c, float d) { return 0; }
 
 int _start() {
   test();
-  int res = rcall(my_func, 0x1234, 0x5678, 0x9abc, 0xdef0);
+  int res = rcall(test2, 0x789abcd, 0x1234, 'A', 0.1);
+  sleep(10);
   return res;
 }

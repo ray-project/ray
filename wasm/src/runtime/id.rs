@@ -49,6 +49,13 @@ impl ObjectID {
             id: [0; OBJECT_ID_SIZE],
         }
     }
+
+    pub fn nil() -> ObjectID {
+        static NIL_OBJECT_ID: ObjectID = ObjectID {
+            id: [0; OBJECT_ID_SIZE],
+        };
+        NIL_OBJECT_ID
+    }
 }
 
 impl Base<ObjectID> for ObjectID {
@@ -69,6 +76,7 @@ impl Base<ObjectID> for ObjectID {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct UniqueID {
     pub id: [u8; UNIQUE_ID_SIZE],
 }
@@ -78,6 +86,13 @@ impl UniqueID {
         UniqueID {
             id: [0; UNIQUE_ID_SIZE],
         }
+    }
+
+    pub fn nil() -> UniqueID {
+        static NIL_UNIQUE_ID: UniqueID = UniqueID {
+            id: [0; UNIQUE_ID_SIZE],
+        };
+        NIL_UNIQUE_ID
     }
 }
 
@@ -99,6 +114,7 @@ impl Base<UniqueID> for UniqueID {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct ActorID {
     pub id: [u8; ACTOR_ID_SIZE],
 }
@@ -108,6 +124,13 @@ impl ActorID {
         ActorID {
             id: [0; ACTOR_ID_SIZE],
         }
+    }
+
+    pub fn nil() -> ActorID {
+        static NIL_ACTOR_ID: ActorID = ActorID {
+            id: [0; ACTOR_ID_SIZE],
+        };
+        NIL_ACTOR_ID
     }
 }
 

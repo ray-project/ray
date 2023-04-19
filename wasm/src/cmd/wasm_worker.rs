@@ -49,8 +49,11 @@ async fn main() -> Result<()> {
     }));
 
     let args = util::WorkerParameters::parse();
-    let cfg = runtime::RayConfig::new();
-
+    let mut cfg = runtime::RayConfig::new();
+    
+    // we need to run in worker mode
+    cfg.is_worker = true;
+ 
     let rt = init(&cfg, &args).await.unwrap();
     run_task_loop(rt).await.unwrap();
 

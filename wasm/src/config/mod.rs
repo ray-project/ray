@@ -280,7 +280,15 @@ impl ConfigInternal {
     }
 
     fn set_bootstrap_address(&mut self, address: &str) {
-        self.bootstrap_ip = String::from(address);
+        // separate ip and port if address is in format "ip:port"
+        let address_vec: Vec<&str> = address.split(':').collect();
+        if address_vec.len() == 2 {
+            self.bootstrap_ip = String::from(address_vec[0]);
+            // we do not set bootstrap port here
+            // self.bootstrap_port = address_vec[1].parse::<u16>().unwrap();
+        } else {
+            self.bootstrap_ip = String::from(address);
+        }
     }
 
     pub fn update_session_dir(&mut self, dir: &str) {

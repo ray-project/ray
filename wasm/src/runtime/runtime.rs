@@ -17,12 +17,13 @@ use crate::config::RunMode;
 use crate::engine::WasmEngine;
 use crate::runtime::common_proto::WorkerType;
 use crate::runtime::ClusterHelper;
+use crate::runtime::InvocationSpec;
 use crate::runtime::ObjectStore;
 use crate::runtime::TaskExecutor;
 use crate::util::get_node_ip_address;
 use std::sync::{Arc, RwLock};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use libc::c_void;
 use tracing::{debug, info};
 
@@ -51,12 +52,7 @@ pub trait RayRuntime {
 
     // task submit related
     fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>>;
-    fn call(
-        &mut self,
-        remote_func_holder: RemoteFunctionHolder,
-        args: Vec<Box<dyn TaskArg>>,
-        task_options: CallOptions,
-    ) -> Result<Vec<u8>>;
+    fn call(&self, invoke_spec: &InvocationSpec, task_options: &CallOptions) -> Result<Vec<u8>>;
 }
 
 pub struct RayRuntimeFactory {}
@@ -156,13 +152,9 @@ impl RayRuntime for RayRuntimeClusterMode {
         unimplemented!()
     }
 
-    fn call(
-        &mut self,
-        remote_func_holder: RemoteFunctionHolder,
-        args: Vec<Box<dyn TaskArg>>,
-        task_options: CallOptions,
-    ) -> Result<Vec<u8>> {
-        unimplemented!()
+    fn call(&self, invoke_spec: &InvocationSpec, task_options: &CallOptions) -> Result<Vec<u8>> {
+        let obj_id = self.task_submitter.submit_task(invoke_spec, task_options);
+        Ok(vec![])
     }
 }
 
@@ -228,12 +220,7 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         unimplemented!()
     }
 
-    fn call(
-        &mut self,
-        remote_func_holder: RemoteFunctionHolder,
-        args: Vec<Box<dyn TaskArg>>,
-        task_options: CallOptions,
-    ) -> Result<Vec<u8>> {
+    fn call(&self, invoke_spec: &InvocationSpec, task_options: &CallOptions) -> Result<Vec<u8>> {
         todo!()
     }
 }

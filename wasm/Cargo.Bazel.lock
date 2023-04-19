@@ -1,5 +1,5 @@
 {
-  "checksum": "d65d6af6e3f274f47414c82d687a8add5c65537a366bed6da7001ff7c4a587fd",
+  "checksum": "650498b53f9a94658fd892f9aede42d2d8a4e2103b733b13d5a3ddc3adfad0da",
   "crates": {
     "addr2line 0.19.0": {
       "name": "addr2line",
@@ -4068,6 +4068,71 @@
       },
       "license": "MIT"
     },
+    "num-traits 0.2.15": {
+      "name": "num-traits",
+      "version": "0.2.15",
+      "repository": {
+        "Http": {
+          "url": "https://crates.io/api/v1/crates/num-traits/0.2.15/download",
+          "sha256": "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "num_traits",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        },
+        {
+          "BuildScript": {
+            "crate_name": "build_script_build",
+            "crate_root": "build.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "num_traits",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": [
+          "std"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "num-traits 0.2.15",
+              "target": "build_script_build"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2015",
+        "version": "0.2.15"
+      },
+      "build_script_attrs": {
+        "data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "autocfg 1.1.0",
+              "target": "autocfg"
+            }
+          ],
+          "selects": {}
+        }
+      },
+      "license": "MIT OR Apache-2.0"
+    },
     "num_cpus 1.15.0": {
       "name": "num_cpus",
       "version": "1.15.0",
@@ -5683,6 +5748,62 @@
         "version": "0.6.29"
       },
       "license": "MIT OR Apache-2.0"
+    },
+    "rmp 0.8.11": {
+      "name": "rmp",
+      "version": "0.8.11",
+      "repository": {
+        "Http": {
+          "url": "https://crates.io/api/v1/crates/rmp/0.8.11/download",
+          "sha256": "44519172358fd6d58656c86ab8e7fbc9e1490c3e8f14d35ed78ca0dd07403c9f"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "rmp",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "rmp",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": [
+          "default",
+          "std"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "byteorder 1.4.3",
+              "target": "byteorder"
+            },
+            {
+              "id": "num-traits 0.2.15",
+              "target": "num_traits"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2018",
+        "proc_macro_deps": {
+          "common": [
+            {
+              "id": "paste 1.0.12",
+              "target": "paste"
+            }
+          ],
+          "selects": {}
+        },
+        "version": "0.8.11"
+      },
+      "license": "MIT"
     },
     "rustc-demangle 0.1.22": {
       "name": "rustc-demangle",
@@ -8149,6 +8270,10 @@
             {
               "id": "prost-types 0.11.8",
               "target": "prost_types"
+            },
+            {
+              "id": "rmp 0.8.11",
+              "target": "rmp"
             },
             {
               "id": "serde 1.0.158",

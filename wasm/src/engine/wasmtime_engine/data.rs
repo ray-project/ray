@@ -72,3 +72,15 @@ pub fn wasmtime_type(ty: &WasmType) -> wasmtime::ValType {
         WasmType::FuncRef => ValType::FuncRef,
     }
 }
+
+pub fn from_wasmtime_type(ty: &ValType) -> WasmType {
+    match ty {
+        ValType::I32 => WasmType::I32,
+        ValType::I64 => WasmType::I64,
+        ValType::F32 => WasmType::F32,
+        ValType::F64 => WasmType::F64,
+        ValType::V128 => WasmType::V128,
+        ValType::ExternRef => WasmType::ExternRef,
+        ValType::FuncRef => WasmType::FuncRef,
+    }
+}

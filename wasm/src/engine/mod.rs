@@ -20,6 +20,8 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use crate::engine::wasmtime_engine::WasmtimeEngine;
+use crate::runtime::InvocationSpec;
+use crate::runtime::RemoteFunctionHolder;
 use crate::{engine::wasmedge_engine::WasmEdgeEngine, runtime::RayRuntime};
 
 use anyhow::{anyhow, Result};
@@ -116,6 +118,95 @@ pub struct Hostcall {
     pub func: fn(&mut dyn WasmContext, &[WasmValue]) -> Result<Vec<WasmValue>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct WasmFunc {
+    pub name: String,
+    pub module: String,
+    pub params: Vec<WasmType>,
+    pub results: Vec<WasmType>,
+}
+
+impl WasmFunc {
+    /// Get the size of the data needed by all the parameters
+    pub fn params_data_size(&self) -> Result<usize> {
+        let mut total_size = 0;
+        for i in self.params.iter() {
+            match i {
+                WasmType::I32 => {
+                    total_size += 4;
+                }
+                WasmType::I64 => {
+                    total_size += 8;
+                }
+                WasmType::F32 => {
+                    total_size += 4;
+                }
+                WasmType::F64 => {
+                    total_size += 8;
+                }
+                _ => {
+                    return Err(anyhow!("unsupported argument type"));
+                }
+            }
+        }
+        Ok(total_size)
+    }
+
+    /// Create a vector of all the parsed parameters from raw memory data
+    pub fn params_convert(&self, data: &[u8]) -> Result<Vec<WasmValue>> {
+        if data.len() != self.params_data_size()? {
+            return Err(anyhow!("invalid data size"));
+        }
+        // iterate all arguments and put them into a arguments vector
+        let mut args = vec![];
+        let mut param_offset = 0;
+        for i in self.params.iter() {
+            match i {
+                WasmType::I32 => {
+                    // convert 4 bytes to i32
+                    let val = i32::from_ne_bytes(
+                        data[param_offset..param_offset + 4].try_into().unwrap(),
+                    );
+                    let arg = WasmValue::I32(val);
+                    args.push(arg);
+                    param_offset += 4;
+                }
+                WasmType::I64 => {
+                    // convert 8 bytes to i64
+                    let val = i64::from_ne_bytes(
+                        data[param_offset..param_offset + 8].try_into().unwrap(),
+                    );
+                    let arg = WasmValue::I64(val);
+                    args.push(arg);
+                    param_offset += 8;
+                }
+                WasmType::F32 => {
+                    // convert 4 bytes to u32
+                    let val = u32::from_ne_bytes(
+                        data[param_offset..param_offset + 4].try_into().unwrap(),
+                    );
+                    let arg = WasmValue::F32(val);
+                    args.push(arg);
+                    param_offset += 4;
+                }
+                WasmType::F64 => {
+                    // convert 8 bytes to u64
+                    let val = u64::from_ne_bytes(
+                        data[param_offset..param_offset + 8].try_into().unwrap(),
+                    );
+                    let arg = WasmValue::F64(val);
+                    args.push(arg);
+                    param_offset += 8;
+                }
+                _ => {
+                    return Err(anyhow!("unsupported argument type"));
+                }
+            }
+        }
+        Ok(args)
+    }
+}
+
 impl Hostcalls {
     pub fn new(module_name: &str, runtime: Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>) -> Self {
         Hostcalls {
@@ -155,6 +246,10 @@ impl Hostcalls {
 
 pub trait WasmContext {
     fn get_memory_region(&mut self, off: usize, len: usize) -> Result<&[u8]>;
-    fn resolve_symbol(&self, func_ref: usize) -> Result<&str>;
-    fn invoke(&mut self, func_name: &str, args: &[WasmValue]) -> Result<Vec<WasmValue>>;
+    fn get_func_ref(&mut self, func_idx: u32) -> Result<WasmFunc>;
+    fn invoke(
+        &mut self,
+        remote_func: &RemoteFunctionHolder,
+        args: &[WasmValue],
+    ) -> Result<Vec<WasmValue>>;
 }

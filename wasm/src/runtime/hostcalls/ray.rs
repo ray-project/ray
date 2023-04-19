@@ -13,9 +13,13 @@
 // limitations under the License.
 
 use std::sync::Arc;
+use std::thread::sleep;
 use std::{sync::RwLock, vec};
 
+use crate::runtime::common_proto::TaskType;
+
 use crate::engine::WasmEngine;
+use crate::runtime::RemoteFunctionHolder;
 use crate::{
     engine::{Hostcalls, WasmContext, WasmType, WasmValue},
     runtime::RayRuntime,
@@ -30,6 +34,9 @@ pub fn register_ray_hostcalls(
     let mut hostcalls = Hostcalls::new("ray", runtime.clone());
     hostcalls
         .add_hostcall("test", vec![], vec![], hc_test)
+        .unwrap();
+    hostcalls
+        .add_hostcall("sleep", vec![WasmType::I32], vec![], hc_sleep)
         .unwrap();
     hostcalls
         .add_hostcall("init", vec![], vec![], hc_init)
@@ -63,6 +70,16 @@ fn hc_test(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVa
     Ok(vec![])
 }
 
+fn hc_sleep(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+    let sleep_time = match &params[0] {
+        WasmValue::I32(v) => {
+            sleep(std::time::Duration::from_secs(*v as u64));
+        }
+        _ => return Err(anyhow!("invalid param")),
+    };
+    Ok(vec![])
+}
+
 fn hc_init(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     Err(anyhow!("not implemented"))
 }
@@ -81,20 +98,38 @@ fn hc_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
 
 fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     debug!("call: {:?}", params);
-    let func_ref = match &params[0] {
-        WasmValue::I32(v) => v,
+    let func_ref_val = match &params[0] {
+        WasmValue::I32(v) => v.clone(),
         _ => return Err(anyhow!("invalid param")),
     };
+    let func = ctx.get_func_ref(func_ref_val as u32).unwrap();
+
     let args_ptr = match &params[1] {
-        WasmValue::I32(v) => v,
+        WasmValue::I32(v) => v.clone(),
         _ => return Err(anyhow!("invalid param")),
     };
-    match ctx.get_memory_region(*args_ptr as usize, 10) {
+
+    match ctx.get_memory_region(args_ptr as usize, func.params_data_size().unwrap()) {
         Ok(v) => {
             info!(
-                "call: func_ref: {}, args_ptr: {:#08x} content: {:x?}",
-                func_ref, args_ptr, v
+                "call: func_ref_val: {}, args_ptr: {:#08x} content: {:x?}",
+                func_ref_val, args_ptr, v
             );
+            let args = func.params_convert(v).unwrap();
+            info!("call: args: {:x?}", args);
+
+            let remote_func = RemoteFunctionHolder::new_from_func(func);
+            let result = ctx.invoke(&remote_func, args.as_slice());
+            match result {
+                Ok(v) => {
+                    // TODO: return value
+                    return Ok(vec![WasmValue::I32(0)]);
+                }
+                Err(e) => {
+                    error!("call: error: {:?}", e);
+                    return Ok(vec![WasmValue::I32(-1)]);
+                }
+            }
         }
         Err(e) => {
             error!("cannot access memory region: {}", e);

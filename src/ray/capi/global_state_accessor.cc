@@ -26,8 +26,8 @@ static GcsClientOptions client_options;
 extern "C" {
 
 void GcsClientOptions_Update(const uint8_t *gcs_address, size_t gcs_address_len) {
-  client_options =
-      GcsClientOptions(std::string((const char *)gcs_address, gcs_address_len));
+  auto address =  std::string((const char *)gcs_address, gcs_address_len);
+  client_options = GcsClientOptions(address);
 }
 
 void *GlobalStateAccessor_Create() {

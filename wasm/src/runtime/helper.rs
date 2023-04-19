@@ -162,11 +162,15 @@ impl ClusterHelper {
         bootstrap_address: &str,
         node_ip: &str,
     ) {
+        debug!("gcs client address: {}", bootstrap_address);
         unsafe {
             CoreWorkerProcessOptions_UpdateGcsClientOptions(
                 bootstrap_address.as_ptr(),
                 bootstrap_address.len(),
             );
+            // link the static gcs client options to the client option field in
+            // core worker process options
+            CoreWorkerProcessOptions_SetGcsOptions();
         }
         // get worker type and set it to the config
         {

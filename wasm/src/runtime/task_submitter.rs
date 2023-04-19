@@ -12,17 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::{
-    common_proto::{Language, TaskArg as TaskArgProto, TaskType},
-    core::core_worker::{
-        CoreWorker_SubmitActorTask, CoreWorker_SubmitTask, RayFunction_BuildWasm,
-        RayFunction_Create, RayFunction_Destroy, TaskArg_Vec_Create, TaskArg_Vec_Destroy,
-        TaskOptions_AddResource, TaskOptions_Create, TaskOptions_Destroy, TaskOptions_SetName,
-        TaskOptions_SetSerializedRuntimeEnvInfo,
+use crate::{
+    engine::{WasmFunc, WasmValue},
+    runtime::{
+        common_proto::{Language, TaskArg as TaskArgProto, TaskType},
+        core::core_worker::{
+            CoreWorker_SubmitActorTask, CoreWorker_SubmitTask, RayFunction_BuildWasm,
+            RayFunction_Create, RayFunction_Destroy, TaskArg_Vec_Create, TaskArg_Vec_Destroy,
+            TaskArg_Vec_PushByValue, TaskOptions_AddResource, TaskOptions_Create,
+            TaskOptions_Destroy, TaskOptions_SetName, TaskOptions_SetSerializedRuntimeEnvInfo,
+        },
+        id::{ActorID, ObjectID},
     },
-    id::{ActorID, ObjectID},
 };
+use core::panic;
+use std::any::Any;
 use std::collections::HashMap;
+use tracing::{debug, error, info};
+
+use rmp::encode::{write_i32, write_i64, write_u32, write_u64};
 
 use super::core::core_worker::{CoreWorker_GetActor, RayFunction};
 
@@ -44,13 +52,14 @@ pub enum PlacementGroupState {
     Unrecognized = -1,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PlacementGroupCreationOptions {
     pub name: String,
     pub bundles: Vec<HashMap<String, f64>>,
     pub strategy: PlacementStrategy,
 }
 
+#[derive(Debug, Clone)]
 pub struct PlacementGroup {
     pub id: String,
     pub options: PlacementGroupCreationOptions,
@@ -106,6 +115,7 @@ impl PlacementGroup {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CallOptions {
     pub name: String,
     pub resources: HashMap<String, f64>,
@@ -114,11 +124,24 @@ pub struct CallOptions {
     pub serialized_runtime_env_info: String,
 }
 
+impl CallOptions {
+    pub fn new() -> Self {
+        Self {
+            name: String::new(),
+            resources: HashMap::new(),
+            group: PlacementGroup::new(),
+            bundle_index: 0,
+            serialized_runtime_env_info: String::new(),
+        }
+    }
+}
+
 pub enum TaskSubmitterType {
     Native,
     Local,
 }
 
+#[derive(Debug, Clone)]
 pub struct RemoteFunctionHolder {
     pub module_name: String,
     pub function_name: String,
@@ -127,11 +150,20 @@ pub struct RemoteFunctionHolder {
 }
 
 impl RemoteFunctionHolder {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             module_name: String::new(),
             function_name: String::new(),
             class_name: String::new(),
+            lang_type: Language::Wasm,
+        }
+    }
+
+    pub fn new_from_func(func: WasmFunc) -> Self {
+        Self {
+            module_name: func.module,
+            function_name: func.name,
+            class_name: "".to_string(),
             lang_type: Language::Wasm,
         }
     }
@@ -142,16 +174,38 @@ pub trait TaskArg {
 }
 
 pub struct InvocationSpec {
-    task_type: TaskType,
-    name: String,
-    actor_id: ActorID,
-    actor_counter: i32,
-    remote_func_holder: RemoteFunctionHolder,
-    args: Vec<Box<dyn TaskArg>>,
+    pub task_type: TaskType,
+    pub name: String,
+    pub actor_id: ActorID,
+    pub actor_counter: i32,
+    pub remote_func_holder: RemoteFunctionHolder,
+    pub args: Vec<WasmValue>,
+}
+
+impl InvocationSpec {
+    pub fn new(
+        task_type: TaskType,
+        remote_func_holder: RemoteFunctionHolder,
+        args: &[WasmValue],
+        actor_id: Option<ActorID>,
+    ) -> Self {
+        let actor_id = match actor_id {
+            Some(actor_id) => actor_id,
+            None => ActorID::nil(),
+        };
+        InvocationSpec {
+            task_type,
+            name: "".to_string(),
+            actor_id,
+            actor_counter: 0,
+            remote_func_holder,
+            args: args.to_vec(),
+        }
+    }
 }
 
 pub trait TaskSubmitter {
-    fn submit_task(&mut self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID;
+    fn submit_task(&self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID;
     fn create_actor(&mut self, invocation: &InvocationSpec) -> ActorID;
     fn submit_actor_task(
         &mut self,
@@ -180,7 +234,7 @@ impl TaskSubmitterFactory {
 pub struct NativeTaskSubmitter {}
 
 impl TaskSubmitter for NativeTaskSubmitter {
-    fn submit_task(&mut self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID {
+    fn submit_task(&self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID {
         unsafe {
             let mut obj_id: ObjectID = ObjectID::new();
             let mut obj_id_ptr = obj_id.id.as_mut_ptr();
@@ -217,8 +271,48 @@ impl TaskSubmitter for NativeTaskSubmitter {
                 .unwrap();
 
             let mut task_args = TaskArg_Vec_Create();
+            let arg_len = invocation.args.len();
+            let mut bufs: Vec<Vec<_>> = Vec::with_capacity(arg_len);
             for arg in invocation.args.iter() {
-                // TODO: implement this
+                let mut tmpbuf = vec![];
+                match arg {
+                    crate::engine::WasmValue::I32(v) => {
+                        write_i32(&mut tmpbuf, *v).unwrap();
+                    }
+                    crate::engine::WasmValue::I64(v) => {
+                        write_i64(&mut tmpbuf, *v).unwrap();
+                    }
+                    crate::engine::WasmValue::F32(v) => {
+                        write_u32(&mut tmpbuf, *v).unwrap();
+                    }
+                    crate::engine::WasmValue::F64(v) => {
+                        write_u64(&mut tmpbuf, *v).unwrap();
+                    }
+                    crate::engine::WasmValue::V128(_) => {
+                        unimplemented!("V128 is not supported yet");
+                    }
+                    crate::engine::WasmValue::FuncRef(_) => {
+                        unimplemented!("FuncRef is not supported yet");
+                    }
+                    crate::engine::WasmValue::ExternRef(_) => {
+                        unimplemented!("ExternRef is not supported yet");
+                    }
+                }
+                bufs.push(tmpbuf);
+            }
+            // print the buffer
+            info!("bufs: {:x?}", bufs);
+            for buf in bufs.iter() {
+                let rtn = TaskArg_Vec_PushByValue(
+                    task_args,
+                    buf.as_ptr() as *const u8,
+                    buf.len(),
+                    0 as *mut u8,
+                    0,
+                );
+                if rtn != 0 {
+                    panic!("Failed to push task arg");
+                }
             }
 
             if invocation.task_type == TaskType::ActorTask {
@@ -325,7 +419,7 @@ impl NativeTaskSubmitter {
 pub struct LocalTaskSubmitter {}
 
 impl TaskSubmitter for LocalTaskSubmitter {
-    fn submit_task(&mut self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID {
+    fn submit_task(&self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID {
         unimplemented!()
     }
 

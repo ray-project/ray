@@ -12,15 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::runtime::common_proto::TaskType;
+use crate::runtime::CallOptions;
 use crate::{
-    engine::{Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue},
-    runtime::RayRuntime,
+    engine::{
+        Hostcalls, WasmEngine, WasmFunc, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
+    },
+    runtime::{InvocationSpec, RayRuntime, RemoteFunctionHolder},
 };
 use anyhow::{anyhow, Result};
 use std::{
     collections::HashMap,
+    fmt::format,
     sync::{Arc, RwLock},
 };
+use tokio::sync::watch::error;
 use tracing::{debug, info};
 use wasmtime::{
     AsContextMut, Caller, Engine, FuncType, Instance, Linker, Module, Store, Val, ValType,
@@ -291,11 +297,50 @@ impl WasmContext for WasmtimeContext<'_> {
         Ok(&data[off..off + len])
     }
 
-    fn resolve_symbol(&self, func_ref: usize) -> Result<&str> {
-        todo!()
+    fn get_func_ref(&mut self, func_idx: u32) -> Result<WasmFunc> {
+        let func_tbl = self
+            .caller
+            .get_export("__indirect_function_table")
+            .unwrap()
+            .into_table()
+            .unwrap();
+        let binding = func_tbl
+            .get(self.caller.as_context_mut(), func_idx)
+            .unwrap();
+        let func = binding.unwrap_funcref().unwrap();
+        let params: Vec<WasmType> = func
+            .ty(self.caller.as_context_mut())
+            .params()
+            .map(|p| from_wasmtime_type(&p))
+            .collect();
+        let results: Vec<WasmType> = func
+            .ty(self.caller.as_context_mut())
+            .results()
+            .map(|p| from_wasmtime_type(&p))
+            .collect();
+        Ok(WasmFunc {
+            name: format!("{}", func_idx), // TODO: we need to get the real name
+            module: "unknown".to_string(),
+            params,
+            results,
+        })
     }
 
-    fn invoke(&mut self, func_name: &str, args: &[WasmValue]) -> Result<Vec<WasmValue>> {
-        todo!()
+    fn invoke(
+        &mut self,
+        remote_func_holder: &RemoteFunctionHolder,
+        args: &[WasmValue],
+    ) -> Result<Vec<WasmValue>> {
+        let call_opt = CallOptions::new();
+        let invoke_spec =
+            InvocationSpec::new(TaskType::NormalTask, remote_func_holder.clone(), args, None);
+        let result = self.runtime.read().unwrap().call(&invoke_spec, &call_opt);
+        match result {
+            Ok(result) => {
+                // TODO: process result
+                Ok(vec![WasmValue::I32(0)])
+            }
+            Err(e) => Err(anyhow!("Failed to invoke remote function: {}", e)),
+        }
     }
 }

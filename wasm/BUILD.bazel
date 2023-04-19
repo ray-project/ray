@@ -59,6 +59,7 @@ rust_library(
         "@wasm_crate_index//:uuid",
         "@wasm_crate_index//:wasmtime",
         "@wasm_crate_index//:libc",
+        "@wasm_crate_index//:rmp",
     ],
 )
 
@@ -97,6 +98,7 @@ rust_dylib_library(
         "@wasm_crate_index//:uuid",
         "@wasm_crate_index//:wasmtime",
         "@wasm_crate_index//:libc",
+        "@wasm_crate_index//:rmp",
     ],
 )
 
