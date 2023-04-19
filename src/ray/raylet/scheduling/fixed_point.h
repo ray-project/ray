@@ -19,6 +19,7 @@
 #include <iostream>
 #include <vector>
 
+// Keep in sync with RESOURCE_UNIT_SCALING in ray_option_utils.py
 #define RESOURCE_UNIT_SCALING 10000
 
 /// Fixed point data type.
