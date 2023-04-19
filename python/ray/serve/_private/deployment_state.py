@@ -1219,7 +1219,18 @@ class DeploymentState:
         existing_info = self._target_state.info
         if existing_info is not None:
             # Redeploying should not reset the deployment's start time.
-            deployment_info.start_time_ms = existing_info.start_time_ms
+            if not self._target_state.deleting:
+                deployment_info.start_time_ms = existing_info.start_time_ms
+            
+            if (
+                not self._target_state.deleting and
+                existing_info.deployment_config == deployment_info.deployment_config
+                and existing_info.replica_config.ray_actor_options
+                == deployment_info.replica_config.ray_actor_options
+                and deployment_info.version is not None
+                and existing_info.version == deployment_info.version
+            ):
+                return False
 
         self._set_target_state(deployment_info)
         return True

@@ -253,7 +253,7 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Wait for replica initialization to finish
             await self._init_finish_event.wait()
-            return self.replica.deployment_config, self.replica.version
+            return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
             if self.replica is not None:
@@ -494,7 +494,7 @@ class RayServeReplica:
                 self.version.ray_actor_options,
             )
 
-            if self.deployment_config.user_config and user_config_changed:
+            if self.deployment_config.user_config is not None and user_config_changed:
                 if self.is_function:
                     raise ValueError(
                         "deployment_def must be a class to use user_config"

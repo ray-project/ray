@@ -111,14 +111,23 @@ def _get_serialized_reconfigure_options(deployment_config: DeploymentConfig) -> 
 def _get_serialized_reconfigure_actor_options(
     deployment_config: DeploymentConfig,
 ) -> bytes:
-    return _serialize(
-        {
-            "user_config": deployment_config.user_config,
-            "graceful_shutdown_wait_loop_s": (
-                deployment_config.graceful_shutdown_wait_loop_s
-            ),
-        }
-    )
+    if isinstance(deployment_config.user_config, bytes):
+        return deployment_config.user_config + _serialize(
+            {
+                "graceful_shutdown_wait_loop_s": (
+                    deployment_config.graceful_shutdown_wait_loop_s
+                ),
+            }
+        )
+    else:
+        return _serialize(
+            {
+                "user_config": deployment_config.user_config,
+                "graceful_shutdown_wait_loop_s": (
+                    deployment_config.graceful_shutdown_wait_loop_s
+                ),
+            }
+        )
 
 
 def _serialize(json_object):
