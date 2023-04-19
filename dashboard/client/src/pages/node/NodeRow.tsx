@@ -53,13 +53,17 @@ export const NodeRow = ({
     networkSpeed = [0, 0],
     raylet,
     logUrl,
-    state,
   } = node;
 
   const classes = rowStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
+
+  /**
+   * Why do we use raylet.state instead of node.state in the following code?
+   * Because in ray, raylet == node
+   */
 
   return (
     <TableRow>
@@ -95,7 +99,7 @@ export const NodeRow = ({
         </Box>
       </TableCell>
       <TableCell>
-        {state !== "DEAD" && (
+        {raylet.state !== "DEAD" && (
           <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
         )}
       </TableCell>
@@ -201,7 +205,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link>
-        <br />
+        <br></br>
         <a
           href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
           target="_blank"

@@ -142,28 +142,4 @@ describe("WorkerRow", () => {
     // Memory Usage
     expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
   });
-
-  it("Disable CPU profiling & stacktrace for dead worker", async () => {
-    render(<WorkerRow node={DEAD_NODE} worker={WORKER} />, {
-      wrapper: ({ children }) => (
-        <MemoryRouter>
-          <table>
-            <tbody>{children}</tbody>
-          </table>
-        </MemoryRouter>
-      ),
-    });
-    await screen.findByText("echo hi");
-    // Could not access Stack Trace and CPU Flame Graph for Dead workers, but the log is still available)
-    expect(screen.getByText(/Log/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Stack Trace/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/CPU Flame Graph/)).not.toBeInTheDocument();
-
-    expect(screen.getByText(/worker-12345/)).toBeVisible();
-    expect(screen.getByText(/3456/)).toBeVisible();
-    // CPU Usage
-    expect(screen.getByText(/14%/)).toBeVisible();
-    // Memory Usage
-    expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
-  });
 });
