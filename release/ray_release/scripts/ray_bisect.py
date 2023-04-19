@@ -155,7 +155,7 @@ def _get_test(test_name: str) -> Test:
     test_collection = read_and_validate_release_test_collection(
         os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
     )
-    return [test for test in test_collection if test["name"] == test_name][0]
+    return [test for test in test_collection if test["name"] == test_name or test["name"] == f'{test_name}.aws'][0]
 
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
