@@ -10,6 +10,8 @@ from ray.rllib.utils.spaces.repeated import Repeated
 import gymnasium.spaces as sp
 import tree
 
+from reward_model import get_reward_model
+
 
 def generate_response(
     model: torch.nn.Module, 
@@ -120,7 +122,7 @@ class RLHFEnv(gym.Env):
 
         # This is the base tokenizer
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            config["tokenizer_path"]
+            config["tokenizer_path"], model_max_length=config["model_max_length"],
         )
 
         # This is the SFT model, used for computing the kl-divergence penalties.
@@ -132,7 +134,9 @@ class RLHFEnv(gym.Env):
         # that takes in a batch of generated text tokens + response mask and returns a 
         # batch of rewards.
         # TODO(Kourosh): Later allow users to pass in their own reward model factory.
-        self.reward_model = ShortestAnswerRM(max_length=self.max_generation_length)
+        self.reward_model = get_reward_model(
+            config["rm_model_path"]
+        )
 
         # Prompt dataset
         # We need to load the prompt dataset and randomly sample a prompt from 
@@ -189,8 +193,10 @@ class RLHFEnv(gym.Env):
 
         n_response_tokens = response_mask.sum()
 
-        r_align = self.reward_model(sequence, attention_mask, response_mask)
-        r_align = r_align.item()
+        r_align = self.reward_model.value(sequence, attention_mask)
+        # For now, take the reward of the last token of the sentence as the overall reward.
+        # TODO(jungong) : re-visit.
+        r_align = r_align[-1].item()
 
         # Compute the probs from the sft model for the same number of tokens
         sequence = torch.tensor(sequence, dtype=torch.long)[None] # add batch dim
