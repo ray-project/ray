@@ -4666,8 +4666,11 @@ class MaterializedDatastream(Datastream, Generic[T]):
 @PublicAPI(stability="beta")
 class Schema:
     """Datastream schema.
+
     Attributes:
         names: List of column names of this Datastream.
+        types: List of Arrow types of the Datastream. Note that the "object" type is
+            not Arrow compatible and hence will be returned as `object`.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
@@ -4679,10 +4682,39 @@ class Schema:
         """Lists the columns of this Datastream."""
         return self.base_schema.names
 
+    @property
+    def types(self) -> List[Union[Literal[object], "pyarrow.DataType"]]:
+        """Lists the types of this Datastream in Arrow format
+
+        For non-Arrow compatible types, we return "object".
+        """
+        import pyarrow as pa
+        from ray.data.extensions import TensorDtype, ArrowTensorType
+
+        if isinstance(self.base_schema, pa.lib.Schema):
+            return list(self.base_schema.types)
+
+        arrow_types = []
+        for dtype in self.base_schema.types:
+            if isinstance(dtype, TensorDtype):
+                # Manually convert our Pandas tensor extension type to Arrow.
+                arrow_types.append(
+                    ArrowTensorType(
+                        shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
+                    )
+                )
+            else:
+                try:
+                    arrow_types.append(pa.from_numpy_dtype(dtype))
+                except pa.ArrowNotImplementedError:
+                    arrow_types.append(object)
+                except Exception:
+                    logger.exception(f"Error converting dtype {dtype} to Arrow.")
+                    arrow_types.append(None)
+        return arrow_types
+
     def __str__(self):
-        # TODO(ekl) we should canonicalize Pandas vs Pyarrow dtypes, which will be
-        # possible one we support Python objects in Arrow via an extension type.
-        return f"Schema({dict(zip(self.base_schema.names, self.base_schema.types))})"
+        return f"Schema({dict(zip(self.names, self.types))})"
 
     def __repr__(self):
         return str(self)

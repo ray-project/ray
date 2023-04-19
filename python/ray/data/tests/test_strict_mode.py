@@ -143,6 +143,23 @@ def test_strict_schema(ray_start_regular_shared):
     ds = ray.data.from_items([{"x": 2}])
     schema = ds.schema()
     assert isinstance(schema.base_schema, pyarrow.lib.Schema)
+    assert str(schema) == "Schema({'x': DataType(int64)})"
+
+    ds = ray.data.from_items([{"x": 2, "y": [1, 2]}])
+    schema = ds.schema()
+    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
+    assert (
+        str(schema)
+        == "Schema({'x': DataType(int64), 'y': ListType(list<item: int64>)})"
+    )
+
+    ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
+    schema = ds.schema()
+    assert isinstance(schema.base_schema, PandasBlockSchema)
+    assert str(schema) == (
+        "Schema({'x': DataType(int64), 'y': "
+        "<class 'object'>, 'z': <class 'object'>})"
+    )
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
@@ -150,8 +167,7 @@ def test_strict_schema(ray_start_regular_shared):
     assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
-    # TODO(ekl) fix this to return ndarray
-    assert str(schema) == "Schema({'data': TensorDtype(shape=(10,), dtype=float64)})"
+    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
     assert isinstance(schema.base_schema, PandasBlockSchema)
 
 
