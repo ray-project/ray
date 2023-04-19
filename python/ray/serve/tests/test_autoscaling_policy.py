@@ -17,7 +17,7 @@ from ray.serve._private.autoscaling_policy import (
 from ray.serve._private.common import DeploymentInfo
 from ray.serve._private.common import ReplicaState
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME, DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 import ray.experimental.state.api as state_api
@@ -110,8 +110,9 @@ class TestCalculateDesiredNumReplicas:
 
 def get_running_replicas(controller: ServeController, deployment: Deployment) -> List:
     """Get the replicas currently running for given deployment"""
+    deployment_name = SERVE_DEFAULT_APP_NAME + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment.name
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment.name)
+        controller._dump_replica_states_for_testing.remote(deployment_name)
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return running_replicas
