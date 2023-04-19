@@ -84,7 +84,7 @@ def process_dataset_for_hf(dataset: DataIterator) -> "IterableDataset":
     ).with_format("torch")
 
     try:
-        dataset_length = dataset._base_dataset.count()
+        dataset_length = dataset._base_datastream.count()
     except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None
@@ -98,7 +98,10 @@ def process_datasets(
     eval_dataset: DataIterator,
 ) -> Tuple["IterableDataset", "IterableDataset"]:
     """Convert Ray train and validation to HF IterableDatasets."""
-    train_torch_dataset = process_dataset_for_hf(train_dataset)
+    if train_dataset:
+        train_torch_dataset = process_dataset_for_hf(train_dataset)
+    else:
+        train_torch_dataset = None
 
     if eval_dataset:
         eval_torch_dataset = process_dataset_for_hf(eval_dataset)
