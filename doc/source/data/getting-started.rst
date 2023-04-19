@@ -127,10 +127,9 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
         @ray.remote
         class Worker:
 
-            def train(self, data_iterator) -> int:
+            def train(self, data_iterator):
                 for batch in data_iterator.iter_batches(batch_size=8):
                     pass
-                return shard.count()
 
         workers = [Worker.remote() for _ in range(4)]
         shards = transformed_ds.streaming_split(n=4, equal=True)
