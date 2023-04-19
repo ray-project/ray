@@ -13,11 +13,11 @@ gcp_advanced_configurations_json:
 
 head_node_type:
     name: head_node
-    instance_type: e2-standard-16 # aws m5.4xlarge
+    instance_type: n2-standard-16 # aws m5.4xlarge
 
 worker_node_types:
     - name: worker_node
-      instance_type: e2-standard-16 # aws m5.4xlarge
+      instance_type: n2-standard-16 # aws m5.4xlarge
       min_workers: 19
       max_workers: 19
       use_spot: false
