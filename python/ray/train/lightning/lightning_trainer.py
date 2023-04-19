@@ -213,7 +213,7 @@ class LightningTrainer(TorchTrainer):
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``LightningConfigBuilder.module()``.
 
-    For data ingestion, the LightningTrainer will then either convert the Ray Dataset
+    For data ingestion, the LightningTrainer will then either convert the Datastream
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
     datamodule or dataloaders if provided by users.
 
@@ -335,7 +335,7 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: A dictionary of Ray Datasets to use for training.
+        datasets: A dictionary of Datastreams to use for training.
             Use the key "train" to denote which dataset is the training
             dataset and (optionally) key "val" to denote the validation
             dataset. If a ``preprocessor`` is provided and has not already
@@ -474,7 +474,7 @@ def _lightning_train_loop_per_worker(config):
     if not (train_dataloaders or datamodule or train_ray_dataset):
         raise RuntimeError(
             "Please provide at least one of the following data inputs: "
-            "train_dataloaders, datamodule, or Ray Datasets with key 'train'."
+            "train_dataloaders, datamodule, or Datastreams with key 'train'."
         )
 
     if train_ray_dataset:

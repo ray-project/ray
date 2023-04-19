@@ -200,9 +200,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             ``transformers.Trainer`` object and takes in the following arguments:
             train ``Torch.Dataset``, optional evaluation ``Torch.Dataset``
             and config as kwargs. The Torch Datasets are automatically
-            created by converting the Ray Datasets internally before
+            created by converting the Datastreams internally before
             they are passed into the function.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datastreams to use for training. Use
             the key "train" to denote which dataset is the training
             dataset and (optionally) key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset

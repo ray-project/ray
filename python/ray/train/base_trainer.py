@@ -157,7 +157,7 @@ class BaseTrainer(abc.ABC):
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use the key "train"
+        datasets: Any Datastreams to use for training. Use the key "train"
             to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -622,7 +622,7 @@ class BaseTrainer(abc.ABC):
         of parameters can be passed in again), that parameter will be loaded
         from the saved copy.
 
-        Ray Datasets should not be saved as part of the state. Instead, we save the
+        Datastreams should not be saved as part of the state. Instead, we save the
         keys and replace the dataset values with dummy functions that will
         raise an error if invoked. The error only serves as a guardrail for
         misuse (e.g., manually unpickling and constructing the Trainer again)
