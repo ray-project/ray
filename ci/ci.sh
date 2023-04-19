@@ -167,8 +167,12 @@ test_python() {
   local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
     pathsep=";"
+    if [ "${RAY_CI_SERVE_AFFECTED}" = "1" ]; then
+      args+=(
+        python/ray/serve/...
+      )
+    fi
     args+=(
-      python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
