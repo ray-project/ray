@@ -736,7 +736,8 @@ class AirResultProgressCallback(Callback):
                 ]
             )
         )
-        self._print_config(trial)
+        if has_config:
+            self._print_config(trial)
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
