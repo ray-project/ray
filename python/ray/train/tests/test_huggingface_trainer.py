@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+from datasets import Dataset
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -85,6 +86,12 @@ def train_function(train_dataset, eval_dataset=None, **config):
     return trainer
 
 
+def train_function_local_dataset(train_dataset, eval_dataset=None, **config):
+    train_dataset = Dataset.from_pandas(train_df)
+    eval_dataset = Dataset.from_pandas(validation_df)
+    return train_function(train_dataset, eval_dataset, **config)
+
+
 @pytest.mark.parametrize("save_strategy", ["no", "epoch"])
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
@@ -131,6 +138,22 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     predictions = predictor.predict(ray.data.from_pandas(prompts))
     assert predictions.count() == 3
+
+
+def test_training_local_dataset(ray_start_4_cpus):
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+    trainer = HuggingFaceTrainer(
+        trainer_init_per_worker=train_function_local_dataset,
+        trainer_init_config={"epochs": 1, "save_strategy": "no"},
+        scaling_config=scaling_config,
+    )
+    result = trainer.fit()
+
+    assert result.metrics["epoch"] == 1
+    assert result.metrics["training_iteration"] == 1
+    assert result.checkpoint
+    assert isinstance(result.checkpoint, HuggingFaceCheckpoint)
+    assert "eval_loss" in result.metrics
 
 
 def test_validation(ray_start_4_cpus):
