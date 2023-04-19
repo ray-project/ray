@@ -192,7 +192,10 @@ class TfGRUEncoder(TfModel, Encoder):
                 ),
                 STATE_IN: {
                     "h": TensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
