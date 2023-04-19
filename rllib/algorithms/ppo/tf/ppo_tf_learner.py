@@ -3,6 +3,7 @@ from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -94,7 +95,7 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.kl_coeff * mean_kl_loss
+            total_loss += self.kl_coeffs[module_id] * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
@@ -107,13 +108,16 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             "entropy": mean_entropy,
             "kl": mean_kl_loss,
             "entropy_coeff": self.entropy_coeff,
-            "cur_kl_coeff": self.kl_coeff,
+            "cur_kl_coeff": self.kl_coeffs[module_id],
         }
 
     @override(PPOBaseLearner)
-    def _create_kl_variable(self, value: float) -> Any:
-        return tf.Variable(value, trainable=False, dtype=tf.float32)
+    def _create_kl_variable_dict(self, value: float) -> Any:
+        return {
+            module_id: tf.Variable(value, trainable=False, dtype=tf.float32)
+            for module_id in self.module.keys()
+        }
 
     @override(PPOBaseLearner)
-    def _set_kl_coeff(self, value: float) -> None:
-        self.kl_coeff.assign(value)
+    def _set_kl_coeff(self, module_id: ModuleID, value: float) -> None:
+        self.kl_coeffs[module_id].assign(value)
