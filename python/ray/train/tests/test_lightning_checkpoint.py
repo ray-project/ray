@@ -65,6 +65,7 @@ def test_load_from_path():
 
 
 def test_from_directory():
+    print("Begin tests: \n")
     with tempfile.TemporaryDirectory() as tmpdir:
         print("tmpdir", str(tmpdir))
         model = Net(input_dim=3, output_dim=3)
@@ -77,17 +78,23 @@ def test_from_directory():
         trainer = pl.Trainer(
             max_epochs=1, enable_progress_bar=False, enable_checkpointing=False
         )
+        print("begin fitting \n")
         trainer.fit(model=model, train_dataloaders=dataloader)
+        print("save checkpoint \n")
         trainer.save_checkpoint(f"{tmpdir}/{MODEL_KEY}")
 
         # Load the checkpoint from directory
+        print("loading checkpoint \n")
         lightning_checkpoint = LightningCheckpoint.from_directory(tmpdir)
+
+        print("load model \n")
         checkpoint_model = lightning_checkpoint.get_model(
             Net, input_dim=3, output_dim=3
         )
         assert torch.equal(checkpoint_model.linear.weight, model.linear.weight)
 
         # Check the model outputs
+        print("Inference \n")
         for i, batch in enumerate(dataloader):
             output = model.predict_step(batch, i)
             checkpoint_output = checkpoint_model.predict_step(batch, i)

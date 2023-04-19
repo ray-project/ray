@@ -97,7 +97,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = Accuracy()
+        self.accuracy = Accuracy(task="multiclass", num_classes=10)
         self.val_acc_list = []
         self.val_loss_list = []
 
