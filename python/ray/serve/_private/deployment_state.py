@@ -1300,8 +1300,8 @@ class DeploymentState:
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
                 replicas_stopped = True
-            # Otherwise, only certain options in deployment config is a mismatch, so we
-            # update it dynamically without restarting the replica.
+            # Otherwise, only lightweight options in deployment config is a mismatch, so
+            # we update it dynamically without restarting the replica.
             else:
                 reconfigure_changes += 1
                 replica.reconfigure(self._target_state.version)
