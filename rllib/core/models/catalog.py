@@ -127,6 +127,7 @@ class Catalog:
 
     .. testcode::
 
+        import torch
         import gymnasium as gym
         from ray.rllib.core.models.configs import MLPHeadConfig
         from ray.rllib.core.models.catalog import Catalog
@@ -149,10 +150,10 @@ class Catalog:
             def build_my_head(self, framework: str):
                 return self.my_model_config_dict.build(framework=framework)
 
-        # With that, RLlib can build and use models from this catalog like this:
+        # With that, RLlib can build and use models from MyCatalog like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        my_head = catalog.build_my_head("torch")  # doctest: +SKIP
-        out = my_head(...)  # doctest: +SKIP
+        my_head = catalog.build_my_head("torch")
+        out = my_head(torch.Tensor([[1]]))
     """
 
     def __init__(
