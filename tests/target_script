@@ -32,6 +32,9 @@ def task(scheduling_start_time):
     start = time.time()
     import torch
     import tensorflow
+    import pandas
+    import transformers
+    import dask
     dur_s = time.time() - start
     print(f'imports took {dur_s:.02f}')
 
@@ -49,6 +52,9 @@ class Actor:
         start = time.time()
         import torch
         import tensorflow
+        import pandas
+        import transformers
+        import dask
         dur_s = time.time() - start
         print(f'imports took {dur_s:.02f}')
 

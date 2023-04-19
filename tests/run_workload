@@ -66,20 +66,27 @@ def sleep_verbose(sec):
 
 def run_test(iterations, metrics_actor):
     for i in range(iterations):
-        #sleep_verbose(40)
+        sleep_verbose(40)
         subprocess.check_call("python target_script", shell=True)
         print(f'iteration {i} done')
         dur_s = ray.get(metrics_actor.get_last_dur_s.remote())
         print(f'scheduling+imports time {dur_s:.02f}')
-        
-subprocess.check_call("bash start_without_preload", shell=True)
-sleep_verbose(5)
-m = create_metrics_actor()
-run_test(iterations=5, metrics_actor=m)
-del m
 
-#subprocess.check_call("bash start_with_preload", shell=True)
-#sleep_verbose(5)
+def wait():
+    start = time.time()
+    input('waiting')
+    print(f'waited {time.time() - start} s')
+
+#subprocess.check_call("bash start_without_preload", shell=True)
+##sleep_verbose(5)
+##wait()
 #m = create_metrics_actor()
-#run_test(iterations=5, metrics_actor=m)
+#run_test(iterations=2, metrics_actor=m)
 #del m
+
+subprocess.check_call("bash start_with_preload", shell=True)
+#sleep_verbose(5)
+wait()
+m = create_metrics_actor()
+run_test(iterations=1, metrics_actor=m)
+del m

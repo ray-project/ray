@@ -4,7 +4,7 @@ ray stop --force
 
 ulimit -n 65536 && \
     RAY_BACKEND_LOG_LEVEL=debug \
-    RAY_preload_python_modules=torch,tensorflow \
+    RAY_preload_python_modules=torch,tensorflow,dask,pandas,transformers \
     RAY_start_initial_python_workers_for_first_job=true \
     RAY_isolate_workers_across_task_types=false \
     RAY_isolate_workers_across_resource_types=false \
