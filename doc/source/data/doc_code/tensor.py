@@ -196,7 +196,7 @@ print(ds.schema())
 ds.materialize()
 
 # __create_images_begin__
-ds = ray.data.read_images("example://image-datastreams/simple")
+ds = ray.data.read_images("example://image-datasets/simple")
 # -> Datastream(num_blocks=3, num_rows=3, 
 #            schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 

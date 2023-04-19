@@ -104,9 +104,10 @@ class Worker:
         pass
 
     def train(self, shard: ray.data.DataIterator) -> int:
+        total = 0
         for batch in shard.iter_torch_batches(batch_size=256):
-            pass
-        return shard.count()
+            total += len(batch)
+        return total
 
 workers = [Worker.remote(i) for i in range(4)]
 # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
