@@ -132,7 +132,7 @@ class ExperimentAnalysis:
             remote_storage_path = sync_config.upload_dir
 
         if not self._local_experiment_path:
-            self._local_experiment_path = self._checkpoints_and_paths[0][1]
+            self._local_experiment_path = str(self._checkpoints_and_paths[0][1])
 
         if not self._remote_experiment_path and remote_storage_path:
             self._remote_experiment_path = str(
