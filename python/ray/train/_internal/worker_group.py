@@ -44,7 +44,7 @@ class WorkerMetadata:
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
         gpu_ids: List of CUDA IDs available to this worker.
-        pid: process id of this worker.
+        pid: Process ID of this worker.
     """
 
     node_id: str
