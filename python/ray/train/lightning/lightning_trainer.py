@@ -346,7 +346,8 @@ class LightningTrainer(TorchTrainer):
             the LightningTrainer. Otherwise, LightningTrainer will use datamodule
             or dataloaders specified in ``LightningConfig.trainer_init_config``.
             For valid arguments to pass, please refer to:
-            :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
+            :py:meth:`Dataset.iter_torch_batches
+            <ray.data.Datastream.iter_torch_batches>`
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.

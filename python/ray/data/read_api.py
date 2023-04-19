@@ -131,7 +131,7 @@ def from_items(
     Returns:
         MaterializedDatastream holding the items.
     """
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         output_arrow_format = True
 
@@ -227,7 +227,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     Returns:
         Datastream producing the integers.
     """
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         return read_datasource(
             RangeDatasource(),
@@ -264,7 +264,7 @@ def range_table(n: int, *, parallelism: int = -1) -> Datastream[TableRow]:
     Returns:
         Datastream producing the integers as Arrow records.
     """
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         raise DeprecationWarning(
             "In strict mode, use range() instead of range_table()."
@@ -317,7 +317,7 @@ def range_tensor(
     Returns:
         Datastream producing the integers as Arrow tensor records.
     """
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
@@ -1378,7 +1378,7 @@ def read_binary_files(
     Returns:
         Datastream producing records read from the specified paths.
     """
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         output_arrow_format = True
 

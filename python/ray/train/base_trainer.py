@@ -27,16 +27,16 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data import Datastream
     from ray.data.preprocessor import Preprocessor
 
     from ray.tune import Trainable
 
 _TRAINER_PKL = "trainer.pkl"
 
-# A type representing either a ray.data.Dataset or a function that returns a
-# ray.data.Dataset and accepts no arguments.
-GenDataset = Union["Dataset", Callable[[], "Dataset"]]
+# A type representing either a ray.data.Datastream or a function that returns a
+# ray.data.Datastream and accepts no arguments.
+GenDataset = Union["Datastream", Callable[[], "Datastream"]]
 
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class BaseTrainer(abc.ABC):
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
     - ``trainer.preprocess_datasets()``: The provided
-      ray.data.Dataset are preprocessed with the provided
+      ray.data.Datastream are preprocessed with the provided
       ray.data.Preprocessor.
     - ``trainer.train_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
@@ -407,7 +407,7 @@ class BaseTrainer(abc.ABC):
         if not isinstance(self.datasets, dict):
             raise ValueError(
                 f"`datasets` should be a dict mapping from a string to "
-                f"`ray.data.Dataset` objects, "
+                f"`ray.data.Datastream` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
         else:
@@ -415,17 +415,18 @@ class BaseTrainer(abc.ABC):
                 if isinstance(dataset, ray.data.DatasetPipeline):
                     raise ValueError(
                         f"The Dataset under '{key}' key is a "
-                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
+                        f"`ray.data.DatasetPipeline`. Only `ray.data.Datastream` are "
                         f"allowed to be passed in.  Pipelined/streaming ingest can be "
                         f"configured via the `dataset_config` arg. See "
                         "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
                         "for an example."
                     )
-                elif not isinstance(dataset, ray.data.Dataset) and not callable(
+                elif not isinstance(dataset, ray.data.Datastream) and not callable(
                     dataset
                 ):
                     raise ValueError(
-                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
+                        f"The Datastream under '{key}' key is not a "
+                        "`ray.data.Datastream`. "
                         f"Received {dataset} instead."
                     )
 
