@@ -154,7 +154,3 @@ def test_bisect():
       'c3': False, 
       'c4': False, 
     }
-
-    def _mock_get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
-    blamed_commit = _bisect('test', 'c0', 'c4')
-    assert blamed_commit == 'c3'
