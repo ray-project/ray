@@ -1,7 +1,7 @@
 import collections
 import itertools
-import sys
 from typing import Any, Callable, Iterator, Optional, TypeVar, Union
+from contextlib import nullcontext
 
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
@@ -21,15 +21,6 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 T = TypeVar("T")
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
 
 
 def batch_block_refs(

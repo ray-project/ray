@@ -11,7 +11,7 @@ from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.data.block import Block
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 from ray.data.datasource import (
     FileBasedDatasource,
     PathPartitionParser,

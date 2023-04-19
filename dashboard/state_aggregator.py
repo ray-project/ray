@@ -476,6 +476,10 @@ class StateAPIManager:
             del data["object_ref"]
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
+            data["type"] = data["type"].upper()
+            data["task_status"] = (
+                "NIL" if data["task_status"] == "-" else data["task_status"]
+            )
             result.append(data)
 
         # Add callsite warnings if it is not configured.
@@ -595,7 +599,7 @@ class StateAPIManager:
         all_events = await self._client.get_all_cluster_events()
         for _, events in all_events.items():
             for _, event in events.items():
-                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
                 result.append(event)
 
         num_after_truncation = len(result)
