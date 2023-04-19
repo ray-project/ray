@@ -1735,7 +1735,7 @@
 
   alert: tune_tests
 
-- name: tune_cloud_aws_durable_upload_rllib_str
+- name: tune_cloud_durable_upload_rllib_str
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
@@ -1757,10 +1757,25 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_ml.yaml
+        cluster_compute: tpl_gce_4x2.yaml
+      run:
+        timeout: 600
+        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
+          --bucket gs://tune-cloud-tests/durable_upload_rllib_str
+        wait_for_nodes:
+          num_nodes: 4
+
 
   alert: tune_tests
 
-- name: tune_cloud_aws_durable_upload_rllib_trainer
+- name: tune_cloud_durable_upload_rllib_trainer
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
@@ -1781,6 +1796,20 @@
     wait_for_nodes:
       num_nodes: 4
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config_ml.yaml
+        cluster_compute: tpl_gce_4x2.yaml
+      run:
+        timeout: 600
+        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
+          --bucket gs://tune-cloud-tests/durable_upload_rllib_trainer
+        wait_for_nodes:
+          num_nodes: 4
 
   alert: tune_tests
 
