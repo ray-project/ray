@@ -21,7 +21,7 @@ from ray.train.torch.train_loop_utils import get_device
 
 
 class TorchDistributedWorker(ABC):
-    """Dfines the interfaces required by the init_torch_dist_process_group().
+    """Defines the interfaces required by the init_torch_dist_process_group().
 
     This is modeled after RayTrainerWorker, which allows arbitrary functions
     to be executed on a remote DDP worker.
