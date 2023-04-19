@@ -90,7 +90,7 @@ class TorchMLP(nn.Module):
         for i in range(0, len(dims) - 1):
             linear = nn.Linear(dims[i], dims[i + 1], bias=use_bias)
 
-            if i == len(dims) - 1:
+            if i == len(dims) - 2:
                 # We have a different default initializer for the output layer.
                 if output_layer_weight_initializer is None:
                     nn.init.trunc_normal_(linear.weight, std=0.01)
