@@ -9,7 +9,6 @@ import io.ray.serve.DummyServeController;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.DeploymentLanguage;
@@ -45,11 +44,7 @@ public class RayServeReplicaTest {
           new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
-              .setDeploymentVersion(
-                  new DeploymentVersion(
-                      version,
-                      new DeploymentConfig(),
-                      new ReplicaConfig("", null, new HashMap<>())))
+              .setDeploymentVersion(new DeploymentVersion(version, new DeploymentConfig(), null))
               .setDeploymentDef(DummyReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replicHandle =

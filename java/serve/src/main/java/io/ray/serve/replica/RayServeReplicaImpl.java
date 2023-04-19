@@ -284,7 +284,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
         new DeploymentVersion(
             version.getCodeVersion(),
             version.getDeploymentConfig().setUserConfig(userConfig),
-            version.getReplicaConfig());
+            version.getRayActorOptions());
     version = deploymentVersion;
     if (userConfig == null) {
       return deploymentVersion;

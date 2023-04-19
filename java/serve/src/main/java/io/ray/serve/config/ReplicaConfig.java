@@ -138,23 +138,6 @@ public class ReplicaConfig {
     return builder.build().toByteArray();
   }
 
-  public io.ray.serve.generated.ReplicaConfig toProto() {
-    io.ray.serve.generated.ReplicaConfig.Builder builder =
-        io.ray.serve.generated.ReplicaConfig.newBuilder();
-    if (StringUtils.isNotBlank(deploymentDef)) {
-      builder.setDeploymentDefName(deploymentDef);
-      builder.setDeploymentDef(ByteString.copyFromUtf8(deploymentDef)); // TODO-xlang
-    }
-    if (initArgs != null && initArgs.length > 0) {
-      builder.setInitArgs(
-          ByteString.copyFrom(MessagePackSerializer.encode(initArgs).getKey())); // TODO-xlang
-    }
-    if (rayActorOptions != null && !rayActorOptions.isEmpty()) {
-      builder.setRayActorOptions(gson.toJson(rayActorOptions));
-    }
-    return builder.build();
-  }
-
   public static ReplicaConfig fromProto(io.ray.serve.generated.ReplicaConfig proto) {
     if (proto == null) {
       return null;

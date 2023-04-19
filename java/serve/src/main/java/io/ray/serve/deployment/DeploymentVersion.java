@@ -1,14 +1,17 @@
 package io.ray.serve.deployment;
 
+import com.google.gson.Gson;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.serve.config.DeploymentConfig;
-import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.exception.RayServeException;
 import java.io.Serializable;
+import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
 public class DeploymentVersion implements Serializable {
+
+  private static Gson gson = new Gson();
 
   private static final long serialVersionUID = 3400261981775851058L;
 
@@ -18,7 +21,7 @@ public class DeploymentVersion implements Serializable {
 
   private DeploymentConfig deploymentConfig;
 
-  private ReplicaConfig replicaConfig;
+  private Map<String, Object> rayActorOptions;
 
   private boolean unversioned;
 
@@ -31,7 +34,7 @@ public class DeploymentVersion implements Serializable {
   }
 
   public DeploymentVersion(
-      String codeVersion, DeploymentConfig deploymentConfig, ReplicaConfig replicaConfig) {
+      String codeVersion, DeploymentConfig deploymentConfig, Map<String, Object> rayActorOptions) {
     if (StringUtils.isBlank(codeVersion)) {
       this.unversioned = true;
       this.codeVersion = RandomStringUtils.randomAlphabetic(6);
@@ -39,7 +42,7 @@ public class DeploymentVersion implements Serializable {
       this.codeVersion = codeVersion;
     }
     this.deploymentConfig = deploymentConfig;
-    this.replicaConfig = replicaConfig;
+    this.rayActorOptions = rayActorOptions;
     this.userConfig = deploymentConfig.getUserConfig();
   }
 
@@ -55,8 +58,8 @@ public class DeploymentVersion implements Serializable {
     return deploymentConfig;
   }
 
-  public ReplicaConfig getReplicaConfig() {
-    return replicaConfig;
+  public Map<String, Object> getRayActorOptions() {
+    return rayActorOptions;
   }
 
   public boolean isUnversioned() {
@@ -80,7 +83,7 @@ public class DeploymentVersion implements Serializable {
     return new DeploymentVersion(
         proto.getCodeVersion(),
         DeploymentConfig.fromProto(proto.getDeploymentConfig()),
-        ReplicaConfig.fromProto(proto.getReplicaConfig()));
+        gson.fromJson(proto.getRayActorOptions(), Map.class));
   }
 
   public byte[] toProtoBytes() {
@@ -91,7 +94,9 @@ public class DeploymentVersion implements Serializable {
       proto.setCodeVersion(codeVersion);
     }
     proto.setDeploymentConfig(deploymentConfig.toProto());
-    proto.setReplicaConfig(replicaConfig.toProto());
+    if (rayActorOptions != null && !rayActorOptions.isEmpty()) {
+      proto.setRayActorOptions(gson.toJson(rayActorOptions));
+    }
     return proto.build().toByteArray();
   }
 }
