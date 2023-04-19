@@ -1284,7 +1284,7 @@
 
   cluster:
     cluster_env: horovod/app_config.yaml
-    cluster_compute: horovod/compute_tpl.yaml
+    cluster_compute: horovod/compute_tpl_aws.yaml
 
   driver_setup: horovod/driver_setup_latest.sh
   run:
@@ -1292,6 +1292,15 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: horovod/app_config.yaml
+        cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1304,7 +1313,7 @@
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
-    cluster_compute: horovod/compute_tpl.yaml
+    cluster_compute: horovod/compute_tpl_aws.yaml
 
   driver_setup: horovod/driver_setup_master.sh
   run:
@@ -1312,6 +1321,15 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: horovod/app_config_master.yaml
+        cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1324,7 +1342,7 @@
 
   cluster:
     cluster_env: train/app_config.yaml
-    cluster_compute: train/compute_tpl.yaml
+    cluster_compute: train/compute_tpl_aws.yaml
 
   driver_setup: train/driver_setup.sh
   run:
@@ -1332,6 +1350,15 @@
     script: python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: train/app_config.yaml
+        cluster_compute: train/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1344,7 +1371,7 @@
 
   cluster:
     cluster_env: train/app_config.yaml
-    cluster_compute: train/compute_tpl.yaml
+    cluster_compute: train/compute_tpl_aws.yaml
 
   driver_setup: train/driver_setup.sh
   run:
@@ -1352,6 +1379,15 @@
     script: python train/train_torch_linear_test.py
     wait_for_nodes:
       num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: train/app_config.yaml
+        cluster_compute: train/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1364,13 +1400,22 @@
 
   cluster:
     cluster_env: xgboost/app_config_gpu.yaml
-    cluster_compute: xgboost/tpl_gpu_small_scaling.yaml
+    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: xgboost/app_config_gpu.yaml
+        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
 
   alert: default
 
@@ -1383,13 +1428,22 @@
 
   cluster:
     cluster_env: xgboost/app_config_gpu_master.yaml
-    cluster_compute: xgboost/tpl_gpu_small_scaling.yaml
+    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
     timeout: 1200
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: xgboost/app_config_gpu_master.yaml
+        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
 
   alert: default
 
@@ -1402,7 +1456,7 @@
 
   cluster:
     cluster_env: ray-lightning/app_config.yaml
-    cluster_compute: ray-lightning/compute_tpl.yaml
+    cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
   driver_setup: ray-lightning/driver_setup.sh
   run:
@@ -1410,6 +1464,15 @@
     script: python ray-lightning/ray_lightning_user_test.py
     wait_for_nodes:
       num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ray-lightning/app_config.yaml
+        cluster_compute: ray-lightning/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1422,7 +1485,7 @@
 
   cluster:
     cluster_env: ray-lightning/app_config_master.yaml
-    cluster_compute: ray-lightning/compute_tpl.yaml
+    cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
   driver_setup: ray-lightning/driver_setup.sh
   run:
@@ -1430,6 +1493,15 @@
     script: python ray-lightning/ray_lightning_user_test.py
     wait_for_nodes:
       num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ray-lightning/app_config_master.yaml
+        cluster_compute: ray-lightning/compute_tpl_gce.yaml
 
   alert: default
 
@@ -1442,7 +1514,7 @@
 
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
-    cluster_compute: tune_rllib/compute_tpl.yaml
+    cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   driver_setup: tune_rllib/driver_setup.sh
   run:
@@ -1450,6 +1522,15 @@
     script: python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ../rllib_tests/app_config.yaml
+        cluster_compute: tune_rllib/compute_tpl_gce.yaml
 
   alert: default
 
