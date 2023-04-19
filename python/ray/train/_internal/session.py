@@ -49,7 +49,6 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
-    is_training: bool
     experiment_name: Optional[str] = None
 
 
@@ -85,6 +84,7 @@ class _TrainSession:
         # the whole checkpoint to avoid unnecessary serialization.
         enable_lazy_checkpointing: bool = True,
     ):
+
         self.dataset_shard = dataset_shard
 
         self.world_rank = world_rank

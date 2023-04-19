@@ -401,7 +401,6 @@ class DataParallelTrainer(BaseTrainer):
             logdir=session.get_trial_dir(),
             driver_ip=ray.util.get_node_ip_address(),
             experiment_name=session.get_experiment_name(),
-            is_training=session.is_training(),
         )
 
         backend_executor = self._backend_executor_cls(

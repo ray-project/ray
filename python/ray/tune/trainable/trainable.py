@@ -1207,11 +1207,6 @@ class Trainable:
             return None
 
     @property
-    def is_training(self) -> bool:
-        """Whether we are in training or tuning paradigm."""
-        return self._trial_info.is_training
-
-    @property
     def iteration(self):
         """Current training iteration.
 

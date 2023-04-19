@@ -89,11 +89,7 @@ def test_move_workers_with_ip_to_front(ray_start_2_cpus):
         Worker(
             actor=None,
             metadata=WorkerMetadata(
-                node_id="dummy",
-                node_ip=f"10.1.10.{i}",
-                hostname="dummy",
-                gpu_ids=None,
-                pid=0,
+                node_id="dummy", node_ip=f"10.1.10.{i}", hostname="dummy", gpu_ids=None
             ),
         )
         for i in range(1, 17)
