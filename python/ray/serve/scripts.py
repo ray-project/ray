@@ -3,8 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from types import FunctionType
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple
 
 import click
 import yaml
@@ -112,7 +111,10 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     for arg in args:
         split = arg.split("=")
         if len(split) != 2:
-            raise click.ClickException(f"Invalid application argument '{arg}', must be of the form '<key>=<val>'.")
+            raise click.ClickException(
+                f"Invalid application argument '{arg}', "
+                "must be of the form '<key>=<val>'."
+            )
 
         args_dict[split[0]] = split[1]
 

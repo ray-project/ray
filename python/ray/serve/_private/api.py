@@ -350,10 +350,16 @@ def call_app_builder_with_args_if_necessary(
     """
     if isinstance(builder, (ClassNode, FunctionNode)):
         if len(args) > 0:
-            raise ValueError("Arguments can only be passed to a builder function, not a pre-built application.")
+            raise ValueError(
+                "Arguments can only be passed to a builder function, "
+                "not an already built application."
+            )
         return builder
     elif not isinstance(builder, FunctionType):
-        raise TypeError(f"Expected a built Serve application or a builder function, but got: {type(builder)}.")
+        raise TypeError(
+            "Expected a built Serve application or a builder function, "
+            f"but got: {type(builder)}."
+        )
 
     # Check that the builder only takes a single argument.
     # TODO(edoakes): we may want to loosen this to allow optional kwargs in the future.
@@ -369,6 +375,9 @@ def call_app_builder_with_args_if_necessary(
 
     app = builder(args)
     if not isinstance(app, (ClassNode, FunctionNode)):
-        raise TypeError("Application builders must return a `ClassNode` or `FunctionNode` returned from `Deployment.bind()`.")
+        raise TypeError(
+            "Application builders must return a `ClassNode` or `FunctionNode` "
+            f"returned from `Deployment.bind()`, but got: {type(app)}."
+        )
 
     return app

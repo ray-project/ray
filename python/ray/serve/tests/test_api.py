@@ -730,14 +730,14 @@ class TestAppBuilder:
         f = self.f.bind()
         assert call_app_builder_with_args_if_necessary(f, {}) == f
 
-        with pytest.raises(ValueError, match="Arguments can only be passed to a builder function, not a pre-built application."):
+        with pytest.raises(ValueError, match="Arguments can only be passed to a builder function"):
             call_app_builder_with_args_if_necessary(f, {"key": "val"})
 
     def test_invalid_builder(self):
         class ThisShouldBeAFunction:
             pass
 
-        with pytest.raises(TypeError, match="Expected a built Serve application or a builder function, but got"):
+        with pytest.raises(TypeError, match="Expected a built Serve application or a builder function"):
             call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
 
     def test_invalid_signature(self):
@@ -799,7 +799,7 @@ class TestAppBuilder:
         # and rejects a missing required field.
         def check_missing_optional(args: self.TypedArgs):
             assert args.message == "hiya"
-            assert args.num_replicas == None
+            assert args.num_replicas is None
             return self.A.bind()
 
         app = call_app_builder_with_args_if_necessary(check_missing_optional, {"message": "hiya"})
