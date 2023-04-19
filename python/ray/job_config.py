@@ -9,6 +9,10 @@ from ray.util.annotations import PublicAPI
 class JobConfig:
     """A class used to store the configurations of a job.
 
+    Args:
+
+        jvm_options: The jvm options for java workers of the job.
+
     Attributes:
         jvm_options: The jvm options for java workers of the job.
         code_search_path: A list of directories or jar files that
@@ -24,16 +28,19 @@ class JobConfig:
 
     def __init__(
         self,
-        jvm_options: List[str] = None,
-        code_search_path: List[str] = None,
-        runtime_env: dict = None,
+        jvm_options: Optional[List[str]] = None,
+        code_search_path: Optional[List[str]] = None,
+        runtime_env: Optional[dict] = None,
         client_job: bool = False,
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
         py_driver_sys_path: List[str] = None,
     ):
+        #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
+        #: The jvm options for java workers of the job.
+        #: Second jvm options for java workers of the job.
         self.code_search_path = code_search_path or []
         # It's difficult to find the error that caused by the
         # code_search_path is a string. So we assert here.
@@ -144,8 +151,14 @@ class JobConfig:
 
     @classmethod
     def from_json(cls, job_config_json):
-        """
-        Generates a JobConfig object from json.
+        """Generates a JobConfig object from json.
+
+        Examples:
+
+            .. testcode::
+
+                from ray.job_config import JobConfig
+                job_config = JobConfig.from_json({"runtime_env": {"working_dir": "uri://abc"}})
         """
         return cls(
             jvm_options=job_config_json.get("jvm_options", None),
