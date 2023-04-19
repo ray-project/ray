@@ -572,17 +572,15 @@ def status(address: str, name: Optional[str]):
 def shutdown(address: str, yes: bool):
     if not yes:
         click.confirm(
-            f"\nThis will shutdown the Serve application at address "
-            f'"{address}" and delete all deployments there. Do you '
+            f"This will shut down Serve on the cluster at address "
+            f'"{address}" and delete all applications there. Do you '
             "want to continue?",
             abort=True,
         )
 
     ServeSubmissionClient(address).delete_application()
 
-    cli_logger.newline()
-    cli_logger.success("\nSent delete request successfully!\n")
-    cli_logger.newline()
+    cli_logger.success("Sent shutdown request; applications will be deleted asynchronously.")
 
 
 @cli.command(
