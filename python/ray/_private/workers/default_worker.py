@@ -234,10 +234,10 @@ if __name__ == "__main__":
         import importlib
         for module_to_preload in s:
             try:
-                print('importing', module_to_preload)
+                #print('importing', module_to_preload)
                 importlib.import_module(module_to_preload)
-            except ImportError as e:
-                print('Got ImportError', e)
+            except ImportError:
+                ray._private.utils.logger.exception(f'Failed to preload the module "{module_to_preload}"')
                 pass
 
     if mode == ray.WORKER_MODE:
