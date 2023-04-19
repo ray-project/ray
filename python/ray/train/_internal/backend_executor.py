@@ -113,10 +113,10 @@ class BackendExecutor:
         )
         if self._trial_info:
             worker_loc_str = [
-                f"{w.metadata.node_ip}:{w.metadata.pid}"
+                f"{w.metadata.pid} ({w.metadata.node_ip})"
                 for w in self.worker_group.workers
             ]
-            logger.info(f"Starting distributed workers: {worker_loc_str}")
+            logger.info(f"Starting distributed worker processes: {worker_loc_str}")
         # Hack to avoid OOMs.
         # This is just a temporary solution for Train loading entire checkpoints
         # into memory by ensuring that the rank 0 worker is on the same node as
