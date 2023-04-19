@@ -32,19 +32,26 @@ def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
-def _bisect(test: Test, commit_list: List[str]) -> str:
+def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
     while len(commit_list) > 2:
         logger.info(
             f"Bisecting between {len(commit_list)} commits: "
             f"{commit_list[0]} to {commit_list[-1]}"
         )
-        middle_commit_idx = len(commit_list) // 2
-        middle_commit = commit_list[middle_commit_idx]
-        is_passing = _run_test(test, [middle_commit])[middle_commit] == "passed"
-        if is_passing:
-            commit_list = commit_list[middle_commit_idx:]
-        else:
-            commit_list = commit_list[passing_inx+1:failing_inx]
+        idx_to_commit = {}
+        for i in range(1, concurrency+1):
+            idx = i * len(commit_list) // (concurrency+1)
+            idx_to_commit[idx] = commit_list[idx]
+        outcomes = _run_test(test, set(idx_to_commit.values()))
+        passing_idx = 0
+        failing_idx = len(commit_list) - 1  
+        for idx, commit in idx_to_commit.items():
+            is_passing = outcomes[commit] == 'passed'
+            if is_passing and idx > passing_idx:
+                passing_idx = idx
+            if not is_passing and idx < failing_idx:
+                failing_idx = idx
+        commit_list = commit_list[passing_idx:failing_idx+1]
     return commit_list[-1]
 
 
@@ -123,11 +130,6 @@ def _get_test(test_name: str) -> Test:
     )
     return [test for test in test_collection if test["name"] == test_name][0]
 
-def _get_test(test_name: str) -> Test:
-    test_collection = read_and_validate_release_test_collection(
-        os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
-    )
-    return [test for test in test_collection if test['name'] == test_name][0]
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
     # This command obtains all commits between inclusively
