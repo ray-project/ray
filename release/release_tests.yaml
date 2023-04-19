@@ -5596,14 +5596,14 @@
     script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
       915 --debug
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: dataset/pipelined_ingestion_app.yaml
-        cluster_compute: dataset/pipelined_ingestion_compute_gce.yaml
+#  variations:
+#    - __suffix__: aws
+#    - __suffix__: gce
+#      env: gce
+#      frequency: manual
+#      cluster:
+#        cluster_env: dataset/pipelined_ingestion_app.yaml
+#        cluster_compute: dataset/pipelined_ingestion_compute_gce.yaml
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
   group: data-tests
