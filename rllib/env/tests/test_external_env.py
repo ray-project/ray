@@ -134,6 +134,21 @@ class TestExternalEnv(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
 
+    def test_external_env_max_concurrent(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: SimpleServing(MockEnv(25), max_concurrent=1),
+            default_policy_class=MockPolicy,
+            config=AlgorithmConfig().rollouts(
+                rollout_fragment_length=40,
+                batch_mode="complete_episodes",
+                num_rollout_workers=0,
+                enable_connectors=False,
+            ),
+        )
+        for _ in range(3):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 50)
+
     def test_external_env_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
