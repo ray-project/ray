@@ -2981,7 +2981,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_tpl.yaml
+    cluster_compute: compute_tpl_aws.yaml
 
   run:
     timeout: 3000
@@ -2990,6 +2990,14 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce.yaml
 
   alert: default
 
