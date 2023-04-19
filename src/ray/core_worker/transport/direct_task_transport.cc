@@ -34,6 +34,8 @@ void RecordTaskMetrics(const TaskSpecification &task_spec) {
                        task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
                       1000;
 
+  RAY_LOG(ERROR) << "EMITTING PLACEMENT METRIC FOR " << task_spec.DebugString() << "\n";
+
   stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
 }
 
