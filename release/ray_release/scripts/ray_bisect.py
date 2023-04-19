@@ -52,7 +52,7 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
 def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
     logger.info(
         f"Sanity check passing revision: {passing_revision}"
-        f" and failing revision: {failing_revision})"
+        f" and failing revision: {failing_revision}"
     )
     outcomes = _run_test(test, [passing_revision, failing_revision])
     return (
