@@ -2979,7 +2979,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2_g4dn_12xlarge.yaml
+    cluster_compute: gpu_2x4_t4_aws.yaml
 
   run:
     timeout: 3600
@@ -2987,6 +2987,15 @@
 
     wait_for_nodes:
       num_nodes: 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: gpu_2x4_t4_gce.yaml
 
   alert: default
 
@@ -2999,7 +3008,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 1_p3_16xlarge.yaml
+    cluster_compute: gpu_1x8_v100_aws.yaml
 
   run:
     timeout: 3600
@@ -3007,6 +3016,15 @@
 
     wait_for_nodes:
       num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: gpu_1x8_v100_gce.yaml
 
   alert: default
 
