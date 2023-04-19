@@ -84,6 +84,7 @@ def test_from_directory():
         trainer.save_checkpoint(f"{tmpdir}/{MODEL_KEY}")
 
         # Load the checkpoint from directory
+        raise RuntimeError("bbb")
         print("loading checkpoint \n")
         lightning_checkpoint = LightningCheckpoint.from_directory(tmpdir)
 
