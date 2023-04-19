@@ -37,7 +37,7 @@ def _bisect(test_name: str, commit_list: List[str]) -> str:
         if is_passing:
             commit_list = commit_list[middle_commit_idx:]
         else:
-            commit_list = commit_list[:middle_commit_idx+1]
+            commit_list = commit_list[: middle_commit_idx + 1]
     return commit_list[-1]
 
 
@@ -87,10 +87,15 @@ def _get_test(test_name: str) -> Test:
 
 def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
     # This command obtains all commits between inclusively
-    return subprocess.check_output(
-        f"git rev-list --reverse ^{passing_commit}~ {failing_commit}",
-        shell=True,
-    ).decode("utf-8").strip().split("\n")
+    return (
+        subprocess.check_output(
+            f"git rev-list --reverse ^{passing_commit}~ {failing_commit}",
+            shell=True,
+        )
+        .decode("utf-8")
+        .strip()
+        .split("\n")
+    )
 
 
 if __name__ == "__main__":

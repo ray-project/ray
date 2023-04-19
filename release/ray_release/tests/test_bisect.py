@@ -3,7 +3,7 @@ from ray_release.scripts.ray_bisect import _bisect
 
 
 def test_bisect():
-    test_cases = { 
+    test_cases = {
         "c3": {
             "c0": True,
             "c1": True,
@@ -13,10 +13,11 @@ def test_bisect():
         "c1": {
             "c0": True,
             "c1": False,
-        }
+        },
     }
 
     for output, input in test_cases.items():
+
         def _mock_run_test(test_name: str, commit: str) -> bool:
             return input[commit]
 
