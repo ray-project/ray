@@ -1,5 +1,5 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+from typing import Dict, Iterator, List, Union, Any, TypeVar, Mapping, TYPE_CHECKING
 
 import numpy as np
 
@@ -180,7 +180,8 @@ class TableBlockAccessor(BlockAccessor):
             return False
         return _is_tensor_schema(self.column_names())
 
-    def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
+    def iter_rows(self) -> Iterator[Union[Mapping, np.ndarray]]:
+        ctx = ray.data.DataContext.get_current()
         outer = self
 
         class Iter:
@@ -193,7 +194,11 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    return outer._get_row(self._cur)
+                    row = outer._get_row(self._cur)
+                    if ctx.strict_mode and isinstance(row, TableRow):
+                        return row.as_pydict()
+                    else:
+                        return row
                 raise StopIteration
 
         return Iter()
