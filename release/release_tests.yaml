@@ -739,14 +739,14 @@
     timeout: 3600
     script: bash out_of_core_benchmark.sh
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_oom.yaml
-        cluster_compute: compute_gce_cpu_16.yaml
+#  variations:
+#    - __suffix__: aws
+#    - __suffix__: gce
+#      env: gce
+#      frequency: manual
+#      cluster:
+#        cluster_env: app_config_oom.yaml
+#        cluster_compute: compute_gce_cpu_16.yaml
 
 # Test additional CPU nodes for preprocessing.
 - name: ray-data-bulk-ingest-heterogeneity-benchmark
