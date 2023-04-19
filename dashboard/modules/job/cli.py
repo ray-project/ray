@@ -13,7 +13,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cl
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
-from ray._private.utils import parse_resources_json
+from ray._private.utils import parse_resources_json, parse_metadata_json
 
 
 def _get_sdk_client(
@@ -124,6 +124,13 @@ def job_cli_group():
     ),
 )
 @click.option(
+    "--metadata",
+    type=str,
+    default=None,
+    required=False,
+    help="JSON-serialized dictionary of metadata to attach to the job.",
+)
+@click.option(
     "--entrypoint-num-cpus",
     required=False,
     type=float,
@@ -161,6 +168,7 @@ def submit(
     submission_id: Optional[str],
     runtime_env: Optional[str],
     runtime_env_json: Optional[str],
+    metadata: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
     entrypoint_num_cpus: Optional[Union[int, float]],
@@ -182,6 +190,8 @@ def submit(
         entrypoint_resources = parse_resources_json(
             entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
         )
+    if metadata is not None:
+        metadata = parse_metadata_json(metadata, cli_logger, cf, command_arg="metadata")
 
     submission_id = submission_id or job_id
 
@@ -212,6 +222,7 @@ def submit(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
+        metadata=metadata,
         entrypoint_num_cpus=entrypoint_num_cpus,
         entrypoint_num_gpus=entrypoint_num_gpus,
         entrypoint_resources=entrypoint_resources,
