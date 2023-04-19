@@ -801,7 +801,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         pip install google-cloud-bigquery
 
-    Then, define your connection login and query the datastream.
+    Then, define your connection login and query the dataset.
 
     .. code-block:: python
 
