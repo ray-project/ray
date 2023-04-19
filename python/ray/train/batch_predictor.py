@@ -9,7 +9,7 @@ from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline, Preprocessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -190,7 +190,7 @@ class BatchPredictor:
             .. testoutput::
 
                 MapBatches(ScoringWrapper)
-                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
+                +- Datastream(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
         """  # noqa: E501
         if num_gpus_per_worker is None:
@@ -232,7 +232,7 @@ class BatchPredictor:
         predict_stage_batch_format: BatchFormat = (
             self._predictor_cls._batch_format_to_use()
         )
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:

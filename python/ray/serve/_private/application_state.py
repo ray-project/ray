@@ -112,6 +112,11 @@ class ApplicationState:
         self.status = ApplicationStatus.DEPLOYING
         return cur_deployments_to_delete
 
+    def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
+        self.deploy_obj_ref = deploy_obj_ref
+        self.deployment_timestamp = deployment_time
+        self.status = ApplicationStatus.DEPLOYING
+
     def _process_terminating_deployments(self):
         """Update the tracking for all deployments being deleted
 
@@ -347,12 +352,18 @@ class ApplicationStateManager:
                 "previous request."
             )
             ray.cancel(self._application_states[name].deploy_obj_ref)
-        self._application_states[name] = ApplicationState(
-            name,
-            self.deployment_state_manager,
-            deploy_obj_ref=deploy_obj_ref,
-            deployment_time=deployment_time,
-        )
+        if name in self._application_states:
+            self._application_states[name].update_obj_ref(
+                deploy_obj_ref,
+                deployment_time,
+            )
+        else:
+            self._application_states[name] = ApplicationState(
+                name,
+                self.deployment_state_manager,
+                deploy_obj_ref=deploy_obj_ref,
+                deployment_time=deployment_time,
+            )
 
     def get_deployment_timestamp(self, name: str) -> float:
         if name not in self._application_states:

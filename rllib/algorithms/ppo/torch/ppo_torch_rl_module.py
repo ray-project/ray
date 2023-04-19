@@ -5,8 +5,8 @@ from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -30,7 +30,7 @@ def get_ppo_loss(fwd_in, fwd_out):
 
 
 class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
-    framework = "torch"
+    framework: str = "torch"
 
     def __init__(self, *args, **kwargs):
         TorchRLModule.__init__(self, *args, **kwargs)

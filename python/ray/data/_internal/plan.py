@@ -16,10 +16,10 @@ from typing import (
 )
 
 import ray
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
-from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     UDF,
@@ -30,12 +30,12 @@ from ray.data._internal.compute import (
     get_compute,
     is_task_compute,
 )
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -47,11 +47,11 @@ if TYPE_CHECKING:
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-logger = DatasetLogger(__name__)
+logger = DatastreamLogger(__name__)
 
 
 class Stage:
-    """Represents a Dataset transform stage (e.g., map or shuffle)."""
+    """Represents a Datastream transform stage (e.g., map or shuffle)."""
 
     def __init__(self, name: str, num_blocks: Optional[int]):
         self.name = name
@@ -79,7 +79,7 @@ class Stage:
 
 
 class ExecutionPlan:
-    """A lazy execution plan for a Dataset."""
+    """A lazy execution plan for a Datastream."""
 
     # Implementation Notes:
     #
@@ -100,8 +100,8 @@ class ExecutionPlan:
     def __init__(
         self,
         in_blocks: BlockList,
-        stats: DatasetStats,
-        dataset_uuid=None,
+        stats: DatastreamStats,
+        datastream_uuid=None,
         *,
         run_by_consumer: bool,
     ):
@@ -110,7 +110,7 @@ class ExecutionPlan:
         Args:
             in_blocks: Base list of blocks.
             stats: Stats for the base blocks.
-            dataset_uuid: Dataset's UUID.
+            datastream_uuid: Datastream's UUID.
             run_by_consumer: Whether this plan is invoked to run by the consumption
             APIs (e.g. .iter_batches()).
         """
@@ -125,16 +125,16 @@ class ExecutionPlan:
         # Cache of optimized stages.
         self._last_optimized_stages = None
 
-        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
-        if not stats.dataset_uuid:
-            stats.dataset_uuid = self._dataset_uuid
+        self._datastream_uuid = datastream_uuid or uuid.uuid4().hex
+        if not stats.datastream_uuid:
+            stats.datastream_uuid = self._datastream_uuid
 
         self._run_by_consumer = run_by_consumer
 
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
-            f"dataset_uuid={self._dataset_uuid}, "
+            f"datastream_uuid={self._datastream_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
             f"stages_before_snapshot={self._stages_before_snapshot}, "
@@ -142,13 +142,13 @@ class ExecutionPlan:
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
-    def get_plan_as_string(self) -> str:
+    def get_plan_as_string(self, classname: str) -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
             The string representation of this execution plan.
         """
-        # NOTE: this is used for Dataset.__repr__ to give a user-facing string
+        # NOTE: this is used for Datastream.__repr__ to give a user-facing string
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
 
@@ -156,7 +156,7 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         num_stages = 0
-        dataset_blocks = None
+        datastream_blocks = None
         if self._stages_after_snapshot:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
@@ -181,17 +181,17 @@ class ExecutionPlan:
                 schema = self._get_unified_blocks_schema(
                     self._snapshot_blocks, fetch_if_missing=False
                 )
-                dataset_blocks = self._snapshot_blocks
+                datastream_blocks = self._snapshot_blocks
             else:
                 assert self._in_blocks is not None
                 schema = self._get_unified_blocks_schema(
                     self._in_blocks, fetch_if_missing=False
                 )
-                dataset_blocks = self._in_blocks
+                datastream_blocks = self._in_blocks
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            dataset_blocks = self._snapshot_blocks
+            datastream_blocks = self._snapshot_blocks
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -205,15 +205,15 @@ class ExecutionPlan:
                 schema_str.append(f"{n}: {t}")
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
-        count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
+        count = self._get_num_rows_from_blocks_metadata(datastream_blocks)
         if count is None:
             count = "?"
-        if dataset_blocks is None:
+        if datastream_blocks is None:
             num_blocks = "?"
         else:
-            num_blocks = dataset_blocks.initial_num_blocks()
-        dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            num_blocks, count, schema_str
+            num_blocks = datastream_blocks.initial_num_blocks()
+        datastream_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
+            classname, num_blocks, count, schema_str
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -221,9 +221,9 @@ class ExecutionPlan:
         MIN_FIELD_LENGTH = 10
         INDENT_STR = " " * 3
         trailing_space = " " * (max(num_stages, 0) * 3)
-        if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
+        if len(datastream_str) > SCHEMA_LINE_CHAR_LIMIT:
             # If the resulting string representation exceeds the line char limit,
-            # first try breaking up each `Dataset` parameter into its own line
+            # first try breaking up each `Datastream` parameter into its own line
             # and check if each line fits within the line limit. We check the
             # `schema` param's length, since this is likely the longest string.
             schema_str_on_new_line = f"{trailing_space}{INDENT_STR}schema={schema_str}"
@@ -253,8 +253,8 @@ class ExecutionPlan:
                 schema_str = (
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
-            dataset_str = (
-                f"Dataset("
+            datastream_str = (
+                f"{classname}("
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
@@ -262,10 +262,10 @@ class ExecutionPlan:
             )
 
         if num_stages == 0:
-            plan_str = dataset_str
+            plan_str = datastream_str
         else:
             trailing_space = " " * ((num_stages - 1) * 3)
-            plan_str += f"{trailing_space}+- {dataset_str}"
+            plan_str += f"{trailing_space}+- {datastream_str}"
         return plan_str
 
     def with_stage(self, stage: "Stage") -> "ExecutionPlan":
@@ -320,16 +320,16 @@ class ExecutionPlan:
         Returns:
             A deep copy of this execution plan.
         """
-        dataset_uuid = None
+        datastream_uuid = None
         if preserve_uuid:
-            dataset_uuid = self._dataset_uuid
+            datastream_uuid = self._datastream_uuid
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
             in_blocks,
             copy.copy(self._in_stats),
-            dataset_uuid=dataset_uuid,
+            datastream_uuid=datastream_uuid,
             run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:
@@ -365,7 +365,7 @@ class ExecutionPlan:
             fetch_if_missing: Whether to execute the plan to fetch the schema.
 
         Returns:
-            The schema of the output dataset.
+            The schema of the output datastream.
         """
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
@@ -393,8 +393,8 @@ class ExecutionPlan:
                 return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset from
-            # read, and output datasets of Dataset.split().
+            # This applies to newly created datastream. For example, initial datastream
+            # from read, and output datastreams of Datastream.split().
             self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
@@ -412,36 +412,17 @@ class ExecutionPlan:
             fetch_if_missing: Whether to execute the blocks to fetch the schema.
         """
 
-        # Only trigger the execution of first block in case it's a lazy block list.
-        # Don't trigger full execution for a schema read.
+        # Ensure the first block has schema information available in the metadata.
+        # Otherwise, this will trigger computation on the first block
+        # for a schema read.
         if isinstance(blocks, LazyBlockList):
-            blocks.compute_first_block()
             blocks.ensure_metadata_for_first_block()
 
         metadata = blocks.get_metadata(fetch_if_missing=False)
-        # Some blocks could be empty, in which case we cannot get their schema.
-        # TODO(ekl) validate schema is the same across different blocks.
 
-        # First check if there are blocks with computed schemas, then unify
-        # valid schemas from all such blocks.
-        schemas_to_unify = []
-        for m in metadata:
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                schemas_to_unify.append(m.schema)
-        if schemas_to_unify:
-            # Check valid pyarrow installation before attempting schema unification
-            try:
-                import pyarrow as pa
-            except ImportError:
-                pa = None
-            # If the result contains PyArrow schemas, unify them
-            if pa is not None and any(
-                isinstance(s, pa.Schema) for s in schemas_to_unify
-            ):
-                return unify_schemas(schemas_to_unify)
-            # Otherwise, if the resulting schemas are simple types (e.g. int),
-            # return the first schema.
-            return schemas_to_unify[0]
+        unified_schema = unify_block_metadata_schema(metadata)
+        if unified_schema is not None:
+            return unified_schema
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
@@ -459,14 +440,14 @@ class ExecutionPlan:
         This method will never trigger any computation.
 
         Returns:
-            The number of records of the result Dataset, or None.
+            The number of records of the result Datastream, or None.
         """
         if self._stages_after_snapshot:
             return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset from
-            # read, and output datasets of Dataset.split().
+            # This applies to newly created datastream. For example, initial datastream
+            # from read, and output datastreams of Datastream.split().
             self.execute()
         # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
@@ -484,7 +465,7 @@ class ExecutionPlan:
         force_read: bool = False,
     ) -> Tuple[
         Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        DatasetStats,
+        DatastreamStats,
         Optional["Executor"],
     ]:
         """Execute this plan, returning an iterator.
@@ -501,7 +482,7 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(
@@ -521,7 +502,7 @@ class ExecutionPlan:
             executor,
             self,
             allow_clear_input_blocks=allow_clear_input_blocks,
-            dataset_uuid=self._dataset_uuid,
+            datastream_uuid=self._datastream_uuid,
         )
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -548,14 +529,14 @@ class ExecutionPlan:
             preserve_order: Whether to preserve order in execution.
 
         Returns:
-            The blocks of the output dataset.
+            The blocks of the output datastream.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
                     "Warning: The Ray cluster currently does not have "
-                    "any available CPUs. The Dataset job will hang unless more CPUs "
+                    "any available CPUs. The Datastream job will hang unless more CPUs "
                     "are freed up. A common reason is that cluster resources are "
                     "used by Actors or Tune trials; see the following link "
                     "for more details: "
@@ -581,13 +562,13 @@ class ExecutionPlan:
                     executor,
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
-                    dataset_uuid=self._dataset_uuid,
+                    datastream_uuid=self._datastream_uuid,
                     preserve_order=preserve_order,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .cache() is used. The reason
-                # we need it right now is since the user may iterate over a Dataset
-                # multiple times after fully executing it once.
+                # to a fully lazy execution model, unless .materialize() is used. Th
+                # reason we need it right now is since the user may iterate over a
+                # Datastream multiple times after fully executing it once.
                 if not self._run_by_consumer:
                     blocks._owned_by_consumer = False
                 stats = executor.get_stats()
@@ -616,7 +597,7 @@ class ExecutionPlan:
                         stats = stats_builder.build_multistage(stage_info)
                     else:
                         stats = stats_builder.build(blocks)
-                    stats.dataset_uuid = self._dataset_uuid
+                    stats.datastream_uuid = self._datastream_uuid
                     stats_summary_string = stats.to_summary().to_string(
                         include_parent=False,
                     )
@@ -627,7 +608,7 @@ class ExecutionPlan:
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
+            self._snapshot_stats.datastream_uuid = self._datastream_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
         if _is_lazy(self._snapshot_blocks) and force_read:
@@ -652,16 +633,16 @@ class ExecutionPlan:
         )
         self._stages_before_snapshot = []
 
-    def stats(self) -> DatasetStats:
+    def stats(self) -> DatastreamStats:
         """Return stats for this plan.
 
         If the plan isn't executed, an empty stats object will be returned.
         """
         if not self._snapshot_stats:
-            return DatasetStats(stages={}, parent=None)
+            return DatastreamStats(stages={}, parent=None)
         return self._snapshot_stats
 
-    def stats_summary(self) -> DatasetStatsSummary:
+    def stats_summary(self) -> DatastreamStatsSummary:
         return self.stats().to_summary()
 
     def _should_clear_input_blocks(
@@ -686,11 +667,11 @@ class ExecutionPlan:
             # execution plan, so we don't clear these.
             return False
 
-    def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+    def _optimize(self) -> Tuple[BlockList, DatastreamStats, List[Stage]]:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
@@ -699,7 +680,7 @@ class ExecutionPlan:
                 # If using a lazy datasource, rewrite read stage into one-to-one stage
                 # so it can be fused into downstream stages.
                 blocks, stats, stages = _rewrite_read_stages(
-                    blocks, stats, stages, self._dataset_uuid
+                    blocks, stats, stages, self._datastream_uuid
                 )
             stages = _fuse_one_to_one_stages(stages)
             self._last_optimized_stages = stages
@@ -707,7 +688,7 @@ class ExecutionPlan:
 
     def _get_source_blocks_and_stages(
         self,
-    ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+    ) -> Tuple[BlockList, DatastreamStats, List[Stage]]:
         """Get the source blocks, corresponding stats, and the stages for plan
         execution.
 
@@ -746,7 +727,7 @@ class ExecutionPlan:
         """Return whether this plan can be executed as only a read stage."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
@@ -782,7 +763,7 @@ class ExecutionPlan:
         # - Read only: handle with legacy backend
         # - Read->randomize_block_order: handle with new backend
         # Note that both are considered read equivalent, hence this extra check.
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1
@@ -1066,7 +1047,7 @@ class AllToAllStage(Stage):
         self.sub_stage_names = sub_stage_names
 
     def can_fuse(self, prev: Stage):
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         # TODO(ekl) also support fusing shuffle stages to subsequent 1:1 stages.
         if not context.optimize_fuse_shuffle_stages:
             return False
@@ -1146,20 +1127,20 @@ class AllToAllStage(Stage):
 
 def _rewrite_read_stages(
     blocks: BlockList,
-    stats: DatasetStats,
+    stats: DatastreamStats,
     stages: List[Stage],
-    dataset_uuid: str,
-) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+    datastream_uuid: str,
+) -> Tuple[BlockList, DatastreamStats, List[Stage]]:
     """Rewrites read stages into one-to-one stages, if needed."""
     if _is_lazy(blocks) and stages:
         blocks, stats, stages = _rewrite_read_stage(blocks, stages)
-        stats.dataset_uuid = dataset_uuid
+        stats.datastream_uuid = datastream_uuid
     return blocks, stats, stages
 
 
 def _rewrite_read_stage(
     in_blocks: LazyBlockList, stages: List[Stage]
-) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+) -> Tuple[BlockList, DatastreamStats, List[Stage]]:
     """Rewrite the read stage to a OneToOne stage over read tasks as input.
 
     For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
@@ -1214,7 +1195,7 @@ def _rewrite_read_stage(
         "tasks",
         remote_args,
     )
-    stats = DatasetStats(stages={}, parent=None)
+    stats = DatastreamStats(stages={}, parent=None)
     stages.insert(0, stage)
     return block_list, stats, stages
 

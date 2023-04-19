@@ -11,9 +11,9 @@ from ray.rllib.core.models.base import Encoder
 from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
-    MLPEncoderConfig,
-    LSTMEncoderConfig,
     CNNEncoderConfig,
+    MLPEncoderConfig,
+    RecurrentEncoderConfig,
 )
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models import MODEL_DEFAULTS
@@ -127,6 +127,7 @@ class Catalog:
 
     .. testcode::
 
+        import torch
         import gymnasium as gym
         from ray.rllib.core.models.configs import MLPHeadConfig
         from ray.rllib.core.models.catalog import Catalog
@@ -151,8 +152,8 @@ class Catalog:
 
         # With that, RLlib can build and use models from this catalog like this:
         catalog = MyCatalog(gym.spaces.Box(0, 1), gym.spaces.Box(0, 1), {})
-        my_head = catalog.build_my_head("torch")  # doctest: +SKIP
-        out = my_head(...)  # doctest: +SKIP
+        my_head = catalog.build_my_head("torch")
+        out = my_head(torch.Tensor([[1]]))
     """
 
     def __init__(
@@ -320,14 +321,13 @@ class Catalog:
         use_attention = model_config_dict["use_attention"]
 
         if use_lstm:
-            encoder_config = LSTMEncoderConfig(
+            encoder_config = RecurrentEncoderConfig(
+                recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
-                batch_first=not model_config_dict["_time_major"],
+                batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
                 output_dims=[model_config_dict["lstm_cell_size"]],
                 output_activation=output_activation,
-                observation_space=observation_space,
-                action_space=action_space,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )
@@ -363,10 +363,13 @@ class Catalog:
 
                 encoder_config = CNNEncoderConfig(
                     input_dims=observation_space.shape,
-                    filter_specifiers=model_config_dict["conv_filters"],
-                    filter_layer_activation=activation,
-                    output_activation=output_activation,
+                    cnn_filter_specifiers=model_config_dict["conv_filters"],
+                    cnn_activation=activation,
+                    cnn_use_layernorm=model_config_dict.get(
+                        "conv_use_layernorm", False
+                    ),
                     output_dims=[encoder_latent_dim],
+                    output_activation=output_activation,
                 )
             # input_space is a 2D Box
             elif (

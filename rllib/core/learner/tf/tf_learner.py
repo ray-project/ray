@@ -1,11 +1,12 @@
+import json
 import logging
 import numpy as np
+import pathlib
 import tree  # pip install dm-tree
 from typing import (
     Any,
     Mapping,
     Union,
-    Type,
     Optional,
     Callable,
     Sequence,
@@ -15,8 +16,8 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
-    ParamOptimizerPairs,
-    Optimizer,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
     ParamType,
     ParamDictType,
 )
@@ -35,6 +36,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 
 
 tf1, tf, tfv = try_import_tf()
@@ -66,27 +68,27 @@ class TfLearner(Learner):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
-        # the default strategy is a no-op that can be used in the local mode
-        # cpu only case, build will override this if needed.
-        self._strategy = tf.distribute.get_strategy()
+
+        # this is a placeholder which will be filled by
+        # `_make_distributed_strategy_if_necessary`
+        self._strategy: tf.distribute.Strategy = None
 
     @override(Learner)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the Learner.
-
-        By default it sets up a single Adam optimizer for each sub-module in module
-        accessible via `moduel.keys()`.
-        """
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+        module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        return [
-            (
-                self.get_parameters(self._module[key]),
-                tf.keras.optimizers.Adam(learning_rate=lr),
-            )
-            for key in self._module.keys()
-            if self._is_module_compatible_with_learner(self._module[key])
-        ]
+        optim = tf.keras.optimizers.Adam(learning_rate=lr)
+        pair: ParamOptimizerPair = (
+            self.get_parameters(module),
+            optim,
+        )
+        # this isn't strictly necessary, but makes it so that if a checkpoint is
+        # computed before training actually starts, then it will be the same in
+        # shape / size as a checkpoint after training starts.
+        optim.build(module.trainable_variables)
+        return pair
 
     @override(Learner)
     def compute_gradients(
@@ -101,7 +103,7 @@ class TfLearner(Learner):
         # only some agents have a sample batch that is passed but not others.
         # This is probably because of the way that we are iterating over the
         # parameters in the optim_to_param_dictionary
-        for optim, param_ref_seq in self._optim_to_param.items():
+        for optim, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
@@ -129,6 +131,139 @@ class TfLearner(Learner):
         return gradients_dict
 
     @override(Learner)
+    def load_state(
+        self,
+        path: Union[str, pathlib.Path],
+    ) -> None:
+        # This operation is potentially very costly because a MARL Module is created at
+        # build time, destroyed, and then a new one is created from a checkpoint.
+        # However, it is necessary due to complications with the way that Ray Tune
+        # restores failed trials. When Tune restores a failed trial, it reconstructs the
+        # entire experiment from the initial config. Therefore, to reflect any changes
+        # made to the learner's modules, the module created by Tune is destroyed and
+        # then rebuilt from the checkpoint.
+        with self._strategy.scope():
+            super().load_state(path)
+
+    def _save_optimizer_hparams(
+        self,
+        path: pathlib.Path,
+        optim: "tf.keras.optimizers.Optimizer",
+        optim_name: str,
+    ) -> None:
+        """Save the hyperparameters of optim to path/optim_name_hparams.json.
+
+        Args:
+            path: The path to the directory to save the hyperparameters to.
+            optim: The optimizer to save the hyperparameters of.
+            optim_name: The name of the optimizer.
+
+        """
+        hparams = tf.keras.optimizers.serialize(optim)
+        hparams = tf.nest.map_structure(convert_numpy_to_python_primitives, hparams)
+        with open(path / f"{optim_name}_hparams.json", "w") as f:
+            json.dump(hparams, f)
+
+    def _save_optimizer_state(
+        self,
+        path: pathlib.Path,
+        optim: "tf.keras.optimizers.Optimizer",
+        optim_name: str,
+    ) -> None:
+        """Save the state variables of optim to path/optim_name_state.txt.
+
+        Args:
+            path: The path to the directory to save the state to.
+            optim: The optimizer to save the state of.
+            optim_name: The name of the optimizer.
+
+        """
+        state = optim.variables()
+        serialized_tensors = [tf.io.serialize_tensor(tensor) for tensor in state]
+        contents = tf.strings.join(serialized_tensors, separator="tensor: ")
+        tf.io.write_file(str(path / f"{optim_name}_state.txt"), contents)
+
+    @override(Learner)
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        for name, optim in self._named_optimizers.items():
+            self._save_optimizer_hparams(path, optim, name)
+            self._save_optimizer_state(path, optim, name)
+
+    def _load_optimizer_from_hparams(
+        self, path: pathlib.Path, optim_name: str
+    ) -> "tf.keras.optimizers.Optimizer":
+        """Load an optimizer from the hyperparameters saved at path/optim_name_hparams.json.
+
+        Args:
+            path: The path to the directory to load the hyperparameters from.
+            optim_name: The name of the optimizer.
+
+        Returns:
+            The optimizer loaded from the hyperparameters.
+
+        """
+        with open(path / f"{optim_name}_hparams.json", "r") as f:
+            state = json.load(f)
+        return tf.keras.optimizers.deserialize(state)
+
+    def _load_optimizer_state(
+        self,
+        path: pathlib.Path,
+        optim: "tf.keras.optimizers.Optimizer",
+        optim_name: str,
+    ) -> None:
+        """Load the state of optim from the state saved at path/optim_name_state.txt.
+
+        Args:
+            path: The path to the directory to load the state from.
+            optim: The optimizer to load the state into.
+            optim_name: The name of the optimizer.
+
+        """
+        contents = tf.io.read_file(str(path / f"{optim_name}_state.txt"))
+        serialized_tensors = tf.strings.split(contents, sep="tensor: ")
+        unserialized_optim_state = []
+        for serialized_tensor, optim_tensor in zip(
+            serialized_tensors, optim.variables()
+        ):
+            unserialized_optim_state.append(
+                tf.io.parse_tensor(serialized_tensor, optim_tensor.dtype)
+            )
+
+        # set the state of the optimizer to the state that was saved
+        optim.set_weights(unserialized_optim_state)
+
+    @override(Learner)
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        for name in self._named_optimizers.keys():
+            new_optim = self._load_optimizer_from_hparams(path, name)
+            old_optim = self._named_optimizers[name]
+
+            # assign replace the old optim with the new optim in the learner's state
+            self._named_optimizers[name] = new_optim
+            param_seq = self._optimizer_parameters.pop(old_optim)
+            self._optimizer_parameters[new_optim] = []
+            for param_ref in param_seq:
+                self._optimizer_parameters[new_optim].append(param_ref)
+
+            # delete the old optimizer / free its memory
+            del old_optim
+            # these are the variables that the optimizer is supposed to optimize over
+            variable_list = [
+                self._params[param_ref]
+                for param_ref in self._optimizer_parameters[new_optim]
+            ]
+            # initialize the optimizer with the variables that it is supposed to
+            # optimize over
+            new_optim.build(variable_list)
+
+            # This loads in the actual state of the optimizer.
+            self._load_optimizer_state(path, new_optim, name)
+
+    @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         self._module.set_state(weights)
 
@@ -140,15 +275,26 @@ class TfLearner(Learner):
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.trainable_variables)
 
-    @override(Learner)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        lr = self._optimizer_config["lr"]
-        return optimizer_cls(learning_rate=lr)
-
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, TfRLModule)
+
+    @override(Learner)
+    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
+        super()._check_structure_param_optim_pair(param_optim_pair)
+        params, optim = param_optim_pair
+        if not isinstance(optim, tf.keras.optimizers.Optimizer):
+            raise ValueError(
+                f"The optimizer in {param_optim_pair} is not a tf keras optimizer. "
+                "Please use a tf.keras.optimizers.Optimizer for TfLearner."
+            )
+        for param in params:
+            if not isinstance(param, tf.Variable):
+                raise ValueError(
+                    f"One of the parameters {param} in this ParamOptimizerPair "
+                    f"{param_optim_pair} is not a tf.Variable. Please use a "
+                    "tf.Variable for TfLearner. You can retrieve the param with a call "
+                    "to learner.get_param_ref(tensor)."
+                )
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -180,8 +326,6 @@ class TfLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -195,8 +339,6 @@ class TfLearner(Learner):
             super().add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
             )
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
@@ -208,6 +350,35 @@ class TfLearner(Learner):
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
+    def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
+        """Create a distributed strategy for the learner.
+
+        A stratgey is a tensorflow object that is used for distributing training and
+        gradient computation across multiple devices. By default a no-op strategy is
+        that is not distributed is used.
+
+        Returns:
+            A strategy for the learner to use for distributed training.
+
+        """
+        if self._distributed:
+            strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        elif self._use_gpu:
+            # mirrored strategy is typically used for multi-gpu training
+            # on a single machine, however we can use it for single-gpu
+            devices = tf.config.list_logical_devices("GPU")
+            assert self._local_gpu_idx < len(devices), (
+                f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                " not available."
+            )
+            local_gpu = [devices[self._local_gpu_idx].name]
+            strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+        else:
+            # the default strategy is a no-op that can be used in the local mode
+            # cpu only case, build will override this if needed.
+            strategy = tf.distribute.get_strategy()
+        return strategy
+
     @override(Learner)
     def build(self) -> None:
         """Build the TfLearner.
@@ -217,19 +388,13 @@ class TfLearner(Learner):
         placed on the correct device. After running super(), depending on eager_tracing
         flag it will decide whether to wrap the update function with tf.function or not.
         """
-        if self._distributed:
-            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        else:
-            if self._use_gpu:
-                # mirrored strategy is typically used for multi-gpu training
-                # on a single machine, however we can use it for single-gpu
-                devices = tf.config.list_logical_devices("GPU")
-                assert self._local_gpu_idx < len(devices), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
-                )
-                local_gpu = [devices[self._local_gpu_idx].name]
-                self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+
+        # we call build anytime we make a learner, or load a learner from a checkpoint.
+        # we can't make a new strategy every time we build, so we only make one the
+        # first time build is called.
+        if not self._strategy:
+            self._strategy = self._make_distributed_strategy_if_necessary()
+
         with self._strategy.scope():
             super().build()
 
