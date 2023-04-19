@@ -2030,10 +2030,25 @@
 
   run:
     timeout: 5400
-    script: python workloads/test_tune_worker_fault_tolerance.py
+    script: python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
 
     wait_for_nodes:
       num_nodes: 16
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      run:
+        timeout: 5400
+        script: python workloads/test_tune_worker_fault_tolerance.py --bucket gs://tune-cloud-tests/worker_fault_tolerance
+
+        wait_for_nodes:
+          num_nodes: 16
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_16x1.yaml
 
 ########################
 # Golden Notebook tests
