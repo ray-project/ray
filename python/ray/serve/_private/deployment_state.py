@@ -398,7 +398,7 @@ class ActorReplicaWrapper:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
             self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                deployment_config
+                deployment_config.user_config
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
@@ -1221,10 +1221,10 @@ class DeploymentState:
             # Redeploying should not reset the deployment's start time.
             if not self._target_state.deleting:
                 deployment_info.start_time_ms = existing_info.start_time_ms
-            
+
             if (
-                not self._target_state.deleting and
-                existing_info.deployment_config == deployment_info.deployment_config
+                not self._target_state.deleting
+                and existing_info.deployment_config == deployment_info.deployment_config
                 and existing_info.replica_config.ray_actor_options
                 == deployment_info.replica_config.ray_actor_options
                 and deployment_info.version is not None

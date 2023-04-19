@@ -41,6 +41,9 @@ public class DeploymentVersion implements Serializable {
     } else {
       this.codeVersion = codeVersion;
     }
+    if (deploymentConfig == null) {
+      deploymentConfig = new DeploymentConfig();
+    }
     this.deploymentConfig = deploymentConfig;
     this.rayActorOptions = rayActorOptions;
     this.userConfig = deploymentConfig.getUserConfig();
