@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
 
+#include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -71,7 +72,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID node_id,
                        const std::string node_address,
                        int num_workers_soft_limit,
-                       int num_initial_python_workers_for_first_job,
+                       int num_prestarted_python_workers,
                        int maximum_startup_concurrency,
                        int min_worker_port,
                        int max_worker_port,
@@ -93,9 +94,9 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
-      first_job_driver_wait_num_python_workers_(std::min(
-          num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
-      num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
+      first_job_driver_wait_num_python_workers_(
+          std::min(num_prestarted_python_workers, maximum_startup_concurrency)),
+      num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
@@ -137,12 +138,6 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       free_ports_->push(port);
     }
   }
-  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    periodical_runner_.RunFnPeriodically(
-        [this] { TryKillingIdleWorkers(); },
-        RayConfig::instance().kill_idle_workers_interval_ms(),
-        "RayletWorkerPool.deadline_timer.kill_idle_workers");
-  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -156,6 +151,19 @@ WorkerPool::~WorkerPool() {
   for (Process proc : procs_to_kill) {
     proc.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
+  }
+}
+
+void WorkerPool::Start() {
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { TryKillingIdleWorkers(); },
+        RayConfig::instance().kill_idle_workers_interval_ms(),
+        "RayletWorkerPool.deadline_timer.kill_idle_workers");
+  }
+
+  if (RayConfig::instance().enable_worker_prestart()) {
+    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
   }
 }
 
@@ -322,6 +330,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
                                   std::to_string(worker_startup_token_counter_));
+    worker_command_args.push_back("--worker-launch-time-ms=" +
+                                  std::to_string(current_sys_time_ms()));
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -385,6 +395,16 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     }
   }
 
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
+      RayConfig::instance().preload_python_modules().size() > 0) {
+    std::string serialized_preload_python_modules =
+        absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
+    RAY_LOG(DEBUG) << "Starting worker with preload_python_modules "
+                   << serialized_preload_python_modules;
+    worker_command_args.push_back("--worker-preload-modules=" +
+                                  serialized_preload_python_modules);
+  }
+
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -439,9 +459,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   // Here we consider both task workers and I/O workers.
   if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
+    RAY_LOG(DEBUG) << "Worker not started, exceeding maximum_startup_concurrency("
+                   << maximum_startup_concurrency_ << "), " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
-                   << " pending registration";
+                   << " being started and pending registration";
     *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
     process_failed_rate_limited_++;
     return {Process(), (StartupToken)-1};
@@ -462,12 +483,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
-  // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
+  // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-  stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
@@ -780,6 +798,21 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   }
 }
 
+void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
+  bool prestart = RayConfig::instance().prestart_worker_first_driver() ||
+                  RayConfig::instance().enable_worker_prestart();
+  if (first_job_registered_ ||
+      first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
+          first_job_driver_wait_num_python_workers_ ||
+      !prestart) {  // Don't wait if prestart is disabled
+    callback();
+    return;
+  }
+  first_job_registered_ = true;
+  RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
+  first_job_send_register_client_reply_to_driver_ = std::move(callback);
+}
+
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
@@ -796,31 +829,23 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
-  // This is a workaround to start initial workers on this node if and only if Raylet is
-  // started by a Python driver and the job config is not set in `ray.init(...)`.
-  // Invoke the `send_reply_callback` later to only finish driver
-  // registration after all initial workers are registered to Raylet.
-  bool delay_callback = false;
-  // If this is the first job.
-  if (first_job_.IsNil()) {
-    first_job_ = job_id;
-    // If the number of Python workers we need to wait is positive.
-    if (num_initial_python_workers_for_first_job_ > 0) {
-      delay_callback = true;
-      PrestartDefaultCpuWorkers(Language::PYTHON,
-                                num_initial_python_workers_for_first_job_);
-    }
-  }
-
-  if (delay_callback) {
-    RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
-    first_job_send_register_client_reply_to_driver_ = [send_reply_callback, port]() {
-      send_reply_callback(Status::OK(), port);
-    };
-  } else {
+  if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
-  }
+  } else {
+    if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+        !RayConfig::instance().enable_worker_prestart()) {
+      RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
+      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    }
 
+    // Invoke the `send_reply_callback` later to only finish driver
+    // registration after all prestarted workers are registered to Raylet.
+    // NOTE(clarng): prestart is only for python workers.
+    ExecuteOnPrestartWorkersStarted(
+        [send_reply_callback = std::move(send_reply_callback), port]() {
+          send_reply_callback(Status::OK(), port);
+        });
+  }
   return Status::OK();
 }
 
@@ -1233,8 +1258,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
-    if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-        state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+    if (task_spec.GetLanguage() != it->first->GetLanguage() || it->first->IsDead()) {
       continue;
     }
 
@@ -1421,8 +1445,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     return;
   }
 
-  RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
-
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
        it++) {
     if (it->first == worker) {
@@ -1432,23 +1454,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
-  if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT) {
-    // A Java worker process may have multiple workers. If one of them disconnects
-    // unintentionally (which means that the worker process has died), we remove the
-    // others from idle pool so that the failed actor will not be rescheduled on the same
-    // process.
-    auto pid = worker->GetProcess().GetId();
-    for (auto worker2 : state.registered_workers) {
-      if (worker2->GetProcess().GetId() == pid) {
-        // NOTE(kfstorm): We have to use a new field to record these workers (instead of
-        // just removing them from idle sets) because they may haven't announced worker
-        // port yet. When they announce worker port, they'll be marked idle again. So
-        // removing them from idle sets here doesn't really prevent them from being popped
-        // later.
-        state.pending_disconnection_workers.insert(worker2);
-      }
-    }
-  }
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {

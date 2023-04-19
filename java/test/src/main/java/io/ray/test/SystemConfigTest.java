@@ -4,7 +4,7 @@ import io.ray.runtime.util.SystemConfig;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = "cluster")
 public class SystemConfigTest extends BaseTest {
 
   public void testDefaultConfigs() {

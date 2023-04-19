@@ -5,14 +5,11 @@ import ray
 
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
-    RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
-    ParamOptimizerPairs,
-    Optimizer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
@@ -38,6 +35,14 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
         raise ValueError("framework must be either torch or tf")
 
     return backend_config
+
+
+def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
+    """Default implemntation for is_module_trainable()
+
+    It assumes that the module is trainable by default.
+    """
+    return True
 
 
 class LearnerGroup:
@@ -80,6 +85,8 @@ class LearnerGroup:
         # true. the backend executor would otherwise log a warning to the console from
         # ray train
         self._is_shut_down = False
+
+        self._is_module_trainable = _is_module_trainable
 
         if self._is_local:
             self._learner = learner_class(**learner_spec.get_params_dict())
@@ -154,6 +161,14 @@ class LearnerGroup:
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
+
+        # Construct a multi-agent batch with only the trainable modules.
+        train_batch = {}
+        for module_id in batch.policy_batches.keys():
+            if self._is_module_trainable(module_id, batch):
+                train_batch[module_id] = batch.policy_batches[module_id]
+        train_batch = MultiAgentBatch(train_batch, batch.count)
+
         if self.is_local:
             if not block:
                 raise ValueError(
@@ -162,7 +177,7 @@ class LearnerGroup:
                 )
             results = [
                 self._learner.update(
-                    batch,
+                    train_batch,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     reduce_fn=reduce_fn,
@@ -170,7 +185,7 @@ class LearnerGroup:
             ]
         else:
             results = self._distributed_update(
-                batch,
+                train_batch,
                 minibatch_size=minibatch_size,
                 num_iters=num_iters,
                 reduce_fn=reduce_fn,
@@ -287,36 +302,23 @@ class LearnerGroup:
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to add.
             module_spec:  #TODO (Kourosh) fill in here.
-            set_optimizer_fn: A function that takes in the module and returns a list of
-                (param, optimizer) pairs. Each element in the tuple describes a
-                parameter group that share the same optimizer object, if None, the
-                default optimizer (obtained from the exiting optimizer dictionary) will
-                be used.
-            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
-                should be provided.
         """
         if self.is_local:
             self._learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
             )
         else:
             results = self._worker_manager.foreach_actor(
                 lambda w: w.add_module(
                     module_id=module_id,
                     module_spec=module_spec,
-                    set_optimizer_fn=set_optimizer_fn,
-                    optimizer_cls=optimizer_cls,
                 )
             )
             return self._get_results(results)
@@ -388,6 +390,19 @@ class LearnerGroup:
             self._learner.set_state(state)
         else:
             self._worker_manager.foreach_actor(lambda w: w.set_state(state))
+
+    def set_is_module_trainable(
+        self, is_module_trainable: Callable[[ModuleID, MultiAgentBatch], bool] = None
+    ) -> None:
+        """Sets the function that determines whether a module is trainable.
+
+        Args:
+            is_module_trainable: A function that takes in a module id and a batch
+                and returns a boolean indicating whether the module should be trained
+                on the batch.
+        """
+        if is_module_trainable is not None:
+            self._is_module_trainable = is_module_trainable
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""

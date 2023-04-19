@@ -20,6 +20,7 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import DialogWithTitle from "../common/DialogWithTitle";
 import { DurationText } from "../common/DurationText";
+import { ActorLink, NodeLink } from "../common/links";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
@@ -32,7 +33,6 @@ export type TaskTableProps = {
   jobId?: string;
   filterToTaskId?: string;
   onFilterChange?: () => void;
-  newIA?: boolean;
   actorId?: string;
 };
 
@@ -41,7 +41,6 @@ const TaskTable = ({
   jobId,
   filterToTaskId,
   onFilterChange,
-  newIA = false,
   actorId,
 }: TaskTableProps) => {
   const [pageNo, setPageNo] = useState(1);
@@ -241,7 +240,7 @@ const TaskTable = ({
                     <StatusChip type="task" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <TaskTableActions task={task} newIA={newIA} />
+                    <TaskTableActions task={task} />
                   </TableCell>
                   <TableCell align="center">
                     {start_time_ms && start_time_ms > 0 ? (
@@ -261,7 +260,7 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{node_id ? node_id : "-"}</div>
+                      {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -271,7 +270,11 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{actor_id ? actor_id : "-"}</div>
+                      {actor_id ? (
+                        <ActorLink actorId={actor_id} />
+                      ) : (
+                        <div>-</div>
+                      )}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -343,11 +346,10 @@ const useTaskTableActionsStyles = makeStyles(() =>
 );
 
 type TaskTableActionsProps = {
-  newIA?: boolean;
   task: Task;
 };
 
-const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
+const TaskTableActions = ({ task }: TaskTableActionsProps) => {
   const classes = useTaskTableActionsStyles();
   const { ipLogMap } = useContext(GlobalContext);
   const [showErrorDetailsDialog, setShowErrorDetailsDialog] = useState(false);
@@ -356,13 +358,9 @@ const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
     setShowErrorDetailsDialog(true);
   };
 
-  const executeEvent = task.profiling_data?.events?.find(
-    ({ event_name }) => event_name === "task:execute",
-  );
-  const errorDetails =
-    executeEvent?.extra_data?.traceback && executeEvent?.extra_data?.type
-      ? `${executeEvent?.extra_data?.type}\n${executeEvent?.extra_data?.traceback}`
-      : undefined;
+  const errorDetails = task.error_type
+    ? `Error Type: ${task.error_type}\n\n${task.error_message}`
+    : undefined;
 
   return (
     <React.Fragment>
@@ -373,15 +371,9 @@ const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
           <React.Fragment>
             <Link
               target="_blank"
-              to={
-                newIA
-                  ? `/new/logs/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-                  : `/log/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-              }
+              to={`/logs/${encodeURIComponent(
+                ipLogMap[task.profiling_data.node_ip_address],
+              )}?fileName=worker-${task.worker_id}`}
             >
               Log
             </Link>

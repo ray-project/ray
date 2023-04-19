@@ -7,10 +7,12 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+from functools import wraps
 import gc
 import inspect
 import logging
 import msgpack
+import io
 import os
 import pickle
 import setproctitle
@@ -60,6 +62,8 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
+    CGcsNodeInfo,
+    CJobTableData,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
@@ -126,6 +130,7 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
+    RpcError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -137,7 +142,6 @@ import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
-from ray._private.signature import DUMMY_TYPE
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
@@ -169,13 +173,6 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
-
-# The cached serialized dummy arg b`__RAY_DUMMY__`.
-cdef dummy_type_serialized_arg = None
-# The type of DUMMY_TYPE.
-cdef dummy_type_type = type(DUMMY_TYPE)
-# The value of DUMMY_TYPE, cdef DUMMY_TYPE to avoid global lookup.
-cdef dummy_type_value = DUMMY_TYPE
 
 
 class ObjectRefGenerator:
@@ -214,6 +211,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
+    elif status.IsRpcError():
+        raise RpcError(message, rpc_code=status.rpc_code())
     else:
         raise RaySystemError(message)
 
@@ -464,35 +463,21 @@ cdef prepare_args_internal(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     c_owner_address,
-                    (<ObjectRef>arg).call_site_data)))  # Avoid calling Python function
+                    arg.call_site())))
 
         else:
-            # The type check is because some custom types may not implement __eq__
-            # well. So, we only handle the args which type and value are exactly match
-            # the DUMMY_TYPE.
-            # TODO(fyrestone): Maybe we can remove the DUMMY_TYPE or make the
-            # DUMMY_TYPE None.
-            # https://github.com/ray-project/ray/pull/32478/
-            if type(arg) is dummy_type_type and arg == dummy_type_value:
-                global dummy_type_serialized_arg
-                if dummy_type_serialized_arg is None:
-                    # Cache the serialized dummy arg.
-                    dummy_type_serialized_arg = serialized_arg = \
-                        worker.get_serialization_context().serialize(arg)
-                else:
-                    serialized_arg = dummy_type_serialized_arg
-            else:
-                try:
-                    serialized_arg = worker.get_serialization_context(
-                    ).serialize(arg)
-                except TypeError as e:
-                    msg = (
-                        "Could not serialize the argument "
-                        f"{repr(arg)} for a task or actor "
-                        f"{function_descriptor.repr}. Check "
-                        "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                        "for more information.")
-                    raise TypeError(msg) from e
+            try:
+                serialized_arg = worker.get_serialization_context(
+                ).serialize(arg)
+            except TypeError as e:
+                sio = io.StringIO()
+                ray.util.inspect_serializability(arg, print_file=sio)
+                msg = (
+                    "Could not serialize the argument "
+                    f"{repr(arg)} for a task or actor "
+                    f"{function_descriptor.repr}:\n"
+                    f"{sio.getvalue()}")
+                raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
                 metadata_fields = metadata.split(b",")
@@ -605,6 +590,7 @@ cdef store_task_errors(
         CTaskType task_type,
         proctitle,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_string* application_error,
         ):
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -629,6 +615,14 @@ cdef store_task_errors(
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
                                       actor_repr=actor_repr)
+
+    # Pass the failure object back to the CoreWorker.
+    # We also cap the size of the error message to the last
+    # MAX_APPLICATION_ERROR_LEN characters of the error message.
+    if application_error != NULL:
+        application_error[0] = str(failure_object)[
+            -ray_constants.MAX_APPLICATION_ERROR_LEN:]
+
     errors = []
     for _ in range(returns[0].size()):
         errors.append(failure_object)
@@ -652,7 +646,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         const c_string &serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         c_bool is_reattempt,
         function_name,
         function_descriptor,
@@ -667,7 +661,6 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             dynamic_returns,
             generator_id)
     except Exception as error:
-        is_application_error[0] = True
         is_retryable_error[0] = determine_if_retryable(
             error,
             serialized_retry_exception_allowlist,
@@ -706,7 +699,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         False,  # task_exception
                         None,  # actor
                         function_name, task_type, title,
-                        dynamic_returns)
+                        dynamic_returns, application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -735,7 +728,7 @@ cdef void execute_task(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
@@ -877,6 +870,8 @@ cdef void execute_task(
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
+
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -911,7 +906,6 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except Exception as e:
-                    is_application_error[0] = True
                     is_retryable_error[0] = determine_if_retryable(
                         e,
                         serialized_retry_exception_allowlist,
@@ -921,16 +915,21 @@ cdef void execute_task(
                         is_retryable_error[0]
                         and core_worker.get_current_task_retry_exceptions()
                     ):
-                        logger.info("Task failed with retryable exception:"
-                                    " {}.".format(
+                        logger.debug("Task failed with retryable exception:"
+                                     " {}.".format(
                                         core_worker.get_current_task_id()),
-                                    exc_info=True)
+                                     exc_info=True)
                     else:
                         logger.debug("Task failed with unretryable exception:"
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
+                finally:
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
+                    worker.record_task_log_end()
+
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
@@ -945,11 +944,16 @@ cdef void execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         (actor_class.__ray_actor_class__.__repr__
                          != object.__repr__)):
+                    actor_repr = repr(actor)
                     actor_magic_token = "{}{}\n".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, actor_repr)
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
+
+                    # Sets the actor repr name for the actor so other components
+                    # like GCS has such info.
+                    core_worker.set_actor_repr_name(actor_repr)
 
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
@@ -976,7 +980,7 @@ cdef void execute_task(
                             serialized_retry_exception_allowlist,
                             dynamic_returns,
                             is_retryable_error,
-                            is_application_error,
+                            application_error,
                             is_reattempt,
                             function_name,
                             function_descriptor,
@@ -1002,7 +1006,7 @@ cdef void execute_task(
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
-                    task_type, title, returns)
+                    task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -1024,14 +1028,13 @@ cdef execute_task_with_cancellation_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt):
 
-    is_application_error[0] = False
     is_retryable_error[0] = False
 
     worker = ray._private.worker.global_worker
@@ -1112,7 +1115,7 @@ cdef execute_task_with_cancellation_handler(
                      returns,
                      dynamic_returns,
                      is_retryable_error,
-                     is_application_error,
+                     application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
                      is_reattempt, execution_info, title, task_name)
@@ -1137,7 +1140,10 @@ cdef execute_task_with_cancellation_handler(
                 # to differentiate between mid-task or not.
                 False,  # task_exception
                 actor, execution_info.function_name,
-                task_type, title, returns)
+                task_type, title, returns,
+                # application_error: we are passing NULL since we don't want the
+                # cancel tasks to fail.
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -1179,7 +1185,7 @@ cdef CRayStatus task_execution_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
-        c_bool *is_application_error,
+        c_string *application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
@@ -1204,7 +1210,7 @@ cdef CRayStatus task_execution_handler(
                         returns,
                         dynamic_returns,
                         is_retryable_error,
-                        is_application_error,
+                        application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
                         is_reattempt)
@@ -1518,6 +1524,209 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+
+def _auto_reconnect(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            ray._private.utils._CALLED_FREQ[f.__name__] += 1
+        remaining_retry = self._nums_reconnect_retry
+        while True:
+            try:
+                return f(self, *args, **kwargs)
+            except RpcError as e:
+                import grpc
+                if e.rpc_code in [
+                    grpc.StatusCode.UNAVAILABLE.value[0],
+                    grpc.StatusCode.UNKNOWN.value[0],
+                ]:
+                    if remaining_retry <= 0:
+                        logger.error(
+                            "Failed to connect to GCS. Please check"
+                            " `gcs_server.out` for more details."
+                        )
+                        raise
+                    logger.debug(
+                        f"Failed to send request to gcs, reconnecting. Error {e}"
+                    )
+                    try:
+                        self._connect()
+                    except Exception:
+                        logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
+                    remaining_retry -= 1
+                    continue
+                raise
+
+    return wrapper
+
+
+cdef class GcsClient:
+    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+    cdef:
+        shared_ptr[CPythonGcsClient] inner
+        object address
+        object _nums_reconnect_retry
+
+    def __cinit__(self, address, nums_reconnect_retry=5):
+        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
+        self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
+        self.address = address
+        self._nums_reconnect_retry = nums_reconnect_retry
+        self._connect()
+
+    def _connect(self):
+        check_status(self.inner.get().Connect())
+
+    @property
+    def address(self):
+        return self.address
+
+    @property
+    def _nums_reconnect_retry(self):
+        return self._nums_reconnect_retry
+
+    @_auto_reconnect
+    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string value
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
+        if status.IsKeyError():
+            return None
+        else:
+            check_status(status)
+            return value
+
+    @_auto_reconnect
+    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            c_vector[c_string] c_keys
+            c_string c_key
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            unordered_map[c_string, c_string] c_result
+            unordered_map[c_string, c_string].iterator it
+
+        for c_key in keys:
+            c_keys.push_back(c_key)
+        with nogil:
+            check_status(self.inner.get().InternalKVMultiGet(
+                ns, c_keys, timeout_ms, c_result))
+
+        result = {}
+        it = c_result.begin()
+        while it != c_result.end():
+            key = dereference(it).first
+            value = dereference(it).second
+            result[key] = value
+            postincrement(it)
+        return result
+
+    @_auto_reconnect
+    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
+                        namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int num_added
+        with nogil:
+            check_status(self.inner.get().InternalKVPut(
+                ns, key, value, overwrite, timeout_ms, num_added))
+
+        return num_added
+
+    @_auto_reconnect
+    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
+                        namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int num_deleted
+        with nogil:
+            check_status(self.inner.get().InternalKVDel(
+                ns, key, del_by_prefix, timeout_ms, num_deleted))
+
+        return num_deleted
+
+    @_auto_reconnect
+    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] keys
+            c_string key
+
+        with nogil:
+            check_status(self.inner.get().InternalKVKeys(
+                ns, prefix, timeout_ms, keys))
+
+        result = []
+
+        for key in keys:
+            result.append(key)
+
+        return result
+
+    @_auto_reconnect
+    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool exists
+        with nogil:
+            check_status(self.inner.get().InternalKVExists(
+                ns, key, timeout_ms, exists))
+        return exists
+
+    @_auto_reconnect
+    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string c_uri = uri.encode()
+        with nogil:
+            check_status(self.inner.get().PinRuntimeEnvUri(
+                c_uri, expiration_s, timeout_ms))
+
+    @_auto_reconnect
+    def get_all_node_info(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CGcsNodeInfo node_info
+            c_vector[CGcsNodeInfo] node_infos
+        with nogil:
+            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+
+        result = {}
+        for node_info in node_infos:
+            result[node_info.node_id()] = {
+                "node_name": node_info.node_name(),
+                "state": node_info.state()
+            }
+        return result
+
+    @_auto_reconnect
+    def get_all_job_info(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CJobTableData job_info
+            c_vector[CJobTableData] job_infos
+        with nogil:
+            check_status(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
+
+        result = {}
+        for job_info in job_infos:
+            result[job_info.job_id()] = {
+                "is_dead": job_info.is_dead(),
+                "config": {
+                    "ray_namespace": job_info.config().ray_namespace().decode()
+                }
+            }
+        return result
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -1525,7 +1734,8 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint):
+                  startup_token, session_name, entrypoint,
+                  worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1577,6 +1787,8 @@ cdef class CoreWorker:
         options.startup_token = startup_token
         options.session_name = session_name
         options.entrypoint = entrypoint
+        options.worker_launch_time_ms = worker_launch_time_ms
+        options.worker_launched_time_ms = worker_launched_time_ms
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -1642,6 +1854,9 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         CCoreWorkerProcess.GetCoreWorker().SetActorTitle(title)
+
+    def set_actor_repr_name(self, repr_name):
+        CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
@@ -1948,6 +2163,8 @@ cdef class CoreWorker:
                 NodeID.from_hex(python_scheduling_strategy.node_id).binary())
             c_node_affinity_scheduling_strategy[0].set_soft(
                 python_scheduling_strategy.soft)
+            c_node_affinity_scheduling_strategy[0].set_spill_on_unavailable(
+                python_scheduling_strategy._spill_on_unavailable)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
@@ -1984,19 +2201,18 @@ cdef class CoreWorker:
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
-        if retry_exception_allowlist:
-            try:
-                serialized_retry_exception_allowlist = ray_pickle.dumps(
-                    retry_exception_allowlist,
-                )
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the retry exception allowlist"
-                    f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
-                    "Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                    "for more information.")
-                raise TypeError(msg) from e
+        try:
+            serialized_retry_exception_allowlist = ray_pickle.dumps(
+                retry_exception_allowlist,
+            )
+        except TypeError as e:
+            msg = (
+                "Could not serialize the retry exception allowlist"
+                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
+                "Check "
+                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                "for more information.")
+            raise TypeError(msg) from e
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -2672,10 +2888,7 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
@@ -2801,6 +3014,16 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
 
         return (num_tasks_submitted, num_leases_requested)
+
+    def record_task_log_start(self, stdout_path, stderr_path,
+                              int64_t out_start_offset, int64_t err_start_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogStart(stdout_path, stderr_path,
+                                out_start_offset, err_start_offset)
+
+    def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
+        CCoreWorkerProcess.GetCoreWorker() \
+            .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

@@ -31,13 +31,9 @@ def __preprocessing_enabled(config: TrainerConfigDict):
     if config._disable_preprocessor_api:
         return False
     # Same conditions as in RolloutWorker.__init__.
-    if (
-        config.is_atari
-        and not config.model.get("custom_preprocessor")
-        and config.preprocessor_pref == "deepmind"
-    ):
+    if config.is_atari and config.preprocessor_pref == "deepmind":
         return False
-    if not config.model.get("custom_preprocessor") and config.preprocessor_pref is None:
+    if config.preprocessor_pref is None:
         return False
     return True
 

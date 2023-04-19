@@ -17,7 +17,14 @@ torch, _ = try_import_torch()
 
 if __name__ == "__main__":
     # Configure our PPO trainer
-    config = ppo.PPOConfig().rollouts(num_rollout_workers=1).framework("torch")
+    config = (
+        ppo.PPOConfig()
+        .rollouts(num_rollout_workers=1)
+        .framework("torch")
+        # ONNX is not supported by RLModule API yet.
+        .training(_enable_learner_api=False)
+        .rl_module(_enable_rl_module_api=False)
+    )
 
     outdir = "export_torch"
     if os.path.exists(outdir):

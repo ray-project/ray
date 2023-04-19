@@ -51,9 +51,6 @@ class ClusterResourceManager {
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
 
-  // Mapping from predefined resource indexes to resource strings
-  std::string GetResourceNameFromIndex(int64_t res_idx);
-
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
   /// \param node_id ID of the node which resoruces need to be udpated.

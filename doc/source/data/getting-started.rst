@@ -52,7 +52,7 @@ transform datasets. Ray executes transformations in parallel for performance at 
 
     import pandas as pd
 
-    # Find rows with spepal length < 5.5 and petal length > 3.5.
+    # Find rows with sepal length < 5.5 and petal length > 3.5.
     def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
         return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
 
@@ -62,7 +62,18 @@ transform datasets. Ray executes transformations in parallel for performance at 
 .. testoutput::
 
     MapBatches(transform_batch)
-    +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+    +- Datastream(
+          num_blocks=1,
+          num_rows=150,
+          schema={
+             sepal length (cm): double,
+             sepal width (cm): double,
+             petal length (cm): double,
+             petal width (cm): double,
+             target: int64
+          }
+       )
+
 
 To learn more about transforming datasets, read
 :ref:`Transforming datasets <transforming_datasets>`.

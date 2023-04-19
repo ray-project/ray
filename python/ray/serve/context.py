@@ -13,7 +13,8 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
+import contextvars
 
 logger = logging.getLogger(__file__)
 
@@ -126,3 +127,27 @@ def _connect() -> ServeControllerClient:
     )
     _set_global_client(client)
     return client
+
+
+# Serve request context var which is used for storing the internal
+# request context information.
+# route_prefix: http url route path, e.g. http://127.0.0.1:/app
+#     the route is "/app". When you send requests by handle,
+#     the route is empty.
+# request_id: the request id is generated from http proxy, the value
+#     shouldn't be changed when the variable is set.
+# note:
+#   The request context is readonly to avoid potential
+#       async task conflicts when using it concurrently.
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
+class RequestContext:
+    route: str = ""
+    request_id: str = ""
+
+
+_serve_request_context = contextvars.ContextVar(
+    "Serve internal request context variable", default=RequestContext()
+)

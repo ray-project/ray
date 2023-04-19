@@ -138,8 +138,6 @@ class SyncConfig:
                 "disables syncing. Either remove the `upload_dir`, "
                 "or set `syncer` to 'auto' or a custom syncer."
             )
-        if not self.upload_dir and isinstance(self.syncer, Syncer):
-            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
@@ -176,19 +174,34 @@ class SyncConfig:
             max_height="none",
         )
 
-    def validate_upload_dir(self) -> bool:
+    def validate_upload_dir(self, upload_dir: Optional[str] = None) -> bool:
         """Checks if ``upload_dir`` is supported by ``syncer``.
 
         Returns True if ``upload_dir`` is valid, otherwise raises
         ``ValueError``.
 
+        The ``upload_dir`` attribute of ``SyncConfig`` is depreacted and will be
+        removed in the futures. This method also accepts a ``upload_dir`` argument
+        that will be checked for validity instead, if set.
+
         Args:
             upload_dir: Path to validate.
+
         """
+        upload_dir = upload_dir or self.upload_dir
+        if upload_dir and self.syncer is None:
+            raise ValueError(
+                "`upload_dir` enables syncing to cloud storage, but `syncer=None` "
+                "disables syncing. Either remove the `upload_dir`, "
+                "or set `syncer` to 'auto' or a custom syncer."
+            )
+        if not upload_dir and isinstance(self.syncer, Syncer):
+            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
+
         if isinstance(self.syncer, Syncer):
-            return self.syncer.validate_upload_dir(self.upload_dir)
+            return self.syncer.validate_upload_dir(upload_dir or self.upload_dir)
         else:
-            return Syncer.validate_upload_dir(self.upload_dir)
+            return Syncer.validate_upload_dir(upload_dir or self.upload_dir)
 
 
 class _BackgroundProcess:
@@ -609,12 +622,14 @@ class _DefaultSyncer(_BackgroundSyncer):
 
 
 @DeveloperAPI
-def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
+def get_node_to_storage_syncer(
+    sync_config: SyncConfig, upload_dir: Optional[str] = None
+) -> Optional[Syncer]:
     """"""
     if sync_config.syncer is None:
         return None
 
-    if not sync_config.upload_dir:
+    if not sync_config.upload_dir and not upload_dir:
         return None
 
     if sync_config.syncer == "auto":
@@ -680,7 +695,7 @@ class SyncerCallback(Callback):
             _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
         )
 
-    def _remove_trial_sync_process(self, trial: "Trial", force: bool = False):
+    def _remove_trial_sync_process(self, trial_id: str, force: bool = False):
         """Remove trial sync process.
 
         If ``force=True``, we remove it immediately. If ``force=False``, we flag
@@ -688,9 +703,9 @@ class SyncerCallback(Callback):
         the sync process at the end of the experiment.
         """
         if force:
-            self._sync_processes.pop(trial.trial_id, None)
+            self._sync_processes.pop(trial_id, None)
         else:
-            self._trial_sync_processes_to_remove.add(trial.trial_id)
+            self._trial_sync_processes_to_remove.add(trial_id)
 
     def _cleanup_trial_sync_processes(self):
         for trial_id in list(self._trial_sync_processes_to_remove):
@@ -726,10 +741,10 @@ class SyncerCallback(Callback):
         self._sync_times[trial.trial_id] = time.time()
 
     def _local_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _remote_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
@@ -815,14 +830,14 @@ class SyncerCallback(Callback):
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
         self._sync_trial_dir(trial, force=True, wait=False)
-        self._remove_trial_sync_process(trial, force=False)
+        self._remove_trial_sync_process(trial.trial_id, force=False)
         self._trial_ips.pop(trial.trial_id, None)
         self._cleanup_trial_sync_processes()
 
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
-        self._remove_trial_sync_process(trial, force=True)
+        self._remove_trial_sync_process(trial.trial_id, force=True)
         self._trial_ips.pop(trial.trial_id, None)
         self._cleanup_trial_sync_processes()
 
@@ -846,14 +861,21 @@ class SyncerCallback(Callback):
             )
 
     def wait_for_all(self):
+        # Remove any sync processes as needed, and only wait on the remaining ones.
         self._cleanup_trial_sync_processes()
 
         failed_syncs = {}
-        for trial, sync_process in self._sync_processes.items():
+        for trial_id, sync_process in self._sync_processes.items():
             try:
                 sync_process.wait()
             except Exception as e:
-                failed_syncs[trial] = e
+                failed_syncs[trial_id] = e
+
+            # Queue this sync process for removal
+            self._remove_trial_sync_process(trial_id, force=False)
+
+        # Remove the awaited processes
+        self._cleanup_trial_sync_processes()
 
         if failed_syncs:
             sync_str = "\n".join(
@@ -863,6 +885,13 @@ class SyncerCallback(Callback):
                 f"At least one trial failed to sync down when waiting for all "
                 f"trials to sync: \n{sync_str}"
             )
+
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Wait for background sync processes to finish on experiment end."""
+        try:
+            self.wait_for_all()
+        except TuneError as e:
+            logger.error(e)
 
     def __getstate__(self):
         state = self.__dict__.copy()

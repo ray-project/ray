@@ -1,10 +1,9 @@
 from collections import Counter
 import json
-import os
-import time
-
 import numpy as np
+import os
 import pickle
+import time
 
 from ray import tune
 from ray.tune.callback import Callback
@@ -108,9 +107,9 @@ def timed_tune_run(
     **tune_kwargs,
 ):
     durable = (
-        "sync_config" in tune_kwargs
-        and tune_kwargs["sync_config"].upload_dir
-        and tune_kwargs["sync_config"].upload_dir.startswith("s3://")
+        "storage_path" in tune_kwargs
+        and tune_kwargs["storage_path"]
+        and tune_kwargs["storage_path"].startswith("s3://")
     )
 
     sleep_time = 1.0 / results_per_second

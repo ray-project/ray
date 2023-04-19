@@ -6,6 +6,7 @@ import sys
 import time
 import subprocess
 from unittest.mock import Mock, patch
+import unittest
 
 import pytest
 
@@ -114,13 +115,13 @@ def test_internal_kv(ray_start_regular):
     assert kv._internal_kv_get("k2", namespace="n") is None
     assert kv._internal_kv_get("k3", namespace="n") is None
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_put("@namespace_", "x", True)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_get("@namespace_", namespace="n")
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_del("@namespace_def", namespace="n")
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
@@ -234,7 +235,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
         from time import sleep
 
         sleep(2)
-        return ray._private.gcs_utils._called_freq
+        return ray._private.utils._CALLED_FREQ
 
     freqs = ray.get(get_kv_metrics.remote())
     # So far we have the following gets
@@ -278,6 +279,97 @@ def test_site_flag_inherited(
         )
         assert worker_process_no_site == root_process_no_site
         assert worker_process_no_user_site == root_process_no_user_site
+
+
+@pytest.mark.parametrize("preload", [True, False])
+def test_preload_workers(ray_start_cluster, preload):
+    """
+    Verify preload_python_modules actually preloads modules in the Ray workers.
+    Also verify that it does not crash if a non-existent module is provided.
+    """
+    cluster = ray_start_cluster
+
+    # Specifying imports not currently imported by default_worker.py
+    expect_succeed_imports = ["html.parser", "webbrowser"]
+    expect_fail_imports = ["fake_module_expect_ModuleNotFoundError"]
+
+    if preload:
+        cluster.add_node(
+            _system_config={
+                "preload_python_modules": [
+                    *expect_succeed_imports,
+                    *expect_fail_imports,
+                ]
+            }
+        )
+    else:
+        cluster.add_node()
+
+    @ray.remote(num_cpus=0)
+    class Latch:
+        """
+        Used to ensure two separate worker processes.
+        """
+
+        def __init__(self, count):
+            self.count = count
+
+        def decr(self):
+            self.count -= 1
+
+        def is_ready(self):
+            return self.count <= 0
+
+    def wait_latch(latch):
+        latch.decr.remote()
+        while not ray.get(latch.is_ready.remote()):
+            time.sleep(0.01)
+
+    def assert_correct_imports():
+        import sys
+
+        imported_modules = set(sys.modules.keys())
+
+        if preload:
+            for expected_import in expect_succeed_imports:
+                assert (
+                    expected_import in imported_modules
+                ), f"Expected {expected_import} to be in {imported_modules}"
+            for unexpected_import in expect_fail_imports:
+                assert (
+                    unexpected_import not in imported_modules
+                ), f"Expected {unexpected_import} to not be in {imported_modules}"
+        else:
+            for unexpected_import in expect_succeed_imports:
+                assert (
+                    unexpected_import not in imported_modules
+                ), f"Expected {unexpected_import} to not be in {imported_modules}"
+
+    @ray.remote(num_cpus=0)
+    class Actor:
+        def verify_imports(self, latch):
+            wait_latch(latch)
+            assert_correct_imports()
+
+    @ray.remote(num_cpus=0)
+    def verify_imports(latch):
+        wait_latch(latch)
+        assert_correct_imports()
+
+    latch = Latch.remote(2)
+    actor = Actor.remote()
+    futures = [verify_imports.remote(latch), actor.verify_imports.remote(latch)]
+    ray.get(futures)
+
+
+def test_gcs_port_env():
+    try:
+        with unittest.mock.patch.dict(os.environ):
+            os.environ["RAY_GCS_SERVER_PORT"] = "12345"
+            ray.init()
+    except RuntimeError:
+        pass
+        # it's ok to throw runtime error for port conflicts
 
 
 if __name__ == "__main__":

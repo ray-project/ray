@@ -29,7 +29,7 @@ AIR User Guides
 
     .. https://docs.google.com/drawings/d/15SXGHbKPWdrzx3aTAIFcO2uh_s6Q7jLU03UMuwKSzzM/edit
 
-    .. link-button:: trainer
+    .. link-button:: trainers
         :type: ref
         :text: Using Trainers
         :classes: btn-link btn-block stretched-link

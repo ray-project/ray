@@ -102,6 +102,7 @@ RAY_CONFIG(uint64_t, task_oom_retries, -1)
 /// The worker killing policy to use, available options are
 /// group_by_owner
 /// retriable_lifo
+/// retriable_fifo
 RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
@@ -469,7 +470,7 @@ RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
 /// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_max_buffer_size, 10 * 1000)
+RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -480,12 +481,17 @@ RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 /// report gRPC call. A task could have more profile events in GCS from multiple
 /// report gRPC call.
 /// Setting the value to -1 allows unlimited profile events to be sent.
-RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
 RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1000 * 15)
+
+/// The delay in ms that GCS should mark any running tasks from a dead worker failed.
+/// Setting this value too smaller might result in some finished tasks marked as failed by
+/// GCS since task events data are pushed to GCS asynchronously.
+RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */ 1000 * 1)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
@@ -518,7 +524,11 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart, true)
+RAY_CONFIG(bool, enable_worker_prestart, false)
+
+/// Whether to enable worker prestarting on first driver
+/// TODO(clarng): reconcile with enable_worker_prestart
+RAY_CONFIG(bool, prestart_worker_first_driver, true)
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -709,7 +719,11 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, false)
+RAY_CONFIG(bool, event_log_reporter_enabled, true)
+
+/// Whether or not we should also write an event log to a log file.
+/// This has no effect if `event_log_reporter_enabled` is false.
+RAY_CONFIG(bool, emit_event_to_log_file, false)
 
 /// Whether to enable register actor async.
 /// If it is false, the actor registration to GCS becomes synchronous, i.e.,
@@ -778,3 +792,23 @@ RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 
 /// Whether to kill idle workers of a terminated job.
 RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
+
+// Instruct the Python default worker to preload the specified imports.
+// This is specified as a comma-separated list.
+// If left empty, no such attempt will be made.
+// Example: RAY_preload_python_modules=tensorflow,pytorch
+RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
+
+// By default, raylet send a self liveness check to GCS every 60s
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
+
+// Instruct the CoreWorker to kill its child processes while
+// it exits. This prevents certain classes of resource leaks
+// that are caused by the worker processes leaking processes.
+// If a user relies on Ray's old behavior of leaking processes,
+// then they can disable this behavior with
+// RAY_kill_child_processes_on_worker_exit=false. We anticipate
+// keeping this flag around at least until Ray 2.5.
+// See https://github.com/ray-project/ray/pull/33976 for more
+// info.
+RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
