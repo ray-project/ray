@@ -207,8 +207,8 @@ class Algorithm(Trainable):
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = [
-        "episode_reward_mean",
-        "evaluation/episode_reward_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
         "num_env_steps_sampled",
         "num_env_steps_trained",
     ]
@@ -453,11 +453,17 @@ class Algorithm(Trainable):
         # (although their values may be nan), so that Tune does not complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
+            # TODO: Don't dump sampler results into top-level.
             "evaluation": {
                 "episode_reward_max": np.nan,
                 "episode_reward_min": np.nan,
                 "episode_reward_mean": np.nan,
-            }
+                "sampler_results": {
+                    "episode_reward_max": np.nan,
+                    "episode_reward_min": np.nan,
+                    "episode_reward_mean": np.nan,
+                },
+            },
         }
 
         super().__init__(
@@ -1056,6 +1062,11 @@ class Algorithm(Trainable):
                     keep_custom_metrics=self.config.keep_per_episode_custom_metrics,
                     timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
+
+            # TODO: Don't dump sampler results into top-level.
+            if not self.config.custom_evaluation_function:
+                metrics = dict({"sampler_results": metrics}, **metrics)
+
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             # TODO: Remove this key at some point. Here for backward compatibility.
@@ -1253,10 +1264,13 @@ class Algorithm(Trainable):
                 f"{unit} done)"
             )
 
-        metrics = summarize_episodes(
+        sampler_results = summarize_episodes(
             rollout_metrics,
             keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
         )
+
+        # TODO: Don't dump sampler results into top-level.
+        metrics = dict({"sampler_results": sampler_results}, **sampler_results)
 
         metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
         metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
