@@ -5,7 +5,7 @@ Ray Glossary
 
 On this page you find a list of important terminology used throughout the Ray
 documentation, sorted alphabetically. If you're interested in a glossary for
-Ray Data specifically, please see the :ref:`Ray Data Glossary<datasets_glossary>`.
+Ray Data specifically, please see the :ref:`Ray Data Glossary<datastreams_glossary>`.
 
 .. glossary::
 

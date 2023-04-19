@@ -12,7 +12,7 @@ Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, po
 Ray Data automatically converts between the extension types/arrays above. This means you can think of a ``Tensor`` as a first-class data type in Ray Data.
 
 Creating Tensor Datastreams
-------------------------
+---------------------------
 
 This section shows how to create single and multi-column tensor datastreams.
 
@@ -179,7 +179,7 @@ Like any other Datastream, Datastreams with tensor columns can be consumed / tra
     :end-before: __consume_numpy_2_end__
 
 Saving Tensor Datastreams
-----------------------
+-------------------------
 
 Because tensor datastreams rely on Datastreams-specific extension types, they can only be
 saved in formats that preserve Arrow metadata (currently only Parquet). In addition,
