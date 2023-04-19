@@ -437,3 +437,12 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
     for module_name in RELOAD_MODULES:
         if module_name in sys.modules:
             importlib.reload(sys.modules[module_name])
+
+
+def parse_commit_from_wheel_url(url: str) -> str:
+    # url is expected to be in the format of
+    # https://s3-us-west-2.amazonaws.com/ray-wheels/master/0e0c15065507f01e8bfe78e49b0d0de063f81164/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl  # noqa
+    regex = r"/([0-9a-f]{40})/"
+    match = re.search(regex, url)
+    if match:
+        return match.group(1)
