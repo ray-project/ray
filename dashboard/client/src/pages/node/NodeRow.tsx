@@ -205,7 +205,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         <Link to={workerLogUrl} target="_blank">
           Logs
         </Link>
-        <br></br>
+        <br />
         <a
           href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
           target="_blank"
