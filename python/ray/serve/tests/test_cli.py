@@ -398,6 +398,8 @@ def test_deploy_multi_app_builder_with_args(ray_start_stop):
         timeout=10,
     )
 
+    ray.shutdown()
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
