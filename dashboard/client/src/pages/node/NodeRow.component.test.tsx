@@ -99,6 +99,7 @@ describe("NodeRow", () => {
     expect(screen.getByText(/5.0000B\/s/)).toBeVisible();
     expect(screen.getByText(/10.0000B\/s/)).toBeVisible();
   });
+
   it("Disable actions for Dead node", async () => {
     render(
       <NodeRow node={DEAD_NODE} expanded={false} onExpandButtonClick={noop} />,
@@ -141,6 +142,7 @@ describe("WorkerRow", () => {
     // Memory Usage
     expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
   });
+
   it("Disable CPU profiling & stacktrace for dead worker", async () => {
     render(<WorkerRow node={DEAD_NODE} worker={WORKER} />, {
       wrapper: ({ children }) => (
