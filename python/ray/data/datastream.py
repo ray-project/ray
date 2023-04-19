@@ -99,6 +99,7 @@ from ray.data.block import (
     FlatMapUDF,
     KeyFn,
     RowUDF,
+    StrictModeError,
     T,
     U,
     _validate_key_fn,
@@ -4381,6 +4382,13 @@ class Datastream(Generic[T]):
                 Call this function to iterate over batches of data.
 
         """  # noqa: E501
+
+        context = DataContext.get_current()
+        if context.strict_mode:
+            raise StrictModeError(
+                "default_batch_format() is not allowed in strict mode"
+            )
+
         import pandas as pd
         import pyarrow as pa
 
@@ -4410,6 +4418,9 @@ class Datastream(Generic[T]):
         the schema for the first block.
         """
         context = DataContext.get_current()
+        if context.strict_mode:
+            raise StrictModeError("dataset_format() is not allowed in strict mode")
+
         if context.use_streaming_executor:
             raise DeprecationWarning(
                 "`dataset_format` is deprecated for streaming execution. To use "
