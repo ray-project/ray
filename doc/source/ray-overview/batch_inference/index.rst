@@ -55,15 +55,22 @@ Quick Start
 Tabular
 ~~~~~~~
 
-.. tabbed:: Pytorch
+.. tabs::
 
-    .. literalinclude:: doc_code/pytorch_tabular_batch_prediction.py
-        :language: python
+    .. group-tab:: HuggingFace
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: ./doc_code/hf_quick_start.py
+            :language: python
 
-    .. literalinclude:: doc_code/tf_tabular_batch_prediction.py
-        :language: python
+    .. group-tab:: PyTorch
+
+        .. literalinclude:: ./doc_code/pytorch_quick_start.py
+            :language: python
+
+    .. group-tab:: TensorFlow
+
+        .. literalinclude:: ./doc_code/tf_quick_start.py
+            :language: python
 
 
 Learn more

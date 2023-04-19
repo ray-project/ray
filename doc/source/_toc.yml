@@ -23,9 +23,9 @@ parts:
                 title: "Complex Preprocessing"
               - file: ray-overview/batch_inference/examples/index
                 title: "Examples"
-                sections:
-                  - file : ray-overview/batch_inference/examples/pytorch_object_detection
-                    title: "PyTorch Object Detection Inference"
+#                sections:
+#                  - file : ray-overview/batch_inference/examples/pytorch_object_detection
+#                    title: "PyTorch Object Detection Inference"
 
       - file: ray-core/walkthrough
         title: "Ray Core"
