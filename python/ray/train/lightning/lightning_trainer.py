@@ -341,7 +341,7 @@ class LightningTrainer(TorchTrainer):
             dataset. If a ``preprocessor`` is provided and has not already
             been fit, it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
-        datasets_iter_config: Configurations for iterating over input Ray datasets.
+        datasets_iter_config: Configurations for iterating over input Datastreams.
             This configuration is only valid when `datasets` argument is provided to
             the LightningTrainer. Otherwise, LightningTrainer will use datamodule
             or dataloaders specified in ``LightningConfig.trainer_init_config``.
@@ -480,7 +480,7 @@ def _lightning_train_loop_per_worker(config):
     if train_ray_dataset:
         if datamodule:
             logger.warning(
-                "Using Ray datasets as primary input. The 'datamodule' defined in "
+                "Using Datastreams as primary input. The 'datamodule' defined in "
                 "'LightningConfig.trainer_fit_params' is ignored!"
             )
 

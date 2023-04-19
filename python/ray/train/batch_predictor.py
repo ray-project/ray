@@ -21,7 +21,7 @@ class BatchPredictor:
     """Batch predictor class.
 
     Takes a predictor class and a checkpoint and provides an interface to run
-    batch scoring on Ray datasets.
+    batch scoring on Datastreams.
 
     This batch predictor wraps around a predictor class and executes it
     in a distributed way when calling ``predict()``.
@@ -130,7 +130,7 @@ class BatchPredictor:
             In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datasets consumption APIs, such as iterating through the output, to trigger the execution of prediction.
 
         Args:
-            data: Ray dataset or pipeline to run batch prediction on.
+            data: Datastream or pipeline to run batch prediction on.
             feature_columns: List of columns in the preprocessed dataset to use for
                 prediction. Columns not specified will be dropped
                 from `data` before being passed to the predictor.
@@ -387,7 +387,7 @@ class BatchPredictor:
         to passing it `BatchPredictor.predict()`.
 
         Args:
-            data: Ray dataset to run batch prediction on.
+            data: Datastream to run batch prediction on.
             blocks_per_window: The window size (parallelism) in blocks.
                 Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
