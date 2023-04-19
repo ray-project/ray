@@ -29,31 +29,35 @@ Here's a more realistic view of batch inference for modern AI applications:
 
   Evaluating a batch of input data with a model to get predictions.
 
+Why use Ray for batch inference?
+---------------------------------
 
-
-Landing page:
-What is batch inference and why is it important?
-How Ray helps you to run and scale batch inference. / Why Ray?
-Quick start example (no Ray Data, simplest case of HF model)
-Where to go from here?
-
-TODO: install ray data
-
-Why should I use Ray for offline batch inference?
--------------------------------------------------
-1. **Faster and Cheaper for modern Deep Learning Applications**: Ray Data is built for hybrid CPU+GPU workloads. Through streaming based execution, CPU tasks like reading and preprocessing can be executed concurrently with GPU inference.
+1. **Faster and Cheaper for modern Deep Learning Applications**: Ray is built for complex workloads and supports loading and preprocessing data with CPUs and model inference on GPUs.
 2. **Cloud, framework, and data format agnostic**. Ray Data works on any cloud provider, any ML framework (like PyTorch and Tensorflow) and does not require a particular file format.
-3. **Out of the box scaling**: The same code works on 1 machine and a large cluster with no additional changes.
-4. **Python first** Express your inference job in Python instead of YAML files or job specs, allowing for interactive development.
-
-:ref:`Ray Data <datasets>` offers a highly performant and scalable solution for offline batch inference and processing on large amounts of data.
-
+3. **Out of the box scaling**: The same code that works on one machine also runs on a large cluster without any changes.
+4. **Python first** You can express your inference job directly in Python instead of YAML files or other formats.
 
 Quick Start
 -----------
 
-Tabular
-~~~~~~~
+To get started with batch inference with Ray, the first thing you need to do is
+install Ray together with its data processing library Ray Data:
+
+.. code-block:: bash
+
+    pip install ray[data]
+
+Running batch inference is conceptually easy and requires just three simple steps:
+
+1. Load your data into a Ray Dataset and apply any preprocessing you need.
+2. Define your model for inference.
+3. Run inference on your data by using the ``.map_batches()`` method from Ray Data.
+
+The last step also defines how your batch processing job gets distributed across your (local) cluster.
+We start with very simple use cases here and build up to more complex ones in other guides and tutorials.
+But essentially all complications boil down to extensions of the above three steps,
+like loading and storing data from cloud storage, using complex preprocessing functions,
+demanding model setups, additional postprocessing, or other customizations.
 
 .. tabs::
 
@@ -61,6 +65,8 @@ Tabular
 
         .. literalinclude:: ./doc_code/hf_quick_start.py
             :language: python
+            :start-after: __hf_quickstart_load_start__
+            :end-before: __hf_quickstart_load_end__
 
     .. group-tab:: PyTorch
 
