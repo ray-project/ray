@@ -62,7 +62,7 @@ transform datastreams. Ray executes transformations in parallel for performance.
     def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
         return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
 
-    transformed_ds = ds.map_batches(transform_batch)
+    transformed_ds = datastream.map_batches(transform_batch)
     print(transformed_ds)
 
 .. testoutput::
