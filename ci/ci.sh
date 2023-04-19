@@ -725,11 +725,7 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  # TODO(jjyao): fix it for windows
-  if [ "${OSTYPE}" != msys ]; then
-    _check_job_triggers "${1-}"
-  fi
-
+  _check_job_triggers "${1-}"
   configure_system
 
   # shellcheck disable=SC2031

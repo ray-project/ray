@@ -39,7 +39,7 @@ steps:
     - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
     - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
-    - ./ci/ci.sh test_python
+    - if [ "${RAY_CI_PYTHON_AFFECTED}" = "1" ]; then ./ci/ci.sh test_python; fi
 
 - label: ":windows: Wheels"
   commands:
