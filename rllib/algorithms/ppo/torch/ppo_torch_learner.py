@@ -116,7 +116,5 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         return {module_id: torch.tensor(value) for module_id in self.module.keys()}
 
     @override(PPOBaseLearner)
-    def _set_kl_coeff(self, module_id: ModuleID, value: float) -> None:
-        self.kl_coeffs[module_id].data = torch.tensor(
-            value, device=self.kl_coeff.device
-        )
+    def _set_kl_coeff(self, module_id: ModuleID, value: torch.Tensor) -> None:
+        self.kl_coeffs[module_id] = value

@@ -46,11 +46,10 @@ class PPOBaseLearner(Learner):
         sampled_kl = sampled_kl_values[module_id]
         if sampled_kl > 2.0 * self.kl_target:
             # TODO (Kourosh) why not 2?
-            kl_coeff *= 1.5
+            self._set_kl_coeff(module_id, 1.5 * kl_coeff)
         elif sampled_kl < 0.5 * self.kl_target:
-            kl_coeff *= 0.5
+            self._set_kl_coeff(module_id, 0.5 * kl_coeff)
 
-        self._set_kl_coeff(module_id, kl_coeff)
         results = {"kl_coeff": kl_coeff}
 
         # TODO (Kourosh): We may want to index into the schedulers to get the right one
