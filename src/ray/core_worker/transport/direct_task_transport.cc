@@ -240,8 +240,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
 
-      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(
-                                                                           CurrentTimestampMs());
+      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(CurrentTimestampMs());
       RecordTaskMetrics(task_spec);
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
