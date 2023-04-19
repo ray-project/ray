@@ -13,3 +13,13 @@ worker_node_types:
       max_workers: 3
       min_workers: 3
       use_spot: false
+
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 800
+            Iops: 5000
+            Throughput: 1000
+            VolumeType: gp3
