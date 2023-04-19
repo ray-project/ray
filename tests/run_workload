@@ -78,15 +78,12 @@ def wait():
     print(f'waited {time.time() - start} s')
 
 #subprocess.check_call("bash start_without_preload", shell=True)
-##sleep_verbose(5)
-##wait()
 #m = create_metrics_actor()
 #run_test(iterations=2, metrics_actor=m)
 #del m
 
 subprocess.check_call("bash start_with_preload", shell=True)
-#sleep_verbose(5)
-wait()
 m = create_metrics_actor()
-run_test(iterations=1, metrics_actor=m)
+wait()
+run_test(iterations=2, metrics_actor=m)
 del m
