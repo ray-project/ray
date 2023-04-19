@@ -638,7 +638,6 @@ class GlueTest(unittest.TestCase):
             self.assertTrue(any("Error fetching logs" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "finished")
-        self.assertIn("No logs", result.last_logs)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)

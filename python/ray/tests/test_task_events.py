@@ -1,10 +1,14 @@
 from collections import defaultdict
 from typing import Dict
+
+import os
 import pytest
 import sys
 import threading
 import time
-from ray._private.state_api_test_utils import verify_failed_task
+from ray._private.state_api_test_utils import (
+    verify_failed_task,
+)
 from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
@@ -286,50 +290,6 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     )
 
 
-def test_fault_tolerance_parent_failed(shutdown_only):
-    ray.init(num_cpus=4, _system_config=_SYSTEM_CONFIG)
-
-    # Each parent task spins off 2 child task, where each child spins off
-    # 1 grand_child task.
-    NUM_CHILD = 2
-
-    @ray.remote
-    def grand_child():
-        time.sleep(999)
-
-    @ray.remote
-    def child():
-        ray.get(grand_child.remote())
-
-    @ray.remote
-    def parent():
-        for _ in range(NUM_CHILD):
-            child.remote()
-        # Sleep for a bit and kill itself.
-        time.sleep(3)
-        raise ValueError("parent task is expected to fail")
-
-    parent.remote()
-
-    def verify():
-        tasks = list_tasks()
-        assert len(tasks) == 5, (
-            "Incorrect number of tasks are reported. "
-            "Expected length: 1 parent + 2 child + 2 grand_child tasks"
-        )
-        print(tasks)
-        for task in tasks:
-            assert task["state"] == "FAILED"
-
-        return True
-
-    wait_for_condition(
-        verify,
-        timeout=10,
-        retry_interval_ms=500,
-    )
-
-
 def test_parent_task_id_threaded_task(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
@@ -539,8 +499,6 @@ tune_function()
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

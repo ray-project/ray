@@ -609,20 +609,24 @@ class MLPEncoderConfig(_MLPConfig):
 
 @ExperimentalAPI
 @dataclass
-class LSTMEncoderConfig(ModelConfig):
-    """Configuration for an LSTM encoder.
+class RecurrentEncoderConfig(ModelConfig):
+    """Configuration for an LSTM-based or a GRU-based encoder.
 
-    The encoder consists of N LSTM layers stacked on top of each other and feeding their
-    outputs as inputs to the respective next layer. The internal state is structued
-    as (num_layers, B, hidden-size) for both h- and c-states of the LSTM layer(s).
+    The encoder consists of N LSTM/GRU layers stacked on top of each other and feeding
+    their outputs as inputs to the respective next layer. The internal state is
+    structued as (num_layers, B, hidden-size) for all hidden state components, e.g.
+    h- and c-states of the LSTM layer(s) or h-state of the GRU layer(s).
+    For example, the hidden states of an LSTMEncoder with num_layers=2 and hidden_dim=8
+    would be: {"h": (2, B, 8), "c": (2, B, 8)}.
 
     Example:
     .. code-block:: python
         # Configuration:
-        config = LSTMEncoderConfig(
+        config = RecurrentEncoderConfig(
+            recurrent_layer_type="lstm",
             input_dims=[16],  # must be 1D tensor
             hidden_dim=128,
-            num_lstm_layers=2,
+            num_layers=2,
             output_dims=[256],  # maybe None or a 1D tensor
             output_activation="linear",
             use_bias=True,
@@ -640,29 +644,33 @@ class LSTMEncoderConfig(ModelConfig):
     Example:
     .. code-block:: python
         # Configuration:
-        config = LSTMEncoderConfig(
+        config = RecurrentEncoderConfig(
+            recurrent_layer_type="gru",
             input_dims=[32],  # must be 1D tensor
             hidden_dim=64,
-            num_lstm_layers=1,
+            num_layers=1,
             output_dims=None,  # maybe None or a 1D tensor
             use_bias=False,
         )
         model = config.build(framework="torch")
 
         # Resulting stack in pseudocode:
-        # LSTM(32, 64, bias=False)
+        # GRU(32, 64, bias=False)
 
-        # Resulting shape of the internal states (c- and h-states):
-        # (1, B, 64) for each c- and h-states.
+        # Resulting shape of the internal state:
+        # (1, B, 64)
 
     Attributes:
-        input_dims: A 1D tensor indicating the input dimension, e.g. `[32]`.
-        hidden_dim: The size of the hidden internal states (h- and c-states) of the
-            LSTM layer(s).
-        num_lstm_layers: The number of LSTM layers to stack.
+        recurrent_layer_type: The type of the recurrent layer(s).
+            Either "lstm" or "gru".
+        input_dims: The input dimensions. Must be 1D. This is the 1D shape of the tensor
+            that goes into the first recurrent layer.
+        hidden_dim: The size of the hidden internal state(s) of the recurrent layer(s).
+            For example, for an LSTM, this would be the size of the c- and h-tensors.
+        num_layers: The number of recurrent (LSTM or GRU) layers to stack.
         batch_major: Wether the input is batch major (B, T, ..) or
             time major (T, B, ..).
-        output_activation: The activation function to use for the output layer.
+        output_activation: The activation function to use for the linear output layer.
         use_bias: Whether to use bias on all layers in the network.
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
@@ -672,8 +680,9 @@ class LSTMEncoderConfig(ModelConfig):
             other spaces that might be present in the view_requirements_dict.
     """
 
+    recurrent_layer_type: str = "lstm"
     hidden_dim: int = None
-    num_lstm_layers: int = None
+    num_layers: int = None
     batch_major: bool = True
     output_activation: str = "linear"
     use_bias: bool = True
@@ -682,10 +691,15 @@ class LSTMEncoderConfig(ModelConfig):
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
+        if self.recurrent_layer_type not in ["gru", "lstm"]:
+            raise ValueError(
+                f"`recurrent_layer_type` ({self.recurrent_layer_type}) of "
+                "RecurrentEncoderConfig must be 'gru' or 'lstm'!"
+            )
         if self.input_dims is not None and len(self.input_dims) != 1:
             raise ValueError(
-                f"`input_dims` ({self.input_dims}) of LSTMEncoderConfig must be 1D, "
-                "e.g. `[32]`!"
+                f"`input_dims` ({self.input_dims}) of RecurrentEncoderConfig must be "
+                "1D, e.g. `[32]`!"
             )
 
         # Call these already here to catch errors early on.
@@ -698,20 +712,27 @@ class LSTMEncoderConfig(ModelConfig):
             or self.view_requirements_dict is not None
         ):
             raise NotImplementedError(
-                "LSTMEncoderConfig does not support configuring LSTMs that encode "
-                "depending on view_requirements or have a custom tokenizer. "
+                "RecurrentEncoderConfig does not support configuring Models that "
+                "encode depending on view_requirements or have a custom tokenizer. "
                 "Therefore, this config expects `view_requirements_dict=None` and "
                 "`get_tokenizer_config=None`."
             )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
-
-            return TorchLSTMEncoder(self)
+            from ray.rllib.core.models.torch.encoder import (
+                TorchGRUEncoder as GRU,
+                TorchLSTMEncoder as LSTM,
+            )
         else:
-            from ray.rllib.core.models.tf.encoder import TfLSTMEncoder
+            from ray.rllib.core.models.tf.encoder import (
+                TfGRUEncoder as GRU,
+                TfLSTMEncoder as LSTM,
+            )
 
-            return TfLSTMEncoder(self)
+        if self.recurrent_layer_type == "lstm":
+            return LSTM(self)
+        else:
+            return GRU(self)
 
 
 @ExperimentalAPI
