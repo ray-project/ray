@@ -8,6 +8,7 @@ from packaging.version import Version
 
 IS_LIGHTING_V2 = Version(pl.__version__) >= Version("2.0.0")
 
+
 class LinearModule(pl.LightningModule):
     def __init__(self, input_dim, output_dim, strategy="ddp") -> None:
         super().__init__()
@@ -40,7 +41,7 @@ class LinearModule(pl.LightningModule):
     def configure_optimizers(self):
         if self.strategy == "fsdp":
             return torch.optim.SGD(self.trainer.model.parameters(), lr=0.1)
-        else:    
+        else:
             return torch.optim.SGD(self.parameters(), lr=0.1)
 
 
