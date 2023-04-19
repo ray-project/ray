@@ -554,8 +554,8 @@ def run_model2(requires_gpu=False):
 
     for _ in range(100):
         print("sending first batch...")
-        input_ids = torch.stack((input_ids, input_ids))
-        ray.get(first_stage.push_batch.remote(input_ids))
+        new_input_ids = torch.stack((input_ids, input_ids))
+        ray.get(first_stage.push_batch.remote(new_input_ids))
 
     for _ in range(100):
         print("receiving first batch...")
