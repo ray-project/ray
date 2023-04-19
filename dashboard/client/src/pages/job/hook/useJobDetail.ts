@@ -10,7 +10,7 @@ export const useJobDetail = () => {
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);
   const { ipLogMap } = useContext(GlobalContext);
-  const { data: job } = useSWR(
+  const { data: job, isLoading } = useSWR(
     "useJobDetail",
     async () => {
       try {
@@ -26,6 +26,7 @@ export const useJobDetail = () => {
 
   return {
     job,
+    isLoading,
     msg,
     params,
     ipLogMap,

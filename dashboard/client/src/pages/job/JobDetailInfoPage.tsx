@@ -20,7 +20,7 @@ export const JobDetailInfoPage = () => {
   // TODO(aguo): Add more content to this page!
 
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail();
+  const { job, msg, isLoading, params } = useJobDetail();
 
   if (!job) {
     return (
@@ -32,7 +32,7 @@ export const JobDetailInfoPage = () => {
             path: undefined,
           }}
         />
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
