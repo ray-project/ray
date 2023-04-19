@@ -60,7 +60,8 @@ fi
 # Start server with 2 workers (will listen on ports worker_1_port and worker_2_port for client
 # connections).
 # Do not attempt to restore from checkpoint; leads to errors on travis.
-(python $basedir/$server_script --run="$trainer_cls" --num-workers=2 "$use_lstm" --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
+# shellcheck disable=SC2086
+(python $basedir/$server_script --run="$trainer_cls" --num-workers=2 $use_lstm --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
 server_pid=$!
 
 echo "Waiting for server to start ..."
