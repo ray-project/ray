@@ -2931,7 +2931,10 @@ def test_filter(shutdown_only):
     def verify():
         result_1 = list_tasks(filters=[("name", "=", "task")])
         result_2 = list_tasks(filters=[("name", "=", "TASK")])
+        assert result_1 == result_2
 
+        result_1 = list_tasks(filters=[("state", "=", "FINISHED")])
+        result_2 = list_tasks(filters=[("state", "=", "finished")])
         assert result_1 == result_2
 
         result_1 = list_objects(
