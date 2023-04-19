@@ -5180,14 +5180,14 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: read_tfrecords_benchmark_app.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
+#  variations:
+#    - __suffix__: aws
+#    - __suffix__: gce
+#      env: gce
+#      frequency: manual
+#      cluster:
+#        cluster_env: read_tfrecords_benchmark_app.yaml
+#        cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: map_batches_benchmark_single_node
   group: data-tests
