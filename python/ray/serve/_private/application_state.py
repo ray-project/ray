@@ -62,11 +62,6 @@ class ApplicationState:
         """Delete the application"""
         self.status = ApplicationStatus.DELETING
 
-    def update_obj_ref(self, deploy_obj_ref, deployment_timestamp):
-        self.deploy_obj_ref = deploy_obj_ref
-        self.deployment_timestamp = deployment_timestamp
-        self.status = ApplicationStatus.DEPLOYING
-
     def deploy(self, deployment_params: List[Dict]) -> List[str]:
         """Deploy the application.
 
@@ -116,6 +111,11 @@ class ApplicationState:
 
         self.status = ApplicationStatus.DEPLOYING
         return cur_deployments_to_delete
+
+    def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
+        self.deploy_obj_ref = deploy_obj_ref
+        self.deployment_timestamp = deployment_time
+        self.status = ApplicationStatus.DEPLOYING
 
     def _process_terminating_deployments(self):
         """Update the tracking for all deployments being deleted
@@ -187,9 +187,6 @@ class ApplicationState:
                     self.deploy_obj_ref = None
                     logger.warning(self.app_msg)
                     return
-
-            self._process_terminating_deployments()
-
             deployments_statuses = (
                 self.deployment_state_manager.get_deployment_statuses(
                     self.get_all_deployments()
@@ -204,6 +201,8 @@ class ApplicationState:
                     num_health_deployments += 1
             if num_health_deployments == len(deployments_statuses):
                 self.status = ApplicationStatus.RUNNING
+
+            self._process_terminating_deployments()
 
     def get_all_deployments(self) -> List[str]:
         """Return all deployments name from the application"""
@@ -353,10 +352,10 @@ class ApplicationStateManager:
                 "previous request."
             )
             ray.cancel(self._application_states[name].deploy_obj_ref)
-
         if name in self._application_states:
             self._application_states[name].update_obj_ref(
-                deploy_obj_ref, deployment_time
+                deploy_obj_ref,
+                deployment_time,
             )
         else:
             self._application_states[name] = ApplicationState(
