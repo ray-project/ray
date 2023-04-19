@@ -371,12 +371,12 @@ class Quantile(_AggregateOnKeyBase):
     def __init__(
         self,
         on: Optional[KeyFn] = None,
-        percent: float = 0.5,
+        q: float = 0.5,
         ignore_nulls: bool = True,
         alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
-        self._percent = percent
+        self._q = q
         if alias_name:
             self._rs_name = alias_name
         else:
@@ -417,7 +417,7 @@ class Quantile(_AggregateOnKeyBase):
             if not input_values:
                 return None
             input_values = sorted(input_values)
-            k = (len(input_values) - 1) * self._percent
+            k = (len(input_values) - 1) * self._q
             f = math.floor(k)
             c = math.ceil(k)
             if f == c:
