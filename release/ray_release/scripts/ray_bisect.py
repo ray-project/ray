@@ -32,8 +32,7 @@ def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
-def _bisect(test_name: str, commit_list: List[str]) -> str:
-    test = _get_test(test_name)
+def _bisect(test: Test, commit_list: List[str]) -> str:
     while len(commit_list) > 2:
         logger.info(
             f"Bisecting between {len(commit_list)} commits: "
