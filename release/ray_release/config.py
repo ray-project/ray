@@ -98,7 +98,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             )
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
-            test.update(variation)
+            test = deep_update(test, variation)
             tests.append(test)
     return tests
 
