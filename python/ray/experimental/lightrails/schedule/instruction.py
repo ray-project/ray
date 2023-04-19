@@ -75,6 +75,13 @@ class PrintOutput(Instruction):
         self.count = count
 
 
+class SaveBatch(Instruction):
+    """save the output."""
+
+    def __init__(self, count: int = 1):
+        self.count = count
+
+
 class CustomIntruction(Instruction):
     """Print the output."""
 

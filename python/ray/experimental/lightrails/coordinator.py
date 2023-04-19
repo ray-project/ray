@@ -54,6 +54,12 @@ class Coordinator(object):
             )
         )
 
+    def fist_stage(self):
+        return self._actors[0]
+
+    def last_stage(self):
+        return self._actors[-1]
+
     def reconfigure(
         self, new_logical_plan: List[ModuleParition], new_pg: PlacementGroup
     ) -> None:

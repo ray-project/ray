@@ -5,6 +5,7 @@ from ray.experimental.lightrails.schedule.instruction import (
     LoadBatch,
     PrintOutput,
     ReceiveActivation,
+    SaveBatch,
     SendActivation,
 )
 
@@ -54,4 +55,4 @@ class OutputSchedule(Schedule):
     def steps(self):
         """Yield a list of :class:`Instructions` for each step in the schedule."""
         while True:
-            yield [ReceiveActivation(self.upstream_rank, 1), Forward(1), PrintOutput(1)]
+            yield [ReceiveActivation(self.upstream_rank, 1), Forward(1), SaveBatch(1)]

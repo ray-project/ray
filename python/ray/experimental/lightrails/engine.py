@@ -20,10 +20,12 @@ from ray.experimental.lightrails.schedule import (
     PrintOutput,
     ReceiveActivation,
     ReceiveGradient,
+    SaveBatch,
     Schedule,
     SendActivation,
     SendGradient,
 )
+from ray.experimental.lightrails.util import BlockBatchLoader
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,8 @@ class ExecutionEngine:
         data_loader = (
             config.data_loader_builder() if config.data_loader_builder else None
         )
+        self.support_external_io = isinstance(data_loader, BlockBatchLoader)
+        self.external_io_buffer = data_loader
         self.data_loader = iter(data_loader) if data_loader else None
         self.optimizer = (
             config.optimizer_builder(self.model) if config.optimizer_builder else None
@@ -119,6 +123,14 @@ class ExecutionEngine:
         """Stop the engine if it's running."""
         self.thread.join()
 
+    def push_batch(self, batch: torch.Tensor):
+        assert self.support_external_io
+        self.external_io_buffer.push_batch(batch)
+
+    def pop_batch(self) -> torch.Tensor:
+        assert self.support_external_io
+        return self.external_io_buffer.pop_batch()
+
     def check_state(self):
         """Check the state of the engine."""
         pass
@@ -136,7 +148,7 @@ class ExecutionEngine:
                 self._execute_step(instruction)
 
     def _execute_step(self, instruction: Instruction):
-        logger.debug(f"Executing instruction {instruction}")
+        logger.info(f"Executing instruction {instruction}")
         if isinstance(instruction, SendActivation):
             self._execute_send_activation(instruction)
         elif isinstance(instruction, ReceiveActivation):
@@ -157,6 +169,8 @@ class ExecutionEngine:
             self._execute_backward(instruction)
         elif isinstance(instruction, CustomIntruction):
             self._execute_custom_instruction(instruction)
+        elif isinstance(instruction, SaveBatch):
+            self._execute_save_batch(instruction)
 
     def _execute_send_activation(self, instruction: SendActivation):
         for _ in range(instruction.count):
@@ -227,6 +241,10 @@ class ExecutionEngine:
     def _execute_print_output(self, instruction: PrintOutput):
         for _ in range(instruction.count):
             logger.info(self.output_queue.popleft())
+
+    def _execute_save_batch(self, instruction: SaveBatch):
+        for _ in range(instruction.count):
+            self.external_io_buffer.push_batch(self.output_queue.popleft())
 
     def _execute_send_gradient(self, instruction: SendGradient):
         for _ in range(instruction.count):

@@ -29,10 +29,13 @@ from ray.experimental.lightrails.schedule import (
     CustomIntruction,
     ExecuteSchedule,
     Forward,
+    InputSchedule,
+    OutputSchedule,
     ReceiveActivation,
     Schedule,
     SendActivation,
 )
+from ray.experimental.lightrails.util import BlockBatchLoader
 from ray.util.placement_group import placement_group
 from torch import nn
 from transformers import (
@@ -281,6 +284,14 @@ def modify_model_and_replace_forward_pass(
     )
 
 
+def get_tokenizer():
+    checkpoint = "EleutherAI/gpt-neo-125m"
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=True)
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    return tokenizer
+
+
 def build_model(
     num_pp_rank=12,
 ):
@@ -365,9 +376,9 @@ class FirstStageModelWrapper(torch.nn.Module):
             max_length=128,
         )
         input_ids = input_tokens["input_ids"].to(self.first_stage_model.device)
-        return self._process_input_ids(input_ids)
+        return self.forward_input_ids(input_ids)
 
-    def _process_input_ids(self, input_ids):
+    def forward_input_ids(self, input_ids):
         self.input_ids = input_ids
         hidden_states, _ = self.first_stage_model.forward(
             input_ids=input_ids,
@@ -377,28 +388,29 @@ class FirstStageModelWrapper(torch.nn.Module):
         )
         return hidden_states
 
-    def forward_hidden_states(self, hidden_states):
-        # print(f"forwarding {hidden_states.shape}")
-        lm_logits = self.last_stage_model.forward(
-            hidden_states=hidden_states, output_shape=hidden_states.shape
-        )
+    # def forward_hidden_states(self, hidden_states):
+    #     # print(f"forwarding {hidden_states.shape}")
+    #     lm_logits = self.last_stage_model.forward(
+    #         hidden_states=hidden_states, output_shape=hidden_states.shape
+    #     )
 
-        next_token_logits = lm_logits[:, -1, :]
-        next_token_scores = self.processors(self.input_ids, next_token_logits)
-        probs = nn.functional.softmax(next_token_scores, dim=-1)
-        next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-        decoded = self.tokenizer.decode(next_tokens)
-        print(decoded)
-        input_ids = torch.cat([self.input_ids[:, 1:], next_tokens[:, None]], dim=-1)
-        return self._process_input_ids(input_ids)
+    #     next_token_logits = lm_logits[:, -1, :]
+    #     next_token_scores = self.processors(self.input_ids, next_token_logits)
+    #     probs = nn.functional.softmax(next_token_scores, dim=-1)
+    #     next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+    #     decoded = self.tokenizer.decode(next_tokens)
+    #     print(decoded)
+    #     input_ids = torch.cat([self.input_ids[:, 1:], next_tokens[:, None]], dim=-1)
+    #     return self.forward_input_ids(input_ids)
 
     def forward(self, input):
+        print(input.shape)
         if isinstance(input, str):
             return self.forward_input_str(input)
-        elif len(input.shape) == 3:
-            return self.forward_hidden_states(input)
         else:
-            assert False
+            return self.forward_input_ids(input)
+        # elif len(input.shape) == 3:
+        #     return self.forward_hidden_states(input)
 
 
 class ModelWrapper(torch.nn.Module):
@@ -408,7 +420,28 @@ class ModelWrapper(torch.nn.Module):
 
     def forward(self, hidden_states):
         # print(f"forwarding {hidden_states.shape}")
-        return self.model.forward(hidden_states=hidden_states)
+        return self.model.forward(
+            hidden_states=hidden_states, output_shape=hidden_states.shape
+        )
+
+
+class LastStageModelWrapper(torch.nn.Module):
+    def __init__(self, model):
+        super(ModelWrapper, self).__init__()
+        self.model = model
+
+    def forward(self, hidden_states):
+        # print(f"forwarding {hidden_states.shape}")
+        lm_logits = self.last_stage_model.forward(
+            hidden_states=hidden_states, output_shape=hidden_states.shape
+        )
+
+        next_token_logits = lm_logits[:, -1, :]
+        next_token_scores = self.processors(self.input_ids, next_token_logits)
+        probs = nn.functional.softmax(next_token_scores, dim=-1)
+        next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+        input_ids = torch.cat([self.input_ids[:, 1:], next_tokens[:, None]], dim=-1)
+        return input_ids
 
 
 def build_pipeleine_stage_model(stage, pp_ranks, tokenizer):
@@ -447,46 +480,55 @@ class FirstStageSchedule(Schedule):
 
     def steps(self):
         input = "The quick brown fox jumps over the "
-        yield [
-            CustomIntruction(
-                lambda engine: engine.input_queue.append((input, FULLFILLED_FUTURE))
-            )
-        ]
         for i in range(10):
-            yield [Forward(), SendActivation(1), ReceiveActivation(self.last_stage)]
-        yield [Forward()]
+            yield [
+                CustomIntruction(
+                    lambda engine: engine.input_queue.append((input, FULLFILLED_FUTURE))
+                )
+            ]
+            yield [Forward(), SendActivation(1)]
 
 
-def gen_logical_plan():
+def gen_logical_plan(batch_size=1, num_stages=12, context_length=128, embedding_size=768):
     logical_plan = []
 
-    num_stages = 11
     for i in range(num_stages):
         if i == 0:
-            schedule = FirstStageSchedule(num_stages - 1)
+            schedule = InputSchedule(downstream_rank=1)
+        elif i == num_stages - 1:
+            schedule = OutputSchedule(
+                upstream_rank=i - 1,
+            )
         else:
             schedule = ExecuteSchedule(
                 upstream_rank=i - 1,
                 downstream_rank=(i + 1) % num_stages,
             )
+        data_loader_builder = None
+
+        if i == 0 or i == num_stages - 1:
+            data_loader_builder = lambda: BlockBatchLoader()
         partion = ModuleParition(
             partition_index=i,
             module_loader=lambda i=i: load_module(i),
-            input_tensor_shape=(1, 128, 768),
+            input_tensor_shape=(batch_size, context_length, embedding_size),
             input_tensor_dtype=torch.float32,
             schedule=schedule,
-            data_loader_builder=None,
+            data_loader_builder=data_loader_builder,
         )
         logical_plan.append(partion)
     return logical_plan
 
 
 def run_model2(requires_gpu=False):
+    num_stages = 12
+    context_length=128
+    batch_size=2
     physical_planner = SimplePhysicalPlanner()
-    pg = placement_group([{"CPU": 1}] * 11, strategy="PACK")
+    pg = placement_group([{"CPU": 1}] * num_stages, strategy="PACK")
     if requires_gpu:
-        pg = placement_group([{"CPU": 1, "GPU": 1}] * 11, strategy="PACK")
-    logical_plan = gen_logical_plan()
+        pg = placement_group([{"CPU": 1, "GPU": 1}] * num_stages, strategy="PACK")
+    logical_plan = gen_logical_plan(num_stages=num_stages, context_length=context_length, batch_size=batch_size)
 
     coordinator = Coordinator(
         logical_plan=logical_plan,
@@ -495,7 +537,32 @@ def run_model2(requires_gpu=False):
         requires_gpu=requires_gpu,
     )
     coordinator.start()
-    coordinator.wait_until_stopped()
+
+    first_stage = coordinator.fist_stage()
+    tokenizer = get_tokenizer()
+
+    last_stage = coordinator.last_stage()
+
+    input_tokens = tokenizer(
+        "The quick brown fox jumps over the ",
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",  # or "max_length"
+        max_length=context_length,
+    )
+    input_ids = input_tokens["input_ids"]
+
+    for _ in range(100):
+        print("sending first batch...")
+        input_ids = torch.stack((input_ids, input_ids))
+        ray.get(first_stage.push_batch.remote(input_ids))
+
+    for _ in range(100):
+        print("receiving first batch...")
+        print(ray.get(last_stage.pop_batch.remote()))
+        print("done!")
+
+    # coordinator.wait_until_stopped()
 
 
 if __name__ == "__main__":

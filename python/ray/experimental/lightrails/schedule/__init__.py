@@ -8,6 +8,7 @@ from ray.experimental.lightrails.schedule.instruction import (
     PrintOutput,
     ReceiveActivation,
     ReceiveGradient,
+    SaveBatch,
     SendActivation,
     SendGradient,
 )
@@ -34,4 +35,5 @@ __all__ = [
     "SendActivation",
     "SendGradient",
     "CustomIntruction",
+    "SaveBatch",
 ]
