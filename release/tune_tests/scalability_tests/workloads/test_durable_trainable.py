@@ -76,7 +76,7 @@ def main(bucket):
         checkpoint_size_b=int(10 * 1000**2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
-        storage_path=f"s3://{bucket}/durable/",
+        storage_path=bucket,
     )
 
 

@@ -1827,10 +1827,23 @@
 
   run:
     timeout: 900
-    script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
+    script: python workloads/test_durable_trainable.py --bucket s3://tune-cloud-tests/scalability_durable_trainable
     wait_for_nodes:
       num_nodes: 16
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      run:
+        timeout: 900
+        script: python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
+        wait_for_nodes:
+          num_nodes: 16
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
 
