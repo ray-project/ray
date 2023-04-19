@@ -111,10 +111,12 @@ class BackendExecutor:
             actor_cls_kwargs=train_cls_kwargs,
             placement_group=placement_group,
         )
-        logger.info(
-            f"Starting {self._trial_info.name} on data parallel workers: "
-            f"{[w.metadata.node_ip for w in self.worker_group.workers]}."
-        )
+        if self._trial_info:
+            worker_loc_str = [
+                f"{w.metadata.node_ip}:{w.metadata.pid}"
+                for w in self.worker_group.workers
+            ]
+            logger.info(f"Starting distributed workers: {worker_loc_str}")
         # Hack to avoid OOMs.
         # This is just a temporary solution for Train loading entire checkpoints
         # into memory by ensuring that the rank 0 worker is on the same node as
