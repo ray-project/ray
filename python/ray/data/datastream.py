@@ -605,7 +605,6 @@ class Datastream(Generic[T]):
             # Enable blocks bundling when batch_size is specified by caller.
             target_block_size = batch_size
 
-        print("BATCH SIZE", batch_size)
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
