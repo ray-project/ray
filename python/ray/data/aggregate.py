@@ -113,8 +113,17 @@ class Count(AggregateFn):
 class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
+    ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"sum({str(on)})"
 
         null_merge = _null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2)
 
@@ -127,7 +136,7 @@ class Sum(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(f"sum({str(on)})"),
+            name=(self._rs_name),
         )
 
 
@@ -135,8 +144,17 @@ class Sum(_AggregateOnKeyBase):
 class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
+    ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"min({str(on)})"
 
         null_merge = _null_wrap_merge(ignore_nulls, min)
 
@@ -149,7 +167,7 @@ class Min(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(f"min({str(on)})"),
+            name=(self._rs_name),
         )
 
 
@@ -157,8 +175,17 @@ class Min(_AggregateOnKeyBase):
 class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
+    ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"max({str(on)})"
 
         null_merge = _null_wrap_merge(ignore_nulls, max)
 
@@ -171,7 +198,7 @@ class Max(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(f"max({str(on)})"),
+            name=(self._rs_name),
         )
 
 
@@ -179,8 +206,17 @@ class Max(_AggregateOnKeyBase):
 class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
+    ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"mean({str(on)})"
 
         null_merge = _null_wrap_merge(
             ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
@@ -207,7 +243,7 @@ class Mean(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a[0] / a[1]),
-            name=(f"mean({str(on)})"),
+            name=(self._rs_name),
         )
 
 
@@ -229,8 +265,13 @@ class Std(_AggregateOnKeyBase):
         on: Optional[KeyFn] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"std({str(on)})"
 
         def merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
@@ -282,7 +323,7 @@ class Std(_AggregateOnKeyBase):
                 null_merge,
             ),
             finalize=_null_wrap_finalize(finalize),
-            name=(f"std({str(on)})"),
+            name=(self._rs_name),
         )
 
 
@@ -290,9 +331,18 @@ class Std(_AggregateOnKeyBase):
 class AbsMax(_AggregateOnKeyBase):
     """Defines absolute max aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
+    ):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"abs_max({str(on)})"
 
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
@@ -301,7 +351,7 @@ class AbsMax(_AggregateOnKeyBase):
                 ignore_nulls, on_fn, lambda a, r: max(a, abs(r))
             ),
             finalize=_null_wrap_finalize(lambda a: a),
-            name=(f"abs_max({str(on)})"),
+            name=(self._rs_name),
         )
 
 
@@ -312,3 +362,78 @@ def _to_on_fn(on: Optional[KeyFn]):
         return lambda r: r[on]
     else:
         return on
+
+
+@PublicAPI
+class Quantile(_AggregateOnKeyBase):
+    """Defines Quantile aggregation."""
+
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        q: float = 0.5,
+        ignore_nulls: bool = True,
+        alias_name: Optional[KeyFn] = None,
+    ):
+        self._set_key_fn(on)
+        self._q = q
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"quantile({str(on)})"
+
+        def merge(a: List[int], b: List[int]):
+            if isinstance(a, List) and isinstance(b, List):
+                a.extend(b)
+                return a
+            if isinstance(a, List) and (not isinstance(b, List)):
+                if b is not None and b != "":
+                    a.append(b)
+                return a
+            if isinstance(b, List) and (not isinstance(a, List)):
+                if a is not None and a != "":
+                    b.append(a)
+                return b
+
+            ls = []
+            if a is not None and a != "":
+                ls.append(a)
+            if b is not None and b != "":
+                ls.append(b)
+            return ls
+
+        null_merge = _null_wrap_merge(ignore_nulls, merge)
+
+        def block_row_ls(block: Block[T]) -> AggType:
+            block_acc = BlockAccessor.for_block(block)
+            ls = []
+            for row in block_acc.iter_rows():
+                ls.append(row.get(on))
+            return ls
+
+        import math
+
+        def percentile(input_values, key=lambda x: x):
+            if not input_values:
+                return None
+            input_values = sorted(input_values)
+            k = (len(input_values) - 1) * self._q
+            f = math.floor(k)
+            c = math.ceil(k)
+            if f == c:
+                return key(input_values[int(k)])
+            d0 = key(input_values[int(f)]) * (c - k)
+            d1 = key(input_values[int(c)]) * (k - f)
+            return round(d0 + d1, 5)
+
+        super().__init__(
+            init=_null_wrap_init(lambda k: [0]),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                block_row_ls,
+                null_merge,
+            ),
+            finalize=_null_wrap_finalize(percentile),
+            name=(self._rs_name),
+        )
