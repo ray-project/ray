@@ -114,7 +114,6 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       if (keep_executing) {
         task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
             CurrentTimestampMs());
-        RecordTaskMetrics(task_spec);
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
         const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
@@ -233,8 +232,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
 
-      task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-          CurrentTimestampMs());
       lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the
@@ -242,6 +239,10 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
+
+      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(
+                                                                           CurrentTimestampMs());
+      RecordTaskMetrics(task_spec);
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
