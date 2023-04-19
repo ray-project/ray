@@ -6,6 +6,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.framework import (
+    try_import_jax,
     try_import_tf,
     try_import_tfp,
     try_import_torch,
@@ -124,6 +125,7 @@ __all__ = [
     "relu",
     "sigmoid",
     "softmax",
+    "try_import_jax",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
