@@ -135,6 +135,7 @@ class _StatusReporter:
         trial_id: Optional[str] = None,
         logdir: Optional[str] = None,
         trial_resources: Optional[PlacementGroupFactory] = None,
+        is_training: Optional[bool] = False,
     ):
         self._queue = result_queue
         self._last_report_time = None
@@ -151,6 +152,7 @@ class _StatusReporter:
         # Mark whether the `ray.air.session.report()` API is being used,
         # to throw an error if `tune.report()` is called as well
         self._air_session_has_reported = False
+        self._is_training = is_training
 
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
@@ -279,6 +281,11 @@ class _StatusReporter:
         """Resources assigned to the trial of this Trainable."""
         return self._trial_resources
 
+    @property
+    def is_training(self):
+        """Whether in training or tuning paradigm."""
+        return self._is_training
+
 
 @DeveloperAPI
 class FunctionTrainable(Trainable):
@@ -317,6 +324,7 @@ class FunctionTrainable(Trainable):
             trial_id=self.trial_id,
             logdir=self.logdir,
             trial_resources=self.trial_resources,
+            is_training=self.is_training,
         )
         self._last_result = {}
 

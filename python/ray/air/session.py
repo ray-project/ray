@@ -173,6 +173,13 @@ def get_trial_resources() -> "PlacementGroupFactory":
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
+def is_training() -> bool:
+    """Whether we are in training or tuning paradigm."""
+    return _get_session().is_training
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
 def get_trial_dir() -> str:
     """Log directory corresponding to the trial directory for a Tune session.
     If calling from a Train session, this will give the trial directory of its parent

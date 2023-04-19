@@ -155,6 +155,7 @@ class _TrialInfo:
         trial_name: String name of the current trial.
         trial_id: trial_id of the trial
         trial_resources: resources used by trial.
+        is_training: Whether we are in training or tuning paradigm.
     """
 
     def __init__(self, trial: "Trial"):
@@ -162,6 +163,7 @@ class _TrialInfo:
         self._trial_id = trial.trial_id
         self._trial_resources = trial.placement_group_factory
         self._experiment_name = trial.experiment_dir_name
+        self._is_training = trial.is_training
 
     @property
     def experiment_name(self):
@@ -178,6 +180,10 @@ class _TrialInfo:
     @property
     def trial_resources(self) -> PlacementGroupFactory:
         return self._trial_resources
+
+    @property
+    def is_training(self) -> bool:
+        return self._is_training
 
     @trial_resources.setter
     def trial_resources(self, new_resources: PlacementGroupFactory):
@@ -342,6 +348,7 @@ class Trial:
         max_failures: int = 0,
         stub: bool = False,
         _setup_default_resource: bool = True,
+        is_training: Optional[bool] = False,
         # Deprecated
         local_dir: Optional[str] = None,
     ):
@@ -355,6 +362,8 @@ class Trial:
                 When initializing trials from checkpoints, this field is set to false,
                 so that setting up default resources can be delayed till after
                 ``trial.config`` is loaded from checkpoints.
+            is_training: ``Trial`` is a shared abstraction between Train and Tune now.
+                This boolean shows which paradigm we are in.
         """
         # If this is set, trainables are not validated or looked up.
         # This can be used e.g. to initialize Trial objects from checkpoints
@@ -366,6 +375,8 @@ class Trial:
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
+
+        self.is_training = is_training
 
         # Sync config
         self.sync_config = sync_config or SyncConfig()
