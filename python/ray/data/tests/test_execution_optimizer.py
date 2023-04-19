@@ -43,9 +43,9 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.usage import (
+from ray.data._internal.logical.util import (
     _recorded_operators,
-    _recording_lock,
+    _recorded_operators_lock,
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
@@ -62,10 +62,10 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     (so that subsequent checks do not use existing records of operator usage)."""
     for op_name in op_names:
         assert op_name in _op_name_white_list
-        with _recording_lock:
+        with _recorded_operators_lock:
             assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
     if clear_after_check:
-        with _recording_lock:
+        with _recorded_operators_lock:
             _recorded_operators.clear()
 
 
