@@ -510,13 +510,6 @@ class ServeController:
         if not deployment_time:
             deployment_time = time.time()
 
-        # Load checkpointed data from last time deploy_apps was called
-        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if config_checkpoint is None:
-            config_checkpoints_dict = {}
-        else:
-            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
-
         new_config_checkpoint = {}
 
         for app_config in applications:
@@ -525,34 +518,26 @@ class ServeController:
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
-            # If code version changed, re-import and build the application graph
-            if (
-                app_config.name in config_checkpoints_dict
-                and code_version
-                != get_app_code_version(
-                    ServeApplicationSchema(**config_checkpoints_dict[app_config.name])
-                )
-            ):
-                logger.info(
-                    "Starting deploy_serve_application "
-                    f"task for application {app_config.name}."
-                )
-                deploy_obj_ref = deploy_serve_application.options(
-                    runtime_env=app_config.runtime_env
-                ).remote(
-                    app_config.import_path,
-                    app_config.runtime_env,
-                    app_config_dict.get("deployments", []),
-                    code_version,
-                    app_config_dict.get("route_prefix", DEFAULT.VALUE),
-                    app_config.name,
-                )
+            logger.info(
+                "Starting deploy_serve_application "
+                f"task for application {app_config.name}."
+            )
+            deploy_obj_ref = deploy_serve_application.options(
+                runtime_env=app_config.runtime_env
+            ).remote(
+                app_config.import_path,
+                app_config.runtime_env,
+                app_config_dict.get("deployments", []),
+                code_version,
+                app_config_dict.get("route_prefix", DEFAULT.VALUE),
+                app_config.name,
+            )
 
-                self.application_state_manager.create_application_state(
-                    app_config.name,
-                    deploy_obj_ref=deploy_obj_ref,
-                    deployment_time=deployment_time,
-                )
+            self.application_state_manager.create_application_state(
+                app_config.name,
+                deploy_obj_ref=deploy_obj_ref,
+                deployment_time=deployment_time,
+            )
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,

@@ -553,7 +553,7 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(self.deployment_config._shutdown_wait_loop_s)
+            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
@@ -564,8 +564,9 @@ class RayServeReplica:
             else:
                 logger.info(
                     "Waiting for an additional "
-                    f"{self.deployment_config._shutdown_wait_loop_s}s to shut down "
-                    f"because there are {self.num_ongoing_requests} ongoing requests."
+                    f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
+                    f"down because there are {self.num_ongoing_requests} ongoing "
+                    "requests."
                 )
 
         # Explicitly call the del method to trigger clean up.

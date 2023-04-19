@@ -77,20 +77,35 @@ def _get_serialized_reconfigure_options(deployment_config: DeploymentConfig) -> 
     """Returns a serialized dictionary containing fields of a deployment config that
     should prompt a deployment version update.
     """
-    return _serialize(
-        {
-            "user_config": deployment_config.user_config,
-            "max_concurrent_queries": deployment_config.max_concurrent_queries,
-            "graceful_shutdown_timeout_s": (
-                deployment_config.graceful_shutdown_timeout_s
-            ),
-            "graceful_shutdown_wait_loop_s": (
-                deployment_config.graceful_shutdown_wait_loop_s
-            ),
-            "health_check_period_s": deployment_config.health_check_period_s,
-            "health_check_timeout_s": deployment_config.health_check_timeout_s,
-        }
-    )
+    if isinstance(deployment_config.user_config, bytes):
+        return deployment_config.user_config + _serialize(
+            {
+                "max_concurrent_queries": deployment_config.max_concurrent_queries,
+                "graceful_shutdown_timeout_s": (
+                    deployment_config.graceful_shutdown_timeout_s
+                ),
+                "graceful_shutdown_wait_loop_s": (
+                    deployment_config.graceful_shutdown_wait_loop_s
+                ),
+                "health_check_period_s": deployment_config.health_check_period_s,
+                "health_check_timeout_s": deployment_config.health_check_timeout_s,
+            }
+        )
+    else:
+        return _serialize(
+            {
+                "user_config": deployment_config.user_config,
+                "max_concurrent_queries": deployment_config.max_concurrent_queries,
+                "graceful_shutdown_timeout_s": (
+                    deployment_config.graceful_shutdown_timeout_s
+                ),
+                "graceful_shutdown_wait_loop_s": (
+                    deployment_config.graceful_shutdown_wait_loop_s
+                ),
+                "health_check_period_s": deployment_config.health_check_period_s,
+                "health_check_timeout_s": deployment_config.health_check_timeout_s,
+            }
+        )
 
 
 def _get_serialized_reconfigure_actor_options(
