@@ -297,7 +297,7 @@ import pyarrow as pa
 ds = ray.data.read_parquet(
     "example://iris.parquet",
     columns=["sepal.length", "variety"],
-    filter=pa.datastream.field("sepal.length") > 5.0,
+    filter=pa.dataset.field("sepal.length") > 5.0,
 ).materialize()  # Force a full read of the file.
 # -> Datastream(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
 
