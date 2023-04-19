@@ -56,7 +56,7 @@ def train_loop_per_worker(config):
     num_features = config["num_features"]
 
     # Get the Datastream shard for this data parallel worker,
-    # and convert it to a Tensorflow Datastream.
+    # and convert it to a Tensorflow Dataset.
     train_data = session.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()

@@ -126,7 +126,7 @@ TensorFlow datasets
   is specific to TensorFlow.
 * **Unified single-node and distributed:** Datastreams unifies single and multi-node training under
   the same abstraction. TensorFlow datasets presents
-  `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDatastream>`__
+  `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__
   for distributed data loading and prevents code from being seamlessly scaled to larger
   clusters.
 * **Generic distributed data processing:** Datastreams is more general: it can handle
