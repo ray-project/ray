@@ -443,6 +443,7 @@ class BlockAccessor(Generic[T]):
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
+
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
