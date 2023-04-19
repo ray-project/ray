@@ -59,8 +59,15 @@ But essentially all complications boil down to extensions of the above three ste
 like loading and storing data from cloud storage, using complex preprocessing functions,
 demanding model setups, additional postprocessing, or other customizations.
 
-Loading and Preprocessing Data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Loading and Preprocessing Data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For this quick-start guide we'll simply use very small, in-memory data sets by
+leveraging common Python libraries like NumPy and Pandas.
+For larger data sets, you can use Ray Data to load data from cloud storage like S3 or GCS.
+In general, once you loaded your datasets using Ray Data, you also want to apply some preprocessing steps.
+We skip this step here for simplicity.
+In any case, the result of this step is a Ray Datastream ``ds`` that we can use to run inference on.
 
 .. tabs::
 
@@ -85,9 +92,16 @@ Loading and Preprocessing Data
             :start-after: __tf_quickstart_load_start__
             :end-before: __tf_quickstart_load_end__
 
+2. Setting up your Model
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Setting up your Model
-~~~~~~~~~~~~~~~~~~~~~
+Next, you want to define your model for inference.
+Below you find easy examples for HuggingFace, PyTorch, and TensorFlow.
+The core idea is to define a "predictor" class that loads your model in its ``__init__`` method and
+and implements a ``__call__`` method that takes a batch of data and returns a batch of predictions.
+It's important to understand that Ray Data has different batch modes,
+depending on the type of data you're processing and how you loaded it in the first place.
+For this quick-start guide, we consider this part an implementation detail and just focus on the models themselves.
 
 .. tabs::
 
@@ -113,8 +127,16 @@ Setting up your Model
             :end-before: __tf_quickstart_model_end__
 
 
-Getting Batch Predictions
-~~~~~~~~~~~~~~~~~~~~~~~~~
+3. Getting Predictions with Ray Data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Once you have your Ray Datastream ``ds`` and your predictor class, you can finally use
+``ds.map_batches(...)`` to get predictions.
+Mapping batches this way is the recommended way to run inference with Ray, but there are also other options.
+``map_batches`` takes your predictor class as an argument and allows you to specify
+``compute`` resources by defining a so-called ``ActorPoolStrategy``.
+In the example below, we use 2 CPUs to run inference in parallel and then print the results.
+We cover resource allocation in more detail in other parts of this guide.
 
 .. tabs::
 
@@ -142,11 +164,14 @@ Getting Batch Predictions
 Learn more
 ----------
 
+Batch inference is just one small part of the Machine Learning workflow, and only
+a fraction of what Ray can do.
+
 .. figure:: images/train_predict_pipeline.png
 
   How batch inference fits into the bigger picture of training and prediction AI models.
 
-Learn more about batch inference with the following resources.
+To learn more about Ray and batch inference, check out the following resources:
 
 .. panels::
     :container: container pb-3
@@ -160,13 +185,6 @@ Learn more about batch inference with the following resources.
         :type: url
         :text: [Tutorial] Architectures for Scalable Batch Inference with Ray
         :classes: btn-link btn-block stretched-link scalableBatchInference
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
-        :type: url
-        :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
-        :classes: btn-link btn-block stretched-link batchActorPool
     ---
     :img-top: /images/ray_logo.png
 
