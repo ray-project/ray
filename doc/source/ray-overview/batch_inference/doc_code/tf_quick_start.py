@@ -1,10 +1,19 @@
+# flake8: noqa
+# isort: skip_file
+
+# __tf_quickstart_load_start__
 import ray
 import numpy as np
-from tensorflow import keras
 
 
+dataset = ray.data.from_numpy(np.ones((1, 100)))
+# __tf_quickstart_load_end__
+
+
+# __tf_quickstart_model_start__
 class TFPredictor:
     def __init__(self):
+        from tensorflow import keras
 
         input_layer = keras.Input(shape=(100,))
         output_layer = keras.layers.Dense(1, activation="sigmoid")
@@ -12,11 +21,13 @@ class TFPredictor:
 
     def __call__(self, batch: np.ndarray):
         return self.model(batch).numpy()
+# __tf_quickstart_model_end__
 
 
-dataset = ray.data.from_numpy(np.ones((1, 100)))
+# __tf_quickstart_prediction_start__
 scale = ray.data.ActorPoolStrategy(2)
 
 predicted_probabilities = dataset.map_batches(TFPredictor, compute=scale)
 predicted_probabilities.show(limit=1)
 # [0.45119727]
+# __tf_quickstart_prediction_end__

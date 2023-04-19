@@ -59,6 +59,9 @@ But essentially all complications boil down to extensions of the above three ste
 like loading and storing data from cloud storage, using complex preprocessing functions,
 demanding model setups, additional postprocessing, or other customizations.
 
+Loading and Preprocessing Data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 .. tabs::
 
     .. group-tab:: HuggingFace
@@ -72,12 +75,69 @@ demanding model setups, additional postprocessing, or other customizations.
 
         .. literalinclude:: ./doc_code/pytorch_quick_start.py
             :language: python
+            :start-after: __pt_quickstart_load_start__
+            :end-before: __pt_quickstart_load_end__
 
     .. group-tab:: TensorFlow
 
         .. literalinclude:: ./doc_code/tf_quick_start.py
             :language: python
+            :start-after: __tf_quickstart_load_start__
+            :end-before: __tf_quickstart_load_end__
 
+
+Setting up your Model
+~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+
+    .. group-tab:: HuggingFace
+
+        .. literalinclude:: ./doc_code/hf_quick_start.py
+            :language: python
+            :start-after: __hf_quickstart_model_start__
+            :end-before: __hf_quickstart_model_end__
+
+    .. group-tab:: PyTorch
+
+        .. literalinclude:: ./doc_code/pytorch_quick_start.py
+            :language: python
+            :start-after: __pt_quickstart_model_start__
+            :end-before: __pt_quickstart_model_end__
+
+    .. group-tab:: TensorFlow
+
+        .. literalinclude:: ./doc_code/tf_quick_start.py
+            :language: python
+            :start-after: __tf_quickstart_model_start__
+            :end-before: __tf_quickstart_model_end__
+
+
+Getting Batch Predictions
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+
+    .. group-tab:: HuggingFace
+
+        .. literalinclude:: ./doc_code/hf_quick_start.py
+            :language: python
+            :start-after: __hf_quickstart_prediction_start__
+            :end-before: __hf_quickstart_prediction_end__
+
+    .. group-tab:: PyTorch
+
+        .. literalinclude:: ./doc_code/pytorch_quick_start.py
+            :language: python
+            :start-after: __pt_quickstart_prediction_start__
+            :end-before: __pt_quickstart_prediction_end__
+
+    .. group-tab:: TensorFlow
+
+        .. literalinclude:: ./doc_code/tf_quick_start.py
+            :language: python
+            :start-after: __tf_quickstart_prediction_start__
+            :end-before: __tf_quickstart_prediction_end__
 
 Learn more
 ----------
