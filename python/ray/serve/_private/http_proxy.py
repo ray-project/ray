@@ -157,6 +157,24 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
+    from ray.actor import ActorHandle
+    from starlette.responses import StreamingResponse
+
+    if isinstance(result, ActorHandle):
+        actor_handle = result
+        async def new_generator():
+            while True:
+                try:
+                    item = await actor_handle.get_from_queue.remote()
+                    print("HTTP proxy got item:", item)
+                    yield item
+                except StopIteration:
+                    print("Done consuming.")
+                    break
+
+        result = StreamingResponse(new_generator())
+        await result(scope, receive, send)
+        return str(result.status_code)
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
         return str(result.status_code)

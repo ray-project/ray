@@ -175,6 +175,9 @@ def create_replica_wrapper(name: str):
             self.replica = None
             self._initialize_replica = initialize_replica
 
+        async def get_from_queue(self):
+            return await self.replica.get_from_queue()
+
         @ray.method(num_returns=2)
         async def handle_request(
             self,
@@ -362,6 +365,9 @@ class RayServeReplica:
 
         self._shutdown_wait_loop_s = deployment_config.graceful_shutdown_wait_loop_s
 
+        self._queue = asyncio.Queue()
+        self._queue_done = asyncio.Event()
+
         if deployment_config.autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = deployment_config.autoscaling_config
@@ -416,19 +422,25 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
+    async def get_from_queue(self):
+        if self._queue_done.is_set():
+            raise StopIteration()
+
+        return await self._queue.get()
+
     async def ensure_serializable_response(self, response: Any) -> Any:
         if isinstance(response, starlette.responses.StreamingResponse):
+            async def consume(generator):
+                async for item in generator:
+                    await self._queue.put(item)
 
-            async def mock_receive():
-                # This is called in a tight loop in response() just to check
-                # for an http disconnect.  So rather than return immediately
-                # we should suspend execution to avoid wasting CPU cycles.
-                never_set_event = asyncio.Event()
-                await never_set_event.wait()
+                self._queue_done.set()
 
-            sender = ASGIHTTPSender()
-            await response(scope=None, receive=mock_receive, send=sender)
-            return sender.build_asgi_response()
+            actor_handle = ray.get_runtime_context().current_actor
+            asyncio.create_task(consume(response.body_iterator))
+
+            response = actor_handle
+
         return response
 
     async def invoke_single(self, request_item: Query) -> Tuple[Any, bool]:
