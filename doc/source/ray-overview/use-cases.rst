@@ -10,11 +10,11 @@ This page indexes common Ray use cases for scaling ML. It contains highlighted r
 Large Language Models and Generative AI
 ---------------------------------------
 
-Large language models (LLM) and generative AI are rapidly changing industries and demand compute at an astonishing pace. Ray provides a distributed compute framework for scaling these models, allowing developers to train and deploy models faster and more efficiently. With specialized libraries for data streaming, training, fine-tuning, hyperparameter tuning, and serving, Ray simplifies the process of developing and deploying large-scale AI models.
+Large language models (LLMs) and generative AI are rapidly changing industries that demand compute at an astonishing pace. Ray provides a distributed compute framework for scaling these models, allowing developers to train and deploy models faster and more efficiently. With specialized libraries for data streaming, training, fine-tuning, hyperparameter tuning, and serving, Ray simplifies the process of developing and deploying large-scale AI models.
 
 .. figure:: /images/llm-stack.png
 
-Learn more about LLM and generative AI with the following resources.
+Learn more about LLMs and generative AI with the following resources.
 
 .. panels::
     :container: container pb-3
