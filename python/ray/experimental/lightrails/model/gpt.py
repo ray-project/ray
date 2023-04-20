@@ -2,13 +2,13 @@
 
 import copy
 import functools
-import ray
+import threading
+import time
 from collections import defaultdict, deque
 
+import ray
 import torch
-from accelerate import (
-    dispatch_model,
-)
+from accelerate import dispatch_model
 from ray.experimental.lightrails.coordinator import Coordinator
 from ray.experimental.lightrails.physical_plan import (
     ModuleParition,
@@ -33,6 +33,7 @@ from transformers.generation.logits_process import (
     LogitNormalization,
     LogitsProcessorList,
 )
+
 
 # subprocess.check_call("pip install -U accelerate 'numpy<1.24' transformers", shell=True)
 """
@@ -459,6 +460,7 @@ def gen_logical_plan(
 
 EOS = 50256.0
 
+
 def create_pipelined_model(requires_gpu=False, batch_size=10):
     num_stages = 2
     context_length = 128
@@ -495,6 +497,7 @@ class Inferencer(object):
         self.pend_user_request = {}
         self.pend_engine_request = {}
         self.finished_requests = {}
+        self.lock = threading.Lock()
 
     def generate(self, input):
         input_tokens = self._tokenizer(
@@ -512,38 +515,74 @@ class Inferencer(object):
         return self._counter
 
     def _enqueue(self, input_ids):
-        request_id = self._get_request_id()
-        self._queue.append((request_id, input_ids))
-        return request_id
+        with self.lock:
+            request_id = self._get_request_id()
+            self._queue.append((request_id, input_ids))
+            return request_id
+
+    def start(self):
+        self.run_send()
+        self.run_pull()
+
+    def get_result(self, request_id, block=False):
+        if not block:
+            with self.lock:
+                return self.finished_requests.get(request_id, None)
+
+        while True:
+            with self.lock:
+                if request_id in self.finished_requests:
+                    return self.finished_requests[request_id]
+            time.sleep(0.01)
+
+    def run_send(self):
+        self.run_thread = threading.Thread(target=self._send_batches)
+        self.run_thread.start()
 
     def _send_batches(self):
-        if len(self._queue) < self._batch_size:
-            return
-        batch = []
-        request_ids = []
-        for _ in range(self._batch_size):
-            request_id, input_ids = self._queue.popleft()
-            batch.append(input_ids)
-            request_ids.append(request_id)
-        engine_id = ray.get(
-            self._first_stage.push_batch.remote(torch.cat(batch, dim=0))
-        )
-        for request_id in request_ids:
-            self.pend_user_request[request_id] = engine_id
-            self.pend_engine_request[engine_id] = request_ids
+        sleep = False
+        while True:
+            batch = []
+            request_ids = []
+            if sleep:
+                time.sleep(0.01)
 
-    def _get_results(self):
-        engine_id, output, _ = ray.get(self._last_stage.pop_batch.remote())
-        print(output)
-        for i in range(self._batch_size):
-            output_ids = output[0][i]
-            request_id = self.pend_engine_request[engine_id][i]
-            # finished
-            if output_ids[-1] == EOS or output_ids[0] != EOS:
-                self.finished_requests[request_id] = output_ids
-            else:
-                print(output_ids.shape)
-                self._queue.append((request_id, output_ids.view(1, -1).int()))
+            with self.lock:
+                if len(self._queue) < self._batch_size:
+                    sleep = True
+                    continue
+                sleep = False
+                for _ in range(self._batch_size):
+                    request_id, input_ids = self._queue.popleft()
+                    batch.append(input_ids)
+                    request_ids.append(request_id)
 
-            del self.pend_user_request[request_id]
-        del self.pend_engine_request[engine_id]
+            engine_id = ray.get(
+                self._first_stage.push_batch.remote(torch.cat(batch, dim=0))
+            )
+
+            with self.lock:
+                for request_id in request_ids:
+                    self.pend_user_request[request_id] = engine_id
+                    self.pend_engine_request[engine_id] = request_ids
+
+    def run_pull(self):
+        self.pull_thread = threading.Thread(target=self._pull_results)
+        self.pull_thread.start()
+
+    def _pull_results(self):
+        while True:
+            engine_id, output, _ = ray.get(self._last_stage.pop_batch.remote())
+
+            with self.lock:
+                for i in range(self._batch_size):
+                    output_ids = output[0][i]
+                    request_id = self.pend_engine_request[engine_id][i]
+                    # finished
+                    if output_ids[-1] == EOS or output_ids[0] != EOS:
+                        self.finished_requests[request_id] = output_ids
+                    else:
+                        self._queue.append((request_id, output_ids.view(1, -1).int()))
+
+                    del self.pend_user_request[request_id]
+                del self.pend_engine_request[engine_id]
