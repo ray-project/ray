@@ -17,35 +17,52 @@ modalities and types. Here you will find a few end-to-end examples of some basic
 processing with Ray Data on tabular data, text (coming soon!), and imagery (coming
 soon!).
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 3
+    :gutter: 2
+    :class-container: container pb-4
 
-    ---
-    :img-top: /images/taxi.png
+    .. grid-item-card::
+        :img-top: /images/taxi.png
+        :class-img-top: pt-5 w-75 d-block mx-auto
 
-    +++
-    .. link-button:: nyc_taxi_basic_processing
-        :type: ref
-        :text: Processing the NYC taxi dataset
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/taxi.png
+        +++
+        .. button-ref:: nyc_taxi_basic_processing
+            :ref-type: ref
+            :color: primary
+            :outline:
+            :expand:
+            :click-parent:
 
-    +++
-    .. link-button:: batch_training
-        :type: ref
-        :text: Batch Training with Ray Data
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/ocr.jpg
+            Processing the NYC taxi dataset
 
-    +++
-    .. link-button:: ocr_example
-        :type: ref
-        :text: Scaling OCR with Ray Data
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/taxi.png
+        :class-img-top: pt-5 w-75 d-block mx-auto
+
+        +++
+        .. button-ref:: batch_training
+            :ref-type: ref
+            :color: primary
+            :outline:
+            :expand:
+            :click-parent:
+
+            Batch Training with Ray Data
+
+    .. grid-item-card::
+        :img-top: /images/ocr.jpg
+        :class-img-top: pt-5 w-75 d-block mx-auto
+
+        +++
+        .. button-ref:: ocr_example
+            :ref-type: ref
+            :color: primary
+            :outline:
+            :expand:
+            :click-parent:
+
+            Scaling OCR with Ray Data
+
 
 
 Other Examples
