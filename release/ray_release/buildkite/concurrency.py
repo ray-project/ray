@@ -31,10 +31,10 @@ aws_gpu_cpu_to_concurrency_groups = [
 ]
 
 gce_gpu_cpu_to_concurrent_groups = [
-    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
-    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
-    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=3),
-    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=8),
+    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=16),
+    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=32),
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous-gce", limit=1
     ),
