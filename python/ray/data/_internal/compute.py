@@ -178,7 +178,7 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, TaskPoolStrategy)
+        return isinstance(other, TaskPoolStrategy) or other == "tasks"
 
 
 @PublicAPI
