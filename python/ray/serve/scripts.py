@@ -204,13 +204,11 @@ def deploy(config_file_name: str, address: str):
         # Error deploying application
         raise
 
-    cli_logger.newline()
     cli_logger.success(
-        "\nSent deploy request successfully!\n "
-        "* Use `serve status` to check deployments' statuses.\n "
-        "* Use `serve config` to see the current config(s).\n"
+        "\nSent deploy request successfully.\n "
+        "* Use `serve status` to check applications' statuses.\n "
+        "* Use `serve config` to see the current application config(s).\n"
     )
-    cli_logger.newline()
 
 
 @cli.command(
@@ -572,17 +570,17 @@ def status(address: str, name: Optional[str]):
 def shutdown(address: str, yes: bool):
     if not yes:
         click.confirm(
-            f"\nThis will shutdown the Serve application at address "
-            f'"{address}" and delete all deployments there. Do you '
+            f"This will shut down Serve on the cluster at address "
+            f'"{address}" and delete all applications there. Do you '
             "want to continue?",
             abort=True,
         )
 
     ServeSubmissionClient(address).delete_application()
 
-    cli_logger.newline()
-    cli_logger.success("\nSent delete request successfully!\n")
-    cli_logger.newline()
+    cli_logger.success(
+        "Sent shutdown request; applications will be deleted asynchronously."
+    )
 
 
 @cli.command(
