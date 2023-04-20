@@ -22,13 +22,19 @@ class BlockBatchLoader(object):
         self._device_name = get_device_name()
         self._counter = 0
 
+    def _to_device(self, tensor_or_tensors):
+        if isinstance(tensor_or_tensors, torch.Tensor):
+            return tensor_or_tensors.to(self._device_name)
+        elif isinstance(tensor_or_tensors, list):
+            return [self._to_device(t) for t in tensor_or_tensors]
+        else:
+            return tensor_or_tensors
+
     def push_batch(self, batch: torch.Tensor, labels: torch.Tensor = None) -> int:
         self._push_semaphore.acquire()
         counter = self._counter
         self._counter += 1
-        batch = batch.to(self._device_name) if batch is not None else None
-        labels = labels.to(self._device_name) if labels is not None else None
-        self._queue.append((counter, batch, labels))
+        self._queue.append((counter, self._to_device(batch), self._to_device(labels)))
         self._pop_semaphore.release()
         return counter
 

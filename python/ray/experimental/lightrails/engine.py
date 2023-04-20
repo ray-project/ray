@@ -139,6 +139,21 @@ class ExecutionEngine:
         """Reconfgure the engine with a new schedule."""
         pass
 
+    def _create_input_tensors(self):
+        shapes = (
+            self.input_tensor_shape
+            if isinstance(self.input_tensor_shape, list)
+            else [self.input_tensor_shape]
+        )
+        return [
+            torch.ones(()).new_empty(
+                size=shape,
+                dtype=self.input_tensor_dtype,
+                device=self.device,
+            )
+            for shape in shapes
+        ]
+
     def _execute(self):
         for instructions in self.schedule.steps():
             with self.execution_lock:
@@ -148,7 +163,7 @@ class ExecutionEngine:
                 self._execute_step(instruction)
 
     def _execute_step(self, instruction: Instruction):
-        logger.info(f"Executing instruction {instruction}")
+        logger.debug(f"Executing instruction {instruction}")
         if isinstance(instruction, SendActivation):
             self._execute_send_activation(instruction)
         elif isinstance(instruction, ReceiveActivation):
@@ -174,28 +189,31 @@ class ExecutionEngine:
 
     def _execute_send_activation(self, instruction: SendActivation):
         for _ in range(instruction.count):
-            self.dist.send(
-                self.output_queue.popleft(), instruction.dest_rank, async_op=True
-            )
+            tensor_or_tensors = self.output_queue.popleft()
+            if isinstance(tensor_or_tensors, torch.Tensor):
+                self.dist.send(tensor_or_tensors, instruction.dest_rank, async_op=True)
+            else:
+                for tensor in tensor_or_tensors:
+                    self.dist.send(tensor, instruction.dest_rank, async_op=True)
             # TODO: do we need to wait for the future to be completed?
 
     def _execute_receive_activation(self, instruction: ReceiveActivation):
         for _ in range(instruction.count):
-            tensor = torch.ones(()).new_empty(
-                size=self.input_tensor_shape,
-                dtype=self.input_tensor_dtype,
-                device=self.device,
+            tensors = self._create_input_tensors()
+            future = FULLFILLED_FUTURE
+            for tensor in tensors:
+                future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
+            self.input_queue.append(
+                (tensors if len(tensors) > 1 else tensors[0], future)
             )
-            future = self.dist.recv(tensor, instruction.src_rank, async_op=True)
-            self.input_queue.append((tensor, future))
 
     def _execute_forward(self, instruction: Forward):
         for _ in range(instruction.count):
-            tensor, future = self.input_queue.popleft()
+            tensor_or_tensors, future = self.input_queue.popleft()
             future.wait()
-            output = self.model.forward(tensor)
+            output = self.model.forward(tensor_or_tensors)
             logger.debug(
-                f"step: {self.forward_counter}, input: {tensor}, output: {output}"
+                f"step: {self.forward_counter}, input: {tensor_or_tensors}, output: {output}"
             )
 
             # Optionally compute loss on the last device
@@ -216,11 +234,12 @@ class ExecutionEngine:
                 if self.forward_counter == 0:
                     self.received_gradient_tensor_shape = output.shape
                     self.received_gradient_tensor_dtype = output.dtype
-                self.forward_cache[self.forward_counter] = (tensor, output)
+                self.forward_cache[self.forward_counter] = (tensor_or_tensors, output)
                 self.forward_counter += 1
 
             # Only send the output if we are not the last training stage
             if not self.is_last_trainig_stage:
+                # print(f"appending to output queue {output}")
                 self.output_queue.append(output)
 
     def _execute_load_batch(self, instruction: LoadBatch):

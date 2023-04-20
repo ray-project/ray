@@ -54,7 +54,7 @@ class Coordinator(object):
             )
         )
 
-    def fist_stage(self):
+    def first_stage(self):
         return self._actors[0]
 
     def last_stage(self):

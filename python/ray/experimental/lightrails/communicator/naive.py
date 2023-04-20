@@ -60,10 +60,7 @@ class NaiveCommunicator(Communicator):
         send_ref = self._communication_registry.send.remote(
             [obj_ref], self.rank, dest_rank
         )
-        if async_op:
-            pass
-        else:
-            ray.get(send_ref)
+        ray.get(send_ref)
         return FULLFILLED_FUTURE
 
     def recv(self, tensor: torch.Tensor, src_rank: int, async_op: bool = False):

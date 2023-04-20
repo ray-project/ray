@@ -2,10 +2,7 @@
 
 import copy
 import functools
-
-# Must be called before import ray
-import subprocess
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import torch
 from accelerate import (
@@ -386,7 +383,7 @@ class FirstStageModelWrapper(torch.nn.Module):
             output_attentions=False,
             output_hidden_states=False,
         )
-        return hidden_states
+        return [hidden_states, input_ids]
 
     # def forward_hidden_states(self, hidden_states):
     #     # print(f"forwarding {hidden_states.shape}")
@@ -418,35 +415,48 @@ class ModelWrapper(torch.nn.Module):
         super(ModelWrapper, self).__init__()
         self.model = model
 
-    def forward(self, hidden_states):
+    def forward(self, tensors):
+        hidden_states = tensors[0]
+        input_ids = tensors[1]
         # print(f"forwarding {hidden_states.shape}")
-        return self.model.forward(
-            hidden_states=hidden_states, output_shape=hidden_states.shape
-        )
+        return [
+            self.model.forward(
+                hidden_states=hidden_states, output_shape=hidden_states.shape
+            ),
+            input_ids,
+        ]
 
 
 class LastStageModelWrapper(torch.nn.Module):
-    def __init__(self, model):
-        super(ModelWrapper, self).__init__()
+    def __init__(self, model, tokenizer):
+        super(LastStageModelWrapper, self).__init__()
         self.model = model
+        self.tokenizer = tokenizer
+        self.processors = LogitsProcessorList()
+        self.processors.append(LogitNormalization())
 
-    def forward(self, hidden_states):
+    def forward(self, tensors):
+        hidden_states = tensors[0]
+        input_ids = tensors[1]
         # print(f"forwarding {hidden_states.shape}")
-        lm_logits = self.last_stage_model.forward(
+        lm_logits = self.model.forward(
             hidden_states=hidden_states, output_shape=hidden_states.shape
         )
 
         next_token_logits = lm_logits[:, -1, :]
-        next_token_scores = self.processors(self.input_ids, next_token_logits)
+        next_token_scores = self.processors(input_ids, next_token_logits)
         probs = nn.functional.softmax(next_token_scores, dim=-1)
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-        input_ids = torch.cat([self.input_ids[:, 1:], next_tokens[:, None]], dim=-1)
-        return input_ids
+        input_ids = torch.cat([input_ids[:, 1:], next_tokens[:, None]], dim=-1)
+        decoded = self.tokenizer.decode(next_tokens)
+        return input_ids, decoded
 
 
 def build_pipeleine_stage_model(stage, pp_ranks, tokenizer):
     if stage == 0:
         return FirstStageModelWrapper(pp_ranks[stage], pp_ranks[-1], tokenizer)
+    if stage == len(pp_ranks) - 1:
+        return LastStageModelWrapper(pp_ranks[stage], tokenizer)
     return ModelWrapper(pp_ranks[stage])
 
 
@@ -473,22 +483,6 @@ def load_module(i):
     return build_pipeleine_stage_model(i, pp_ranks, tokenizer)
 
 
-class FirstStageSchedule(Schedule):
-    def __init__(self, last_stage):
-        super(FirstStageSchedule, self).__init__()
-        self.last_stage = last_stage
-
-    def steps(self):
-        input = "The quick brown fox jumps over the "
-        for i in range(10):
-            yield [
-                CustomIntruction(
-                    lambda engine: engine.input_queue.append((input, FULLFILLED_FUTURE))
-                )
-            ]
-            yield [Forward(), SendActivation(1)]
-
-
 def gen_logical_plan(
     batch_size=1, num_stages=12, context_length=128, embedding_size=768
 ):
@@ -513,7 +507,10 @@ def gen_logical_plan(
         partion = ModuleParition(
             partition_index=i,
             module_loader=lambda i=i: load_module(i),
-            input_tensor_shape=(batch_size, context_length, embedding_size),
+            input_tensor_shape=[
+                (batch_size, context_length, embedding_size),
+                (batch_size, context_length),
+            ],
             input_tensor_dtype=torch.float32,
             schedule=schedule,
             data_loader_builder=data_loader_builder,
@@ -522,10 +519,12 @@ def gen_logical_plan(
     return logical_plan
 
 
-def run_model2(requires_gpu=False):
+EOS = 50256.0
+
+
+def create_pipelined_model(requires_gpu=False, batch_size=10):
     num_stages = 12
     context_length = 128
-    batch_size = 2
     physical_planner = SimplePhysicalPlanner()
     pg = placement_group([{"CPU": 1}] * num_stages, strategy="PACK")
     if requires_gpu:
@@ -540,42 +539,113 @@ def run_model2(requires_gpu=False):
         planner=physical_planner,
         requires_gpu=requires_gpu,
     )
-    coordinator.start()
+    return coordinator
 
-    first_stage = coordinator.fist_stage()
-    tokenizer = get_tokenizer()
+    # first_stage = coordinator.first_stage()
 
-    last_stage = coordinator.last_stage()
+    # last_stage = coordinator.last_stage()
 
-    input_tokens = tokenizer(
-        "The quick brown fox jumps over the ",
-        return_tensors="pt",
-        truncation=True,
-        padding="max_length",  # or "max_length"
-        max_length=context_length,
-    )
-    input_ids = input_tokens["input_ids"]
+    # input_tokens = tokenizer(
+    #     "hello darkness my old",
+    #     return_tensors="pt",
+    #     truncation=True,
+    #     padding="max_length",  # or "max_length"
+    #     max_length=context_length,
+    # )
+    # input_ids = input_tokens["input_ids"]
 
-    for _ in range(5):
-        print("sending first batch...")
-        new_input_ids = torch.stack((input_ids, input_ids))
-        ray.get(first_stage.push_batch.remote(new_input_ids))
+    # for _ in range(1):
+    #     print("sending first batch...")
+    #     ray.get(first_stage.push_batch.remote(torch.cat([input_ids] * batch_size, dim=0)))
 
-    for _ in range(5):
-        print("receiving first batch...")
-        print(ray.get(last_stage.pop_batch.remote()))
-        print("done!")
+    # for _ in range(1):
+    #     print("receiving first batch...")
+    #     id, output, _= ray.get(last_stage.pop_batch.remote())
+    #     print(output[0].shape)
+    #     print(output[1])
+    #     print("done!")
 
-    # coordinator.wait_until_stopped()
+    # return coordinator
+    # # coordinator.wait_until_stopped()
+
+
+class Inferencer(object):
+    def __init__(self, requires_gpu=False, batch_size=10) -> None:
+        self._coordinator = create_pipelined_model(
+            requires_gpu=requires_gpu, batch_size=batch_size
+        )
+        self._coordinator.start()
+        self._first_stage = self._coordinator.first_stage()
+        self._last_stage = self._coordinator.last_stage()
+        self._tokenizer = get_tokenizer()
+
+        self._counter = 0
+        self._queue = deque()
+        self._batch_size = batch_size
+        self.pend_user_request = {}
+        self.pend_engine_request = {}
+        self.finished_requests = {}
+
+    def generate(self, input):
+        input_tokens = self._tokenizer(
+            input,
+            return_tensors="pt",
+            truncation=True,
+            padding="max_length",  # or "max_length"
+            max_length=128,
+        )
+        input_ids = input_tokens["input_ids"]
+        return self._enqueue(input_ids)
+
+    def _get_request_id(self):
+        self._counter += 1
+        return self._counter
+
+    def _enqueue(self, input_ids):
+        request_id = self._get_request_id()
+        self._queue.append((request_id, input_ids))
+        return request_id
+
+    def _send_batches(self):
+        if len(self._queue) < self._batch_size:
+            return
+        batch = []
+        request_ids = []
+        for _ in range(self._batch_size):
+            request_id, input_ids = self._queue.popleft()
+            batch.append(input_ids)
+            request_ids.append(request_id)
+        engine_id = ray.get(
+            self._first_stage.push_batch.remote(torch.cat(batch, dim=0))
+        )
+        for request_id in request_ids:
+            self.pend_user_request[request_id] = engine_id
+            self.pend_engine_request[engine_id] = request_ids
+
+    def _get_results(self):
+        engine_id, output, _ = ray.get(self._last_stage.pop_batch.remote())
+        print(output)
+        for i in range(self._batch_size):
+            output_ids = output[0][i]
+            request_id = self.pend_engine_request[engine_id][i]
+            # finished
+            if output_ids[-1] == EOS:
+                self.finished_requests[request_id] = output_ids
+            else:
+                print(output_ids.shape)
+                self._queue.append((request_id, output_ids))
+
+            del self.pend_user_request[request_id]
+        del self.pend_engine_request[engine_id]
 
 
 if __name__ == "__main__":
-    # run_model1()
     import ray
 
-    # runtime_env = {
-    #     "working_dir": "/home/ray/default",
-    #     "pip": ["transformers==4.28.0", "accelerate==0.18.0", "numpy==1.20"],
-    # }
-    # ray.init(address="auto", runtime_env=runtime_env)
-    run_model2()
+    inferencer = Inferencer(requires_gpu=False, batch_size=2)
+
+    ids = [inferencer.generate("hello darkness my old") for _ in range(2)]
+
+    for _ in range(100):
+        inferencer._send_batches()
+        inferencer._get_results()
