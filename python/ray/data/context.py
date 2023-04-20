@@ -120,6 +120,9 @@ OK_PREFIX = "✔️ "
 # Default batch size for batch transformations.
 DEFAULT_BATCH_SIZE = 4096
 
+# Default batch size for batch transformations in strict mode.
+STRICT_MODE_DEFAULT_BATCH_SIZE = 1000
+
 
 @DeveloperAPI
 class DataContext:
