@@ -186,7 +186,7 @@ def _apply_strict_mode_batch_size(
                 "The optimal batch size depends on the model, data, and GPU used. "
                 "It is recommended to use the largest batch size that doesn't result "
                 "in your GPU device running out of memory. You can view the GPU memory "
-                "utilization via the Ray dashboard."
+                "usage via the Ray dashboard."
             )
         elif given_batch_size == "default":
             return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
