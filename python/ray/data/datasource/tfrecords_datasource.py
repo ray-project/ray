@@ -14,7 +14,6 @@ import struct
 
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
-from ray.data.datastream import Datastream
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -25,6 +24,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import pandas as pd
     from tensorflow_metadata.proto.v0 import schema_pb2
+    from ray.data import Datastream
 
 
 logger = logging.getLogger(__name__)
