@@ -226,7 +226,7 @@ def test_many_objects(num_objects, num_actors):
         list_objects,
         filters=[
             ("reference_type", "=", "LOCAL_REFERENCE"),
-            ("type", "=", "Worker"),
+            ("type", "=", "WORKER"),
         ],
         key_suffix=f"{num_objects}",
         limit=STATE_LIST_LIMIT,
