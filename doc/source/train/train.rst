@@ -105,6 +105,9 @@ classes that ship out of the box with Train:
     * - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
       - :class:`LightGBMCheckpoint <ray.train.lightgbm.LightGBMCheckpoint>`
       - :class:`LightGBMPredictor <ray.train.lightgbm.LightGBMPredictor>`
+    * - :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`
+      - :class:`LightningCheckpoint <ray.train.lightning.LightningCheckpoint>`
+      - :class:`LightningPredictor <ray.train.lightning.LightningPredictor>`
     * - :class:`SklearnTrainer <ray.train.sklearn.SklearnTrainer>`
       - :class:`SklearnCheckpoint <ray.train.sklearn.SklearnCheckpoint>`
       - :class:`SklearnPredictor <ray.train.sklearn.SklearnPredictor>`
