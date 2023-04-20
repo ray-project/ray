@@ -8,7 +8,7 @@ import ray
 from ray.air import session
 from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.air.result import Result
-from ray.data import Dataset
+from ray.data import Datastream
 from ray.data.preprocessors import Concatenator
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
@@ -75,7 +75,7 @@ def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> 
     return results
 
 
-def predict_regression(result: Result) -> Dataset:
+def predict_regression(result: Result) -> Datastream:
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_model
     )

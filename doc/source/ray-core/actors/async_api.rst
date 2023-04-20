@@ -89,6 +89,8 @@ If you need to directly access the future object, you can call:
 
     fut: asyncio.Future = asyncio.wrap_future(ref.future())
 
+.. _async-ref-to-futures:
+
 ObjectRefs as concurrent.futures.Futures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ObjectRefs can also be wrapped into ``concurrent.futures.Future`` objects. This
