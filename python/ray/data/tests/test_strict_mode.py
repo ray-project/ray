@@ -182,6 +182,17 @@ def test_strict_schema(ray_start_regular_shared):
     assert isinstance(schema.base_schema, PandasBlockSchema)
 
 
+def test_use_raw_dicts(ray_start_regular_shared):
+    assert type(ray.data.range(10).take(1)[0]) is dict
+    assert type(ray.data.from_items([1]).take(1)[0]) is dict
+
+    def checker(x):
+        assert type(x) is dict
+        return x
+
+    ray.data.range(10).map(checker).show()
+
+
 if __name__ == "__main__":
     import sys
 

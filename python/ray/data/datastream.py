@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    Mapping,
 )
 from uuid import uuid4
 
@@ -128,7 +129,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -3027,12 +3027,12 @@ class Datastream(Generic[T]):
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, Mapping]]:
         """Return a local row iterator over the datastream.
 
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
-        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
-        iterator.  If the datastream is not tabular, the raw row is yielded.
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dicts
+        are yielded for each row by the iterator. If the datastream is not tabular,
+        the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -4488,7 +4488,7 @@ class Datastream(Generic[T]):
             on = [on]
         return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
 
-    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+    def _aggregate_result(self, result: Union[Tuple, Mapping]) -> U:
         if result is not None and len(result) == 1:
             if isinstance(result, tuple):
                 return result[0]
