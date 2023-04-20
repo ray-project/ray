@@ -111,10 +111,11 @@ def test_strict_default_batch_format(ray_start_regular_shared):
     assert isinstance(batch["id"], np.ndarray), batch
 
 
-def test_strict_require_batch_size(ray_start_regular_shared):
+def test_strict_require_batch_size_for_gpu():
+    ray.init(num_cpus=4, num_gpus=1)
     ds = ray.data.range(1)
     with pytest.raises(ValueError):
-        ds.map_batches(lambda x: x)
+        ds.map_batches(lambda x: x, num_gpus=1)
 
 
 def test_strict_tensor_support(ray_start_regular_shared):
