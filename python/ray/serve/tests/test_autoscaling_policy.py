@@ -17,7 +17,11 @@ from ray.serve._private.autoscaling_policy import (
 from ray.serve._private.common import DeploymentInfo
 from ray.serve._private.common import ReplicaState
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME, DEPLOYMENT_NAME_PREFIX_SEPARATOR
+from ray.serve._private.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 import ray.experimental.state.api as state_api
@@ -108,9 +112,14 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
 
-def get_running_replicas(controller: ServeController, deployment: Deployment) -> List:
+def get_running_replicas(
+    controller: ServeController, deployment: Deployment, app_name
+) -> List:
     """Get the replicas currently running for given deployment"""
-    deployment_name = SERVE_DEFAULT_APP_NAME + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment.name
+    if app_name:
+        deployment_name = app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment.name
+    else:
+        deployment_name = deployment.name
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_name)
     )
@@ -127,10 +136,12 @@ def get_running_replica_tags(
 
 
 def get_num_running_replicas(
-    controller: ServeController, deployment: Deployment
+    controller: ServeController,
+    deployment: Deployment,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
 ) -> int:
     """Get the amount of replicas currently running for given deployment"""
-    running_replicas = get_running_replicas(controller, deployment)
+    running_replicas = get_running_replicas(controller, deployment, app_name)
     return len(running_replicas)
 
 
@@ -180,7 +191,10 @@ def get_deployment_start_time(controller: ServeController, deployment: Deploymen
         )
         for deployment_route in deployment_route_list.deployment_routes
     }
-    deployment_info, _route_prefix = deployments[deployment.name]
+    deployment_name = (
+        SERVE_DEFAULT_APP_NAME + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment.name
+    )
+    deployment_info, _route_prefix = deployments[deployment_name]
     return deployment_info.start_time_ms
 
 
@@ -674,7 +688,6 @@ def test_e2e_intermediate_downscaling(serve_instance):
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    A.get_handle()
     [handle.remote() for _ in range(50)]
 
     wait_for_condition(
@@ -833,7 +846,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    assert get_num_running_replicas(controller, A) == 0
+    assert get_num_running_replicas(controller, A, app_name=None) == 0
 
     handle = A.get_handle()
     [handle.remote() for _ in range(1)]
