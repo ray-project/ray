@@ -824,42 +824,47 @@ def build_echo_app_typed(args: TypedArgs):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_builder_with_args(ray_start_stop):
+@pytest.parametrize(
+    "import_path",
+    [
+        "ray.serve.tests.test_cli.build_echo_app",
+        "ray.serve.tests.test_cli.build_echo_app_typed",
+    ],
+)
+def test_run_builder_with_args(ray_start_stop, import_path: str):
     """Test `serve run` with args passed into a builder function.
 
     Tests both the untyped and typed args cases.
     """
+    # First deploy without any arguments, should get default response.
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            import_path,
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
-    typed_import_path = "ray.serve.tests.test_cli.build_echo_app_typed"
-    untyped_import_path = "ray.serve.tests.test_cli.build_echo_app"
+    # Now deploy passing a message as an argument, should get passed message.
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            import_path,
+            "message=hello world",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "hello world", timeout=10)
 
-    for import_path in [typed_import_path, untyped_import_path]:
-        # First deploy without any arguments, should get default response.
-        p = subprocess.Popen(
-            [
-                "serve",
-                "run",
-                "--address=auto",
-                import_path,
-            ]
-        )
-        wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
-
-        # Now deploy passing a message as an argument, should get passed message.
-        p = subprocess.Popen(
-            [
-                "serve",
-                "run",
-                "--address=auto",
-                import_path,
-                "message=hello world",
-            ]
-        )
-        wait_for_condition(lambda: ping_endpoint("") == "hello world", timeout=10)
-
-        p.send_signal(signal.SIGINT)
-        p.wait()
-        assert ping_endpoint("") == CONNECTION_ERROR_MSG
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
