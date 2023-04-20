@@ -16,9 +16,9 @@ worker_node_types:
       max_workers: 2
       use_spot: false
 
-aws:
-  TagSpecifications:
-    - ResourceType: "instance"
-      Tags:
-        - Key: ttl-hours
-          Value: '24'
+#aws:
+#  TagSpecifications:
+#    - ResourceType: "instance"
+#      Tags:
+#        - Key: ttl-hours
+#          Value: '24'

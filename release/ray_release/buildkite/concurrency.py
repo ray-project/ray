@@ -61,6 +61,7 @@ gcp_gpu_instances = {
     "n1-standard-16-nvidia-tesla-t4-1": (16, 1),
     "n1-standard-64-nvidia-tesla-t4-4": (64, 4),
     "n1-standard-32-nvidia-tesla-t4-2": (32, 2),
+    "n1-highmem-64-nvidia-tesla-v100-8": {64, 8},
     "n1-highmem-96-nvidia-tesla-v100-8": {96, 8},
 }
 
