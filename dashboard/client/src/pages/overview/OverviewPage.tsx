@@ -6,7 +6,7 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
-
+import { RecentServeCard } from "./cards/RecentServeCard";
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
@@ -50,6 +50,7 @@ export const OverviewPage = () => {
         <NodeCountCard className={classes.overviewCard} />
         <RecentJobsCard className={classes.overviewCard} />
       </div>
+      <RecentServeCard className={classes.overviewCard} />
 
       <CollapsibleSection
         className={classes.section}
