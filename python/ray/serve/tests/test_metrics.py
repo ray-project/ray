@@ -134,7 +134,7 @@ def test_http_metrics(serve_start_shutdown):
             # Trigger RayActorError
             os._exit(0)
 
-    serve.run(A.bind())
+    serve.run(A.bind(), name="app")
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
     try:
@@ -162,8 +162,8 @@ def test_http_metrics(serve_start_shutdown):
             elif "serve_num_deployment_http_error_requests" in metrics:
                 # deployment A should have error count 2
                 if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
+                    assert 'deployment="app_A"' in metrics and "2.0" in metrics
+                if 'deployment="app_A"' not in metrics or "2.0" not in metrics:
                     return False
         return True
 
@@ -181,7 +181,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     def f(*args):
         return 1 / 0
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
@@ -212,7 +212,7 @@ def test_http_metrics_fields(serve_start_shutdown):
         "serve_num_deployment_http_error_requests"
     )
     assert len(num_deployment_errors) == 1
-    assert num_deployment_errors[0]["deployment"] == "f"
+    assert num_deployment_errors[0]["deployment"] == "app_f"
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
     print("serve_num_deployment_http_error_requests working as expected.")
@@ -562,11 +562,11 @@ def test_actor_summary(serve_instance):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
+        {"ServeController", "HTTPProxyActor", "ServeReplica:app_f"}
     )
 
 
