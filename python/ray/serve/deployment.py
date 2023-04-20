@@ -39,16 +39,25 @@ class Application:
     single application, passed to `serve.run`, or deployed via a Serve config file.
     """
 
-    def __init__(self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None):
-        """This class should not be instantiated directly."""
+    def __init__(
+        self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
+    ):
+        """This class should not be constructed directly."""
         if _internal_dag_node is None:
-            raise RuntimeError("This class should not be instantiated directly.")
+            raise RuntimeError("This class should not be constructed directly.")
 
         self._internal_dag_node = _internal_dag_node
+
+    def _get_internal_dag_node(self) -> Union[ClassNode, FunctionNode]:
+        if self._internal_dag_node is None:
+            raise RuntimeError("Application object should not be constructed directly.")
+
+        return self._internal_dag_node
 
     @classmethod
     def from_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
         return cls(_internal_dag_node=dag_node)
+
 
 @PublicAPI
 class Deployment:
@@ -219,7 +228,7 @@ class Deployment:
                 self._func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
-                cls_options=self._ray_actor_options or dict(),
+                self._ray_actor_options or dict(),
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,

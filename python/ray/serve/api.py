@@ -495,7 +495,7 @@ def run(
     record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
-        deployments = pipeline_build(target, name)
+        deployments = pipeline_build(target._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
     elif isinstance(target, BuiltApplication):
         deployments = list(target.deployments.values())
@@ -507,7 +507,7 @@ def run(
         )
         if isinstance(target, DAGNode):
             msg += " If you are using the DAG API, you must bind the DAG node to a "
-            "Deployment like: app = `Deployment.bind(my_dag_output)`, then pass the app. "
+            "deployment like: `app = Deployment.bind(my_dag_output)`. "
         raise TypeError(msg)
 
     # when name provided, keep all existing applications
@@ -548,9 +548,7 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(
-    target: Application, name: str = SERVE_DEFAULT_APP_NAME
-) -> BuiltApplication:
+def build(target: Application, name: str = SERVE_DEFAULT_APP_NAME) -> BuiltApplication:
     """Builds a Serve application into a static, built application.
 
     Resolves the provided Application object into a list of deployments.
@@ -562,8 +560,8 @@ def build(
     imported in the config file using the same import path they were here.
 
     Args:
-        target (Application): The Serve application consisting of one or more
-            deployments..
+        target: The Serve application to run consisting of one or more
+            deployments.
         name: The name of the Serve application.
 
     Returns:
@@ -578,7 +576,7 @@ def build(
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return BuiltApplication(pipeline_build(target._internal_dag_node, name))
+    return BuiltApplication(pipeline_build(target._get_internal_dag_node(), name))
 
 
 @PublicAPI(stability="alpha")

@@ -12,7 +12,7 @@ from ray import serve
 from ray.serve.api import build as build_app
 from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
-from ray.serve.deployment_graph import ClassNode, InputNode, RayServeDAGHandle
+from ray.serve.deployment_graph import InputNode, RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 
@@ -21,7 +21,9 @@ RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
-def maybe_build(app: Application, use_build: bool) -> Union[Application, BuiltApplication]:
+def maybe_build(
+    app: Application, use_build: bool
+) -> Union[Application, BuiltApplication]:
     if use_build:
         return build_app(app)
     else:

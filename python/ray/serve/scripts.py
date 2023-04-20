@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union, Tuple
+from typing import Optional, Tuple
 
 import click
 import yaml
