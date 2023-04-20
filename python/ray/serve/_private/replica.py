@@ -488,10 +488,8 @@ class RayServeReplica:
             ):
                 user_config_changed = True
             self.deployment_config = deployment_config
-            self.version = DeploymentVersion(
-                self.version.code_version,
-                self.deployment_config,
-                self.version.ray_actor_options,
+            self.version = DeploymentVersion.from_deployment_version(
+                self.version, self.deployment_config
             )
 
             if self.deployment_config.user_config is not None and user_config_changed:

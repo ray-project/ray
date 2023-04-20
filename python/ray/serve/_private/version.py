@@ -1,4 +1,5 @@
 from abc import ABC
+from copy import deepcopy
 import json
 from typing import Any, Optional, Union, Dict
 from zlib import crc32
@@ -6,6 +7,10 @@ from zlib import crc32
 from ray.serve._private.utils import get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 from ray.serve.config import DeploymentConfig
+
+import logging
+
+logger = logging.getLogger("ray.serve")
 
 
 class DeploymentVersion:
@@ -27,6 +32,13 @@ class DeploymentVersion:
         self.deployment_config: DeploymentConfig = deployment_config
         self.ray_actor_options: Dict = ray_actor_options
         self.compute_hashes()
+
+    @classmethod
+    def from_deployment_version(cls, deployment_version, deployment_config):
+        version_copy = deepcopy(deployment_version)
+        version_copy.deployment_config = deployment_config
+        version_copy.compute_hashes()
+        return version_copy
 
     def __hash__(self) -> int:
         return self._hash
