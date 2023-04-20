@@ -1,3 +1,4 @@
+import os
 import argparse
 import base64
 import json
@@ -10,6 +11,7 @@ import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
+from ray import cloudpickle as pickle
 
 
 parser = argparse.ArgumentParser(
@@ -247,6 +249,16 @@ if __name__ == "__main__":
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
         ray._private.utils.try_import_each_module(module_names_to_import)
+
+    # If the worker setup function is configured, run it.
+    worker_setup_func_key = os.getenv(ray_constants.WORKER_SETUP_FUNC_KEY)
+    if worker_setup_func_key:
+        func_manager = ray._private.worker.global_worker.function_actor_manager
+        worker_setup_func_info = func_manager.fetch_registsered_method(
+            base64.b64decode(worker_setup_func_key)
+        )
+        setup_func = pickle.loads(worker_setup_func_info.function)
+        setup_func()
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()

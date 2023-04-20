@@ -258,6 +258,7 @@ class RuntimeEnv(dict):
         # field which is not supported. We should remove it
         # with the test.
         "docker",
+        "worker_setup_func",
     }
 
     extensions_fields: Set[str] = {
@@ -275,6 +276,7 @@ class RuntimeEnv(dict):
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
+        worker_setup_func: Optional[str] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
@@ -296,6 +298,8 @@ class RuntimeEnv(dict):
             runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
+        if worker_setup_func is not None:
+            runtime_env["worker_setup_func"] = worker_setup_func
 
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")

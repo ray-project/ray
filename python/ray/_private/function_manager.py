@@ -32,6 +32,11 @@ from ray._raylet import JobID, PythonFunctionDescriptor
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
 )
+ImportedFunctionInfo = namedtuple(
+    "ImportedFunctionInfo",
+    ["job_id", "function_id", "function_name", "function", "module", "max_calls"],
+)
+
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 logger = logging.getLogger(__name__)
@@ -224,21 +229,27 @@ class FunctionActorManager:
             key, val, True, KV_NAMESPACE_FUNCTION_TABLE
         )
 
-    def fetch_and_register_remote_function(self, key):
-        """Import a remote function."""
+    def fetch_registsered_method(self, key) -> Optional[ImportedFunctionInfo]:
         vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
         if vals is None:
-            return False
+            return None
         else:
             vals = pickle.loads(vals)
-        fields = [
-            "job_id",
-            "function_id",
-            "function_name",
-            "function",
-            "module",
-            "max_calls",
-        ]
+            fields = [
+                "job_id",
+                "function_id",
+                "function_name",
+                "function",
+                "module",
+                "max_calls",
+            ]
+            return ImportedFunctionInfo._make(vals.get(field) for field in fields)
+
+    def fetch_and_register_remote_function(self, key):
+        """Import a remote function."""
+        remote_function_info = self.fetch_registsered_method(key)
+        if not remote_function_info:
+            return False
         (
             job_id_str,
             function_id_str,
@@ -246,7 +257,7 @@ class FunctionActorManager:
             serialized_function,
             module,
             max_calls,
-        ) = (vals.get(field) for field in fields)
+        ) = remote_function_info
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
