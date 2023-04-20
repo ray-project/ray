@@ -90,6 +90,7 @@ from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     _apply_strict_mode_batch_format,
+    _apply_strict_mode_batch_size,
     BatchUDF,
     Block,
     BlockAccessor,
@@ -108,7 +109,6 @@ from ray.data.context import (
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
-    DEFAULT_BATCH_SIZE,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -595,15 +595,10 @@ class Datastream(Generic[T]):
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
+        batch_size = _apply_strict_mode_batch_size(batch_format)
+
         target_block_size = None
-        if batch_size == "default":
-            ctx = DataContext.get_current()
-            if ctx.strict_mode:
-                raise ValueError(
-                    "`batch_size` must be specified when using strict " "mode "
-                )
-            batch_size = DEFAULT_BATCH_SIZE
-        elif batch_size is not None:
+        if batch_size is not None:
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.

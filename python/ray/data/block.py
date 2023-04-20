@@ -11,6 +11,7 @@ from typing import (
     Generic,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -172,6 +173,27 @@ def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
                 f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
             )
     return given_batch_format
+
+
+def _apply_strict_mode_batch_size(
+    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+) -> Optional[int]:
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        if use_gpu and not given_batch_size or given_batch_size == "default":
+            raise StrictModeError(
+                "`batch_size` must be provided to `map_batches` when requesting GPUs."
+            )
+        elif given_batch_size == "default":
+            return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
+
+    else:
+        if given_batch_size == "default":
+            return ray.data.context.DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
 
 
 @DeveloperAPI
