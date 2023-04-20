@@ -46,8 +46,6 @@ def get_datasets(
     dataset_name: str,
     tokenizer: AutoTokenizer,
     block_size: int,
-    world_size: int,
-    rank: int,
 ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
     """Download and pre-process the datasets."""
     # Load sharded data.
@@ -85,20 +83,14 @@ def get_datasets(
         return row
 
     def preprocess(ds):
-        return ds.shard(
-            num_shards=world_size, index=rank
-        ).map(
+        return ds.map(
             tokenize, remove_columns=["chosen", "rejected", "prompt", "response"]
         )
 
     return preprocess(datasets["train"]), preprocess(datasets["test"])
 
 
-def trainer_init_per_worker(train_ds, eval_ds, model, tokenizer, args):
-    # Not gonna use the Ray datasets.
-    del train_ds
-    del eval_ds
-    
+def trainer_init_per_worker(model, tokenizer, args):    
     # Use the actual number of CPUs assigned by Ray
     os.environ["OMP_NUM_THREADS"] = str(
         session.get_trial_resources().bundles[-1].get("CPU", 1)
@@ -110,9 +102,7 @@ def trainer_init_per_worker(train_ds, eval_ds, model, tokenizer, args):
     train_dataset, eval_dataset = get_datasets(
         args.dataset_name,
         tokenizer,
-        args.block_size,
-        session.get_world_size(),
-        session.get_world_rank(),
+        args.block_size
     )
 
     deepspeed = {
@@ -213,10 +203,6 @@ def train(args):
             use_gpu=True,
             resources_per_worker={"GPU": 1, "CPU": args.cpus_per_worker},
         ),
-        datasets={},
-        dataset_config={
-            "train": DatasetConfig(required=False),
-        }
     )
     
     result = trainer.fit()
