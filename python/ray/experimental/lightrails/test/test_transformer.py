@@ -460,24 +460,6 @@ def build_pipeleine_stage_model(stage, pp_ranks, tokenizer):
     return ModelWrapper(pp_ranks[stage])
 
 
-def run_model1():
-
-    pp_ranks, tokenizer = build_model()
-    total_stages = 12
-    models = []
-    input = "hello what is your name"
-    for i in range(total_stages - 1):
-        models.append(build_pipeleine_stage_model(i, pp_ranks, tokenizer))
-
-    num_runs = 0
-    for i in range(1000):
-        if isinstance(models[i % len(models)], FirstStageModelWrapper):
-            num_runs += 1
-            if num_runs == 10:
-                break
-        input = models[i % len(models)].forward(input)
-
-
 def load_module(i):
     pp_ranks, tokenizer = build_model()
     return build_pipeleine_stage_model(i, pp_ranks, tokenizer)
@@ -540,33 +522,6 @@ def create_pipelined_model(requires_gpu=False, batch_size=10):
         requires_gpu=requires_gpu,
     )
     return coordinator
-
-    # first_stage = coordinator.first_stage()
-
-    # last_stage = coordinator.last_stage()
-
-    # input_tokens = tokenizer(
-    #     "hello darkness my old",
-    #     return_tensors="pt",
-    #     truncation=True,
-    #     padding="max_length",  # or "max_length"
-    #     max_length=context_length,
-    # )
-    # input_ids = input_tokens["input_ids"]
-
-    # for _ in range(1):
-    #     print("sending first batch...")
-    #     ray.get(first_stage.push_batch.remote(torch.cat([input_ids] * batch_size, dim=0)))
-
-    # for _ in range(1):
-    #     print("receiving first batch...")
-    #     id, output, _= ray.get(last_stage.pop_batch.remote())
-    #     print(output[0].shape)
-    #     print(output[1])
-    #     print("done!")
-
-    # return coordinator
-    # # coordinator.wait_until_stopped()
 
 
 class Inferencer(object):
@@ -633,7 +588,7 @@ class Inferencer(object):
                 self.finished_requests[request_id] = output_ids
             else:
                 print(output_ids.shape)
-                self._queue.append((request_id, output_ids))
+                self._queue.append((request_id, output_ids.view(1, -1).int()))
 
             del self.pend_user_request[request_id]
         del self.pend_engine_request[engine_id]
