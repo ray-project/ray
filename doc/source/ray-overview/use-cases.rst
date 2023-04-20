@@ -82,7 +82,7 @@ How do I do many model training on Ray?
 To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune>`) library. This is the recommended library for most cases.
 
 You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node). 
-If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <datasets>` library.
+If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <data>` library.
 Your data must be a :ref:`supported format <input-output>`, to use Ray Data. 
 
 Alternative solutions exist for less common cases: 
@@ -123,7 +123,7 @@ Learn more about many model training with the following resources.
 
     .. link-button:: /data/examples/batch_training
         :type: ref
-        :text: [Example] Batch Training with Ray Datasets
+        :text: [Example] Batch Training with Ray Data
         :classes: btn-link btn-block stretched-link batchTrainingDatasets
     ---
     :img-top: /images/tune.png
