@@ -458,7 +458,7 @@ def gen_logical_plan(
     return logical_plan
 
 
-EOS = 50256.0
+EOS = 50256
 
 
 def create_pipelined_model(requires_gpu=False, batch_size=10):
@@ -576,13 +576,14 @@ class Inferencer(object):
 
             with self.lock:
                 for i in range(self._batch_size):
-                    output_ids = output[0][i]
+                    output_ids = output[0][i].view(1, -1).int()
                     request_id = self.pend_engine_request[engine_id][i]
                     # finished
-                    if output_ids[-1] == EOS or output_ids[0] != EOS:
-                        self.finished_requests[request_id] = output_ids
+                    if output_ids[0][-1] == EOS or output_ids[0][0] != EOS:
+                        output = self._tokenizer.decode(output_ids[0])
+                        self.finished_requests[request_id] = output
                     else:
-                        self._queue.append((request_id, output_ids.view(1, -1).int()))
+                        self._queue.append((request_id, output_ids))
 
                     del self.pend_user_request[request_id]
                 del self.pend_engine_request[engine_id]
