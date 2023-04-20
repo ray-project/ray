@@ -13,4 +13,5 @@ python:
 
 post_build_cmds:
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install ray[tune] # Installing Tune dependency so we can get protobuf version back.
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
