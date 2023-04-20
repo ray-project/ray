@@ -38,7 +38,7 @@ import ray
 ds = ray.data.range(10000)
 num_rows = 0
 
-# Consume all rows in the Dataset.
+# Consume all rows in the Datastream.
 for row in ds.iter_rows():
     assert isinstance(row, int)
     num_rows += 1
@@ -56,7 +56,7 @@ import pandas as pd
 ds = ray.data.range(10000)
 num_batches = 0
 
-# Consume all batches in the Dataset.
+# Consume all batches in the Datastream.
 for batch in ds.iter_batches(batch_size=2):
     assert isinstance(batch, list)
     num_batches += 1
@@ -68,7 +68,7 @@ print(num_batches)
 cum_sum = 0
 for batch in ds.iter_batches(batch_size=2, batch_format="pandas"):
     assert isinstance(batch, pd.DataFrame)
-    # Simple integer Dataset is converted to a single-column Pandas DataFrame.
+    # Simple integer Datastream is converted to a single-column Pandas DataFrame.
     cum_sum += batch["value"]
 print(cum_sum)
 # -> 49995000
@@ -81,7 +81,7 @@ print(cum_sum)
 import ray
 
 @ray.remote
-def consume(data: ray.data.Dataset[int]) -> int:
+def consume(data: ray.data.Datastream[int]) -> int:
     num_batches = 0
     # Consume data in 2-record batches.
     for batch in data.iter_batches(batch_size=2):
@@ -103,20 +103,23 @@ class Worker:
     def __init__(self, rank: int):
         pass
 
-    def train(self, shard: ray.data.Dataset[int]) -> int:
+    def train(self, shard: ray.data.DataIterator) -> int:
+        total = 0
         for batch in shard.iter_torch_batches(batch_size=256):
-            pass
-        return shard.count()
+            total += len(batch)
+        return total
 
 workers = [Worker.remote(i) for i in range(4)]
 # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
 ds = ray.data.range(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+# -> Datastream(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
-shards = ds.split(n=4, locality_hints=workers)
-# -> [Dataset(num_blocks=13, num_rows=2500, schema=<class 'int'>),
-#     Dataset(num_blocks=13, num_rows=2500, schema=<class 'int'>), ...]
+shards = ds.streaming_split(n=4, equal=True)
+# -> [<StreamSplitDataIterator at 0x7fa5b5c99070>,
+#     <StreamSplitDataIterator at 0x7fa5b5c990d0>,
+#     <StreamSplitDataIterator at 0x7fa5b5c990f0>,
+#     <StreamSplitDataIterator at 0x7fa5b5c991a0>]
 
 ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 # -> [2500, 2500, 2500, 2500]

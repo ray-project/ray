@@ -28,7 +28,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
                     check.build()
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
-                    ctx = ray.data.DatasetContext.get_current()
+                    ctx = ray.data.DataContext.get_current()
                     if ctx.strict_mode:
                         # Can also handle nested Python objects, which Arrow cannot.
                         self._builder = PandasBlockBuilder()

@@ -4,7 +4,7 @@
 Random Data Access (Experimental)
 ---------------------------------
 
-Any Arrow-format dataset can be enabled for random access by calling ``dataset.to_random_access_dataset(key="col_name")``. This partitions the dataset across the cluster by the given sort key, providing efficient random access to records via binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Dataset.
+Any Arrow-format datastream can be enabled for random access by calling ``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the cluster by the given sort key, providing efficient random access to records via binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Datastream.
 
 .. code-block:: python
 
@@ -13,7 +13,7 @@ Any Arrow-format dataset can be enabled for random access by calling ``dataset.t
     ds = ds.add_column("embedding", lambda b: b["value"] ** 2)
     # -> schema={value: int64, embedding: int64}
 
-    # Enable random access on the dataset. This launches a number of actors
+    # Enable random access on the datastream. This launches a number of actors
     # spread across the cluster that serve random access queries to the data.
     rmap = ds.to_random_access_dataset(key="value", num_workers=4)
 
@@ -29,12 +29,12 @@ Any Arrow-format dataset can be enabled for random access by calling ``dataset.t
     rmap.multiget([4, 2])
     # -> [{"value": 4, "embedding": 16}, {"value": 2, "embedding": 4}]
 
-Similar to Dataset, a RandomAccessDataset can be passed to and used from any Ray actor or task.
+Similar to Datastream, a RandomAccessDataset can be passed to and used from any Ray actor or task.
 
 Architecture
 ------------
 
-RandomAccessDataset spreads its workers evenly across the cluster. Each worker fetches and pins in shared memory all blocks of the sorted source dataset found on its node. In addition, it is ensured that each block is assigned to at least one worker. A central index of block to key-range assignments is computed, which is used to serve lookups.
+RandomAccessDataset spreads its workers evenly across the cluster. Each worker fetches and pins in shared memory all blocks of the sorted source data found on its node. In addition, it is ensured that each block is assigned to at least one worker. A central index of block to key-range assignments is computed, which is used to serve lookups.
 
 Lookups occur as follows:
 
@@ -68,4 +68,4 @@ It is important to note that the client (Ray worker process) can also be a bottl
 Fault Tolerance
 ---------------
 
-Currently, RandomAccessDataset is not fault-tolerant. Losing any of the worker actors invalidates the dataset, and it must be re-created from the source dataset.
+Currently, RandomAccessDataset is not fault-tolerant. Losing any of the worker actors invalidates the dataset, and it must be re-created from the source data.

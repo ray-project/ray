@@ -334,7 +334,7 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Ray Dataset to be
+            dataset_spec: A specification for the Datastream to be
                 passed to the training workers, and the logic on how to shard the Ray
                 Dataset.
             checkpoint: The checkpoint data that

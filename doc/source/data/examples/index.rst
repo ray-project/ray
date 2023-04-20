@@ -1,20 +1,20 @@
-.. _datasets-examples-ref:
+.. _data-examples-ref:
 
 ========
 Examples
 ========
 
-.. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
-  Datasets' features in-depth.
+.. tip:: Check out the Datastreams :ref:`User Guide <data_user_guide>` to learn more about
+  Datastream features in-depth.
 
-.. _datasets-recipes:
+.. _data-recipes:
 
 Simple Data Processing Examples
 -------------------------------
 
-Ray Datasets is a data processing engine that supports multiple data
+Ray Data is a data processing engine that supports multiple data
 modalities and types. Here you will find a few end-to-end examples of some basic data
-processing with Ray Datasets on tabular data, text (coming soon!), and imagery (coming
+processing with Ray Data on tabular data, text (coming soon!), and imagery (coming
 soon!).
 
 .. panels::
@@ -36,7 +36,7 @@ soon!).
     +++
     .. link-button:: batch_training
         :type: ref
-        :text: Batch Training with Ray Datasets
+        :text: Batch Training with Ray Data
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/ocr.jpg
@@ -44,7 +44,7 @@ soon!).
     +++
     .. link-button:: ocr_example
         :type: ref
-        :text: Scaling OCR with Ray Datasets
+        :text: Scaling OCR with Ray Data
         :classes: btn-link btn-block stretched-link
 
 
@@ -57,15 +57,7 @@ Other Examples
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
-    :img-top: /images/dataset-repeat-2.svg
-
-    +++
-    .. link-button:: advanced-pipelines
-        :type: ref
-        :text: Advanced Pipeline Examples
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: ../images/dataset-arch.svg
+    :img-top: ../images/datastream-arch.svg
 
     +++
     .. link-button:: random-access

@@ -133,7 +133,7 @@ dataset_transformed = preprocessor.fit_transform(dataset=dataset)
             </code></pre>
               <div class="row" style="padding:16px;">
                 <div class="col-6">
-                  <a href="https://docs.ray.io/en/latest/data/dataset.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/data/api/api.html" target="_blank"> API references</a>
+                  <a href="https://docs.ray.io/en/latest/data/datastream.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/data/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://colab.research.google.com/github/ray-project/ray/blob/master/doc/source/data/examples/nyc_taxi_basic_processing.ipynb" target="_blank" style="color:black;">

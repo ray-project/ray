@@ -120,7 +120,7 @@ def make_and_upload_dataset(dir_path):
     # os.system("aws s3 sync ./inference s3://cuj-big-data/inference")
 
 
-def read_dataset(path: str) -> ray.data.Dataset:
+def read_dataset(path: str) -> ray.data.Datastream:
     print(f"reading data from {path}")
     return ray.data.read_parquet(path).random_shuffle()
 
@@ -139,18 +139,18 @@ class DataPreprocessor:
         self.standard_stats = None
 
     def preprocess_train_data(
-        self, ds: ray.data.Dataset
-    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+        self, ds: ray.data.Datastream
+    ) -> Tuple[ray.data.Datastream, ray.data.Datastream]:
         print("\n\nPreprocessing training dataset.\n")
         return self._preprocess(ds, False)
 
-    def preprocess_inference_data(self, df: ray.data.Dataset) -> ray.data.Dataset:
+    def preprocess_inference_data(self, df: ray.data.Datastream) -> ray.data.Datastream:
         print("\n\nPreprocessing inference dataset.\n")
         return self._preprocess(df, True)[0]
 
     def _preprocess(
-        self, ds: ray.data.Dataset, inferencing: bool
-    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+        self, ds: ray.data.Datastream, inferencing: bool
+    ) -> Tuple[ray.data.Datastream, ray.data.Datastream]:
         print("\nStep 1: Dropping nulls, creating new_col, updating feature_1\n")
 
         def batch_transformer(df: pd.DataFrame):

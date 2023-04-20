@@ -8,7 +8,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 # Force strict mode.
-ctx = ray.data.DatasetContext.get_current()
+ctx = ray.data.DataContext.get_current()
 ctx.strict_mode = True
 
 

@@ -1,9 +1,9 @@
 # flake8: noqa
 
 # fmt: off
-# __creating_datasets_import_begin__
+# __creating_datastreams_import_begin__
 import ray
-# __creating_datasets_import_end__
+# __creating_datastreams_import_end__
 # fmt: on
 
 # For tfrecords
@@ -11,9 +11,9 @@ ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
 
 # fmt: off
 # __gen_synth_int_range_begin__
-# Create a Dataset of Python objects.
+# Create a Datastream of Python objects.
 ds = ray.data.range(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+# -> Datastream(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
@@ -22,9 +22,9 @@ ds.take(5)
 
 # fmt: off
 # __gen_synth_tabular_range_begin__
-# Create a Dataset of Arrow records.
+# Create a Datastream of Arrow records.
 ds = ray.data.range_table(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema={value: int64})
+# -> Datastream(num_blocks=200, num_rows=10000, schema={value: int64})
 
 ds.take(5)
 # -> [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}, {'value': 4}]
@@ -33,9 +33,9 @@ ds.take(5)
 
 # fmt: off
 # __gen_synth_tensor_range_begin__
-# Create a Dataset of tensors.
+# Create a Datastream of tensors.
 ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
-# -> Dataset(
+# -> Datastream(
 #       num_blocks=200,
 #       num_rows=409600,
 #       schema={__value__: numpy.ndarray(shape=(64, 64), dtype=int64)}
@@ -61,9 +61,9 @@ ds.take(2)
 
 # fmt: off
 # __from_items_begin__
-# Create a Dataset of tabular (Arrow) records.
+# Create a Datastream of tabular (Arrow) records.
 ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-# -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
+# -> MaterializedDatastream(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -76,10 +76,10 @@ ds.show(3)
 # __from_pandas_begin__
 import pandas as pd
 
-# Create a tabular Dataset from a Pandas DataFrame.
+# Create a tabular Datastream from a Pandas DataFrame.
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ds = ray.data.from_pandas(df)
-# -> Dataset(num_blocks=1, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDatastream(num_blocks=1, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -100,9 +100,9 @@ dfs = [
     pd.DataFrame({"col1": list(chunk), "col2": list(map(str, chunk))})
     for chunk in chunks
 ]
-# Create a tabular Dataset from multiple Pandas DataFrames.
+# Create a tabular Datastream from multiple Pandas DataFrames.
 ds = ray.data.from_pandas(dfs)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -115,11 +115,11 @@ ds.show(3)
 # __from_numpy_begin__
 import numpy as np
 
-# Create a tensor Dataset from a 3D NumPy ndarray.
+# Create a tensor Datastream from a 3D NumPy ndarray.
 arr = np.ones((3, 4, 4))
 # The outer dimension is treated as the row dimension.
 ds = ray.data.from_numpy(arr)
-# -> Dataset(
+# -> MaterializedDatastream(
 #        num_blocks=1,
 #        num_rows=3,
 #        schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}
@@ -140,7 +140,7 @@ ds.show(2)
 # fmt: off
 # __read_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
-# -> Dataset(num_blocks=3, num_rows=3, 
+# -> Datastream(num_blocks=3, num_rows=3, 
 #            schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
@@ -158,11 +158,11 @@ ds.take(1)
 # __from_numpy_mult_begin__
 import numpy as np
 
-# Create a tensor Dataset from multiple 3D NumPy ndarray.
+# Create a tensor Datastream from multiple 3D NumPy ndarray.
 arrs = [np.random.rand(2, 4, 4) for _ in range(4)]
 # The outer dimension is treated as the row dimension.
 ds = ray.data.from_numpy(arrs)
-# -> Dataset(
+# -> MaterializedDatastream(
 #        num_blocks=4,
 #        num_rows=8,
 #        schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}
@@ -184,10 +184,10 @@ ds.show(2)
 # __from_arrow_begin__
 import pyarrow as pa
 
-# Create a tabular Dataset from an Arrow Table.
+# Create a tabular Datastream from an Arrow Table.
 t = pa.table({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ds = ray.data.from_arrow(t)
-# -> Dataset(num_blocks=1, num_rows=10000, schema={col1: int64, col2: string})
+# -> MaterializedDatastream(num_blocks=1, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -208,9 +208,9 @@ ts = [
     pa.table({"col1": list(chunk), "col2": list(map(str, chunk))})
     for chunk in chunks
 ]
-# Create a tabular Dataset from multiple Arrow Tables.
+# Create a tabular Datastream from multiple Arrow Tables.
 ds = ray.data.from_arrow(ts)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
+# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -226,9 +226,9 @@ import dask.dataframe as dd
 
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ddf = dd.from_pandas(df, npartitions=4)
-# Create a tabular Dataset from a Dask DataFrame.
+# Create a tabular Datastream from a Dask DataFrame.
 ds = ray.data.from_dask(ddf)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -243,9 +243,9 @@ import modin.pandas as md
 
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 mdf = md.DataFrame(df)
-# Create a tabular Dataset from a Modin DataFrame.
+# Create a tabular Datastream from a Modin DataFrame.
 ds = ray.data.from_modin(mdf)
-# -> Dataset(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDatastream(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -256,9 +256,9 @@ ds.show(3)
 
 # fmt: off
 # __read_parquet_begin__
-# Create a tabular Dataset by reading a Parquet file.
+# Create a tabular Datastream by reading a Parquet file.
 ds = ray.data.read_parquet("example://iris.parquet")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -292,14 +292,14 @@ ds.show(2)
 # __read_parquet_pushdown_begin__
 import pyarrow as pa
 
-# Create a tabular Dataset by reading a Parquet file, pushing column selection and row
+# Create a tabular Datastream by reading a Parquet file, pushing column selection and row
 # filtering down to the file scan.
 ds = ray.data.read_parquet(
     "example://iris.parquet",
     columns=["sepal.length", "variety"],
     filter=pa.dataset.field("sepal.length") > 5.0,
 ).materialize()  # Force a full read of the file.
-# -> Dataset(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
+# -> Datastream(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
 
 ds.show(2)
 # -> {'sepal.length': 5.1, 'variety': 'Setosa'}
@@ -309,9 +309,9 @@ ds.show(2)
 
 # fmt: off
 # __read_csv_begin__
-# Create a tabular Dataset by reading a CSV file.
+# Create a tabular Datastream by reading a CSV file.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -343,9 +343,9 @@ ds.show(2)
 
 # fmt: off
 # __read_json_begin__
-# Create a tabular Dataset by reading a JSON file.
+# Create a tabular Datastream by reading a JSON file.
 ds = ray.data.read_json("example://iris.json")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -377,9 +377,9 @@ ds.show(2)
 
 # fmt: off
 # __read_numpy_begin__
-# Create a tensor Dataset by reading a NumPy file.
+# Create a tensor Datastream by reading a NumPy file.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(
+# -> Datastream(
 #       num_blocks=1,
 #       num_rows=3,
 #       schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
@@ -392,9 +392,9 @@ ds.show(2)
 
 # fmt: off
 # __read_text_begin__
-# Create a tabular Dataset by reading a text file.
+# Create a tabular Datastream by reading a text file.
 ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Dataset(num_blocks=1, num_rows=10, schema=<class 'str'>)
+# -> Datastream(num_blocks=1, num_rows=10, schema=<class 'str'>)
 
 ds.show(3)
 # -> ham     Go until jurong point, crazy.. Available only in bugis n great world la e
@@ -411,12 +411,12 @@ ds.show(3)
 from io import BytesIO
 import PIL.Image
 
-# Create a tabular Dataset by reading a binary file.
+# Create a tabular Datastream by reading a binary file.
 ds = ray.data.read_binary_files("example://mnist_subset_partitioned/0/1.png")
-# -> Dataset(num_blocks=1, num_rows=1, schema=<class 'bytes'>)
+# -> Datastream(num_blocks=1, num_rows=1, schema=<class 'bytes'>)
 
 ds = ds.map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L")))
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=1,
 #        schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
@@ -434,9 +434,9 @@ ds.show(3)
 
 # fmt: off
 # __read_parquet_s3_begin__
-# Create a tabular Dataset by reading a Parquet file from S3.
+# Create a tabular Datastream by reading a Parquet file from S3.
 ds = ray.data.read_parquet("s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2019/01/data.parquet")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=7667792,
 #        schema={
@@ -487,9 +487,9 @@ ds = ray.data.read_csv(
 
 # fmt: off
 # __read_tfrecords_begin__
-# Create a tabular Dataset by reading a TFRecord file.
+# Create a tabular Datastream by reading a TFRecord file.
 ds = ray.data.read_tfrecords("example://iris.tfrecords")
-# Dataset(
+# Datastream(
 #     num_blocks=1,
 #     num_rows=150,
 #     schema={

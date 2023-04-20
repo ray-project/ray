@@ -1084,7 +1084,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert isinstance(ray_datasets, dict)
 
     for ds_key, ds in ray_datasets.items():
-        assert isinstance(ds, ray.data.Dataset)
+        assert isinstance(ds, ray.data.Datastream)
         # `ds.take_all()` triggers execution with new backend, which is
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
@@ -1099,7 +1099,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         _check_usage_record(["FromHuggingFace"])
 
     ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Dataset)
+    assert isinstance(ray_dataset, ray.data.Datastream)
     assert len(ray_dataset.take_all()) > 0
     assert "FromArrowRefs" in ray_dataset.stats()
     assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"

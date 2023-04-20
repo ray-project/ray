@@ -7,14 +7,14 @@ import ray
 # __from_spark_begin__
 import raydp
 
-spark = raydp.init_spark(app_name="Spark -> Datasets Example",
+spark = raydp.init_spark(app_name="Spark -> Datastreams Example",
                          num_executors=2,
                          executor_cores=2,
                          executor_memory="500MB")
 df = spark.createDataFrame([(i, str(i)) for i in range(10000)], ["col1", "col2"])
-# Create a tabular Dataset from a Spark DataFrame.
-ds = ray.data.from_dask(df)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
+# Create a tabular Datastream from a Spark DataFrame.
+ds = ray.data.from_spark(df)
+# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -27,7 +27,7 @@ ds.show(3)
 # __read_parquet_s3_with_fs_begin__
 import pyarrow as pa
 
-# Create a tabular Dataset by reading a Parquet file from a private S3 bucket.
+# Create a tabular Datastream by reading a Parquet file from a private S3 bucket.
 # NOTE: This example is not runnable as-is; add in a path to your private bucket and the
 # required S3 credentials!
 ds = ray.data.read_parquet(
@@ -43,7 +43,7 @@ ds = ray.data.read_parquet(
 
 # fmt: off
 # __read_parquet_hdfs_begin__
-# Create a tabular Dataset by reading a Parquet file from HDFS using HDFS connection
+# Create a tabular Datastream by reading a Parquet file from HDFS using HDFS connection
 # automatically constructed based on the URI.
 # NOTE: This example is not runnable as-is; you'll need to point it at your HDFS
 # cluster/data.
@@ -58,7 +58,7 @@ ds = ray.data.read_parquet("hdfs://<host:port>/path/to/file.parquet")
 # __read_parquet_hdfs_with_fs_begin__
 import pyarrow as pa
 
-# Create a tabular Dataset by reading a Parquet file from HDFS, manually specifying a
+# Create a tabular Datastream by reading a Parquet file from HDFS, manually specifying a
 # configured HDFS connection via a Pyarrow HDFSFileSystem instance.
 # NOTE: This example is not runnable as-is; you'll need to point it at your HDFS
 # cluster/data.
@@ -75,7 +75,7 @@ ds = ray.data.read_parquet(
 # __read_parquet_gcs_begin__
 import gcsfs
 
-# Create a tabular Dataset by reading a Parquet file from GCS, passing the configured
+# Create a tabular Datastream by reading a Parquet file from GCS, passing the configured
 # GCSFileSystem.
 # NOTE: This example is not runnable as-is; you need to point it at your GCS bucket
 # and configure your GCP project and credentials.
@@ -99,7 +99,7 @@ print(filesystem.open(path))
 # __read_parquet_az_begin__
 import adlfs
 
-# Create a tabular Dataset by reading a Parquet file from Azure Blob Storage, passing
+# Create a tabular Datastream by reading a Parquet file from Azure Blob Storage, passing
 # the configured AzureBlobFileSystem.
 path = (
     "az://nyctlc/yellow/puYear=2009/puMonth=1/"
@@ -123,9 +123,9 @@ cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
 
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 mdf = md.DataFrame(df, num_partitions=8)
-# Create a tabular Dataset from a Mars DataFrame.
+# Create a tabular Datastream from a Mars DataFrame.
 ds = ray.data.from_mars(mdf)
-# -> Dataset(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDatastream(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}

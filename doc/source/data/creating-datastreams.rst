@@ -1,22 +1,22 @@
-.. _creating_datasets:
+.. _creating_datastreams:
 
-=================
-Creating Datasets
-=================
+====================
+Creating Datastreams
+====================
 
-Ray :class:`Datasets <ray.data.Dataset>` can be created from:
+:class:`Datastreams <ray.data.Datastream>` can be created from:
 
 * generated synthetic data,
 * local and distributed in-memory data, and
 * local and external storage systems (local disk, cloud storage, HDFS, etc.).
 
-This guide surveys the many ways to create a ``Dataset``. If none of these meet your
+This guide surveys the many ways to create a ``Datastream``. If none of these meet your
 needs, please reach out to us on `Discourse <https://discuss.ray.io/>`__ or open a feature
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
-our :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`
+our :ref:`guide for implementing a custom datasource <custom_datasources>`
 if you're interested in rolling your own integration!
 
-.. _dataset_generate_data:
+.. _datastream_generate_data:
 
 -------------------------
 Generating Synthetic Data
@@ -24,40 +24,40 @@ Generating Synthetic Data
 
 .. tabbed:: Int Range
 
-  Create a ``Dataset`` from a range of integers.
+  Create a ``Datastream`` from a range of integers.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __gen_synth_int_range_begin__
     :end-before: __gen_synth_int_range_end__
 
 .. tabbed:: Tabular Range
 
-  Create an Arrow (tabular) ``Dataset`` from a range of integers,
+  Create an Arrow (tabular) ``Datastream`` from a range of integers,
   with a single column containing this integer range.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __gen_synth_tabular_range_begin__
     :end-before: __gen_synth_tabular_range_end__
 
 .. tabbed:: Tensor Range
 
-  Create a tensor dataset from a range of integers, packing this integer range into
+  Create a tensor datastream from a range of integers, packing this integer range into
   tensors of the provided shape.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __gen_synth_tensor_range_begin__
     :end-before: __gen_synth_tensor_range_end__
 
-.. _dataset_reading_from_storage:
+.. _datastream_reading_from_storage:
 
 --------------------------
 Reading Files From Storage
 --------------------------
 
-Using the ``ray.data.read_*()`` APIs, Datasets can be created from files on local disk
+Using the ``ray.data.read_*()`` APIs, Datastreams can be created from files on local disk
 or remote storage system such as S3, GCS, Azure Blob Storage, or HDFS. Any filesystem
 `supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
 can be used to specify file locations, and many common file formats are supported:
@@ -67,29 +67,29 @@ Each of these APIs take a path or list of paths to files or directories. Any dir
 provided will be walked in order to obtain concrete file paths, at which point all files
 will be read in parallel.
 
-.. _dataset_supported_file_formats:
+.. _datastream_supported_file_formats:
 
 Supported File Formats
 ======================
 
 .. tabbed:: Parquet
 
-  Read Parquet files into a tabular ``Dataset``. The Parquet data will be read into
+  Read Parquet files into a tabular ``Datastream``. The Parquet data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks. Although this simple example demonstrates reading a single file, note that
-  Datasets can also read directories of Parquet files. We also support reading partitioned
+  Datastreams can also read directories of Parquet files. We also support reading partitioned
   Parquet datasets with partition column values pulled from the file paths.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_parquet_begin__
     :end-before: __read_parquet_end__
 
-  Datasets' Parquet reader also supports projection and filter pushdown, allowing column
+  Datastreams' Parquet reader also supports projection and filter pushdown, allowing column
   selection and row filtering to be pushed down to the file scan. For column selection,
   unselected columns will never be read from the file.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_parquet_pushdown_begin__
     :end-before: __read_parquet_pushdown_end__
@@ -98,13 +98,13 @@ Supported File Formats
 
 .. tabbed:: CSV
 
-  Read CSV files into a tabular ``Dataset``. The CSV data will be read into
+  Read CSV files into a tabular ``Datastream``. The CSV data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks. Although this simple example demonstrates reading a single file, note that
-  Datasets can also read directories of CSV files, with one tabular block created
+  Datastreams can also read directories of CSV files, with one tabular block created
   per file.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_csv_begin__
     :end-before: __read_csv_end__
@@ -113,15 +113,15 @@ Supported File Formats
 
 .. tabbed:: JSON
 
-  Read JSON files into a tabular ``Dataset``. The JSON data will be read into
+  Read JSON files into a tabular ``Datastream``. The JSON data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks. Although this simple example demonstrates reading a single file, note that
-  Datasets can also read directories of JSON files, with one tabular block created
+  Datastreams can also read directories of JSON files, with one tabular block created
   per file.
 
   Currently, only newline-delimited JSON (NDJSON) is supported.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_json_begin__
     :end-before: __read_json_end__
@@ -130,18 +130,18 @@ Supported File Formats
 
 .. tabbed:: NumPy
 
-  Read NumPy files into a tensor ``Dataset``. The NumPy ndarray data will be read into
+  Read NumPy files into a tensor ``Datastream``. The NumPy ndarray data will be read into
   single-column
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks using our
   :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`,
   treating the outermost ndarray dimension as the row dimension. See our
-  :ref:`tensor data guide <datasets_tensor_support>` for more information on working
-  with tensors in Datasets. Although this simple example demonstrates reading a single
-  file, note that Datasets can also read directories of NumPy files, with one tensor
+  :ref:`tensor data guide <data_tensor_support>` for more information on working
+  with tensors in Datastreams. Although this simple example demonstrates reading a single
+  file, note that Datastreams can also read directories of NumPy files, with one tensor
   block created per file.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_numpy_begin__
     :end-before: __read_numpy_end__
@@ -150,11 +150,11 @@ Supported File Formats
 
 .. tabbed:: Text
 
-  Read text files into a ``Dataset``. Each line in each text file will be treated as a
-  row in the dataset, resulting in a list-of-strings block being created for each text
+  Read text files into a ``Datastream``. Each line in each text file will be treated as a
+  row in the datastream, resulting in a list-of-strings block being created for each text
   file.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_text_begin__
     :end-before: __read_text_end__
@@ -163,31 +163,31 @@ Supported File Formats
 
 .. tabbed:: Images
 
-  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Dataset`. 
+  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Datastream`. 
 
   This function stores image data in single-column
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
   blocks using the 
   :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
-  For more information on working with tensors in Datasets, read the 
-  :ref:`tensor data guide <datasets_tensor_support>`.
+  For more information on working with tensors in Datastreams, read the 
+  :ref:`tensor data guide <data_tensor_support>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_images_begin__
     :end-before: __read_images_end__
 
 .. tabbed:: Binary
 
-  Read binary files into a ``Dataset``. Each binary file will be treated as a single row
+  Read binary files into a ``Datastream``. Each binary file will be treated as a single row
   of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
-  kind of data using :meth:`~ray.data.Dataset.map_batches` to apply a per-row decoding
-  :ref:`user-defined function <transform_datasets_writing_udfs>`.
+  kind of data using :meth:`~ray.data.Datastream.map_batches` to apply a per-row decoding
+  :ref:`user-defined function <transform_datastreams_writing_udfs>`.
 
-  Although this simple example demonstrates reading a single file, note that Datasets
+  Although this simple example demonstrates reading a single file, note that Datastreams
   can also read directories of binary files, with one bytes block created per file.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_binary_begin__
     :end-before: __read_binary_end__
@@ -197,18 +197,18 @@ Supported File Formats
 .. tabbed:: TFRecords
 
   Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
-  :class:`~ray.data.Dataset`.
+  :class:`~ray.data.Datastream`.
 
   .. warning::
       Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
       records are supported.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_tfrecords_begin__
     :end-before: __read_tfrecords_end__
 
-.. _dataset_reading_remote_storage:
+.. _datastream_reading_remote_storage:
 
 
 Reading from Remote Storage
@@ -238,7 +238,7 @@ are supported for each of these storage systems.
   configuration such as S3 credentials being pulled from the machine's environment
   (e.g. the ``AWS_ACCESS_KEY_ID`` and ``AWS_SECRET_ACCESS_KEY`` environment variables).
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __read_parquet_s3_begin__
     :end-before: __read_parquet_s3_end__
@@ -248,7 +248,7 @@ are supported for each of these storage systems.
   `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
   to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __read_parquet_s3_with_fs_begin__
     :end-before: __read_parquet_s3_with_fs_end__
@@ -263,7 +263,7 @@ are supported for each of these storage systems.
     This example is not runnable as-is; you'll need to point it at your HDFS
     cluster/data.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __read_parquet_hdfs_begin__
     :end-before: __read_parquet_hdfs_end__
@@ -273,7 +273,7 @@ are supported for each of these storage systems.
   <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
   instance to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __read_parquet_hdfs_with_fs_begin__
     :end-before: __read_parquet_hdfs_with_fs_end__
@@ -288,7 +288,7 @@ are supported for each of these storage systems.
     This example is not runnable as-is; you'll need to point it at your GCS bucket and
     configure your GCP project and credentials.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __read_parquet_gcs_begin__
     :end-before: __read_parquet_gcs_end__
@@ -297,7 +297,7 @@ are supported for each of these storage systems.
     To verify that your GCP project and credentials are set up, validate
     that the GCS `filesystem` has permissions to read the input `path`.
 
-    .. literalinclude:: ./doc_code/creating_datasets_untested.py
+    .. literalinclude:: ./doc_code/creating_datastreams_untested.py
       :language: python
       :start-after: __validate_parquet_gcs_begin__
       :end-before: __validate_parquet_gcs_end__
@@ -310,7 +310,7 @@ are supported for each of these storage systems.
   `adlfs AzureBlobFileSystem <https://github.com/fsspec/adlfs>`__, where the appropriate
   account name and account key can be specified.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __read_parquet_az_begin__
     :end-before: __read_parquet_az_end__
@@ -318,7 +318,7 @@ are supported for each of these storage systems.
 Reading from Local Storage
 ==========================
 
-In Ray Datasets, users often read from remote storage systems as described above. In
+In Ray Data, users often read from remote storage systems as described above. In
 some use cases, users may want to read from local storage. There are three ways to read
 from a local filesystem:
 
@@ -342,180 +342,180 @@ from a local filesystem:
 Reading Compressed Files
 ========================
 
-Ray Datasets supports reading compressed files using the ``arrow_open_stream_args`` arg.
+Ray Data supports reading compressed files using the ``arrow_open_stream_args`` arg.
 `Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__
-(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Datasets.
+(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Data.
 For example:
 
-.. literalinclude:: ./doc_code/creating_datasets.py
+.. literalinclude:: ./doc_code/creating_datastreams.py
   :language: python
   :start-after: __read_compressed_begin__
   :end-before: __read_compressed_end__
 
-.. _dataset_from_in_memory_data:
+.. _datastream_from_in_memory_data:
 
 -------------------
 From In-Memory Data
 -------------------
 
-Datasets can be constructed from existing in-memory data. In addition to being able to
-construct a ``Dataset`` from plain Python objects, Datasets also interoperates with popular
+Datastreams can be constructed from existing in-memory data. In addition to being able to
+construct a ``Datastream`` from plain Python objects, Datastreams also interoperates with popular
 single-node libraries (`Pandas <https://pandas.pydata.org/>`__,
 `NumPy <https://numpy.org/>`__, `Arrow <https://arrow.apache.org/>`__) as well as
 distributed frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
 :ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`).
 
-.. _dataset_from_in_memory_data_single_node:
+.. _datastream_from_in_memory_data_single_node:
 
 From Single-Node Data Libraries
 ===============================
 
-In this section, we demonstrate creating a ``Dataset`` from single-node in-memory data.
+In this section, we demonstrate creating a ``Datastream`` from single-node in-memory data.
 
 .. tabbed:: Pandas
 
-  Create a ``Dataset`` from a Pandas DataFrame. This constructs a ``Dataset``
+  Create a ``Datastream`` from a Pandas DataFrame. This constructs a ``Datastream``
   backed by a single Pandas DataFrame block.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_pandas_begin__
     :end-before: __from_pandas_end__
 
-  We can also build a ``Dataset`` from more than one Pandas DataFrame, where each said
-  DataFrame will become a block in the ``Dataset``.
+  We can also build a ``Datastream`` from more than one Pandas DataFrame, where each said
+  DataFrame will become a block in the ``Datastream``.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_pandas_mult_begin__
     :end-before: __from_pandas_mult_end__
 
 .. tabbed:: NumPy
 
-  Create a ``Dataset`` from a NumPy ndarray. This constructs a ``Dataset``
+  Create a ``Datastream`` from a NumPy ndarray. This constructs a ``Datastream``
   backed by a single-column Arrow table block; the outer dimension of the ndarray
   will be treated as the row dimension, and the column will have name ``"__value__"``.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_numpy_begin__
     :end-before: __from_numpy_end__
 
-  We can also build a ``Dataset`` from more than one NumPy ndarray, where each said
-  ndarray will become a single-column Arrow table block in the ``Dataset``.
+  We can also build a ``Datastream`` from more than one NumPy ndarray, where each said
+  ndarray will become a single-column Arrow table block in the ``Datastream``.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_numpy_mult_begin__
     :end-before: __from_numpy_mult_end__
 
 .. tabbed:: Arrow
 
-  Create a ``Dataset`` from an
+  Create a ``Datastream`` from an
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
-  This constructs a ``Dataset`` backed by a single Arrow ``Table`` block.
+  This constructs a ``Datastream`` backed by a single Arrow ``Table`` block.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_arrow_begin__
     :end-before: __from_arrow_end__
 
-  We can also build a ``Dataset`` from more than one Arrow Table, where each said
-  ``Table`` will become a block in the ``Dataset``.
+  We can also build a ``Datastream`` from more than one Arrow Table, where each said
+  ``Table`` will become a block in the ``Datastream``.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_arrow_mult_begin__
     :end-before: __from_arrow_mult_end__
 
 .. tabbed:: Python Objects
 
-  Create a ``Dataset`` from a list of Python objects; since each object in this
-  particular list is a dictionary, Datasets will treat this list as a list of tabular
-  records, and will construct an Arrow ``Dataset``.
+  Create a ``Datastream`` from a list of Python objects; since each object in this
+  particular list is a dictionary, Datastreams will treat this list as a list of tabular
+  records, and will construct an Arrow ``Datastream``.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_items_begin__
     :end-before: __from_items_end__
 
-.. _dataset_from_in_memory_data_distributed:
+.. _datastream_from_in_memory_data_distributed:
 
 From Distributed Data Processing Frameworks
 ===========================================
 
-In addition to working with single-node in-memory data, Datasets can be constructed from
+In addition to working with single-node in-memory data, Datastreams can be constructed from
 distributed (multi-node) in-memory data, interoperating with popular distributed
 data processing frameworks such as :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
 :ref:`Modin <modin-on-ray>`, and :ref:`Mars <mars-on-ray>`.
 
 These conversions work by running Ray tasks converting each Dask/Spark/Modin/Mars
-data partition to a block format supported by Datasets (copying data if needed), and using the
-futures representing the return value of those conversion tasks as the ``Dataset`` block
+data partition to a block format supported by Datastreams (copying data if needed), and using the
+futures representing the return value of those conversion tasks as the ``Datastream`` block
 futures.
 
 .. note::
 
-  These data processing frameworks must be running on Ray in order for these Datasets
+  These data processing frameworks must be running on Ray in order for these Datastreams
   integrations to work. See how these frameworks can be run on Ray in our
   :ref:`data processing integrations docs <data_integrations>`.
 
 .. tabbed:: Dask
 
-  Create a ``Dataset`` from a
+  Create a ``MaterializedDatastream`` from a
   `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
-  ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
+  ``Datastream`` backed by the distributed Pandas DataFrame partitions that underly the
   Dask DataFrame.
 
-  This conversion has near-zero overhead, since Datasets simply reinterprets existing
-  Dask-in-Ray partition objects as Dataset blocks.
+  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
+  Dask-in-Ray partition objects as Datastream blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_dask_begin__
     :end-before: __from_dask_end__
 
 .. tabbed:: Spark
 
-  Create a ``Dataset`` from a `Spark DataFrame
+  Create a ``MaterializedDatastream`` from a `Spark DataFrame
   <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
-  This constructs a ``Dataset`` backed by the distributed Spark DataFrame partitions
+  This constructs a ``Datastream`` backed by the distributed Spark DataFrame partitions
   that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
   will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
-  which Datasets will then interpret as its blocks.
+  which Datastreams will then interpret as its blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __from_spark_begin__
     :end-before: __from_spark_end__
 
 .. tabbed:: Modin
 
-  Create a ``Dataset`` from a Modin DataFrame. This constructs a ``Dataset``
+  Create a ``MaterializedDatastream`` from a Modin DataFrame. This constructs a ``Datastream``
   backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
-  This conversion has near-zero overhead, since Datasets simply reinterprets existing
-  Modin partition objects as Dataset blocks.
+  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
+  Modin partition objects as Datastream blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets.py
+  .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_modin_begin__
     :end-before: __from_modin_end__
 
 .. tabbed:: Mars
 
-  Create a ``Dataset`` from a Mars DataFrame. This constructs a ``Dataset``
+  Create a ``MaterializedDatastream`` from a Mars DataFrame. This constructs a ``Datastream``
   backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
 
-  This conversion has near-zero overhead, since Datasets simply reinterprets existing
-  Mars partition objects as Dataset blocks.
+  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
+  Mars partition objects as Datastream blocks.
 
-  .. literalinclude:: ./doc_code/creating_datasets_untested.py
+  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python
     :start-after: __from_mars_begin__
     :end-before: __from_mars_end__
 
-.. _dataset_from_torch_tf:
+.. _datastream_from_torch_tf:
 
 -------------------------
 From Torch and TensorFlow
@@ -523,12 +523,12 @@ From Torch and TensorFlow
 
 .. tabbed:: PyTorch
 
-    If you already have a Torch dataset available, you can create a Ray Dataset using
+    If you already have a Torch dataset available, you can create a Datastream using
     :class:`~ray.data.from_torch`.
 
     .. warning::
         :class:`~ray.data.from_torch` doesn't support parallel
-        reads. You should only use this datasource for small datasets like MNIST or
+        reads. You should only use this datasource for small datastreams like MNIST or
         CIFAR.
 
     .. code-block:: python
@@ -536,45 +536,45 @@ From Torch and TensorFlow
         import ray
         import torchvision
 
-        dataset = torchvision.datasets.MNIST("data", download=True)
-        dataset = ray.data.from_torch(dataset)
-        dataset.take(1)
+        torch_ds = torchvision.datasets.MNIST("data", download=True)
+        datastream = ray.data.from_torch(torch_ds)
+        datastream.take(1)
         # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
 
 .. tabbed:: TensorFlow
 
-    If you already have a TensorFlow dataset available, you can create a Ray Dataset
+    If you already have a TensorFlow dataset available, you can create a Datastream
     using :class:`~ray.data.from_tf`.
 
     .. warning::
         :class:`~ray.data.from_tf` doesn't support parallel reads. You
-        should only use this function with small datasets like MNIST or CIFAR.
+        should only use this function with small datastreams like MNIST or CIFAR.
 
     .. code-block:: python
 
         import ray
         import tensorflow_datasets as tfds
 
-        dataset, _ = tfds.load("cifar10", split=["train", "test"])
-        dataset = ray.data.from_tf(dataset)
+        tf_ds, _ = tfds.load("cifar10", split=["train", "test"])
+        datastream = ray.data.from_tf(tf_ds)
 
-        dataset
-        # -> Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+        datastream
+        # -> MaterializedDatastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
 
-.. _dataset_from_huggingface:
+.. _datastream_from_huggingface:
 
 -------------------------------
 From 🤗 (Hugging Face) Datasets
 -------------------------------
 
-You can convert 🤗 Datasets into Ray Datasets by using
+You can convert 🤗 Datasets into Ray Data by using
 :py:class:`~ray.data.from_huggingface`. This function accesses the underlying Arrow table and
-converts it into a Ray Dataset directly.
+converts it into a Datastream directly.
 
 .. warning::
     :py:class:`~ray.data.from_huggingface` doesn't support parallel
     reads. This will not usually be an issue with in-memory 🤗 Datasets,
-    but may fail with large memory-mapped 🤗 Datasets. 🤗 ``IterableDataset``
+    but may fail with large memory-mapped 🤗 Datasets. 🤗 ``IterableDatastream``
     objects are not supported.
 
 .. code-block:: python
@@ -582,24 +582,24 @@ converts it into a Ray Dataset directly.
     import ray.data
     from datasets import load_dataset
 
-    hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-    ray_datasets = ray.data.from_huggingface(hf_datasets)
-    ray_datasets["train"].take(2)
+    hf_ds = load_dataset("wikitext", "wikitext-2-raw-v1")
+    ray_ds = ray.data.from_huggingface(hf_ds)
+    ray_ds["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
-.. _dataset_mongo_db:
+.. _datastream_mongo_db:
 
 ------------
 From MongoDB
 ------------
 
-A Dataset can also be created from `MongoDB <https://www.mongodb.com/>`__ with
+A Datastream can also be created from `MongoDB <https://www.mongodb.com/>`__ with
 :py:class:`~ray.data.read_mongo`.
 This interacts with MongoDB similar to external filesystems, except here you will
 need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/manual/reference/connection-string/>`__,
 `database and collection <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__,
 and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
-the collection. The execution results are then used to create a Dataset.
+the collection. The execution results are then used to create a Datastream.
 
 .. note::
 
@@ -634,7 +634,7 @@ the collection. The execution results are then used to create a Dataset.
         collection="my_collection",
     )
 
-.. _datasets_sql_databases:
+.. _datastreams_sql_databases:
 
 --------------------------
 Reading From SQL Databases
@@ -671,13 +671,13 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             )
 
         # Get all movies
-        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
         # Get movies after the year 1980
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT title, score FROM movie WHERE year >= 1980", create_connection
         )
         # Get the number of movies per year
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         )
 
@@ -708,13 +708,13 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             )
 
         # Get all movies
-        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
         # Get movies after the year 1980
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT title, score FROM movie WHERE year >= 1980", create_connection
         )
         # Get the number of movies per year
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         )
 
@@ -744,13 +744,13 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             )
 
         # Get all movies
-        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
         # Get movies after the year 1980
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT title, score FROM movie WHERE year >= 1980", create_connection
         )
         # Get the number of movies per year
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         )
 
@@ -781,13 +781,13 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
 
         # Get all movies
-        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
         # Get movies after the year 1980
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT title, score FROM movie WHERE year >= 1980", create_connection
         )
         # Get the number of movies per year
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         )
 
@@ -815,24 +815,24 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             return dbapi.Connection(client)
 
         # Get all movies
-        dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
         # Get movies after the year 1980
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT title, score FROM movie WHERE year >= 1980", create_connection
         )
         # Get the number of movies per year
-        dataset = ray.data.read_sql(
+        datastream = ray.data.read_sql(
             "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         )
 
 
-.. _datasets_custom_datasource:
+.. _data_custom_datasource:
 
 ------------------
 Custom Datasources
 ------------------
 
-Datasets can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
+Datastreams can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
 Once you have implemented `YourCustomDataSource`, you can use it like any other source in Ray Data:
 
 .. code-block:: python
@@ -843,7 +843,7 @@ Once you have implemented `YourCustomDataSource`, you can use it like any other 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-For more details, check out :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`.
+For more details, check out :ref:`guide for implementing a custom datasource <custom_datasources>`.
 
 --------------------------
 Performance Considerations
@@ -852,20 +852,16 @@ Performance Considerations
 Read Parallelism
 ================
 
-Datasets automatically selects the read ``parallelism`` according to the following procedure:
+Datastreams automatically selects the read ``parallelism`` according to the following procedure:
 
 1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
 2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
 4. The parallelism is truncated to ``min(num_files, parallelism)``.
 
-To perform the read, ``parallelism`` parallel read tasks will be
-launched, each reading one or more files and each creating a single block of data.
-When reading from remote datasources, these parallel read tasks will be spread across
-the nodes in your Ray cluster, creating the distributed collection of blocks that makes
-up a distributed Ray Dataset.
+The ``parallelism`` determines the number of blocks the base data will be split into for parallel reads. Datastream will decide internally how many read tasks to run concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In other words, the higher the parallelism, the smaller the data blocks in the Datastream and hence the more opportunity for parallel execution.
 
-.. image:: images/dataset-read.svg
+.. image:: images/datastream-read.svg
    :width: 650px
    :align: center
 
@@ -873,15 +869,15 @@ This default parallelism can be overridden via the ``parallelism`` argument; see
 :ref:`performance guide <data_performance_tips>`  for tips on how to tune this read
 parallelism.
 
-.. _dataset_deferred_reading:
+.. _datastream_deferred_reading:
 
 Deferred Read Task Execution
 ============================
 
-Datasets created via the ``ray.data.read_*()`` APIs are lazy: no read tasks are
+Datastreams created via the ``ray.data.read_*()`` APIs are lazy: no read tasks are
 executed until a downstream consumption operation triggers execution. Metadata
-inspection functions like :meth:`ds.schema() <ray.data.Dataset.schema>` and
-:meth:`ds.show() <ray.data.Dataset.show>` will trigger execution of only one or some
+inspection functions like :meth:`ds.schema() <ray.data.Datastream.schema>` and
+:meth:`ds.show() <ray.data.Datastream.show>` will trigger execution of only one or some
 tasks, instead of all tasks. This allows metadata to be inspected right away. Execution
 of all read tasks can be triggered manually using the
-:meth:`ds.materialize() <ray.data.Dataset.materialize>` API.
+:meth:`ds.materialize() <ray.data.Datastream.materialize>` API.

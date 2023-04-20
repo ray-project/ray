@@ -197,7 +197,7 @@ class DatasetReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ds: ray.data.Dataset, ioctx: Optional[IOContext] = None):
+    def __init__(self, ds: ray.data.Datastream, ioctx: Optional[IOContext] = None):
         """Initializes a DatasetReader instance.
 
         Args:

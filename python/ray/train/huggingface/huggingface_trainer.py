@@ -209,7 +209,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             ``transformers.Trainer`` object and takes in the following arguments:
             train ``Torch.Dataset``, optional evaluation ``Torch.Dataset``
             and config as kwargs. The Torch Datasets are automatically
-            created by converting the Ray Datasets internally before
+            created by converting the Datastreams internally before
             they are passed into the function.
         trainer_init_config: Configurations to pass into
             ``trainer_init_per_worker`` as kwargs.
@@ -219,7 +219,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset and key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
