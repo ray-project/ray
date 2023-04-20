@@ -36,6 +36,7 @@ steps:
     - conda init
     - . ./ci/ci.sh init
     - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+    - export RAY_CI_SERVE_AFFECTED
     - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" && "${RAY_CI_CORE_CPP_AFFECTED}" = "1" ]; then ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
     - if [ "${RAY_CI_PYTHON_AFFECTED}" = "1" ]; then ./ci/ci.sh test_python; fi
