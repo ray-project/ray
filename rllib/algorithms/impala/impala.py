@@ -144,7 +144,7 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.minibatch_size = self.train_batch_size
+        self._minibatch_size = "auto"
         self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
@@ -176,7 +176,7 @@ class ImpalaConfig(AlgorithmConfig):
         gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
-        minibatch_size: Optional[int] = NotProvided,
+        minibatch_size: Optional[Union[int, str]] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
@@ -230,10 +230,11 @@ class ImpalaConfig(AlgorithmConfig):
             minibatch_buffer_size: How many train batches should be retained for
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             minibatch_size: The size of minibatches that are trained over during
-                each SGD iteration. Note this only has an effect if
-                `_enable_learner_api` == True.
-                Note: minibatch_size must be a multiple of rollout_fragment_length or
-                sequence_length and smaller than or equal to train_batch_size.
+                each SGD iteration. If "auto", will use the same value as
+                `train_batch_size`.
+                Note that this setting only has an effect if `_enable_learner_api=True`
+                and it must be a multiple of `rollout_fragment_length` or
+                `sequence_length` and smaller than or equal to `train_batch_size`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -349,7 +350,7 @@ class ImpalaConfig(AlgorithmConfig):
         if gamma is not NotProvided:
             self.gamma = gamma
         if minibatch_size is not NotProvided:
-            self.minibatch_size = minibatch_size
+            self._minibatch_size = minibatch_size
 
         return self
 
@@ -404,11 +405,10 @@ class ImpalaConfig(AlgorithmConfig):
                 and self.minibatch_size <= self.train_batch_size
             ):
                 raise ValueError(
-                    "minibatch_size must be a multiple of rollout_fragment_length and "
-                    "must be smaller than or equal to train_batch_size. Got"
-                    f" minibatch_size={self.minibatch_size}, train_batch_size="
-                    f"{self.train_batch_size}, and rollout_fragment_length="
-                    f"{self.get_rollout_fragment_length()}"
+                    f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
+                    "or a multiple of `rollout_fragment_length` "
+                    f"({self.rollout_fragment_length}) while at the same time smaller "
+                    f"than or equal to `train_batch_size` ({self.train_batch_size})!"
                 )
 
     @override(AlgorithmConfig)
@@ -433,12 +433,22 @@ class ImpalaConfig(AlgorithmConfig):
         )
         return learner_hps
 
+    # TODO (sven): Make these get_... methods all read-only @properties instead.
     def get_replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
 
         Formula: ratio = 1 / proportion
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
+
+    @property
+    def minibatch_size(self):
+        # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
+        # through the entire train batch). Otherwise, use user provided setting.
+        return (
+            self.train_batch_size if self._minibatch_size == "auto"
+            else self._minibatch_size
+        )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
@@ -678,7 +688,8 @@ class Impala(Algorithm):
             and self._aggregator_actor_manager.num_healthy_actors() > 0
         )
 
-        # Get references to sampled SampleBatches from our workers.
+        # Get sampled SampleBatches from our workers (by ray references if we use
+        # tree-aggregation).
         unprocessed_sample_batches = self.get_samples_from_workers(
             return_object_refs=use_tree_aggregation,
         )
@@ -1023,10 +1034,9 @@ class Impala(Algorithm):
             Batches that have been processed by the mixin buffer.
 
         """
-        processed_batches = []
         batches = [b for _, b in worker_to_sample_batches]
-        if not batches:
-            return processed_batches
+        processed_batches = []
+
         for batch in batches:
             assert not isinstance(
                 batch, ObjectRef
