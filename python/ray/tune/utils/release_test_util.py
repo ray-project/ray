@@ -109,7 +109,10 @@ def timed_tune_run(
     durable = (
         "storage_path" in tune_kwargs
         and tune_kwargs["storage_path"]
-        and tune_kwargs["storage_path"].startswith("s3://")
+        and (
+            tune_kwargs["storage_path"].startswith("s3://")
+            or tune_kwargs["storage_path"].startswith("gs://")
+        )
     )
 
     sleep_time = 1.0 / results_per_second
