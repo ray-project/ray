@@ -49,11 +49,14 @@ void GcsSubscriberClient::PubsubLongPolling(
     const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
   rpc::GcsSubscriberPollRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  req.set_max_processed_sequence_id(request.max_processed_sequence_id());
+  req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
       req,
       [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
         rpc::PubsubLongPollingReply reply;
         *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        *reply.mutable_publisher_id() = poll_reply.publisher_id();
         callback(status, reply);
       });
 }

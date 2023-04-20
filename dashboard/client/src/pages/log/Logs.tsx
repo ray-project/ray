@@ -58,7 +58,7 @@ const useLogs = () => {
         if (res) {
           setLogs(res);
         } else {
-          setLogs("(null)");
+          setLogs("(This file is empty.)");
         }
       })
       .catch(() => {

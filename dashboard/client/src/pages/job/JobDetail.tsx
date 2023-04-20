@@ -41,7 +41,7 @@ const useStyle = makeStyles((theme) => ({
 
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail();
+  const { job, msg, isLoading, params } = useJobDetail();
   const jobId = params.id;
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
@@ -107,7 +107,7 @@ export const JobDetailChartsPage = () => {
   if (!job) {
     return (
       <div className={classes.root}>
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
