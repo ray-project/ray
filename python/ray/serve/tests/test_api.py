@@ -732,7 +732,8 @@ class TestAppBuilder:
         assert call_app_builder_with_args_if_necessary(f, {}) == f
 
         with pytest.raises(
-            ValueError, match="Arguments can only be passed to a builder function"
+            ValueError,
+            match="Arguments can only be passed to an application builder function",
         ):
             call_app_builder_with_args_if_necessary(f, {"key": "val"})
 
@@ -741,7 +742,11 @@ class TestAppBuilder:
             pass
 
         with pytest.raises(
-            TypeError, match="Expected a built Serve application or a builder function"
+            TypeError,
+            match=(
+                "Expected a built Serve application "
+                "or an application builder function"
+            ),
         ):
             call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
 
@@ -750,7 +755,8 @@ class TestAppBuilder:
             return self.f.bind()
 
         with pytest.raises(
-            TypeError, match="Application builders should take exactly one parameter."
+            TypeError,
+            match="Application builder functions should take exactly one parameter",
         ):
             call_app_builder_with_args_if_necessary(builder_with_two_args, {})
 

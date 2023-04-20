@@ -824,7 +824,7 @@ def build_echo_app_typed(args: TypedArgs):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.parametrize(
+@pytest.mark.parametrize(
     "import_path",
     [
         "ray.serve.tests.test_cli.build_echo_app",

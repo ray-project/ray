@@ -367,7 +367,7 @@ def call_app_builder_with_args_if_necessary(
     signature = inspect.signature(builder)
     if len(signature.parameters) != 1:
         raise TypeError(
-            "Application builders should take exactly one parameter, "
+            "Application builder functions should take exactly one parameter, "
             "a dictionary containing the passed arguments."
         )
 
@@ -381,8 +381,9 @@ def call_app_builder_with_args_if_necessary(
     app = builder(args)
     if not isinstance(app, (ClassNode, FunctionNode)):
         raise TypeError(
-            "Application builders must return a `ClassNode` or `FunctionNode` "
-            f"returned from `Deployment.bind()`, but got: {type(app)}."
+            "Application builder functionss must return a `ClassNode` or "
+            "`FunctionNode` returned from `Deployment.bind()`, "
+            f"but got: {type(app)}."
         )
 
     return app
