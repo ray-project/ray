@@ -143,9 +143,9 @@ def transform_ray_dag_to_serve_dag(
     ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     When provided name, all Deployment name will {name}_{deployment_name}
     """
-    # TODO: document.
+    # TODO: document
     if isinstance(dag_node, Application):
-        return dag_node._get_internal_dag_node()
+        dag_node = dag_node._get_internal_dag_node()
 
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
