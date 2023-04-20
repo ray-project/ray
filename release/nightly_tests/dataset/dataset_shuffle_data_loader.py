@@ -5,13 +5,21 @@ import time
 
 import ray
 
+from pyarrow import fs
+from cloud_detect import provider
 import numpy as np
 import torch
 
-PATH = [
-    f"s3://shuffling-data-loader-benchmarks/data/input_data_{i}.parquet.snappy"
-    for i in range(0, 25)
-]
+PATHS = {
+    "aws": [
+        f"s3://shuffling-data-loader-benchmarks/data/input_data_{i}.parquet.snappy"
+        for i in range(0, 25)
+    ],
+    "gcp": [
+        f"gcs://shuffling-data-loader-benchmarks/data/input_data_{i}.parquet.snappy"
+        for i in range(0, 25)
+    ],
+}
 
 
 def create_parser():
@@ -84,8 +92,13 @@ def create_torch_iterator(split, batch_size, rank=None):
 
 
 def create_dataset(filenames, repeat_times):
+    if provider() == "gcp":
+        filesystem = fs.GcsFileSystem()
+    else:
+        filesystem = None
+
     pipeline = (
-        ray.data.read_parquet(list(filenames))
+        ray.data.read_parquet(list(filenames), filesystem=filesystem)
         .repeat(times=repeat_times)
         .random_shuffle_each_window()
     )
@@ -100,7 +113,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    pipeline = create_dataset(PATH, args.repeat_times)
+    pipeline = create_dataset(PATHS[provider()], args.repeat_times)
     splits = pipeline.split(args.num_workers)
 
     @ray.remote(num_gpus=1)
