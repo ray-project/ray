@@ -2,6 +2,7 @@
 
 import copy
 import functools
+import ray
 from collections import defaultdict, deque
 
 import torch
