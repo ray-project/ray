@@ -3,7 +3,7 @@ import subprocess
 import os
 import json
 import time
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -18,7 +18,25 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 @click.argument("test_name", required=True, type=str)
 @click.argument("passing_commit", required=True, type=str)
 @click.argument("failing_commit", required=True, type=str)
-def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
+@click.option(
+    "--concurrency",
+    default=3,
+    type=int,
+    help=(
+        "Maximum number of concurrent test jobs to run. Higher number uses more "
+        "capacity, but reduce the bisect duration"
+    ),
+)
+def main(
+    test_name: str,
+    passing_commit: str,
+    failing_commit: str,
+    concurrency: Optional[int] = 1,
+) -> None:
+    if concurrency <= 0:
+        raise ValueError(
+            f"Concurrency input need to be a positive number, received: {concurrency}"
+        )
     test = _get_test(test_name)
     pre_sanity_check = _sanity_check(test, passing_commit, failing_commit)
     if not pre_sanity_check:
@@ -28,7 +46,7 @@ def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
         )
         return
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
-    blamed_commit = _bisect(test, commit_lists, 3)
+    blamed_commit = _bisect(test, commit_lists, concurrency)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
@@ -39,19 +57,19 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
             f"{commit_list[0]} to {commit_list[-1]}"
         )
         idx_to_commit = {}
-        for i in range(1, concurrency+1):
-            idx = i * len(commit_list) // (concurrency+1)
+        for i in range(1, concurrency + 1):
+            idx = len(commit_list) * i // (concurrency + 1)
             idx_to_commit[idx] = commit_list[idx]
         outcomes = _run_test(test, set(idx_to_commit.values()))
         passing_idx = 0
-        failing_idx = len(commit_list) - 1  
+        failing_idx = len(commit_list) - 1
         for idx, commit in idx_to_commit.items():
-            is_passing = outcomes[commit] == 'passed'
+            is_passing = outcomes[commit] == "passed"
             if is_passing and idx > passing_idx:
                 passing_idx = idx
             if not is_passing and idx < failing_idx:
                 failing_idx = idx
-        commit_list = commit_list[passing_idx:failing_idx+1]
+        commit_list = commit_list[passing_idx : failing_idx + 1]
     return commit_list[-1]
 
 

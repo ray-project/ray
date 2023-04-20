@@ -17,6 +17,10 @@ def test_bisect():
             "c1": "hard_failed",
             "c2": "hard_failed",
         },
+        "cc1": {
+            "cc0": "passed",
+            "cc1": "hard_failed",
+        },
     }
 
     for output, input in test_cases.items():
