@@ -3,7 +3,7 @@ import json
 from typing import List
 from collections import OrderedDict
 
-from ray.serve.deployment import Deployment, schema_to_deployment
+from ray.serve.deployment import Application, Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
@@ -143,6 +143,10 @@ def transform_ray_dag_to_serve_dag(
     ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     When provided name, all Deployment name will {name}_{deployment_name}
     """
+    # TODO: document.
+    if isinstance(dag_node, Application):
+        return dag_node._get_internal_dag_node()
+
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
 

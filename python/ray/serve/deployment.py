@@ -12,6 +12,7 @@ from typing import (
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from ray.serve.context import get_global_client
+from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
 from ray.dag.function_node import FunctionNode
 from ray.serve.config import (
@@ -32,7 +33,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI
-class Application:
+class Application(DAGNodeBase):
     """Returned from `Deployment.bind()`.
 
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
@@ -57,6 +58,9 @@ class Application:
     @classmethod
     def from_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
         return cls(_internal_dag_node=dag_node)
+
+    def apply_recursive(self, *args, **kwargs):
+        return self._get_internal_dag_node().apply_recursive(*args, **kwargs)
 
 
 @PublicAPI
