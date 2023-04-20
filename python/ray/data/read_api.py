@@ -16,6 +16,7 @@ from typing import (
 import numpy as np
 
 import ray
+from python.ray.data.datasource.tfrecords_datasource import unwrap_single_value_columns
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -1176,6 +1177,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
+    schema_inference: bool = True,
 ) -> Datastream[TableRow]:
     """Create a datastream from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1247,15 +1249,16 @@ def read_tfrecords(
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Datastream.
-
+        schema_inference: Toggles the schema inference applied; applicable only if
+            tf_schema argument is missing
     Returns:
         A :class:`~ray.data.Datastream` that contains the example features.
 
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """  # noqa: E501
-    return read_datasource(
-        TFRecordDatasource(),
+    dataset = read_datasource(
+        TFRecordDatasource(filesystem=filesystem),
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
@@ -1265,6 +1268,11 @@ def read_tfrecords(
         ignore_missing_paths=ignore_missing_paths,
         tf_schema=tf_schema,
     )
+
+    if schema_inference and not tf_schema:
+        return unwrap_single_value_columns(dataset)
+
+    return dataset
 
 
 @PublicAPI(stability="alpha")
