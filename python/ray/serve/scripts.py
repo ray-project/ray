@@ -235,7 +235,7 @@ def deploy(config_file_name: str, address: str):
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "If pass a YAML config, existing applications with no code changes will not "
+        "If passing a YAML config, existing applications with no code changes will not "
         "be updated.\n\n"
         "By default, this will block and stream logs to the console. If you "
         "Ctrl-C the command, it will shut down Serve on the cluster."

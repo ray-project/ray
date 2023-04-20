@@ -352,13 +352,13 @@ def call_app_builder_with_args_if_necessary(
     if isinstance(builder, (ClassNode, FunctionNode)):
         if len(args) > 0:
             raise ValueError(
-                "Arguments can only be passed to a builder function, "
+                "Arguments can only be passed to an application builder function, "
                 "not an already built application."
             )
         return builder
     elif not isinstance(builder, FunctionType):
         raise TypeError(
-            "Expected a built Serve application or a builder function, "
+            "Expected a built Serve application or an application builder function "
             f"but got: {type(builder)}."
         )
 
