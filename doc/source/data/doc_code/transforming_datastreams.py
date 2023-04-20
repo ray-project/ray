@@ -1,15 +1,15 @@
 # flake8: noqa
 
 # fmt: off
-# __dataset_transformation_begin__
+# __datastream_transformation_begin__
 import ray
 import pandas
 
-# Create a dataset from file with Iris data.
+# Create a datastream from file with Iris data.
 # Tip: "example://" is a convenient protocol to access the
 # python/ray/data/examples/data directory.
 ds = ray.data.read_csv("example://iris.csv")
-# Dataset(num_blocks=1, num_rows=150,
+# Datastream(num_blocks=1, num_rows=150,
 #         schema={sepal.length: float64, sepal.width: float64,
 #                 petal.length: float64, petal.width: float64, variety: object})
 ds.show(3)
@@ -20,10 +20,10 @@ ds.show(3)
 # -> {'sepal.length': 4.7, 'sepal.width': 3.2,
 #     'petal.length': 1.3, 'petal.width': 0.2, 'variety': 'Setosa'}
 
-# Repartition the dataset to 5 blocks.
+# Repartition the datastream to 5 blocks.
 ds = ds.repartition(5)
 # -> Repartition
-#    +- Dataset(num_blocks=1, num_rows=150,
+#    +- Datastream(num_blocks=1, num_rows=150,
 #               schema={sepal.length: float64, sepal.width: float64,
 #                       petal.length: float64, petal.width: float64, variety: object})
 
@@ -31,7 +31,7 @@ ds = ds.repartition(5)
 def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
     return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
-# Map processing the dataset.
+# Map processing the datastream.
 ds.map_batches(transform_batch).show()
 # -> {'sepal.length': 5.2, 'sepal.width': 2.7,
 #     'petal.length': 3.9, 'petal.width': 1.4, 'variety': 'Versicolor'}
@@ -40,16 +40,12 @@ ds.map_batches(transform_batch).show()
 # -> {'sepal.length': 4.9, 'sepal.width': 2.5,
 #     'petal.length': 4.5, 'petal.width': 1.7, 'variety': 'Virginica'}
 
-# Split the dataset into 2 datasets
-ds.split(2)
-# -> [Dataset(num_blocks=3, num_rows=90,
-#             schema={sepal.length: double, sepal.width: double,
-#                     petal.length: double, petal.width: double, variety: string}),
-#     Dataset(num_blocks=2, num_rows=60,
-#             schema={sepal.length: double, sepal.width: double,
-#                     petal.length: double, petal.width: double, variety: string})]
+# Split the datastream into 2 disjoint iterators.
+ds.streaming_split(2)
+# -> [<StreamSplitDataIterator at 0x7fa5b5c99070>,
+#     <StreamSplitDataIterator at 0x7fa5b5c990d0>]
 
-# Sort the dataset by sepal.length.
+# Sort the datastream by sepal.length.
 ds = ds.sort("sepal.length")
 ds.show(3)
 # -> {'sepal.length': 4.3, 'sepal.width': 3.0,
@@ -59,7 +55,7 @@ ds.show(3)
 # -> {'sepal.length': 4.4, 'sepal.width': 3.0,
 #     'petal.length': 1.3, 'petal.width': 0.2, 'variety': 'Setosa'}
 
-# Shuffle the dataset.
+# Shuffle the datastream.
 ds = ds.random_shuffle()
 ds.show(3)
 # -> {'sepal.length': 6.7, 'sepal.width': 3.1,
@@ -74,7 +70,7 @@ ds.groupby("variety").count().show()
 # -> {'variety': 'Setosa', 'count()': 50}
 # -> {'variety': 'Versicolor', 'count()': 50}
 # -> {'variety': 'Virginica', 'count()': 50}
-# __dataset_transformation_end__
+# __datastream_transformation_end__
 # fmt: on
 
 # fmt: off
@@ -82,7 +78,7 @@ ds.groupby("variety").count().show()
 import ray
 import pandas as pd
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
 print(ds.default_batch_format())
 # <class 'pandas.core.frame.DataFrame'>
@@ -112,7 +108,7 @@ ds.map_batches(pandas_transform).show(2)
 import ray
 import numpy as np
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.range_tensor(1000, shape=(2, 2))
 print(ds.default_batch_format())
 # <class 'numpy.ndarray'>
@@ -136,7 +132,7 @@ ds.map_batches(tensor_transform).show(2)
 # __writing_default_udfs_list_begin__
 import ray
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.range(1000)
 print(ds.default_batch_format())
 # <class 'list'>
@@ -159,7 +155,7 @@ ds.map_batches(list_transform).show(2)
 import ray
 import pandas as pd
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
 
 # UDF as a function on Pandas DataFrame batches.
@@ -186,7 +182,7 @@ import ray
 import pyarrow as pa
 import pyarrow.compute as pac
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
 
 # UDF as a function on Arrow Table batches.
@@ -211,7 +207,7 @@ ds.map_batches(pyarrow_transform, batch_format="pyarrow").show(2)
 import ray
 import numpy as np
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 
 # UDF as a function on NumPy ndarray batches.
@@ -227,7 +223,7 @@ def normalize(arr: np.ndarray) -> np.ndarray:
 
 ds = ds.map_batches(normalize, batch_format="numpy")
 # -> MapBatches(normalize)
-#    +- Dataset(num_blocks=1,
+#    +- Datastream(num_blocks=1,
 #               num_rows=3,
 #               schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
 #       )
@@ -238,7 +234,7 @@ ds = ds.map_batches(normalize, batch_format="numpy")
 # __writing_callable_classes_udfs_begin__
 import ray
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
 
 # UDF as a function on Pandas DataFrame batches.
@@ -266,7 +262,7 @@ ds.map_batches(ModelUDF, compute="actors").show(2)
 import ray
 from typing import Iterator
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
 
 # UDF to repeat the dataframe 100 times, in chunks of 20.
@@ -286,9 +282,9 @@ import ray
 import pandas as pd
 from typing import List
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.from_items(["test", "string", "teststring"])
-# -> Dataset(num_blocks=1, num_rows=3, schema=<class 'str'>)
+# -> Datastream(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 # Convert to Pandas.
 def convert_to_pandas(text: List[str]) -> pd.DataFrame:
@@ -296,14 +292,14 @@ def convert_to_pandas(text: List[str]) -> pd.DataFrame:
 
 ds = ds.map_batches(convert_to_pandas)
 # -> MapBatches(convert_to_pandas)
-#    +- Dataset(num_blocks=3, num_rows=3, schema=<class 'str'>)
+#    +- Datastream(num_blocks=3, num_rows=3, schema=<class 'str'>)
 
 ds.show(2)
 # -> {'text': 'test'}
 # -> {'text': 'string'}
 
 print(ds)
-# -> Dataset(num_blocks=3, num_rows=3, schema={text: string})
+# -> Datastream(num_blocks=3, num_rows=3, schema={text: string})
 # __writing_pandas_out_udfs_end__
 # fmt: on
 
@@ -313,9 +309,9 @@ import ray
 import pyarrow as pa
 from typing import List
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.from_items(["test", "string", "teststring"])
-# -> Dataset(num_blocks=1, num_rows=3, schema=<class 'str'>)
+# -> Datastream(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 # Convert to Arrow.
 def convert_to_arrow(text: List[str]) -> pa.Table:
@@ -323,14 +319,14 @@ def convert_to_arrow(text: List[str]) -> pa.Table:
 
 ds = ds.map_batches(convert_to_arrow)
 # -> MapBatches(convert_to_arrow)
-#    +- Dataset(num_blocks=1, num_rows=3, schema=<class 'str'>)
+#    +- Datastream(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 ds.show(2)
 # -> {'text': 'test'}
 # -> {'text': 'string'}
 
 print(ds)
-# -> Dataset(num_blocks=3, num_rows=3, schema={text: string})
+# -> Datastream(num_blocks=3, num_rows=3, schema={text: string})
 # __writing_arrow_out_udfs_end__
 # fmt: on
 
@@ -341,9 +337,9 @@ import pandas as pd
 import numpy as np
 from typing import Dict
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -361,7 +357,7 @@ def convert_to_numpy(df: pd.DataFrame) -> np.ndarray:
 
 ds = ds.map_batches(convert_to_numpy)
 # -> MapBatches(convert_to_numpy)
-#    +- Dataset(
+#    +- Datastream(
 #           num_blocks=1,
 #           num_rows=150,
 #           schema={
@@ -386,9 +382,9 @@ import pandas as pd
 import numpy as np
 from typing import Dict
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -410,7 +406,7 @@ def convert_to_numpy(df: pd.DataFrame) -> Dict[str, np.ndarray]:
 
 ds = ds.map_batches(convert_to_numpy)
 # -> MapBatches(convert_to_numpy)
-#    +- Dataset(
+#    +- Datastream(
 #           num_blocks=1,
 #           num_rows=150,
 #           schema={
@@ -434,9 +430,9 @@ import ray
 import pandas as pd
 from typing import List
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -454,7 +450,7 @@ def convert_to_list(df: pd.DataFrame) -> List[dict]:
 
 ds = ds.map_batches(convert_to_list)
 # -> MapBatches(convert_to_list)
-#    +- Dataset(
+#    +- Datastream(
 #           num_blocks=1,
 #           num_rows=150,
 #           schema={
@@ -480,9 +476,9 @@ import ray
 import pandas as pd
 from typing import Dict
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.range(10)
-# -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+# -> Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 # Convert row to dict.
 def row_to_dict(row: int) -> Dict[str, int]:
@@ -490,7 +486,7 @@ def row_to_dict(row: int) -> Dict[str, int]:
 
 ds = ds.map(row_to_dict)
 # -> Map
-#    +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+#    +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 ds.show(2)
 # -> {'foo': 0}
@@ -505,9 +501,9 @@ from ray.data.row import TableRow
 import pandas as pd
 from typing import Dict
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -527,7 +523,7 @@ def map_row(row: TableRow) -> TableRow:
 
 ds = ds.map(map_row)
 # -> Map
-#    +- Dataset(
+#    +- Datastream(
 #           num_blocks=1,
 #           num_rows=150,
 #           schema={
@@ -553,9 +549,9 @@ import ray
 import numpy as np
 from typing import Dict
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.range(10)
-# -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+# -> Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 # Convert row to NumPy ndarray.
 def row_to_numpy(row: int) -> np.ndarray:
@@ -563,7 +559,7 @@ def row_to_numpy(row: int) -> np.ndarray:
 
 ds = ds.map(row_to_numpy)
 # -> Map
-#    +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+#    +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 ds.show(2)
 # -> [[0 0]
@@ -579,9 +575,9 @@ import ray
 from ray.data.row import TableRow
 from typing import List
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -599,7 +595,7 @@ def map_row(row: TableRow) -> tuple:
 
 ds = ds.map(map_row)
 # -> Map
-#    +- Dataset(
+#    +- Datastream(
 #           num_blocks=1,
 #           num_rows=150,
 #           schema={
@@ -624,7 +620,7 @@ ds.show(2)
 import ray
 import pandas as pd
 
-# Load dataset.
+# Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
 
 # UDF as a function on Pandas DataFrame batches.
@@ -640,7 +636,7 @@ def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
 # Have each batch that pandas_transform receives contain 10 rows.
 ds = ds.map_batches(pandas_transform, batch_size=10)
 # -> MapBatches(pandas_transform)
-#    +- Dataset(
+#    +- Datastream(
 #           num_blocks=1,
 #           num_rows=150,
 #           schema={
@@ -661,7 +657,7 @@ ds.show(2)
 # fmt: on
 
 # fmt: off
-# __dataset_compute_strategy_begin__
+# __datastream_compute_strategy_begin__
 import ray
 import pandas
 import numpy
@@ -689,8 +685,8 @@ ds = ray.data.read_csv("example://iris.csv").repartition(10)
 # Batch inference processing with Ray tasks (the default compute strategy).
 predicted = ds.map_batches(predict_iris)
 
-# Batch inference processing with Ray actors. Autoscale the actors between 3 and 10.
+# Batch inference processing with Ray actors (pool of size 5).
 predicted = ds.map_batches(
-    IrisInferModel, compute=ActorPoolStrategy(min_size=3, max_size=10), batch_size=10)
-# __dataset_compute_strategy_end__
+    IrisInferModel, compute=ActorPoolStrategy(size=5), batch_size=10)
+# __datastream_compute_strategy_end__
 # fmt: on

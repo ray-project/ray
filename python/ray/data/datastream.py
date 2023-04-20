@@ -99,6 +99,7 @@ from ray.data.block import (
     FlatMapUDF,
     KeyFn,
     RowUDF,
+    StrictModeError,
     T,
     U,
     _validate_key_fn,
@@ -151,7 +152,7 @@ if TYPE_CHECKING:
     import torch.utils.data
 
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedData
+    from ray.data.grouped_data import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -408,7 +409,7 @@ class Datastream(Generic[T]):
         type with ``batch_format``.
 
         To learn more about writing functions for :meth:`~Datastream.map_batches`, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+        :ref:`writing user-defined functions <transform_datastreams_writing_udfs>`.
 
         .. tip::
             If you have a small number of big blocks, it may limit parallelism. You may
@@ -472,7 +473,7 @@ class Datastream(Generic[T]):
 
             Your ``fn`` can return a different type than the input type. To learn more
             about supported output types, read
-            :ref:`user-defined function output types <transform_datasets_batch_output_types>`.
+            :ref:`user-defined function output types <transform_datastreams_batch_output_types>`.
 
             >>> from typing import List
             >>> def map_fn(batch: pd.DataFrame) -> List[int]:
@@ -553,7 +554,7 @@ class Datastream(Generic[T]):
                 If ``fn`` mutates its input, this will need to be ``False`` in order to
                 avoid "assignment destination is read-only" or "buffer source array is
                 read-only" errors. Default is ``False``. See
-                :ref:`batch format docs <transform_datasets_batch_formats>` for details
+                :ref:`batch format docs <transform_datastreams_batch_formats>` for details
                 on which format conversion always require a copy.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
@@ -1715,7 +1716,7 @@ class Datastream(Generic[T]):
         Returns:
             A lazy GroupedData that can be aggregated later.
         """
-        from ray.data.grouped_dataset import GroupedData
+        from ray.data.grouped_data import GroupedData
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
@@ -4323,7 +4324,7 @@ class Datastream(Generic[T]):
 
         The default batch format describes what batches of data look like. To learn more
         about batch formats, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+        :ref:`writing user-defined functions <transform_datastreams_writing_udfs>`.
 
         Examples:
 
@@ -4342,7 +4343,7 @@ class Datastream(Generic[T]):
             If your datastream contains a single ``numpy.ndarray``
             column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
             the default batch format is ``np.ndarray``. For more information on tensor
-            formats, read the :ref:`tensor support guide <datasets_tensor_support>`.
+            formats, read the :ref:`tensor support guide <data_tensor_support>`.
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
@@ -4381,6 +4382,13 @@ class Datastream(Generic[T]):
                 Call this function to iterate over batches of data.
 
         """  # noqa: E501
+
+        context = DataContext.get_current()
+        if context.strict_mode:
+            raise StrictModeError(
+                "default_batch_format() is not allowed in strict mode"
+            )
+
         import pandas as pd
         import pyarrow as pa
 
@@ -4410,6 +4418,9 @@ class Datastream(Generic[T]):
         the schema for the first block.
         """
         context = DataContext.get_current()
+        if context.strict_mode:
+            raise StrictModeError("dataset_format() is not allowed in strict mode")
+
         if context.use_streaming_executor:
             raise DeprecationWarning(
                 "`dataset_format` is deprecated for streaming execution. To use "
@@ -4578,7 +4589,7 @@ class Datastream(Generic[T]):
         raise TypeError(
             "`Datastream` objects aren't iterable. To iterate records, call "
             "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
-            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
+            "https://docs.ray.io/en/latest/data/consuming-datastreams.html."
         )
 
     def _block_num_rows(self) -> List[int]:
@@ -4666,8 +4677,11 @@ class MaterializedDatastream(Datastream, Generic[T]):
 @PublicAPI(stability="beta")
 class Schema:
     """Datastream schema.
+
     Attributes:
         names: List of column names of this Datastream.
+        types: List of Arrow types of the Datastream. Note that the "object" type is
+            not Arrow compatible and hence will be returned as `object`.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
@@ -4679,10 +4693,39 @@ class Schema:
         """Lists the columns of this Datastream."""
         return self.base_schema.names
 
+    @property
+    def types(self) -> List[Union[Literal[object], "pyarrow.DataType"]]:
+        """Lists the types of this Datastream in Arrow format
+
+        For non-Arrow compatible types, we return "object".
+        """
+        import pyarrow as pa
+        from ray.data.extensions import TensorDtype, ArrowTensorType
+
+        if isinstance(self.base_schema, pa.lib.Schema):
+            return list(self.base_schema.types)
+
+        arrow_types = []
+        for dtype in self.base_schema.types:
+            if isinstance(dtype, TensorDtype):
+                # Manually convert our Pandas tensor extension type to Arrow.
+                arrow_types.append(
+                    ArrowTensorType(
+                        shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
+                    )
+                )
+            else:
+                try:
+                    arrow_types.append(pa.from_numpy_dtype(dtype))
+                except pa.ArrowNotImplementedError:
+                    arrow_types.append(object)
+                except Exception:
+                    logger.exception(f"Error converting dtype {dtype} to Arrow.")
+                    arrow_types.append(None)
+        return arrow_types
+
     def __str__(self):
-        # TODO(ekl) we should canonicalize Pandas vs Pyarrow dtypes, which will be
-        # possible one we support Python objects in Arrow via an extension type.
-        return f"Schema({dict(zip(self.base_schema.names, self.base_schema.types))})"
+        return f"Schema({dict(zip(self.names, self.types))})"
 
     def __repr__(self):
         return str(self)

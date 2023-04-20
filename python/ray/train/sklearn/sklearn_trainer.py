@@ -84,7 +84,7 @@ class SklearnTrainer(BaseTrainer):
 
     Args:
         estimator: A scikit-learn compatible estimator to use.
-        datasets: Ray Datasets to use for training and validation. Must include a
+        datasets: Datastreams to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
