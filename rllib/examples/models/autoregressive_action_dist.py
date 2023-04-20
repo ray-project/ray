@@ -115,7 +115,7 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
         )
 
     def sampled_action_logp(self):
-        return torch.exp(self._action_logp)
+        return self._action_logp
 
     def entropy(self):
         a1_dist = self._a1_distribution()
