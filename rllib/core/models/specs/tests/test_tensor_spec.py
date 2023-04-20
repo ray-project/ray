@@ -125,10 +125,10 @@ class TestSpecs(unittest.TestCase):
             self.assertTrue(spec_eq_1 != spec_neq_2)
 
     def test_type_validation(self):
-
-        fw_keys = FRAMEWORKS_TO_TEST
         # check all combinations of spec fws with tensor fws
-        for spec_fw, tensor_fw in itertools.product(fw_keys, fw_keys):
+        for spec_fw, tensor_fw in itertools.product(
+            FRAMEWORKS_TO_TEST, FRAMEWORKS_TO_TEST
+        ):
 
             spec = TensorSpec("b, h", b=2, h=3, framework=spec_fw)
             tensor = TensorSpec("b, h", b=2, h=3, framework=tensor_fw).fill(0)
@@ -139,6 +139,71 @@ class TestSpecs(unittest.TestCase):
                 spec.validate(tensor)
             else:
                 self.assertRaises(ValueError, lambda: spec.validate(tensor))
+
+    def test_no_framework_arg(self):
+        """
+        Test that a TensorSpec without a framework can be created and used except
+        for filling.
+        """
+        spec = TensorSpec("b, h", b=2, h=3)
+        self.assertRaises(ValueError, lambda: spec.fill(0))
+
+        for fw in FRAMEWORKS_TO_TEST:
+            tensor = TensorSpec("b, h", b=2, h=3, framework=fw).fill(0)
+            spec.validate(tensor)
+
+    def test_validate_framework(self):
+        """
+        Test that a TensorSpec with a framework raises an error
+        when being used with a tensor from a different framework.
+        """
+        for spec_fw, tensor_fw in itertools.product(
+            FRAMEWORKS_TO_TEST, FRAMEWORKS_TO_TEST
+        ):
+            spec = TensorSpec("b, h", b=2, h=3, framework=spec_fw)
+            tensor = TensorSpec("b, h", b=2, h=3, framework=tensor_fw).fill(0)
+            if spec_fw == tensor_fw:
+                spec.validate(tensor)
+            else:
+                self.assertRaises(ValueError, lambda: spec.validate(tensor))
+
+    def test_validate_dtype(self):
+        """
+        Test that a TensorSpec with a dtype raises an error
+        when being used with a tensor from a different dtype but works otherwise.
+        """
+
+        all_types = [DOUBLE_TYPE, FLOAT_TYPE]
+
+        for spec_types, tensor_types in itertools.product(all_types, all_types):
+            for spec_fw, tensor_fw in itertools.product(
+                FRAMEWORKS_TO_TEST, FRAMEWORKS_TO_TEST
+            ):
+
+                # Pick the correct types for the frameworks
+                spec_type = spec_types[spec_fw]
+                tensor_type = tensor_types[tensor_fw]
+
+                print(
+                    "\nTesting.." "\nspec_fw: ",
+                    spec_fw,
+                    "\ntensor_fw: ",
+                    tensor_fw,
+                    "\nspec_type: ",
+                    spec_type,
+                    "\ntensor_type: ",
+                    tensor_type,
+                )
+
+                spec = TensorSpec("b, h", b=2, h=3, dtype=spec_type)
+                tensor = TensorSpec(
+                    "b, h", b=2, h=3, framework=tensor_fw, dtype=tensor_type
+                ).fill(0)
+
+                if spec_type != tensor_type:
+                    self.assertRaises(ValueError, lambda: spec.validate(tensor))
+                else:
+                    spec.validate(tensor)
 
 
 if __name__ == "__main__":
