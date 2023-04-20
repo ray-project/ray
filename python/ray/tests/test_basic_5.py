@@ -15,6 +15,7 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
+    client_test_enabled,
 )
 
 logger = logging.getLogger(__name__)
@@ -362,6 +363,7 @@ def test_preload_workers(ray_start_cluster, preload):
     ray.get(futures)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="only server mode")
 def test_gcs_port_env():
     try:
         with unittest.mock.patch.dict(os.environ):

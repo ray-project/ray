@@ -92,7 +92,7 @@ training.
 
 
     Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
-    and move the batches to the right device. This step is not necessary if you are passing in Ray Datasets to your Trainer
+    and move the batches to the right device. This step is not necessary if you are passing in Ray Data to your Trainer
     (see :ref:`train-datasets`):
 
     .. code-block:: diff
@@ -408,13 +408,13 @@ of the :py:class:`~ray.air.result.Result` object returned by ``Trainer.fit()``.
 
 .. _train-datasets:
 
-Distributed Data Ingest with Ray Datasets and Ray Train
+Distributed Data Ingest with Ray Data and Ray Train
 -------------------------------------------------------
 
-:ref:`Ray Datasets <datasets>` are the recommended way to work with large datasets in Ray Train. Datasets provides automatic loading, sharding, and pipelined ingest (optional) of Data across multiple Train workers.
-To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
+:ref:`Ray Data <data>` is the recommended way to work with large datasets in Ray Train. Ray Data provides automatic loading, sharding, and streamed ingest of Data across multiple Train workers.
+To get started, pass in one or more datastreams under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
 
-Here's a simple code overview of the Datasets integration:
+Here's a simple code overview of the Ray Data integration:
 
 .. code-block:: python
 
