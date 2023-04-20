@@ -3,7 +3,7 @@
 # Integration test for Alpa and Ray.
 
 # Exit if any of the test commands fail.
-set -x -e pipeline
+set -x -e -o pipefail
 
 # Parse command line args
 STORAGE_PROVIDER="aws"
