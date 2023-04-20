@@ -16,9 +16,9 @@ from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
 
-
+# TODO(Artur): Create a common file for such constants.
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
-LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "cur_kl_coeff"
 
 
 @dataclass

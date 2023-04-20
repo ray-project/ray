@@ -32,6 +32,7 @@ class PPOBaseLearner(Learner):
         # We need to make sure that the kl_coeff is a framework tensor that is
         # registered as part of the graph so that upon update the graph can be updated
         # (e.g. in TF with eager tracing)
+        # TODO(Artur): Introduce a KL mixing or similar to unify this across ppo/appo
         self.kl_coeffs = self._create_kl_variable_dict(self.hps.kl_coeff)
 
         self.kl_target = self.hps.kl_target

@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
@@ -6,11 +7,10 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
-
 
 _, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -113,10 +113,9 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
 
     @override(PPOBaseLearner)
     def _create_kl_variable_dict(self, value: float) -> Any:
-        return {
-            module_id: tf.Variable(value, trainable=False, dtype=tf.float32)
-            for module_id in self.module.keys()
-        }
+        return defaultdict(
+            lambda: tf.Variable(value, trainable=False, dtype=tf.float32)
+        )
 
     @override(PPOBaseLearner)
     def _set_kl_coeff(self, module_id: ModuleID, value: float) -> None:

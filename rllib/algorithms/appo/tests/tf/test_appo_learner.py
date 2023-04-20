@@ -6,9 +6,11 @@ import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
 )
+from ray.tune.registry import register_env
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
@@ -110,6 +112,11 @@ class TestAPPOTfLearner(unittest.TestCase):
             check(learner_group_loss, policy_loss)
 
     def test_kl_coeff_changes(self):
+        # Simple environment with 4 independent cartpole entities
+        register_env(
+            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2})
+        )
+
         initial_kl_coeff = 0.01
         config = (
             appo.APPOConfig()
@@ -133,7 +140,15 @@ class TestAPPOTfLearner(unittest.TestCase):
                 _enable_rl_module_api=True,
             )
             .exploration(exploration_config={})
+            .environment("multi_agent_cartpole")
+            .multi_agent(
+                policies={"p0", "p1"},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
+                ),
+            )
         )
+
         for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
             algo = config.build()
             # Call train while results aren't returned because this is
@@ -142,10 +157,16 @@ class TestAPPOTfLearner(unittest.TestCase):
                 results = algo.train()
                 if results and "info" in results and LEARNER_INFO in results["info"]:
                     break
-            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY
-            ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
-            self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
+
+            curr_kl_coeff_1 = results["info"][LEARNER_INFO]["p0"][LEARNER_STATS_KEY][
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY
+            ]
+            curr_kl_coeff_2 = results["info"][LEARNER_INFO]["p1"][LEARNER_STATS_KEY][
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY
+            ]
+            self.assertNotEqual(curr_kl_coeff_1, initial_kl_coeff)
+            self.assertNotEqual(curr_kl_coeff_2, initial_kl_coeff)
+            self.assertEqual(curr_kl_coeff_1, curr_kl_coeff_2)
 
 
 if __name__ == "__main__":

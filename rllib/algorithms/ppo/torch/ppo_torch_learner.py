@@ -1,14 +1,15 @@
 import logging
+from collections import defaultdict
 from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import explained_variance
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -113,7 +114,7 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
 
     @override(PPOBaseLearner)
     def _create_kl_variable_dict(self, value: float) -> Any:
-        return {module_id: torch.tensor(value) for module_id in self.module.keys()}
+        return defaultdict(lambda: torch.tensor(value))
 
     @override(PPOBaseLearner)
     def _set_kl_coeff(self, module_id: ModuleID, value: torch.Tensor) -> None:
