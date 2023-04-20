@@ -89,7 +89,7 @@ def _resource_option(name: str, default_value: Any = None):
     )
 
 
-def _validate_resources(resources):
+def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     if resources is None:
         return None
 
