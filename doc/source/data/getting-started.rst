@@ -3,9 +3,10 @@
 Getting Started
 ===============
 
-A :class:`Datastream <ray.data.Datastream>` is a distributed data transformation
-pipeline. It provides APIs for loading external data into the Ray object store in *blocks*,
-and exposes APIs for streaming processing of these data blocks in the cluster.
+Ray Data's main abstraction is a :class:`Datastream <ray.data.Datastream>`, which
+is a distributed data transformation pipeline. Datastream provides APIs for loading
+external data into Ray in *blocks*, and it exposes APIs for streaming
+processing of these data blocks in the cluster.
 
 .. tip::
 
