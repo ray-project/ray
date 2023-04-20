@@ -121,7 +121,7 @@ OK_PREFIX = "✔️ "
 DEFAULT_BATCH_SIZE = 4096
 
 # Default batch size for batch transformations in strict mode.
-STRICT_MODE_DEFAULT_BATCH_SIZE = 1000
+STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
 
 
 @DeveloperAPI
