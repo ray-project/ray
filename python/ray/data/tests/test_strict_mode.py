@@ -136,6 +136,17 @@ def test_strict_object_support(ray_start_regular_shared):
     ds.map_batches(lambda x: x, batch_format="numpy").materialize()
 
 
+def test_strict_compute(ray_start_regular_shared):
+    with pytest.raises(StrictModeError):
+        ray.data.range(10).map(lambda x: x, compute="actors").show()
+    with pytest.raises(StrictModeError):
+        ray.data.range(10).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
+        ).show()
+    with pytest.raises(StrictModeError):
+        ray.data.range(10).map(lambda x: x, compute="tasks").show()
+
+
 def test_strict_schema(ray_start_regular_shared):
     import pyarrow
     from ray.data._internal.pandas_block import PandasBlockSchema

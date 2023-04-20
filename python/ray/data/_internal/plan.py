@@ -24,6 +24,7 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     UDF,
     ActorPoolStrategy,
+    TaskPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
@@ -882,7 +883,7 @@ class OneToOneStage(Stage):
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
-        self.compute = compute or "tasks"
+        self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
         self.target_block_size = target_block_size
         self.fn = fn
@@ -1192,7 +1193,7 @@ def _rewrite_read_stage(
     stage = OneToOneStage(
         name,
         block_fn,
-        "tasks",
+        TaskPoolStrategy(),
         remote_args,
     )
     stats = DatastreamStats(stages={}, parent=None)

@@ -2939,7 +2939,7 @@ class Datastream(Generic[T]):
                 OneToOneStage(
                     "Write",
                     write_fn_wrapper,
-                    "tasks",
+                    TaskPoolStrategy(),
                     ray_remote_args,
                     fn=lambda x: x,
                 )
