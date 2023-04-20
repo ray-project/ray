@@ -41,13 +41,12 @@ First, let's take a look at our text-translation model. Here's its code:
 
 The Python file, called `model.py`, uses the `Translator` class to translate English text to French.
 
-- The `self.model` variable on line 8 inside `Translator`'s `__init__` method
+- The `self.model` variable inside `Translator`'s `__init__` method
   stores a function that uses the [t5-small](https://huggingface.co/t5-small)
   model to translate text.
 - When `self.model` is called on English text, it returns translated French text
   inside a dictionary formatted as `[{"translation_text": "..."}]`.
-- The `Translator`'s `translate` method extracts the translated text on
-  line 15 by indexing into the dictionary.
+- The `Translator`'s `translate` method extracts the translated text by indexing into the dictionary.
 
 You can copy-paste this script and run it locally. It translates `"Hello world!"`
 into `"Bonjour Monde!"`.
@@ -212,7 +211,7 @@ Here's a Ray Serve deployment graph that chains the two models together. The gra
 :language: python
 ```
 
-This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code on lines 44 and 45:
+This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
 
 ```python
 translation_ref = await self.translator.translate.remote(summary)
