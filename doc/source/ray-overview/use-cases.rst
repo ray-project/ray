@@ -5,6 +5,89 @@ Ray Use Cases
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
+.. _ref-use-cases-llm:
+
+Large Language Models and Generative AI
+---------------------------------------
+
+The following highlights feature projects that use Ray to implement Large Language Models and Generative AI applications.
+
+.. panels::
+    :container: container pb-3
+    :column: col-md-3 px-1 py-1
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
+        :type: url
+        :text: [Blog] How Ray solves common production challenges for generative AI infrastructure
+        :classes: btn-link btn-block stretched-link webCrawler
+    
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/training-175b-parameter-language-models-at-1000-gpu-scale-with-alpa-and-ray
+        :type: url
+        :text: [Blog] Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
+        :classes: btn-link btn-block stretched-link webCrawler
+    
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
+        :type: url
+        :text: [Blog] Faster stable diffusion fine-tuning with Ray AIR
+        :classes: btn-link btn-block stretched-link webCrawler
+    
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
+        :type: url
+        :text: [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
+        :classes: btn-link btn-block stretched-link webCrawler
+    
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
+        :type: url
+        :text: [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
+        :classes: btn-link btn-block stretched-link chatgpt
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /ray-air/examples/gptj_deepspeed_fine_tuning
+        :type: ref
+        :text: [Example] GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
+        :classes: btn-link btn-block stretched-link antServing
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /ray-air/examples/dreambooth_finetuning
+        :type: ref
+        :text: [Example] Fine-tuning DreamBooth with Ray AIR
+        :classes: btn-link btn-block stretched-link rayForward
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /ray-air/examples/stablediffusion_batch_prediction
+        :type: ref
+        :text: [Example] Stable Diffusion Batch Prediction with Ray AIR
+        :classes: btn-link btn-block stretched-link rayForward
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /ray-air/examples/gptj_serving
+        :type: ref
+        :text: [Example] GPT-J-6B Serving with Ray AIR
+        :classes: btn-link btn-block stretched-link webCrawler
+        
 .. _ref-use-cases-batch-infer:
 
 Batch Inference
@@ -527,13 +610,6 @@ The following highlights feature projects leveraging Ray Core's distributed APIs
     :column: col-md-3 px-1 py-1
     :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
-        :type: url
-        :text: [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
-        :classes: btn-link btn-block stretched-link chatgpt
     ---
     :img-top: /images/ray_logo.png
 
