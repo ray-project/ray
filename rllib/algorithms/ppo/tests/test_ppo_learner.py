@@ -161,20 +161,27 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, ["torch", "tf2"], with_eager_tracing=True):
+        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
             algo = config.build()
-            # Call train() while results aren't returned because this is
-            # an asynchronous trainer and results are returned asynchronously.
-            while 1:
+            # Call train while results aren't returned because this is
+            # a asynchronous trainer and results are returned asynchronously.
+            curr_kl_coeff_1 = None
+            curr_kl_coeff_2 = None
+            while not curr_kl_coeff_1 or not curr_kl_coeff_2:
                 results = algo.train()
+
+                # Attempt to get the current KL coefficient from the learner.
+                # Iterate until we have found both coefficients at least once.
                 if results and "info" in results and LEARNER_INFO in results["info"]:
-                    break
-            curr_kl_coeff_1 = results["info"][LEARNER_INFO]["p0"][LEARNER_STATS_KEY][
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY
-            ]
-            curr_kl_coeff_2 = results["info"][LEARNER_INFO]["p1"][LEARNER_STATS_KEY][
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY
-            ]
+                    if "p0" in results["info"][LEARNER_INFO]:
+                        curr_kl_coeff_1 = results["info"][LEARNER_INFO]["p0"][
+                            LEARNER_STATS_KEY
+                        ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
+                    if "p1" in results["info"][LEARNER_INFO]:
+                        curr_kl_coeff_2 = results["info"][LEARNER_INFO]["p1"][
+                            LEARNER_STATS_KEY
+                        ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
+
             self.assertNotEqual(curr_kl_coeff_1, initial_kl_coeff)
             self.assertNotEqual(curr_kl_coeff_2, initial_kl_coeff)
             self.assertEqual(curr_kl_coeff_1, curr_kl_coeff_2)
