@@ -1900,7 +1900,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_data.yaml
+        cluster_env: torch_tune_serve_app_config.yaml
         cluster_compute: gpu_tpl_gce.yaml
 
   alert: default
