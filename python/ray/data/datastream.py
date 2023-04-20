@@ -282,7 +282,7 @@ class Datastream(Generic[T]):
         self,
         fn: RowUDF[T, U],
         *,
-        compute: Optional[ComputeStrategy] = None,
+        compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Datastream[U]":
         """Apply the given function to each record of this datastream.
@@ -2939,7 +2939,7 @@ class Datastream(Generic[T]):
                 OneToOneStage(
                     "Write",
                     write_fn_wrapper,
-                    "tasks",
+                    TaskPoolStrategy(),
                     ray_remote_args,
                     fn=lambda x: x,
                 )

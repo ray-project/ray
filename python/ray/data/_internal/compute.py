@@ -503,10 +503,13 @@ class ActorPoolStrategy(ComputeStrategy):
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     ctx = DataContext.get_current()
-    if ctx.strict_mode and not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
+    if ctx.strict_mode and not isinstance(
+        compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
+    ):
         raise StrictModeError(
             "In strict mode, the compute spec must be either "
-            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}.")
+            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+        )
     elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
     elif compute_spec == "actors":
