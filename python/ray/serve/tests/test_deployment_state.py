@@ -124,10 +124,9 @@ class MockReplicaActorWrapper:
 
     def reconfigure(self, deployment_config: Any):
         self.started = True
-        self.version = DeploymentVersion(
-            self.version.code_version,
+        self.version = DeploymentVersion.from_deployment_version(
+            self.version,
             deployment_config,
-            self.version.ray_actor_options,
         )
 
     def recover(self):
