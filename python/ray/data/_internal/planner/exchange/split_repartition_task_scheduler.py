@@ -35,7 +35,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
                 raise ValueError(
                     "Cannot split partition on blocks with unknown number of rows."
                 )
-            input_num_rows += ref_bundle.num_rows() or 0
+            input_num_rows += block_num_rows
             if not ref_bundle.owns_blocks:
                 input_owned_by_consumer = False
 
@@ -68,9 +68,12 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
                 split_block_refs.append(b)
                 split_metadata.extend(m)
         else:
-            split_block_refs, split_metadata = blocks_with_metadata, []
+            split_block_refs, split_metadata = [], []
+            for b, m in blocks_with_metadata:
+                split_block_refs.append([b])
+                split_metadata.append(m)
 
-        reduce_bar = ProgressBar("Fast Repartition", total=output_num_blocks)
+        reduce_bar = ProgressBar("Split Repartition", total=output_num_blocks)
         reduce_task = cached_remote_fn(self._exchange_spec.reduce)
         reduce_return = [
             reduce_task.options(**reduce_ray_remote_args, num_returns=2).remote(

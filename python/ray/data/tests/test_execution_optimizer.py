@@ -305,11 +305,20 @@ def test_repartition_e2e(
 
     # Test case where number of rows does not divide equally into num_output_blocks.
     ds = ray.data.range(22).repartition(4)
-    blocks = ray.get(ds2.get_internal_block_refs())
+    blocks = ray.get(ds.get_internal_block_refs())
 
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds.num_blocks() == 4
     assert ds._block_num_rows() == [5, 6, 5, 6]
+    _check_usage_record(["ReadRange", "Repartition"])
+
+    # Test case where we do not split on repartitioning.
+    ds = ray.data.range(10, parallelism=1).repartition(1, shuffle=shuffle)
+    blocks = ray.get(ds.get_internal_block_refs())
+
+    assert all(isinstance(block, list) for block in blocks), blocks
+    assert ds.num_blocks() == 1
+    assert ds._block_num_rows() == [10]
     _check_usage_record(["ReadRange", "Repartition"])
 
 
