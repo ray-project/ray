@@ -43,9 +43,9 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.usage import (
+from ray.data._internal.logical.util import (
     _recorded_operators,
-    _recording_lock,
+    _recorded_operators_lock,
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
@@ -62,10 +62,10 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     (so that subsequent checks do not use existing records of operator usage)."""
     for op_name in op_names:
         assert op_name in _op_name_white_list
-        with _recording_lock:
+        with _recorded_operators_lock:
             assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
     if clear_after_check:
-        with _recording_lock:
+        with _recorded_operators_lock:
             _recorded_operators.clear()
 
 
@@ -1084,7 +1084,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert isinstance(ray_datasets, dict)
 
     for ds_key, ds in ray_datasets.items():
-        assert isinstance(ds, ray.data.Dataset)
+        assert isinstance(ds, ray.data.Datastream)
         # `ds.take_all()` triggers execution with new backend, which is
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
@@ -1099,7 +1099,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         _check_usage_record(["FromHuggingFace"])
 
     ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Dataset)
+    assert isinstance(ray_dataset, ray.data.Datastream)
     assert len(ray_dataset.take_all()) > 0
     assert "FromArrowRefs" in ray_dataset.stats()
     assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"

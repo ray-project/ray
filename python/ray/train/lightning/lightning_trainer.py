@@ -226,7 +226,7 @@ class LightningTrainer(TorchTrainer):
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``LightningConfigBuilder.module()``.
 
-    For data ingestion, the LightningTrainer will then either convert the Ray Dataset
+    For data ingestion, the LightningTrainer will then either convert the Datastream
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
     datamodule or dataloaders if provided by users.
 
@@ -348,18 +348,19 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: A dictionary of Ray Datasets to use for training.
+        datasets: A dictionary of Datastreams to use for training.
             Use the key "train" to denote which dataset is the training
             dataset and (optionally) key "val" to denote the validation
             dataset. If a ``preprocessor`` is provided and has not already
             been fit, it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
-        datasets_iter_config: Configurations for iterating over input Ray datasets.
+        datasets_iter_config: Configurations for iterating over input Datastreams.
             This configuration is only valid when `datasets` argument is provided to
             the LightningTrainer. Otherwise, LightningTrainer will use datamodule
             or dataloaders specified in ``LightningConfig.trainer_init_config``.
             For valid arguments to pass, please refer to:
-            :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
+            :py:meth:`Dataset.iter_torch_batches
+            <ray.data.Datastream.iter_torch_batches>`
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -488,13 +489,13 @@ def _lightning_train_loop_per_worker(config):
     if not (train_dataloaders or datamodule or train_ray_dataset):
         raise RuntimeError(
             "Please provide at least one of the following data inputs: "
-            "train_dataloaders, datamodule, or Ray Datasets with key 'train'."
+            "train_dataloaders, datamodule, or Datastreams with key 'train'."
         )
 
     if train_ray_dataset:
         if datamodule:
             logger.warning(
-                "Using Ray datasets as primary input. The 'datamodule' defined in "
+                "Using Datastreams as primary input. The 'datamodule' defined in "
                 "'LightningConfig.trainer_fit_params' is ignored!"
             )
 
