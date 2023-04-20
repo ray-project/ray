@@ -5,7 +5,7 @@ GroupedData API
 
 .. currentmodule:: ray.data
 
-GroupedData objects are returned by groupby call: Dataset.groupby().
+GroupedData objects are returned by groupby call: Datastream.groupby().
 
 Constructor
 -----------
@@ -13,7 +13,7 @@ Constructor
 .. autosummary::
    :toctree: doc/
 
-   grouped_dataset.GroupedData
+   grouped_data.GroupedData
 
 Computations / Descriptive Stats
 --------------------------------
@@ -21,12 +21,12 @@ Computations / Descriptive Stats
 .. autosummary::
    :toctree: doc/
 
-   grouped_dataset.GroupedData.count
-   grouped_dataset.GroupedData.sum
-   grouped_dataset.GroupedData.min
-   grouped_dataset.GroupedData.max
-   grouped_dataset.GroupedData.mean
-   grouped_dataset.GroupedData.std
+   grouped_data.GroupedData.count
+   grouped_data.GroupedData.sum
+   grouped_data.GroupedData.min
+   grouped_data.GroupedData.max
+   grouped_data.GroupedData.mean
+   grouped_data.GroupedData.std
 
 Function Application
 --------------------
@@ -34,8 +34,8 @@ Function Application
 .. autosummary::
    :toctree: doc/
 
-   grouped_dataset.GroupedData.aggregate
-   grouped_dataset.GroupedData.map_groups
+   grouped_data.GroupedData.aggregate
+   grouped_data.GroupedData.map_groups
 
 Aggregate Function
 ------------------
