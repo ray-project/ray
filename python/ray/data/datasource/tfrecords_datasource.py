@@ -14,7 +14,7 @@ import struct
 
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
-from ray.data import Dataset
+from ray.data.datastream import Datastream
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -57,14 +57,14 @@ class TFRecordDatasource(FileBasedDatasource):
         except ModuleNotFoundError:
             if platform.processor() == "arm":
                 logger.warning(
-                    "This function depends on tfx-bsl which is currently not supported on "
-                    "devices with Apple silicon (e.g. M1) and requires an environment with "
-                    "x86 CPU architecture."
+                    "This function depends on tfx-bsl which is currently not supported"
+                    " on devices with Apple silicon (e.g. M1) and requires an"
+                    " environment with x86 CPU architecture."
                 )
             else:
                 logger.warning(
-                    "To use TFRecordDatasource with large datasets, please install tfx-bsl package with "
-                    "`pip install tfx_bsl --no-dependencies`."
+                    "To use TFRecordDatasource with large datasets, please install"
+                    " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
                 )
             logger.info("Falling back to slower strategy for reading tf.records.")
             yield from self._fallback_read(f, path, **reader_args)
@@ -140,6 +140,9 @@ class TFRecordDatasource(FileBasedDatasource):
 
 
 def _get_full_file_path(file_system: "pyarrow.fs.FileSystem", path: str) -> str:
+    from pyarrow.fs import LocalFileSystem
+    from gcsfs import GCSFileSystem
+
     if isinstance(file_system, GCSFileSystem):
         return f"gs://{path}"
     if isinstance(file_system, LocalFileSystem):
@@ -452,7 +455,7 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
-def unwrap_single_value_columns(dataset: Dataset):
+def unwrap_single_value_columns(dataset: Datastream):
     list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
 
     return dataset.map_batches(
