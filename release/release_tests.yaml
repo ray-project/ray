@@ -4643,14 +4643,14 @@
     wait_for_nodes:
       num_nodes: 500
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: distributed/many_nodes_tests/app_config.yaml
-        cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
+#  variations:
+#    - __suffix__: aws
+#    - __suffix__: gce
+#      env: gce
+#      frequency: manual
+#      cluster:
+#        cluster_env: distributed/many_nodes_tests/app_config.yaml
+#        cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
 
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
