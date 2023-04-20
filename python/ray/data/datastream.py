@@ -595,7 +595,9 @@ class Datastream(Generic[T]):
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
-        batch_size = _apply_strict_mode_batch_size(batch_format)
+        batch_size = _apply_strict_mode_batch_size(
+            batch_size, use_gpu="num_gpus" in ray_remote_args
+        )
 
         target_block_size = None
         if batch_size is not None:
