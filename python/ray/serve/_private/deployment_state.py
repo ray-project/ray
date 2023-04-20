@@ -787,11 +787,12 @@ class DeploymentReplica(VersionedReplica):
         self._actor._health_check_timeout_s = (
             version.deployment_config.health_check_timeout_s
         )
-        self._version = deepcopy(version)
 
         # Call into replica actor reconfigure() with updated config options
         if self._version.reconfigure_actor_hash != version.reconfigure_actor_hash:
             self._actor.reconfigure(version.deployment_config)
+
+        self._version = deepcopy(version)
 
     def recover(self):
         """
