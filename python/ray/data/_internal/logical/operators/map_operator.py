@@ -72,7 +72,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._target_block_size = target_block_size
-        self._compute = compute or TaskPoolStrategy
+        self._compute = compute or TaskPoolStrategy()
 
 
 class MapBatches(AbstractUDFMap):
