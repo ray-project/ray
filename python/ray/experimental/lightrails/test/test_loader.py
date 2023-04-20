@@ -1,9 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
 import torch
-from concurrent.futures import ThreadPoolExecutor
-
 from ray.experimental.lightrails.util import BlockBatchLoader
 
 
@@ -26,4 +25,5 @@ def test_loader():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -489,7 +489,9 @@ class FirstStageSchedule(Schedule):
             yield [Forward(), SendActivation(1)]
 
 
-def gen_logical_plan(batch_size=1, num_stages=12, context_length=128, embedding_size=768):
+def gen_logical_plan(
+    batch_size=1, num_stages=12, context_length=128, embedding_size=768
+):
     logical_plan = []
 
     for i in range(num_stages):
@@ -522,13 +524,15 @@ def gen_logical_plan(batch_size=1, num_stages=12, context_length=128, embedding_
 
 def run_model2(requires_gpu=False):
     num_stages = 12
-    context_length=128
-    batch_size=2
+    context_length = 128
+    batch_size = 2
     physical_planner = SimplePhysicalPlanner()
     pg = placement_group([{"CPU": 1}] * num_stages, strategy="PACK")
     if requires_gpu:
         pg = placement_group([{"CPU": 1, "GPU": 1}] * num_stages, strategy="PACK")
-    logical_plan = gen_logical_plan(num_stages=num_stages, context_length=context_length, batch_size=batch_size)
+    logical_plan = gen_logical_plan(
+        num_stages=num_stages, context_length=context_length, batch_size=batch_size
+    )
 
     coordinator = Coordinator(
         logical_plan=logical_plan,
@@ -552,12 +556,12 @@ def run_model2(requires_gpu=False):
     )
     input_ids = input_tokens["input_ids"]
 
-    for _ in range(100):
+    for _ in range(5):
         print("sending first batch...")
         new_input_ids = torch.stack((input_ids, input_ids))
         ray.get(first_stage.push_batch.remote(new_input_ids))
 
-    for _ in range(100):
+    for _ in range(5):
         print("receiving first batch...")
         print(ray.get(last_stage.pop_batch.remote()))
         print("done!")

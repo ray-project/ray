@@ -3,7 +3,7 @@ import socket
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock, Thread
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
 import torch
 from ray.experimental.lightrails.communicator.communicator import (
@@ -123,11 +123,11 @@ class ExecutionEngine:
         """Stop the engine if it's running."""
         self.thread.join()
 
-    def push_batch(self, batch: torch.Tensor):
+    def push_batch(self, batch: torch.Tensor) -> int:
         assert self.support_external_io
-        self.external_io_buffer.push_batch(batch)
+        return self.external_io_buffer.push_batch(batch)
 
-    def pop_batch(self) -> torch.Tensor:
+    def pop_batch(self) -> Tuple[int, torch.Tensor, torch.Tensor]:
         assert self.support_external_io
         return self.external_io_buffer.pop_batch()
 
