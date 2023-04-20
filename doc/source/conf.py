@@ -58,6 +58,7 @@ extensions = [
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
+    "sphinx_design",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
