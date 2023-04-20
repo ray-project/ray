@@ -120,6 +120,13 @@ class BackendExecutor:
         # TODO remove
         if self._trial_info and self._trial_info.driver_ip:
             self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+
+        worker_locs = [
+            f"{w.metadata.pid} ({w.metadata.node_ip})"
+            for w in self.worker_group.workers
+        ]
+        logger.info(f"Starting distributed worker processes: {worker_locs}")
+
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
