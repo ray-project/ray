@@ -82,7 +82,7 @@ Read more about :ref:`Tune search spaces here <tune-search-space-tutorial>`.
 You can use a Tuner to tune most arguments and configurations in Ray AIR, including but
 not limited to:
 
-- Ray Datasets
+- Ray Data
 - Preprocessors
 - Scaling configurations
 - and other hyperparameters.

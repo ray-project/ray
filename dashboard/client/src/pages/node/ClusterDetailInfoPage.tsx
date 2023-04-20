@@ -18,7 +18,7 @@ export const ClusterDetailInfoPage = () => {
   // TODO(aguo): Add more content to this page!
 
   const classes = useStyle();
-  const { clusterDetail, msg } = useClusterDetail();
+  const { clusterDetail, msg, isLoading } = useClusterDetail();
 
   if (!clusterDetail) {
     return (
@@ -30,7 +30,7 @@ export const ClusterDetailInfoPage = () => {
             path: undefined,
           }}
         />
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`CLUSTER`}>
           <StatusChip type="cluster" status="LOADING" />
           <br />

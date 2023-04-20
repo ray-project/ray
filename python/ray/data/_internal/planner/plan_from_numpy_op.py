@@ -22,7 +22,7 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
 
         ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-        ctx = ray.data.DatasetContext.get_current()
+        ctx = ray.data.DataContext.get_current()
         res = [
             ndarray_to_block_remote.remote(arr_ref, ctx.strict_mode)
             for arr_ref in op._ndarrays
