@@ -229,13 +229,16 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run Serve application(s).",
     help=(
-        "Runs the Serve application from the specified import path (e.g. my_script:"
-        "my_bound_deployment) or application(s) from a YAML config.\n\n"
-        "If using a YAML config, existing deployments with no code changes in an "
-        "application will not be redeployed.\n\n"
-        "Any import path must lead to a FunctionNode or ClassNode object. "
-        "By default, this will block and periodically log status. If you "
-        "Ctrl-C the command, it will tear down the app."
+        "Runs an application from the specified import path (e.g., my_script:"
+        "app) or application(s) from a YAML config.\n\n"
+        "If passing an import path, it must point to a bound Serve application or "
+        "a function that returns one. If a function is used, arguments can be "
+        "passed to it in 'key=val' format after the import path, for example:\n\n"
+        "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
+        "If pass a YAML config, existing applications with no code changes will not "
+        "be updated.\n\n"
+        "By default, this will block and stream logs to the console. If you "
+        "Ctrl-C the command, it will shut down Serve on the cluster."
     ),
 )
 @click.argument("config_or_import_path")
