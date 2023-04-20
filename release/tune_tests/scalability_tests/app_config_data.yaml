@@ -7,7 +7,7 @@ python:
   pip_packages:
     - pytest
     - awscli
-    - gcsfs
+    - gcsfs<=2022.7.1
     - xgboost_ray  # this will install protobuf version beyond the upper bound of what Tune allows
     - pyarrow>=6.0.1,<7.0.0
   conda_packages: []
