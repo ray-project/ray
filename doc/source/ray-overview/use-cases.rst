@@ -52,6 +52,7 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
         :type: url
         :text: [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
         :classes: btn-link btn-block stretched-link webCrawler
+
     ---
     :img-top: /images/ray_logo.png
 
