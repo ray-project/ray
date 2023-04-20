@@ -84,7 +84,7 @@ parts:
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
-      - file: data/dataset
+      - file: data/data
         title: Ray Data
         sections:
           - file: data/getting-started
@@ -95,10 +95,9 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch Training with Ray Datasets
+                title: Batch Training with Ray Data
               - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Datasets
-              - file: data/examples/advanced-pipelines
+                title: Scaling OCR with Ray Data
               - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api

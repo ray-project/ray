@@ -54,7 +54,7 @@ Or connecting to a Mars on Ray runtime which is already initialized:
     # perform computation
 
 
-Interact with Ray Dataset:
+Interact with Datastream:
 
 
 .. code-block:: python
@@ -64,13 +64,13 @@ Interact with Ray Dataset:
     df = md.DataFrame(
         mt.random.rand(1000_0000, 4),
         columns=list('abcd'))
-    # Convert mars dataframe to ray dataset
+    # Convert mars dataframe to ray datastream
     import ray
     # ds = md.to_ray_dataset(df)
     ds = ray.data.from_mars(df)
     print(ds.schema(), ds.count())
     ds.filter(lambda row: row["a"] > 0.5).show(5)
-    # Convert ray dataset to mars dataframe
+    # Convert ray datastream to mars dataframe
     # df2 = md.read_ray_dataset(ds)
     df2 = ds.to_mars()
     print(df2.head(5).execute())
