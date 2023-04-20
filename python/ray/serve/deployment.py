@@ -59,8 +59,8 @@ class Application(DAGNodeBase):
     def from_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
         return cls(_internal_dag_node=dag_node)
 
-    def apply_recursive(self, *args, **kwargs):
-        return self._get_internal_dag_node().apply_recursive(*args, **kwargs)
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_internal_dag_node(), name)
 
 
 @PublicAPI
