@@ -161,7 +161,7 @@ VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
 
 def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         if given_batch_format == "default":
             given_batch_format = "numpy"
@@ -396,7 +396,7 @@ class BlockAccessor(Generic[T]):
         if isinstance(batch, np.ndarray):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            ctx = ray.data.DatasetContext.get_current()
+            ctx = ray.data.DataContext.get_current()
             if ctx.strict_mode:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(batch)}: "
@@ -444,6 +444,15 @@ class BlockAccessor(Generic[T]):
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
+            ctx = ray.data.DataContext.get_current()
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    f"Error validating {_truncated_repr(block)}: "
+                    "Standalone Python objects are not "
+                    "allowed in strict mode. To use Python objects in a datastream, "
+                    "wrap them in a dict of numpy arrays, e.g., "
+                    "return `{'item': np.array(batch)}` instead of just `batch`."
+                )
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))

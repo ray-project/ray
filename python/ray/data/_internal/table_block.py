@@ -175,7 +175,7 @@ class TableBlockAccessor(BlockAccessor):
         return self._table
 
     def is_tensor_wrapper(self) -> bool:
-        ctx = ray.data.DatasetContext.get_current()
+        ctx = ray.data.DataContext.get_current()
         if ctx.strict_mode:
             return False
         return _is_tensor_schema(self.column_names())

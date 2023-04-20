@@ -1,4 +1,4 @@
-.. _dataset-context-api:
+.. _data-context-api:
 
 DataContext API
 ===============
