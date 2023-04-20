@@ -213,6 +213,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
+    "test_ray_deploy.py",
   ],
   size = "medium",
   tags = ["exclusive", "ray_ha", "team:core"],

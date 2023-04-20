@@ -15,7 +15,7 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from typing import Dict, Optional, Tuple, IO, AnyStr
+from typing import Set, Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
 
@@ -49,11 +49,12 @@ class Node:
     def __init__(
         self,
         ray_params,
-        head: bool = False,
+        head: Optional[bool] = None,
         shutdown_at_exit: bool = True,
         spawn_reaper: bool = True,
         connect_only: bool = False,
         default_worker: bool = False,
+        start_services: Optional[Set[str]] = None,
     ):
         """Start a node.
 
@@ -69,6 +70,7 @@ class Node:
             connect_only: If true, connect to the node without starting
                 new processes.
             default_worker: Whether it's running from a ray worker or not
+            services: Which services should started in this node.
         """
         if shutdown_at_exit:
             if connect_only:
@@ -76,8 +78,42 @@ class Node:
                     "'shutdown_at_exit' and 'connect_only' cannot both be true."
                 )
             self._register_shutdown_hooks()
+
+        if start_services is None and head is None:
+            head = False
+
+        if head is True:
+            if start_services is None:
+                start_services = {
+                    ray_constants.PROCESS_TYPE_GCS_SERVER,
+                    ray_constants.PROCESS_TYPE_MONITOR,
+                    ray_constants.PROCESS_TYPE_DASHBOARD,
+                    ray_constants.PROCESS_TYPE_RAYLET,
+                }
+            else:
+                if ray_constants.PROCESS_TYPE_GCS_SERVER not in start_services:
+                    raise ValueError("Trying to start a head node without GCS")
+        elif head is False:
+            if start_services is None:
+                start_services = {
+                    ray_constants.PROCESS_TYPE_RAYLET,
+                }
+            if ray_constants.PROCESS_TYPE_GCS_SERVER in start_services:
+                raise ValueError("Trying to start a non-head node with GCS")
+        else:
+            assert start_services is not None
+            head = ray_constants.PROCESS_TYPE_GCS_SERVER in start_services
+
         self._default_worker = default_worker
         self.head = head
+
+        if ray_params.ray_client_server_port is not None:
+            start_services.add(ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER)
+
+        self._start_services: Set[
+            str
+        ] = start_services  # The services that's asked to start
+
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
         )
@@ -281,30 +317,33 @@ class Node:
         if not connect_only:
             self._ray_params.update_pre_selected_port()
 
-        # Start processes.
-        if head:
+        # Start the GCS.
+        if self._should_start_gcs():
+            assert self.head
             self.start_head_processes()
 
         if not connect_only:
             self.start_ray_processes()
             # we should update the address info after the node has been started
-            try:
-                ray._private.services.wait_for_node(
+            if self._should_start_raylet():
+                try:
+                    ray._private.services.wait_for_node(
+                        self.gcs_address,
+                        self._plasma_store_socket_name,
+                    )
+                except TimeoutError as te:
+                    raise Exception(
+                        "The current node timed out during startup. This "
+                        "could happen because some of the Ray processes "
+                        "failed to startup."
+                    ) from te
+
+                node_info = ray._private.services.get_node_to_connect_for_driver(
                     self.gcs_address,
-                    self._plasma_store_socket_name,
+                    self._raylet_ip_address,
                 )
-            except TimeoutError as te:
-                raise Exception(
-                    "The current node timed out during startup. This "
-                    "could happen because some of the Ray processes "
-                    "failed to startup."
-                ) from te
-            node_info = ray._private.services.get_node_to_connect_for_driver(
-                self.gcs_address,
-                self._raylet_ip_address,
-            )
-            if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info.node_manager_port
+                if self._ray_params.node_manager_port == 0:
+                    self._ray_params.node_manager_port = node_info.node_manager_port
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -1155,25 +1194,6 @@ class Node:
         if not self._ray_params.no_monitor:
             self.start_monitor()
 
-        if self._ray_params.ray_client_server_port:
-            self.start_ray_client_server()
-
-        if self._ray_params.include_dashboard is None:
-            # Default
-            include_dashboard = True
-            raise_on_api_server_failure = False
-        elif self._ray_params.include_dashboard is False:
-            include_dashboard = False
-            raise_on_api_server_failure = False
-        else:
-            include_dashboard = True
-            raise_on_api_server_failure = True
-
-        self.start_api_server(
-            include_dashboard=include_dashboard,
-            raise_on_failure=raise_on_api_server_failure,
-        )
-
     def start_ray_processes(self):
         """Start all of the processes on the node."""
         logger.debug(
@@ -1211,9 +1231,32 @@ class Node:
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-        self.start_raylet(plasma_directory, object_store_memory)
-        if self._ray_params.include_log_monitor:
-            self.start_log_monitor()
+
+        if self._should_start_raylet():
+            self.start_raylet(plasma_directory, object_store_memory)
+
+            if self._ray_params.include_log_monitor:
+                self.start_log_monitor()
+
+            if self._should_start_client_server():
+                self.start_ray_client_server()
+
+        if self._should_start_dashboard():
+            if self._ray_params.include_dashboard is None:
+                # Default
+                include_dashboard = True
+                raise_on_api_server_failure = False
+            elif self._ray_params.include_dashboard is False:
+                include_dashboard = False
+                raise_on_api_server_failure = False
+            else:
+                include_dashboard = True
+                raise_on_api_server_failure = True
+
+            self.start_api_server(
+                include_dashboard=include_dashboard,
+                raise_on_failure=raise_on_api_server_failure,
+            )
 
     def _kill_process_type(
         self,
@@ -1580,3 +1623,15 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+
+    def _should_start_gcs(self):
+        return ray_constants.PROCESS_TYPE_GCS_SERVER in self._start_services
+
+    def _should_start_raylet(self):
+        return ray_constants.PROCESS_TYPE_RAYLET in self._start_services
+
+    def _should_start_dashboard(self):
+        return ray_constants.PROCESS_TYPE_DASHBOARD in self._start_services
+
+    def _should_start_client_server(self):
+        return ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER in self._start_services
