@@ -49,6 +49,10 @@ def _bisect(test: Test, commit_list: List[str]) -> str:
 
 
 def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
+    """
+    Sanity check that the test indeed passes on the passing revision, and fails on the
+    failing revision
+    """
     logger.info(
         f"Sanity check passing revision: {passing_revision}"
         f" and failing revision: {failing_revision}"
@@ -76,27 +80,27 @@ def _trigger_test_run(test: Test, commit: str) -> None:
     step["label"] = f'{test["name"]}:{commit[:7]}'
     step["key"] = commit
     pipeline = json.dumps({"steps": [step]})
-    subprocess.check_output(
-        f'echo "{pipeline}" | buildkite-agent pipeline upload',
-        shell=True,
-    )
+    subprocess.check_output([
+        'echo', '"{pipeline}"', '|', 'buildkite-agent', 'pipeline', 'upload',
+    ])
 
 
 def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
     outcomes = {}
-    wait = 30
+    wait = 5
     total_wait = 0
-    while len(outcomes) != len(buildkite_step_keys):
+    while True:
         logger.info(f"... waiting for test result ...({total_wait} seconds)")
         for key in buildkite_step_keys:
             if key in outcomes:
                 continue
-            outcome = subprocess.check_output(
-                f'buildkite-agent step get "outcome" --step "{key}"',
-                shell=True,
-            ).decode("utf-8")
+            outcome = subprocess.check_output([
+                'buildkite-agent', 'step', 'get', '"outcome"', '--step', '"{key}"',
+            ]).decode("utf-8")
             if outcome:
                 outcomes[key] = outcome
+        if len(outcome) == len(buildkite_step_keys):
+            break
         time.sleep(wait)
         total_wait = total_wait + wait
     logger.info(f"Final test outcomes: {outcomes}")
