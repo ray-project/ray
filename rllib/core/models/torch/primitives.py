@@ -64,7 +64,8 @@ class TorchMLP(nn.Module):
             output_layer_weight_initializer: The initializer to use for the weights of
                 the output layer. Either a torch.nn.[initializer fn] callable or an
                 RLlib recognized initializer name, e.g. "xavier_uniform".
-                The default is a truncated normal initializer with std=0.01.
+                The default (`output_layer_weight_initializer=None`) is a truncated
+                normal initializer with std=0.01.
             use_bias: Whether to use bias on all dense layers (including the possible
                 output layer).
         """

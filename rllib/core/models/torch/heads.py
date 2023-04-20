@@ -26,9 +26,11 @@ class TorchMLPHead(TorchModel):
             input_dim=config.input_dims[0],
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
+            hidden_layer_weight_initializer=config.hidden_layer_weight_initializer,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             output_dim=config.output_dims[0],
             output_activation=config.output_activation,
+            output_layer_weight_initializer=config.output_layer_weight_initializer,
             use_bias=config.use_bias,
         )
 
