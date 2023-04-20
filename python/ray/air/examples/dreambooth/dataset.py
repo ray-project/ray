@@ -8,8 +8,8 @@ from transformers import AutoTokenizer
 
 
 def get_train_dataset(args, image_resolution=512):
-    """Build a Ray Dataset for fine-tuning DreamBooth model."""
-    # Load images into Ray Dataset
+    """Build a Datastream for fine-tuning DreamBooth model."""
+    # Load images into Datastream
     instance_dataset = read_images(args.instance_images_dir)
     class_dataset = read_images(args.class_images_dir)
 

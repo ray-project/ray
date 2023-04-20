@@ -3,7 +3,7 @@
 Configuring Training Datasets
 =============================
 
-AIR builds its training data pipeline on :ref:`Ray Datasets <datasets>`, which is a scalable, framework-agnostic data loading and preprocessing library. Datasets enables AIR to seamlessly load data for local and distributed training with Train.
+AIR builds its training data pipeline on :ref:`Ray Data <data>`, which is a scalable, framework-agnostic data loading and preprocessing library. Ray Data enables AIR to seamlessly load data for local and distributed training with Train.
 
 This page describes how to setup and configure these datasets in Train under different scenarios and scales.
 
@@ -13,7 +13,7 @@ Overview
 .. _ingest_basics:
 
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
-:ref:`user-defined function <transform_datasets_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
+:ref:`user-defined function <transform_datastreams_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
 .. figure:: images/ingest.svg
 
@@ -29,7 +29,7 @@ on the train dataset passed to the Trainer, followed by :py:meth:`prep.transform
 on remaining datasets.
 
 **Training**: Then, AIR passes the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker calls :func:`~ray.air.session.get_dataset_shard` to get a handle to its assigned data shard.
-This returns a :class:`~ray.data.DataIterator`, which can be used to loop over the data with :meth:`~ray.data.DataIterator.iter_batches`, :meth:`~ray.data.Dataset.iter_torch_batches`, or :meth:`~ray.data.Dataset.to_tf`.
+This returns a :class:`~ray.data.DataIterator`, which can be used to loop over the data with :meth:`~ray.data.DataIterator.iter_batches`, :meth:`~ray.data.Datastream.iter_torch_batches`, or :meth:`~ray.data.Datastream.to_tf`.
 Each of these returns a batch iterator for one epoch (a full pass over the original dataset).
 
 Getting Started
@@ -213,7 +213,7 @@ By default, only the `"train"` dataset is split. All the other Datasets are not 
 
 However, you may want to split a large validation dataset example to also do data parallel validation.
 This example shows overriding the split config for the "valid" and "test" datasets. This means that
-both the valid and test datasets here will be :py:meth:`.split() <ray.data.Dataset.split>` across the training workers.
+both the valid and test datasets here will be :py:meth:`.split() <ray.data.Datastream.split>` across the training workers.
 
 .. literalinclude:: doc_code/air_ingest.py
     :language: python
