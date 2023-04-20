@@ -7,10 +7,11 @@ from torchmetrics import Accuracy
 
 
 class LinearModule(pl.LightningModule):
-    def __init__(self, input_dim, output_dim) -> None:
+    def __init__(self, input_dim, output_dim, strategy="ddp") -> None:
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
+        self.strategy = strategy
 
     def forward(self, input):
         return self.linear(input)
@@ -35,7 +36,11 @@ class LinearModule(pl.LightningModule):
         return self.forward(batch)
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=0.1)
+        if self.strategy == "fsdp":
+            # Feed FSDP wrapped model parameters to optimizer
+            return torch.optim.SGD(self.trainer.model.parameters(), lr=0.1)
+        else:
+            return torch.optim.SGD(self.parameters(), lr=0.1)
 
 
 class DoubleLinearModule(pl.LightningModule):
@@ -97,7 +102,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = Accuracy()
+        self.accuracy = Accuracy(task="multiclass", num_classes=10)
         self.val_acc_list = []
         self.val_loss_list = []
 
