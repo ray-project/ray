@@ -374,9 +374,6 @@ def test_deploy_single_with_name(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_multi_app_builder_with_args(ray_start_stop):
     """Deploys a config file containing multiple applications that take arguments."""
-    # Initialize serve in test to enable calling serve.list_deployments()
-    ray.init(address="auto", namespace=SERVE_NAMESPACE)
-
     # Create absolute file names to YAML config file.
     apps_with_args = os.path.join(
         os.path.dirname(__file__), "test_config_files", "apps_with_args.yaml"
@@ -404,8 +401,6 @@ def test_deploy_multi_app_builder_with_args(ray_start_stop):
         lambda: requests.post("http://localhost:8000/typed_hello").text == "hello",
         timeout=10,
     )
-
-    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
