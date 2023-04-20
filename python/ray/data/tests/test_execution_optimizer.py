@@ -49,6 +49,7 @@ from ray.data._internal.logical.util import (
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
+from ray.data._internal.stats import DatastreamStats
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
@@ -283,43 +284,52 @@ def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffl
 def test_repartition_e2e(
     ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, shuffle
 ):
-    ds = ray.data.range(10000, parallelism=10)
-    ds2 = ds.repartition(20, shuffle=shuffle)
-    blocks = ray.get(ds2.get_internal_block_refs())
+    def _check_repartition_usage_and_stats(ds):
+        _check_usage_record(["ReadRange", "Repartition"])
 
-    assert ds2.num_blocks() == 20
-    assert all(isinstance(block, list) for block in blocks), blocks
-    assert ds2._block_num_rows() == [500] * 20, ds
-    _check_usage_record(["ReadRange", "Repartition"])
+        blocks = ray.get(ds.get_internal_block_refs())
+        assert all(isinstance(block, list) for block in blocks), blocks
+
+        ds_stats: DatastreamStats = ds._plan.stats()
+        assert ds_stats.base_name == "Repartition"
+        if shuffle:
+            assert "RepartitionMap" in ds_stats.stages
+        else:
+            assert "RepartitionSplit" in ds_stats.stages
+        assert "RepartitionReduce" in ds_stats.stages
+
+    ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
+    assert ds.num_blocks() == 20, ds.num_blocks()
+    assert ds.sum() == sum(range(10000))
+    assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
-    ds = ray.data.range(20, parallelism=10)
-    ds2 = ds.repartition(40, shuffle=False)
-    blocks = ray.get(ds2.get_internal_block_refs())
-
-    assert ds2.num_blocks() == 40
-    assert all(isinstance(block, list) for block in blocks), blocks
-    assert ds2.sum() == 190
-    assert ds2._block_num_rows() == [1] * 20 + [0] * 20
-    _check_usage_record(["ReadRange", "Repartition"])
+    ds = ray.data.range(20, parallelism=10).repartition(40, shuffle=shuffle)
+    assert ds.num_blocks() == 40, ds.num_blocks()
+    assert ds.sum() == sum(range(20))
+    if shuffle:
+        assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
+    else:
+        assert ds._block_num_rows() == [1] * 20 + [0] * 20, ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
 
     # Test case where number of rows does not divide equally into num_output_blocks.
-    ds = ray.data.range(22).repartition(4)
-    blocks = ray.get(ds.get_internal_block_refs())
-
-    assert all(isinstance(block, list) for block in blocks), blocks
-    assert ds.num_blocks() == 4
-    assert ds._block_num_rows() == [5, 6, 5, 6]
-    _check_usage_record(["ReadRange", "Repartition"])
+    ds = ray.data.range(22).repartition(4, shuffle=shuffle)
+    assert ds.num_blocks() == 4, ds.num_blocks()
+    assert ds.sum() == sum(range(22))
+    if shuffle:
+        assert ds._block_num_rows() == [6, 6, 6, 4], ds._block_num_rows()
+    else:
+        assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
 
     # Test case where we do not split on repartitioning.
     ds = ray.data.range(10, parallelism=1).repartition(1, shuffle=shuffle)
-    blocks = ray.get(ds.get_internal_block_refs())
-
-    assert all(isinstance(block, list) for block in blocks), blocks
-    assert ds.num_blocks() == 1
-    assert ds._block_num_rows() == [10]
-    _check_usage_record(["ReadRange", "Repartition"])
+    assert ds.num_blocks() == 1, ds.num_blocks()
+    assert ds.sum() == sum(range(10))
+    assert ds._block_num_rows() == [10], ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
