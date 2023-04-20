@@ -282,7 +282,7 @@ class Datastream(Generic[T]):
         self,
         fn: RowUDF[T, U],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Datastream[U]":
         """Apply the given function to each record of this datastream.
