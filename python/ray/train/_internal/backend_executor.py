@@ -121,11 +121,11 @@ class BackendExecutor:
         if self._trial_info and self._trial_info.driver_ip:
             self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
 
-        worker_loc_str = [
+        worker_locs = [
             f"{w.metadata.pid} ({w.metadata.node_ip})"
             for w in self.worker_group.workers
         ]
-        logger.info(f"Starting distributed worker processes: {worker_loc_str}")
+        logger.info(f"Starting distributed worker processes: {worker_locs}")
 
         try:
             if initialization_hook:
@@ -341,7 +341,7 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Ray Dataset to be
+            dataset_spec: A specification for the Datastream to be
                 passed to the training workers, and the logic on how to shard the Ray
                 Dataset.
             checkpoint: The checkpoint data that

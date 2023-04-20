@@ -8,7 +8,7 @@ from typing import Iterator, Tuple, Any
 
 import ray
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.usage import record_operators_usage
+from ray.data._internal.logical.util import record_operators_usage
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
