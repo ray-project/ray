@@ -1,8 +1,9 @@
+import time
 import pytest
 
 import pyarrow as pa
 
-from ray.data._internal.batcher import ShufflingBatcher
+from ray.data._internal.batcher import ShufflingBatcher, Batcher
 
 
 def gen_block(num_rows):
@@ -125,6 +126,44 @@ def test_shuffling_batcher():
         should_batch_be_full=False,
         should_have_batch_after=False,
     )
+
+
+def test_batching_pyarrow_table_with_many_chunks():
+    """Make sure batching a pyarrow table with many chunks is fast.
+
+    See https://github.com/ray-project/ray/issues/31108 for more details.
+    """
+    num_chunks = 5000
+    batch_size = 1024
+
+    batches = []
+    for _ in range(num_chunks):
+        batch = {}
+        for i in range(10):
+            batch[str(i)] = list(range(batch_size))
+        batches.append(pa.Table.from_pydict(batch))
+
+    block = pa.concat_tables(batches, promote=True)
+
+    start = time.perf_counter()
+    batcher = Batcher(batch_size, ensure_copy=False)
+    batcher.add(block)
+    batcher.done_adding()
+    while batcher.has_any():
+        batcher.next_batch()
+    duration = time.perf_counter() - start
+    assert duration < 10
+
+    start = time.perf_counter()
+    shuffling_batcher = ShufflingBatcher(
+        batch_size=batch_size, shuffle_buffer_min_size=batch_size
+    )
+    shuffling_batcher.add(block)
+    shuffling_batcher.done_adding()
+    while shuffling_batcher.has_any():
+        shuffling_batcher.next_batch()
+    duration = time.perf_counter() - start
+    assert duration < 20
 
 
 if __name__ == "__main__":

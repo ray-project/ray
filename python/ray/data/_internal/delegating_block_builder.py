@@ -1,7 +1,9 @@
+import collections
 from typing import Any
 
 import numpy as np
 
+import ray
 from ray.data.block import Block, DataBatch, T, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.simple_block import SimpleBlockBuilder
@@ -17,7 +19,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
     def add(self, item: Any) -> None:
         if self._builder is None:
             # TODO (kfstorm): Maybe we can use Pandas block format for dict.
-            if isinstance(item, dict) or isinstance(item, ArrowRow):
+            if isinstance(item, collections.abc.Mapping) or isinstance(item, ArrowRow):
                 import pyarrow
 
                 try:
@@ -26,7 +28,12 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
                     check.build()
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
-                    self._builder = SimpleBlockBuilder()
+                    ctx = ray.data.DataContext.get_current()
+                    if ctx.strict_mode:
+                        # Can also handle nested Python objects, which Arrow cannot.
+                        self._builder = PandasBlockBuilder()
+                    else:
+                        self._builder = SimpleBlockBuilder()
             elif isinstance(item, np.ndarray):
                 self._builder = ArrowBlockBuilder()
             elif isinstance(item, PandasRow):

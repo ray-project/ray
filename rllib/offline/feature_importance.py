@@ -70,7 +70,7 @@ def _compute_actions(
 
 @ray.remote
 def get_feature_importance_on_index(
-    dataset: ray.data.Dataset,
+    dataset: ray.data.Datastream,
     *,
     index: int,
     perturb_fn: Callable[[pd.DataFrame, int], None],

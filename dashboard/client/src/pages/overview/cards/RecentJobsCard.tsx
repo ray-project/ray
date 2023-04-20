@@ -36,6 +36,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
+
   const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   return (
@@ -91,23 +92,33 @@ type RecentJobListItemProps = {
 const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
   const classes = useRecentJobListItemStyles();
 
+  const cardContent = (
+    <React.Fragment>
+      <JobStatusIcon job={job} />
+      <div className={classes.textContainer}>
+        <Typography className={classes.title} variant="body2">
+          {job.job_id ?? job.submission_id}
+        </Typography>
+        <Typography
+          className={classes.entrypoint}
+          title={job.entrypoint}
+          variant="caption"
+        >
+          {job.entrypoint}
+        </Typography>
+      </div>
+    </React.Fragment>
+  );
+
   return (
     <div className={className}>
-      <Link className={classes.root} to={`/jobs/${job.job_id}`}>
-        <JobStatusIcon job={job} />
-        <div className={classes.textContainer}>
-          <Typography className={classes.title} variant="body2">
-            {job.job_id ?? job.submission_id}
-          </Typography>
-          <Typography
-            className={classes.entrypoint}
-            title={job.entrypoint}
-            variant="caption"
-          >
-            {job.entrypoint}
-          </Typography>
-        </div>
-      </Link>
+      {job.job_id !== null && job.job_id !== "" ? (
+        <Link className={classes.root} to={`/jobs/${job.job_id}`}>
+          {cardContent}
+        </Link>
+      ) : (
+        <div className={classes.root}>{cardContent}</div>
+      )}
     </div>
   );
 };

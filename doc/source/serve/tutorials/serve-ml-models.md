@@ -208,7 +208,7 @@ Open a new Python file called `tutorial_sklearn.py`. Let's import Ray Serve and 
 
 **Train a Classifier**
 
-We will train a classifier with the [iris dataset](https://scikit-learn.org/stable/auto_examples/datasets/plot_iris_dataset.html).
+We will train a classifier with the [iris dataset](https://scikit-learn.org/stable/auto_examples/datasets/plot_iris_data.html).
 
 
 First, let's instantiate a `GradientBoostingClassifier` loaded from Scikit-Learn.
