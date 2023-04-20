@@ -366,7 +366,10 @@ def call_app_builder_with_args_if_necessary(
     # TODO(edoakes): we may want to loosen this to allow optional kwargs in the future.
     signature = inspect.signature(builder)
     if len(signature.parameters) != 1:
-        raise TypeError("Application builders should take exactly one parameter.")
+        raise TypeError(
+            "Application builders should take exactly one parameter, "
+            "a dictionary containing the passed arguments."
+        )
 
     # If the sole argument to the builder is a pydantic model, convert the args dict to
     # that model. This will perform standard pydantic validation (e.g., raise an

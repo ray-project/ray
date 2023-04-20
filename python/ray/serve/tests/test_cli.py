@@ -824,7 +824,7 @@ def build_echo_app_typed(args: TypedArgs):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_builder_with_args(ray_start_stop, typed: bool):
+def test_run_builder_with_args(ray_start_stop):
     """Test `serve run` with args passed into a builder function.
 
     Tests both the untyped and typed args cases.
