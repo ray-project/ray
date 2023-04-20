@@ -5,27 +5,27 @@ from typing import TypeVar, Union
 
 import numpy as np
 import requests
+import starlette.requests
 
 import ray
 from ray import serve
-from ray.serve.application import Application
 from ray.serve.api import build as build_app
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph import ClassNode, InputNode
+from ray.serve.built_application import BuiltApplication
+from ray.serve.deployment import Application
+from ray.serve.deployment_graph import ClassNode, InputNode, RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
-import starlette.requests
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
-def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
+def maybe_build(app: Application, use_build: bool) -> Union[Application, BuiltApplication]:
     if use_build:
-        return build_app(node)
+        return build_app(app)
     else:
-        return node
+        return app
 
 
 @serve.deployment

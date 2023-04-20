@@ -32,6 +32,25 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI
+class Application:
+    """Returned from `Deployment.bind()`.
+
+    Can be passed into another `Deployment.bind()` to compose multiple deployments in a
+    single application, passed to `serve.run`, or deployed via a Serve config file.
+    """
+
+    def __init__(self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None):
+        """This class should not be instantiated directly."""
+        if _internal_dag_node is None:
+            raise RuntimeError("This class should not be instantiated directly.")
+
+        self._internal_dag_node = _internal_dag_node
+
+    @classmethod
+    def from_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
+        return cls(_internal_dag_node=dag_node)
+
+@PublicAPI
 class Deployment:
     def __init__(
         self,
@@ -184,11 +203,11 @@ class Deployment:
         )
 
     @PublicAPI(stability="beta")
-    def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
-        """Bind the provided arguments and return a class or function node.
+    def bind(self, *args, **kwargs) -> Application:
+        """Bind the arguments to the deployment and return an Application.
 
-        The returned bound deployment can be deployed or bound to other
-        deployments to create a deployment graph.
+        The returned Application can be deployed using `serve.run` (or via
+        config file) or bound to another deployment for composition.
         """
 
         copied_self = copy(self)
@@ -196,18 +215,18 @@ class Deployment:
         schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):
-            return FunctionNode(
+            dag_node = FunctionNode(
                 self._func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._ray_actor_options or dict(),
+                cls_options=self._ray_actor_options or dict(),
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
         else:
-            return ClassNode(
+            dag_node = ClassNode(
                 self._func_or_class,
                 args,
                 kwargs,
@@ -217,6 +236,8 @@ class Deployment:
                     "is_from_serve_deployment": True,
                 },
             )
+
+        return Application.from_dag_node(dag_node)
 
     @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)

@@ -26,8 +26,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.common import ServeDeployMode
-from ray.serve.deployment import deployment_to_schema
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -218,7 +217,7 @@ def deploy(config_file_name: str, address: str):
         "my_bound_deployment) or application(s) from a YAML config.\n\n"
         "If using a YAML config, existing deployments with no code changes in an "
         "application will not be redeployed.\n\n"
-        "Any import path must lead to a FunctionNode or ClassNode object. "
+        "Any import path must lead to an Application object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
@@ -376,7 +375,7 @@ def run(
             port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f'Deploying from import path: "{import_path}".')
-        node = import_attr(import_path)
+        app = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
@@ -392,7 +391,7 @@ def run(
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            handle = serve.run(node, host=host, port=port)
+            handle = serve.run(app, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
@@ -586,9 +585,9 @@ def shutdown(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Serve Deployment Graph's config file.",
     help=(
-        "Imports the ClassNode(s) or FunctionNode(s) at IMPORT_PATH(S) and generates a "
+        "Imports the Application at IMPORT_PATH(S) and generates a "
         "structured config for it. If the flag --multi-app is set, accepts multiple "
-        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "Applications and generates a multi-application config. Config "
         "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
@@ -632,14 +631,13 @@ def build(
     sys.path.insert(0, app_dir)
 
     def build_app_config(import_path: str, name: str = None):
-        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-        if not isinstance(node, (ClassNode, FunctionNode)):
+        app: Application = import_attr(import_path)
+        if not isinstance(app, Application):
             raise TypeError(
-                f"Expected '{import_path}' to be ClassNode or "
-                f"FunctionNode, but got {type(node)}."
+                f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(node)
+        app = build_app(app)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
