@@ -7,14 +7,14 @@ This page indexes common Ray use cases for scaling ML. It contains highlighted r
 
 .. _ref-use-cases-llm:
 
-Large Language Models and Generative AI
----------------------------------------
+Large Language Models 
+---------------------
 
-Large language models (LLMs) and generative AI are rapidly changing industries that demand compute at an astonishing pace. Ray provides a distributed compute framework for scaling these models, allowing developers to train and deploy models faster and more efficiently. With specialized libraries for data streaming, training, fine-tuning, hyperparameter tuning, and serving, Ray simplifies the process of developing and deploying large-scale AI models.
+Large language models (LLMs) are rapidly changing industries and demand compute at an astonishing pace. Ray provides a distributed compute framework for scaling these models, allowing developers to train and deploy models faster and more efficiently. With specialized libraries for data streaming, training, fine-tuning, hyperparameter tuning, and serving, Ray simplifies the process of developing and deploying large-scale AI models.
 
 .. figure:: /images/llm-stack.png
 
-Learn more about LLMs and generative AI with the following resources.
+Learn more about how Ray scales LLMs with the following resources.
 
 .. panels::
     :container: container pb-3
@@ -24,25 +24,9 @@ Learn more about LLMs and generative AI with the following resources.
     ---
     :img-top: /images/ray_logo.png
 
-    .. link-button:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
-        :type: url
-        :text: [Blog] How Ray solves common production challenges for generative AI infrastructure
-        :classes: btn-link btn-block stretched-link webCrawler
-    
-    ---
-    :img-top: /images/ray_logo.png
-
     .. link-button:: https://www.anyscale.com/blog/training-175b-parameter-language-models-at-1000-gpu-scale-with-alpa-and-ray
         :type: url
         :text: [Blog] Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
-        :classes: btn-link btn-block stretched-link webCrawler
-    
-    ---
-    :img-top: /images/ray_logo.png
-
-    .. link-button:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
-        :type: url
-        :text: [Blog] Faster stable diffusion fine-tuning with Ray AIR
         :classes: btn-link btn-block stretched-link webCrawler
     
     ---
@@ -79,18 +63,49 @@ Learn more about LLMs and generative AI with the following resources.
     ---
     :img-top: /images/ray_logo.png
 
-    .. link-button:: /ray-air/examples/stablediffusion_batch_prediction
-        :type: ref
-        :text: [Example] Stable Diffusion Batch Prediction with Ray AIR
-        :classes: btn-link btn-block stretched-link rayForward
-
-    ---
-    :img-top: /images/ray_logo.png
-
     .. link-button:: /ray-air/examples/gptj_serving
         :type: ref
         :text: [Example] GPT-J-6B Serving with Ray AIR
         :classes: btn-link btn-block stretched-link webCrawler
+        
+.. _ref-use-cases-batch-infer:
+
+Generative AI
+----------------
+Generative AI is a rapidly changing industry and demands compute at an astonishing pace. Ray provides a distributed compute framework for scaling these models, allowing developers to train and deploy models faster and more efficiently. With specialized libraries for data streaming, training, fine-tuning, hyperparameter tuning, and serving, Ray simplifies the process of developing and deploying large-scale AI models.
+
+.. figure:: /images/llm-stack.png
+
+Learn more about how Ray scales generative AI with the following resources.
+
+.. panels::
+    :container: container pb-3
+    :column: col-md-3 px-1 py-1
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
+        :type: url
+        :text: [Blog] How Ray solves common production challenges for generative AI infrastructure
+        :classes: btn-link btn-block stretched-link webCrawler
+    
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
+        :type: url
+        :text: [Blog] Faster stable diffusion fine-tuning with Ray AIR
+        :classes: btn-link btn-block stretched-link webCrawler
+    
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /ray-air/examples/stablediffusion_batch_prediction
+        :type: ref
+        :text: [Example] Stable Diffusion Batch Prediction with Ray AIR
+        :classes: btn-link btn-block stretched-link rayForward
         
 .. _ref-use-cases-batch-infer:
 
