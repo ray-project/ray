@@ -121,13 +121,11 @@ class BackendExecutor:
         if self._trial_info and self._trial_info.driver_ip:
             self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
 
-        # RLlib's LearnerGroup also uses BackendExecutor but without TrialInfo.
-        if self._trial_info:
-            worker_loc_str = [
-                f"{w.metadata.pid} ({w.metadata.node_ip})"
-                for w in self.worker_group.workers
-            ]
-            logger.info(f"Starting distributed worker processes: {worker_loc_str}")
+        worker_loc_str = [
+            f"{w.metadata.pid} ({w.metadata.node_ip})"
+            for w in self.worker_group.workers
+        ]
+        logger.info(f"Starting distributed worker processes: {worker_loc_str}")
 
         try:
             if initialization_hook:
