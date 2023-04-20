@@ -38,6 +38,7 @@ const ActorDetailPage = () => {
   const classes = useStyle();
   const { ipLogMap } = useContext(GlobalContext);
   const { params, actorDetail, msg } = useActorDetail();
+  console.log("msg: ", msg);
 
   if (!actorDetail) {
     return (
