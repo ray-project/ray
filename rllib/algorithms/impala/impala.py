@@ -730,12 +730,10 @@ class Impala(Algorithm):
             if self.config._enable_learner_api:
                 if train_results:
                     pids = list(set(train_results.keys()) - {ALL_MODULES})
-                else:
-                    pids = []
-                self.update_workers_from_learner_group(
-                    workers_that_need_updates=workers_that_need_updates,
-                    policy_ids=pids,
-                )
+                    self.update_workers_from_learner_group(
+                        workers_that_need_updates=workers_that_need_updates,
+                        policy_ids=pids,
+                    )
             else:
                 pids = list(train_results.keys())
                 self.update_workers_if_necessary(

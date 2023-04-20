@@ -1,4 +1,5 @@
 from collections import deque
+from functools import partial
 import pathlib
 import socket
 from typing import (
@@ -239,16 +240,19 @@ class LearnerGroup:
             A list of dictionaries of results from the updates from the Learner(s)
         """
 
+        def _learner_update(learner, minibatch):
+            return learner.update(
+                minibatch,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
+            )
+
         if block:
             results = []
             for batch in batches:
                 results.extend(self._get_results(self._worker_manager.foreach_actor([
-                    lambda w: w.update(
-                        minibatch,
-                        minibatch_size=minibatch_size,
-                        num_iters=num_iters,
-                        reduce_fn=reduce_fn,
-                    )
+                    partial(_learner_update, minibatch=minibatch)
                     for minibatch in ShardBatchIterator(batch, len(self._workers))
                 ])))
             return results
@@ -261,12 +265,7 @@ class LearnerGroup:
                 self._in_queue.clear()
                 for batch in batches:
                     self._worker_manager.foreach_actor_async([
-                        lambda w: w.update(
-                            minibatch,
-                            minibatch_size=minibatch_size,
-                            num_iters=num_iters,
-                            reduce_fn=reduce_fn,
-                        )
+                        partial(_learner_update, minibatch=minibatch)
                         for minibatch in ShardBatchIterator(batch, len(self._workers))
                     ])
 
