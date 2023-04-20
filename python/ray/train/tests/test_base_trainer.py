@@ -118,7 +118,7 @@ def test_validate_datasets(ray_start_4_cpus):
 
     with pytest.raises(ValueError) as e:
         DummyTrainer(train_loop=None, datasets={"train": 1})
-    assert "The Dataset under train key is not a `ray.data.Dataset`"
+    assert "The Dataset under train key is not a `ray.data.Datastream`"
 
     with pytest.raises(ValueError) as e:
         DummyTrainer(

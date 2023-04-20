@@ -162,8 +162,8 @@ To restore, we just need to re-specify the ``param_space`` via :meth:`Tuner.rest
 
 .. note::
 
-    If you're tuning over :ref:`Ray Datasets <datasets>`, you'll also need to re-specify them in the ``param_space``.
-    Ray Datasets can contain object references, so the same problems described above apply.
+    If you're tuning over :ref:`Ray Data <data>`, you'll also need to re-specify them in the ``param_space``.
+    Ray Data can contain object references, so the same problems described above apply.
 
     See below for an example:
 
