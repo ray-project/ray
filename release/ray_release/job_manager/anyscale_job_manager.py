@@ -1,6 +1,9 @@
 import io
 import os
 import time
+import subprocess
+import tempfile
+from collections import deque
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 from typing import Any, Dict, Optional, Tuple
 
@@ -10,7 +13,6 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 from anyscale.controllers.job_controller import JobController, terminal_state
-
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -22,6 +24,7 @@ from ray_release.logger import logger
 from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
     ANYSCALE_HOST,
+    ERROR_LOG_PATTERNS,
     exponential_backoff_retry,
     anyscale_job_url,
     format_link,
@@ -105,7 +108,7 @@ class AnyscaleJobManager:
     def last_job_result(self, value):
         cluster_id = value.state.cluster_id
         # Set this only once.
-        if self._last_job_result is None and cluster_id:
+        if self.cluster_manager.cluster_id is None and cluster_id:
             self.cluster_manager.cluster_id = value.state.cluster_id
             self.cluster_manager.cluster_name = get_cluster_name(
                 value.state.cluster_id, self.sdk
@@ -259,6 +262,55 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
+    def _get_ray_error_logs(self) -> Optional[str]:
+        """
+        Obtain any ray logs that contain keywords that indicate a crash, such as
+        ERROR or Traceback
+        """
+        tmpdir = tempfile.mktemp()
+        try:
+            subprocess.check_output(
+                [
+                    "anyscale",
+                    "logs",
+                    "cluster",
+                    "--id",
+                    self.cluster_manager.cluster_id,
+                    "--head-only",
+                    "--download",
+                    "--download-dir",
+                    tmpdir,
+                ]
+            )
+        except Exception as e:
+            logger.log(f"Failed to download logs from anyscale {e}")
+            return None
+        return AnyscaleJobManager._find_ray_error_logs(tmpdir)
+
+    @staticmethod
+    def _find_ray_error_logs(tmpdir: str) -> Optional[str]:
+        # Ignored some ray files that do not crash ray despite having exceptions
+        ignored_ray_files = [
+            "monitor.log",
+            "event_AUTOSCALER.log",
+            "event_JOBS.log",
+        ]
+        error_output = None
+        matched_pattern_count = 0
+        for root, _, files in os.walk(tmpdir):
+            for file in files:
+                if file in ignored_ray_files:
+                    continue
+                with open(os.path.join(root, file)) as lines:
+                    output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
+                    # favor error logs that match with the most number of error patterns
+                    if (
+                        len([error for error in ERROR_LOG_PATTERNS if error in output])
+                        > matched_pattern_count
+                    ):
+                        error_output = output
+        return error_output
+
     def get_last_logs(self):
         if not self.job_id:
             raise RuntimeError(
@@ -280,7 +332,9 @@ class AnyscaleJobManager:
                     )
                     print("", flush=True)
             output = buf.getvalue().strip()
-            assert "### Starting ###" in output, "No logs fetched"
+            if "### Starting ###" not in output:
+                output = self._get_ray_error_logs()
+            assert output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
 
         ret = exponential_backoff_retry(
