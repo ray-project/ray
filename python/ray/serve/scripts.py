@@ -338,7 +338,9 @@ def run(
 
     if pathlib.Path(config_or_import_path).is_file():
         if len(args_dict) > 0:
-            cli_logger.warning("Application arguments are ignored when running a config file.")
+            cli_logger.warning(
+                "Application arguments are ignored when running a config file."
+            )
 
         is_config = True
         config_path = config_or_import_path
@@ -396,7 +398,9 @@ def run(
             port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
-        app = _private_api.call_app_builder_with_args_if_necessary(import_attr(import_path), args_dict)
+        app = _private_api.call_app_builder_with_args_if_necessary(
+            import_attr(import_path), args_dict
+        )
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)

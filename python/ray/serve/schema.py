@@ -361,7 +361,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     args: Dict = Field(
         default={},
-        description="Arguments that will be passed to the application builder."
+        description="Arguments that will be passed to the application builder.",
     )
 
     @validator("runtime_env")

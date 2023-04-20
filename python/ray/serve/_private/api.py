@@ -335,6 +335,7 @@ def serve_start(
     )
     return client
 
+
 def call_app_builder_with_args_if_necessary(
     builder: Union[ClassNode, FunctionNode, FunctionType],
     args: Dict[str, Any],
@@ -343,7 +344,7 @@ def call_app_builder_with_args_if_necessary(
 
     If a pre-built application (ClassNode or FunctionNode) is passed, this is a no-op.
 
-    Else, we validate the signature of the builder, convert the args dictionary to 
+    Else, we validate the signature of the builder, convert the args dictionary to
     the user-annotated Pydantic model if provided, and call the builder function.
 
     The output of the function is returned (must be a ClassNode or FunctionNode).
@@ -367,8 +368,9 @@ def call_app_builder_with_args_if_necessary(
     if len(signature.parameters) != 1:
         raise TypeError("Application builders should take exactly one parameter.")
 
-    # If the sole argument to the builder is a pydantic model, convert args to that model.
-    # This will perform standard pydantic validation (e.g., reject if required fields are missing).
+    # If the sole argument to the builder is a pydantic model, convert the args dict to
+    # that model. This will perform standard pydantic validation (e.g., raise an
+    # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
     if issubclass(type(param.annotation), ModelMetaclass):
         args = param.annotation.parse_obj(args)

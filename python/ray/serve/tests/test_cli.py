@@ -52,10 +52,16 @@ def assert_deployments_live(names: List[str]):
 def test_convert_args_to_dict():
     assert convert_args_to_dict(tuple()) == {}
 
-    with pytest.raises(click.ClickException, match="Invalid application argument 'bad_arg'"):
+    with pytest.raises(
+        click.ClickException, match="Invalid application argument 'bad_arg'"
+    ):
         convert_args_to_dict(("bad_arg",))
 
-    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {"key1": "val1", "key2": "val2"}
+    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
+        "key1": "val1",
+        "key2": "val2",
+    }
+
 
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
@@ -379,7 +385,8 @@ def test_deploy_multi_app_builder_with_args(ray_start_stop):
     subprocess.check_output(["serve", "deploy", apps_with_args])
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/untyped_default").text == "DEFAULT",
+        lambda: requests.post("http://localhost:8000/untyped_default").text
+        == "DEFAULT",
         timeout=10,
     )
 
@@ -798,6 +805,7 @@ def test_run_deployment_node(ray_start_stop):
     p.wait()
     assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
 
+
 @serve.deployment
 class Echo:
     def __init__(self, message: str):
@@ -807,14 +815,18 @@ class Echo:
     def __call__(self, *args):
         return self._message
 
+
 def build_echo_app(args):
     return Echo.bind(args.get("message", "DEFAULT"))
+
 
 class TypedArgs(BaseModel):
     message: str = "DEFAULT"
 
+
 def build_echo_app_typed(args: TypedArgs):
     return Echo.bind(args.message)
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("typed", [False, True])
