@@ -5169,7 +5169,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
+        cluster_compute: multi_node_benchmark_compute_gce.yaml
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
