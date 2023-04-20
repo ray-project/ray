@@ -6,8 +6,8 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 
-from ray.data._internal.planner.exchange.fast_repartition_task_scheduler import (
-    FastRepartitionTaskScheduler,
+from ray.data._internal.planner.exchange.split_repartition_task_scheduler import (
+    SplitRepartitionTaskScheduler,
 )
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
@@ -26,7 +26,7 @@ def generate_repartition_fn(
 ) -> AllToAllTransformFn:
     """Generate function to partition each records of blocks."""
 
-    def fn_shuffle_repartition(
+    def shuffle_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
@@ -39,14 +39,14 @@ def generate_repartition_fn(
 
         return scheduler.execute(refs, num_outputs)
 
-    def fn_fast_repartition(
+    def split_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         shuffle_spec = ShuffleTaskSpec(random_shuffle=False)
-        scheduler = FastRepartitionTaskScheduler(shuffle_spec)
+        scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs)
 
     if shuffle:
-        return fn_shuffle_repartition
-    return fn_fast_repartition
+        return shuffle_repartition_fn
+    return split_repartition_fn

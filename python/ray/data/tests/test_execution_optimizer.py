@@ -284,9 +284,32 @@ def test_repartition_e2e(
     ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, shuffle
 ):
     ds = ray.data.range(10000, parallelism=10)
-    ds1 = ds.repartition(20, shuffle=shuffle)
-    assert ds1._block_num_rows() == [500] * 20, ds
+    ds2 = ds.repartition(20, shuffle=shuffle)
+    blocks = ray.get(ds2.get_internal_block_refs())
 
+    assert ds2.num_blocks() == 20
+    assert all(isinstance(block, list) for block in blocks), blocks
+    assert ds2._block_num_rows() == [500] * 20, ds
+    _check_usage_record(["ReadRange", "Repartition"])
+
+    # Test num_output_blocks > num_rows to trigger empty block handling.
+    ds = ray.data.range(20, parallelism=10)
+    ds2 = ds.repartition(40, shuffle=False)
+    blocks = ray.get(ds2.get_internal_block_refs())
+
+    assert ds2.num_blocks() == 40
+    assert all(isinstance(block, list) for block in blocks), blocks
+    assert ds2.sum() == 190
+    assert ds2._block_num_rows() == [1] * 20 + [0] * 20
+    _check_usage_record(["ReadRange", "Repartition"])
+
+    # Test case where number of rows does not divide equally into num_output_blocks.
+    ds = ray.data.range(22).repartition(4)
+    blocks = ray.get(ds2.get_internal_block_refs())
+
+    assert all(isinstance(block, list) for block in blocks), blocks
+    assert ds.num_blocks() == 4
+    assert ds._block_num_rows() == [5, 6, 5, 6]
     _check_usage_record(["ReadRange", "Repartition"])
 
 
