@@ -12,10 +12,9 @@ from typing import (
 )
 import struct
 
-import numpy as np
-
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
+from ray.data import Dataset
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -24,6 +23,7 @@ from ray.data.aggregate import AggregateFn
 if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
+    import pandas as pd
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
@@ -452,7 +452,7 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
-def unwrap_single_value_columns(dataset: ray.data.Dataset):
+def unwrap_single_value_columns(dataset: Dataset):
     list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
 
     return dataset.map_batches(
@@ -462,7 +462,7 @@ def unwrap_single_value_columns(dataset: ray.data.Dataset):
     )
 
 
-def _unwrap_single_value_lists(batch: pd.DataFrame, col_lengths: Dict[str, int]):
+def _unwrap_single_value_lists(batch: "pd.DataFrame", col_lengths: Dict[str, int]):
     for col in col_lengths:
         if col_lengths[col] == 1:
             batch[col] = batch[col].str[0]
@@ -541,6 +541,7 @@ def _write_record(
 def _masked_crc(data: bytes) -> bytes:
     """CRC checksum."""
     import crc32c
+    import numpy as np
 
     mask = 0xA282EAD8
     crc = crc32c.crc32(data)
