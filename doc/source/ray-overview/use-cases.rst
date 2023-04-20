@@ -7,10 +7,14 @@ This page indexes common Ray use cases for scaling ML. It contains highlighted r
 
 .. _ref-use-cases-llm:
 
-Large Language Models and Generative AI
----------------------------------------
+LLMs and Gen AI
+---------------
 
-The following highlights feature projects that use Ray to implement Large Language Models and Generative AI applications.
+Large language models (LLMs) and generative AI are rapidly changing industries, and demand compute at an astonishing pace. Ray provides a distributed compute framework for scaling these models, allowing developers to train and deploy models faster and more efficiently. With specialized libraries for data streaming, training, fine-tuning, hyperparameter tuning, and serving, Ray simplifies the process of developing and deploying large-scale AI models.
+
+.. figure:: /images/llm-stack.png
+
+Learn more about how Ray scales LLMs and generative AI with the following resources.
 
 .. panels::
     :container: container pb-3
@@ -48,7 +52,7 @@ The following highlights feature projects that use Ray to implement Large Langua
         :type: url
         :text: [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
         :classes: btn-link btn-block stretched-link webCrawler
-    
+
     ---
     :img-top: /images/ray_logo.png
 
@@ -56,6 +60,7 @@ The following highlights feature projects that use Ray to implement Large Langua
         :type: url
         :text: [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
         :classes: btn-link btn-block stretched-link chatgpt
+
     ---
     :img-top: /images/ray_logo.png
 
@@ -87,7 +92,7 @@ The following highlights feature projects that use Ray to implement Large Langua
         :type: ref
         :text: [Example] GPT-J-6B Serving with Ray AIR
         :classes: btn-link btn-block stretched-link webCrawler
-        
+
 .. _ref-use-cases-batch-infer:
 
 Batch Inference
