@@ -66,7 +66,7 @@ def test_deploy(ray_start_stop):
         os.path.dirname(__file__), "test_config_files", "arithmetic.yaml"
     )
 
-    success_message_fragment = b"Sent deploy request successfully!"
+    success_message_fragment = b"Sent deploy request successfully."
 
     # Ensure the CLI is idempotent
     num_iterations = 2
@@ -136,7 +136,7 @@ def test_deploy_with_http_options(ray_start_stop):
     f2 = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
-    success_message_fragment = b"Sent deploy request successfully!"
+    success_message_fragment = b"Sent deploy request successfully."
 
     with open(f1, "r") as config_file:
         config = yaml.safe_load(config_file)
@@ -183,7 +183,7 @@ def test_deploy_multi_app(ray_start_stop):
         os.path.dirname(__file__), "test_config_files", "pizza_world.yaml"
     )
 
-    success_message_fragment = b"Sent deploy request successfully!"
+    success_message_fragment = b"Sent deploy request successfully."
 
     # Ensure the CLI is idempotent
     num_iterations = 2
@@ -368,7 +368,7 @@ def test_config(ray_start_stop):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
-    success_message_fragment = b"Sent deploy request successfully!"
+    success_message_fragment = b"Sent deploy request successfully."
 
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
@@ -1030,7 +1030,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
-    success_message_fragment = b"Sent deploy request successfully!"
+    success_message_fragment = b"Sent deploy request successfully."
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
