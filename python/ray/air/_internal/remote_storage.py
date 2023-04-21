@@ -9,6 +9,7 @@ import shutil
 from typing import List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
+from ray.util import log_once
 
 try:
     import fsspec
@@ -179,7 +180,7 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
 
     try:
         fsspec_fs = fsspec.filesystem(parsed.scheme)
-    except ValueError:
+    except Exception:
         # Raised when protocol not known
         return None
 
@@ -368,6 +369,26 @@ def upload_to_uri(
         ValueError: if the URI scheme is not supported.
     """
     _assert_pyarrow_installed()
+
+    parsed = urllib.parse.urlparse(uri)
+    # Todo: Only warn for pyarrow versions that are affected by
+    # https://github.com/apache/arrow/issues/32372#issuecomment-1421097792
+    if parsed.scheme.startswith("s3") and log_once("fsspec_missing"):
+        logger.warning(
+            "You are using S3 for remote storage, but you don't have `s3fs` "
+            "installed. Due to a bug in PyArrow, this can lead to significant "
+            "slowdowns. To avoid this, install s3fs with "
+            "`pip install fsspec s3fs`."
+        )
+    elif not fsspec and exclude and log_once("fsspec_missing"):
+        logger.warning(
+            "You are using remote storage, but you don't have `fsspec` "
+            "installed. This can lead to inefficient syncing behavior. To avoid this,"
+            "install fsspec with "
+            "`pip install fsspec`. Depending on your remote storage provider, "
+            "consider installing the respective fsspec-package "
+            "(see https://github.com/fsspec)."
+        )
 
     fs, bucket_path = get_fs_and_path(uri)
     if not fs:
