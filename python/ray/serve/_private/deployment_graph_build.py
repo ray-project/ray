@@ -93,6 +93,15 @@ def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
 
+    # If the ingress deployment is a function and it is bound to other deployments,
+    # reject.
+    if isinstance(serve_root_dag, DeploymentFunctionNode) and len(deployments) != 1:
+        raise ValueError(
+            "The ingress deployment to your application cannot be a function if there "
+            "are multiple deployments. If you want to compose them, use a class. If "
+            "you're using the DAG API, the function should be bound to a DAGDriver."
+        )
+
     # After Ray DAG is transformed to Serve DAG with deployments and their init
     # args filled, generate a minimal weight executor serve dag for perf
     serve_executor_root_dag = serve_root_dag.apply_recursive(
@@ -143,10 +152,6 @@ def transform_ray_dag_to_serve_dag(
     ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     When provided name, all Deployment name will {name}_{deployment_name}
     """
-    # TODO: document
-    if isinstance(dag_node, Application):
-        dag_node = dag_node._get_internal_dag_node()
-
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
 

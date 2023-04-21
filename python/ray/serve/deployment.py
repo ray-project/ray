@@ -56,9 +56,11 @@ class Application(DAGNodeBase):
         return self._internal_dag_node
 
     @classmethod
-    def from_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
+    def _from_internal_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
         return cls(_internal_dag_node=dag_node)
 
+    # Proxy all method calls to the underlying DAG node. This allows this class to be
+    # passed in place of the ClassNode or FunctionNode in the DAG building code.
     def __getattr__(self, name: str) -> Any:
         return getattr(self._get_internal_dag_node(), name)
 
@@ -250,7 +252,7 @@ class Deployment:
                 },
             )
 
-        return Application.from_dag_node(dag_node)
+        return Application._from_internal_dag_node(dag_node)
 
     @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)
