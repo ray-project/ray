@@ -54,7 +54,7 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
     while len(commit_list) > 2:
         logger.info(
             f"Bisecting between {len(commit_list)} commits: "
-            f"{commit_list[0]} to {commit_list[-1]}"
+            f"{commit_list[0]} to {commit_list[-1]} with concurrency {concurrency}"
         )
         idx_to_commit = {}
         for i in range(concurrency):
