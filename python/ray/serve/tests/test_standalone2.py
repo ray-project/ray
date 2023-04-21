@@ -133,9 +133,9 @@ def test_memory_omitted_option(ray_shutdown):
         return "world"
 
     ray.init(num_gpus=3, namespace="serve")
-    serve.run(hello.bind())
+    handle = serve.run(hello.bind())
 
-    assert ray.get(hello.get_handle().remote()) == "world"
+    assert ray.get(handle.remote()) == "world"
 
 
 @pytest.mark.parametrize("detached", [True, False])
@@ -247,12 +247,12 @@ def test_get_serve_status(shutdown_ray):
     def f(*args):
         return "Hello world"
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
-    assert status_info_1.deployment_statuses[0].name == "f"
+    assert status_info_1.deployment_statuses[0].name == "app_f"
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
     serve.shutdown()

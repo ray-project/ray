@@ -186,12 +186,12 @@ def test_single_app_shutdown_actors(ray_shutdown):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:f",
+        "ServeReplica:app_f",
     }
 
     def check_alive():
