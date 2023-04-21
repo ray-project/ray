@@ -749,23 +749,18 @@ def test_workload_placement_metrics(ray_start_regular):
     class Actor:
         pass
 
-
     placement_metric_condition = get_metric_check_condition(
         [
             MetricSamplePattern(
                 name="ray_workload_placement_time_s_bucket",
                 value=1.0,
-                partial_label_match={
-                    "WorkloadType": "Actor"
-                },
+                partial_label_match={"WorkloadType": "Actor"},
             ),
             MetricSamplePattern(
                 name="ray_workload_placement_time_s_bucket",
                 value=1.0,
-                partial_label_match={
-                    "WorkloadType": "Task"
-                },
-            )
+                partial_label_match={"WorkloadType": "Task"},
+            ),
         ],
     )
     wait_for_condition(placement_metric_condition, timeout=60)

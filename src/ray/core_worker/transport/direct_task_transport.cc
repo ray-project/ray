@@ -97,7 +97,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
       if (keep_executing) {
         task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-                                                                             current_sys_time_ms());
+            current_sys_time_ms());
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
         const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),

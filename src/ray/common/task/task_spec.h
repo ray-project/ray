@@ -438,7 +438,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
 
-
 /// \class WorkerCacheKey
 ///
 /// Class used to cache workers, keyed by runtime_env.

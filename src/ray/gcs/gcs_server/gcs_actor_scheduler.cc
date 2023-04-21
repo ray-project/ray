@@ -25,8 +25,8 @@ namespace gcs {
 
 void RecordTaskMetrics(const TaskSpecification &task_spec) {
   double duration_s = (task_spec.GetMessage().lease_grant_timestamp_ms() -
-                        task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
-    1000;
+                       task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
+                      1000;
 
   stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Actor"}});
 }
