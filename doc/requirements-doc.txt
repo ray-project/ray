@@ -65,6 +65,7 @@ sphinxcontrib-redoc==1.6.0
 sphinx-tabs==3.4.0
 sphinx-remove-toctrees==0.0.3
 autodoc_pydantic==1.6.1
+sphinx_design==0.4.1
 
 # MyST
 myst-parser==0.15.2
