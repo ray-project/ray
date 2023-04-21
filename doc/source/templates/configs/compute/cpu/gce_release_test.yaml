@@ -1,4 +1,5 @@
 cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}
+
 region: us-west1
 allowed_azs:
     - us-west1-b
