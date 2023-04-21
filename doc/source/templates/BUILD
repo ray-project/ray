@@ -1,11 +1,5 @@
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
-filegroup(
-    name = "workspace_templates",
-    srcs = glob(["tests/*.ipynb"]),
-    visibility = ["//doc:__subpackages__"]
-)
-
 
 # --------------------------------------------------------------------
 # Test all workspace template notebooks as smoke tests.
@@ -15,7 +9,6 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["tests/batch_inference.ipynb", "tests/serving_stable_diffusion.ipynb"],
     exclude = [],
-    data = ["//doc/source/templates:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "gpu", "doc_tested"],
     env = {"SMOKE_TEST": "1"},
 )
@@ -24,7 +17,6 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["tests/many_model_training.ipynb"],
     exclude = [],
-    data = ["//doc/source/templates:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs", "doc_tested"],
     env = {"SMOKE_TEST": "1"},
 )
