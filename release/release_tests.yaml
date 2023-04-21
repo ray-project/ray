@@ -849,6 +849,15 @@
     script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
       --to script --output _test batch_inference.ipynb && ipython _test.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ../configs/release_test_cluster_env.yaml
+        cluster_compute: ../configs/compute/gpu/gcp_small.yaml
+
 
 - name: workspace_template_small_02_many_model_training
   group: Workspace templates
@@ -866,6 +875,14 @@
       && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
       --to script --output _test many_model_training.ipynb && ipython _test.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ../configs/release_test_cluster_env.yaml
+        cluster_compute: ../configs/compute/cpu/gcp_small.yaml
 
 - name: workspace_template_small_03_serving_stable_diffusion
   group: Workspace templates
@@ -883,6 +900,14 @@
       && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
       --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: ../configs/release_test_cluster_env.yaml
+        cluster_compute: ../configs/compute/gpu/gcp_small.yaml
 
 #######################
 # XGBoost release tests
@@ -1362,13 +1387,22 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_tpl.yaml
+    cluster_compute: compute_tpl_aws.yaml
 
   run:
     timeout: 1200
     script: python workloads/test_trainer.py
     wait_for_nodes:
       num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce.yaml
 
   alert: default
 
@@ -1381,13 +1415,22 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_tpl.yaml
+    cluster_compute: compute_tpl_aws.yaml
 
   run:
     timeout: 1200
     script: python workloads/test_tuner.py
     wait_for_nodes:
       num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce.yaml
 
   alert: default
 
@@ -2100,13 +2143,22 @@
 
   cluster:
     cluster_env: torch_tune_serve_app_config.yaml
-    cluster_compute: gpu_tpl.yaml
+    cluster_compute: gpu_tpl_aws.yaml
 
   run:
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
     wait_for_nodes:
       num_nodes: 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: torch_tune_serve_app_config.yaml
+        cluster_compute: gpu_tpl_gce.yaml
 
   alert: default
 
@@ -3211,7 +3263,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_tpl.yaml
+    cluster_compute: compute_tpl_aws.yaml
 
   run:
     timeout: 3000
@@ -3220,6 +3272,14 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_tpl_gce.yaml
 
   alert: default
 
@@ -3236,14 +3296,29 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2_g4dn_12xlarge.yaml
+    cluster_compute: gpu_2x4_t4_aws.yaml
 
   run:
     timeout: 3600
-    script: bash run_train_opt_2_7b.sh
+    script: bash run_train_opt_2_7b.sh --storage aws
 
     wait_for_nodes:
       num_nodes: 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: gpu_2x4_t4_gce.yaml
+      run:
+        timeout: 3600
+        script: bash run_train_opt_2_7b.sh --storage gcs
+
+        wait_for_nodes:
+          num_nodes: 2
 
   alert: default
 
@@ -3256,14 +3331,29 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 1_p3_16xlarge.yaml
+    cluster_compute: gpu_1x8_v100_aws.yaml
 
   run:
     timeout: 3600
-    script: bash run_inference_opt_30b.sh
+    script: bash run_inference_opt_30b.sh --storage aws
 
     wait_for_nodes:
       num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: gpu_1x8_v100_gce.yaml
+      run:
+        timeout: 3600
+        script: bash run_inference_opt_30b.sh --storage gcs
+
+        wait_for_nodes:
+          num_nodes: 1
 
   alert: default
 
