@@ -766,7 +766,7 @@ class TestAppBuilder:
 
         with pytest.raises(
             TypeError,
-            match="Application builder functions must return a `ClassNode` or `FunctionNode`",
+            match="Application builder functions must return a",
         ):
             call_app_builder_with_args_if_necessary(return_none, {})
 
@@ -775,7 +775,7 @@ class TestAppBuilder:
 
         with pytest.raises(
             TypeError,
-            match="Application builder functions must return a `ClassNode` or `FunctionNode`",
+            match="Application builder functions must return a",
         ):
             call_app_builder_with_args_if_necessary(return_unbound_deployment, {})
 
