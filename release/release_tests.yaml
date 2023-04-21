@@ -701,7 +701,7 @@
 
 - name: workspace_template_batch_inference
   group: Workspace templates
-  working_dir: workspace_templates/01_batch_inference
+  working_dir: workspace_templates/tests
   python: "3.9"
   frequency: nightly-3x
   team: ml
@@ -725,7 +725,7 @@
 
 - name: workspace_template_many_model_training
   group: Workspace templates
-  working_dir: workspace_templates/02_many_model_training
+  working_dir: workspace_templates/tests
   python: "3.9"
   frequency: nightly-3x
   team: ml
@@ -749,7 +749,7 @@
 
 - name: workspace_template_serving_stable_diffusion
   group: Workspace templates
-  working_dir: workspace_templates/03_serving_stable_diffusion
+  working_dir: workspace_templates/tests
   python: "3.9"
   frequency: nightly-3x
   team: ml

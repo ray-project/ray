@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
 filegroup(
     name = "workspace_templates",
-    srcs = glob(["**/*.ipynb", "**/requirements.txt"]),
+    srcs = glob(["tests/*.ipynb"]),
     visibility = ["//doc:__subpackages__"]
 )
 
@@ -13,7 +13,7 @@ filegroup(
 
 py_test_run_all_notebooks(
     size = "large",
-    include = ["01_batch_inference/*.ipynb", "03_serving_stable_diffusion/*.ipynb"],
+    include = ["tests/batch_inferece.ipynb", "tests/serving_stable_diffusion.ipynb"],
     exclude = [],
     data = ["//doc/source/templates:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "gpu", "doc_tested"],
@@ -22,7 +22,7 @@ py_test_run_all_notebooks(
 
 py_test_run_all_notebooks(
     size = "large",
-    include = ["02_many_model_training/*.ipynb"],
+    include = ["tests/many_model_training.ipynb"],
     exclude = [],
     data = ["//doc/source/templates:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs", "doc_tested"],
