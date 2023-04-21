@@ -308,6 +308,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
+      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
       FAST=True make develop
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
