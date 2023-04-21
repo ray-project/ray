@@ -13,7 +13,7 @@ filegroup(
 
 py_test_run_all_notebooks(
     size = "large",
-    include = ["tests/batch_inferece.ipynb", "tests/serving_stable_diffusion.ipynb"],
+    include = ["tests/batch_inference.ipynb", "tests/serving_stable_diffusion.ipynb"],
     exclude = [],
     data = ["//doc/source/templates:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "gpu", "doc_tested"],
