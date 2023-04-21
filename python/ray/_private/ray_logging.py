@@ -43,10 +43,17 @@ def setup_component_logger(
     logger_name=None,
     propagate=True,
 ):
-    """Configure the root logger that is used for Ray's python components.
+    """Configure the logger that is used for Ray's python components.
 
     For example, it should be used for monitor, dashboard, and log monitor.
     The only exception is workers. They use the different logging config.
+
+    Ray's python components generally should not write to stdout/stderr, because
+    messages written there will be redirected to the head node. For deployments where
+    there may be thousands of workers, this would create unacceptable levels of log
+    spam. For this reason, we disable the "ray" logger's handlers, and enable
+    propagation so that log messages that actually do need to be sent to the head node
+    can reach it.
 
     Args:
         logging_level: Logging level in string or logging enum.
