@@ -5,6 +5,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
+from ray.serve.api import Application
 
 # __import_end__
 
@@ -35,10 +36,10 @@ class Translator:
 # __model_end__
 
 # __model_deploy_start__
-translator = Translator.bind()
+translator: Application = Translator.bind()
 # __model_deploy_end__
 
-translator = Translator.options(ray_actor_options={}).bind()
+translator: Application = Translator.options(ray_actor_options={}).bind()
 serve.run(translator)
 
 # __client_function_start__
