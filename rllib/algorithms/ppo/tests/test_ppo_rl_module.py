@@ -89,8 +89,8 @@ def dummy_tf_ppo_loss(batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm, observation_space):
-    model_config_dict = {"use_lstm": lstm}
+def _get_ppo_module(framework, env, lstm, observation_space, torch_compile):
+    model_config_dict = {"use_lstm": lstm, "torch_compile": torch_compile}
     config = get_expected_module_config(
         env, model_config_dict=model_config_dict, observation_space=observation_space
     )
@@ -127,11 +127,15 @@ class TestPPO(unittest.TestCase):
         fwd_fns = ["forward_exploration", "forward_inference"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
-        config_combinations = [frameworks, env_names, fwd_fns, lstm]
+        torch_compile = [False, True]
+        config_combinations = [frameworks, env_names, fwd_fns, lstm, torch_compile]
         for config in itertools.product(*config_combinations):
-            fw, env_name, fwd_fn, lstm = config
+            fw, env_name, fwd_fn, lstm, torch_compile = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
+                continue
+            if torch_compile and fw == "tf2":
+                # We don't need to test this
                 continue
             if env_name == "ALE/Breakout-v5" and fw == "tf2":
                 # TODO(Artur): Implement CNN in TF2.
@@ -150,6 +154,7 @@ class TestPPO(unittest.TestCase):
                 env=env,
                 lstm=lstm,
                 observation_space=preprocessor.observation_space,
+                torch_compile=torch_compile,
             )
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
@@ -175,11 +180,15 @@ class TestPPO(unittest.TestCase):
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
-        config_combinations = [frameworks, env_names, lstm]
+        torch_compile = [False, True]
+        config_combinations = [frameworks, env_names, lstm, torch_compile]
         for config in itertools.product(*config_combinations):
-            fw, env_name, lstm = config
+            fw, env_name, lstm, torch_compile = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
+                continue
+            if torch_compile and fw == "tf2":
+                # We don't need to test this
                 continue
             if env_name == "ALE/Breakout-v5" and fw == "tf2":
                 # TODO(Artur): Implement CNN in TF2.
@@ -199,6 +208,7 @@ class TestPPO(unittest.TestCase):
                 env=env,
                 lstm=lstm,
                 observation_space=preprocessor.observation_space,
+                torch_compile=torch_compile,
             )
 
             # collect a batch of data

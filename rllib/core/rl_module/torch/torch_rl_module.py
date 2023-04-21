@@ -3,6 +3,7 @@ from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -15,6 +16,22 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
+        if self.config.model_config_dict.get("torch_compile") is True:
+            self.is_compiled = True
+        else:
+            self.is_compiled = False
+
+        if self.is_compiled:
+            self.__compiled_forward_train = torch.compile(
+                super().forward_train, backend="aot_eager"
+            )
+            self.__compiled_forward_inference = torch.compile(
+                super().forward_inference, backend="aot_eager"
+            )
+            self.__compiled_forward_exploration = torch.compile(
+                super().forward_exploration, backend="aot_eager"
+            )
+
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.
 
@@ -22,6 +39,23 @@ class TorchRLModule(nn.Module, RLModule):
         be implemented for backpropagation to work.
         """
         return self.forward_train(batch, **kwargs)
+
+    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+        if self.is_compiled:
+            return self.__compiled_forward_inference(batch, **kwargs)
+        return super().forward_inference(batch, **kwargs)
+
+    def forward_exploration(
+        self, batch: SampleBatchType, **kwargs
+    ) -> Mapping[str, Any]:
+        if self.is_compiled:
+            return self.__compiled_forward_exploration(batch, **kwargs)
+        return super().forward_exploration(batch, **kwargs)
+
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+        if self.is_compiled:
+            return self.__compiled_forward_train(batch, **kwargs)
+        return super().forward_train(batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:

@@ -381,8 +381,10 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during evaluation, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_inference method.
+        """Forward-pass during evaluation, called from the sampler.
+
+        This method should not be overriden to implement a custom forward inference
+        method. Instead, override the _forward_inference method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -404,8 +406,10 @@ class RLModule(abc.ABC):
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during exploration, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_exploration method.
+        """Forward-pass during exploration, called from the sampler.
+
+        This method should not be overriden to implement a custom forward exploration
+        method. Instead, override the _forward_exploration method.
 
         Args:
             batch: The input batch. This input batch should comply with

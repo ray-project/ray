@@ -181,6 +181,13 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # backward compatibility to old configs. This yields different models than past
     # versions of RLlib.
     "encoder_latent_dim": None,
+    # Whether to use torch.compile on TorchRLModule's forward_train(),
+    # forward_inference() and forward_exploration() methods.
+    # If torch compile is enabled, the forward methods will be replaced with their
+    # compiled counterparts.
+    # This is a performance optimization that should be disabled for debugging.
+    # This has no effect for models outside RLModule.
+    "torch_compile": False,
 
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
