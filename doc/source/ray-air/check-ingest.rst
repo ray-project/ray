@@ -74,57 +74,59 @@ Here are some examples of configuring Dataset ingest options and what they do:
 Enabling Streaming Ingest
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: Bulk Ingest
+.. tab-set::
 
-    By default, AIR loads all datasets into the Ray object store at the start of training.
-    This provides the best performance if the cluster can fit the datasets
-    entirely in memory, or if the preprocessing step is expensive to run more than once.
+    .. tab-item:: Bulk Ingest
 
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __config_4__
-        :end-before: __config_4_end__
+        By default, AIR loads all datasets into the Ray object store at the start of training.
+        This provides the best performance if the cluster can fit the datasets
+        entirely in memory, or if the preprocessing step is expensive to run more than once.
 
-    You should use bulk ingest when:
+        .. literalinclude:: doc_code/air_ingest.py
+            :language: python
+            :start-after: __config_4__
+            :end-before: __config_4_end__
 
-    * you have enough memory to fit data blocks in cluster object store; or
-    * your preprocessing transform is expensive to recompute on each epoch
+        You should use bulk ingest when:
 
-.. tabbed:: Streaming Ingest (experimental)
+        * you have enough memory to fit data blocks in cluster object store; or
+        * your preprocessing transform is expensive to recompute on each epoch
 
-    In streaming ingest mode, instead of loading the entire dataset into the
-    Ray object store at once, AIR will load a fraction of the dataset at a
-    time. This can be desirable when the dataset is very large, and caching it
-    all at once would cause expensive disk spilling. The downside is that the
-    dataset will have to be preprocessed on each epoch, which may be more
-    expensive. Preprocessing is overlapped with training computation, but
-    overall training throughput may still decrease if preprocessing is more
-    expensive than the training computation (forward pass, backward pass,
-    gradient sync).
+    .. tab-item:: Streaming Ingest (experimental)
 
-    To enable this mode, use the :py:meth:`max_object_store_memory_fraction
-    <ray.air.config.DatasetConfig>` argument. This argument defaults to -1,
-    meaning that bulk ingest should be used and the entire dataset should be
-    computed and cached before training starts.
+        In streaming ingest mode, instead of loading the entire dataset into the
+        Ray object store at once, AIR will load a fraction of the dataset at a
+        time. This can be desirable when the dataset is very large, and caching it
+        all at once would cause expensive disk spilling. The downside is that the
+        dataset will have to be preprocessed on each epoch, which may be more
+        expensive. Preprocessing is overlapped with training computation, but
+        overall training throughput may still decrease if preprocessing is more
+        expensive than the training computation (forward pass, backward pass,
+        gradient sync).
 
-    Use a float value 0 or greater to indicate the "window" size, i.e. the
-    maximum fraction of object store memory that should be used at once. A
-    reasonable value is 0.2, meaning 20% of available object store memory.
-    Larger window sizes can improve performance by increasing parallelism. A
-    window size of 1 or greater will likely result in spilling.
+        To enable this mode, use the :py:meth:`max_object_store_memory_fraction
+        <ray.air.config.DatasetConfig>` argument. This argument defaults to -1,
+        meaning that bulk ingest should be used and the entire dataset should be
+        computed and cached before training starts.
 
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __config_5__
-        :end-before: __config_5_end__
+        Use a float value 0 or greater to indicate the "window" size, i.e. the
+        maximum fraction of object store memory that should be used at once. A
+        reasonable value is 0.2, meaning 20% of available object store memory.
+        Larger window sizes can improve performance by increasing parallelism. A
+        window size of 1 or greater will likely result in spilling.
 
-    Use streaming ingest when:
+        .. literalinclude:: doc_code/air_ingest.py
+            :language: python
+            :start-after: __config_5__
+            :end-before: __config_5_end__
 
-    * you have large datasets that don't fit into memory; and
-    * re-executing the preprocessing step on each epoch is faster than caching the preprocessed dataset on disk and reloading from disk on each epoch
+        Use streaming ingest when:
 
-    Note that this feature is experimental and the actual object store memory
-    usage may vary. Please file a `GitHub issue <https://github.com/ray-project/ray/issues>`_ if you run into problems.
+        * you have large datasets that don't fit into memory; and
+        * re-executing the preprocessing step on each epoch is faster than caching the preprocessed dataset on disk and reloading from disk on each epoch
+
+        Note that this feature is experimental and the actual object store memory
+        usage may vary. Please file a `GitHub issue <https://github.com/ray-project/ray/issues>`_ if you run into problems.
 
 .. _air-shuffle:
 
@@ -138,50 +140,52 @@ By default, AIR shuffles the assignment of data blocks (files) to dataset shards
 
 To randomize data records within a file, perform a local or global shuffle.
 
-.. tabbed:: Local Shuffling
+.. tab-set::
 
-    Local shuffling is the recommended approach for randomizing data order. To use local shuffle,
-    simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to :meth:`~ray.data.DataIterator.iter_batches`.
-    The iterator will then use a local buffer of the given size to randomize record order. The
-    larger the buffer size, the more randomization will be applied, but it will also use more
-    memory.
+    .. tab-item:: Local Shuffling
 
-    See :meth:`~ray.data.DataIterator.iter_batches` for more details.
+        Local shuffling is the recommended approach for randomizing data order. To use local shuffle,
+        simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to :meth:`~ray.data.DataIterator.iter_batches`.
+        The iterator will then use a local buffer of the given size to randomize record order. The
+        larger the buffer size, the more randomization will be applied, but it will also use more
+        memory.
 
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __local_shuffling_start__
-        :end-before: __local_shuffling_end__
+        See :meth:`~ray.data.DataIterator.iter_batches` for more details.
 
-    You should use local shuffling when:
+        .. literalinclude:: doc_code/air_ingest.py
+            :language: python
+            :start-after: __local_shuffling_start__
+            :end-before: __local_shuffling_end__
 
-     * a small in-memory buffer provides enough randomization; or
-     * you want the highest possible ingest performance; or
-     * your model is not overly sensitive to shuffle quality
+        You should use local shuffling when:
 
-.. tabbed:: Global Shuffling (slower)
+         * a small in-memory buffer provides enough randomization; or
+         * you want the highest possible ingest performance; or
+         * your model is not overly sensitive to shuffle quality
 
-    Global shuffling provides more uniformly random (decorrelated) samples and is carried
-    out via a distributed map-reduce operation. This higher quality shuffle can often lead
-    to more precision gain per training step, but it is also an expensive distributed
-    operation and will decrease the ingest throughput. The shuffle step is overlapped with
-    training computation, so as long as the shuffled ingest throughput matches
-    or exceeds the model training (forward pass, backward pass, gradient sync)
-    throughput, this higher-quality shuffle shouldn't slow down the overall
-    training.
+    .. tab-item:: Global Shuffling (slower)
 
-    If global shuffling *is* causing the ingest throughput to become the training
-    bottleneck, local shuffling may be a better option.
+        Global shuffling provides more uniformly random (decorrelated) samples and is carried
+        out via a distributed map-reduce operation. This higher quality shuffle can often lead
+        to more precision gain per training step, but it is also an expensive distributed
+        operation and will decrease the ingest throughput. The shuffle step is overlapped with
+        training computation, so as long as the shuffled ingest throughput matches
+        or exceeds the model training (forward pass, backward pass, gradient sync)
+        throughput, this higher-quality shuffle shouldn't slow down the overall
+        training.
 
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __global_shuffling_start__
-        :end-before: __global_shuffling_end__
+        If global shuffling *is* causing the ingest throughput to become the training
+        bottleneck, local shuffling may be a better option.
 
-    You should use global shuffling when:
+        .. literalinclude:: doc_code/air_ingest.py
+            :language: python
+            :start-after: __global_shuffling_start__
+            :end-before: __global_shuffling_end__
 
-     * you suspect high-quality shuffles may significantly improve model quality; and
-     * absolute ingest performance is less of a concern
+        You should use global shuffling when:
+
+         * you suspect high-quality shuffles may significantly improve model quality; and
+         * absolute ingest performance is less of a concern
 
 .. _air-per-epoch-preprocessing:
 
@@ -240,43 +244,45 @@ Dataset Resources
 
 Datasets uses Ray tasks to execute data processing operations. These tasks use CPU resources in the cluster during execution, which may compete with resources needed for Training.
 
-.. tabbed:: Unreserved CPUs
+.. tab-set::
 
-    By default, Dataset tasks use cluster CPU resources for execution. This can sometimes
-    conflict with Trainer resource requests. For example, if Trainers allocate all CPU resources
-    in the cluster, then no Datasets tasks can run.
+    .. tab-item:: Unreserved CPUs
 
-    .. literalinclude:: ./doc_code/air_ingest.py
-      :language: python
-      :start-after: __resource_allocation_1_begin__
-      :end-before: __resource_allocation_1_end__
+        By default, Dataset tasks use cluster CPU resources for execution. This can sometimes
+        conflict with Trainer resource requests. For example, if Trainers allocate all CPU resources
+        in the cluster, then no Datasets tasks can run.
 
-    Unreserved CPUs work well when:
+        .. literalinclude:: ./doc_code/air_ingest.py
+          :language: python
+          :start-after: __resource_allocation_1_begin__
+          :end-before: __resource_allocation_1_end__
 
-     * you are running only one Trainer and the cluster has enough CPUs; or
-     * your Trainers are configured to use GPUs and not CPUs
+        Unreserved CPUs work well when:
 
-.. tabbed:: Using Reserved CPUs (experimental)
+         * you are running only one Trainer and the cluster has enough CPUs; or
+         * your Trainers are configured to use GPUs and not CPUs
 
-    The ``_max_cpu_fraction_per_node`` option can be used to exclude CPUs from placement
-    group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
-    trials to run smoothly without risk of deadlock by reserving 20% of node CPUs for
-    Dataset execution.
+    .. tab-item:: Using Reserved CPUs (experimental)
 
-    .. literalinclude:: ./doc_code/air_ingest.py
-      :language: python
-      :start-after: __resource_allocation_2_begin__
-      :end-before: __resource_allocation_2_end__
+        The ``_max_cpu_fraction_per_node`` option can be used to exclude CPUs from placement
+        group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
+        trials to run smoothly without risk of deadlock by reserving 20% of node CPUs for
+        Dataset execution.
 
-    You should use reserved CPUs when:
+        .. literalinclude:: ./doc_code/air_ingest.py
+          :language: python
+          :start-after: __resource_allocation_2_begin__
+          :end-before: __resource_allocation_2_end__
 
-     * you are running multiple concurrent CPU Trainers using Tune; or
-     * you want to ensure predictable Datasets performance
+        You should use reserved CPUs when:
 
-    .. warning::
+         * you are running multiple concurrent CPU Trainers using Tune; or
+         * you want to ensure predictable Datasets performance
 
-        ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
-        autoscaling clusters (scale-up will not trigger properly).
+        .. warning::
+
+            ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
+            autoscaling clusters (scale-up will not trigger properly).
 
 Debugging Ingest with the ``DummyTrainer``
 ------------------------------------------
