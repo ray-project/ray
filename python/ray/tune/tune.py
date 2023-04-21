@@ -4,7 +4,6 @@ import copy
 import datetime
 import logging
 import os
-from pathlib import Path
 import signal
 import sys
 import threading
@@ -1015,7 +1014,7 @@ def run(
 
     if experiment_interrupted_event.is_set():
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
-            path=Path(experiment_checkpoint).parent,
+            path=runner.experiment_path,
         )
         logger.warning(
             "Experiment has been interrupted, but the most recent state was saved.\n"
