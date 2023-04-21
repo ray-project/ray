@@ -59,9 +59,9 @@ def wrap_transformers_trainer(
     return trainer
 
 
-# TODO(ml-team): Replace with a Ray Datasets-HuggingFace integration when available.
+# TODO(ml-team): Replace with a Datastreams-HuggingFace integration when available.
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Ray Dataset."""
+    """HF ExamplesIterable backed by a Datastream."""
 
     def __init__(self, dataset: DataIterator) -> None:
         self.dataset = dataset
@@ -76,7 +76,7 @@ class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
 
 
 def process_dataset_for_hf(dataset: DataIterator) -> "IterableDataset":
-    """Converts a Ray Dataset into a HF IterableDataset."""
+    """Converts a Datastream into a HF IterableDataset."""
     hf_iterable = RayDatasetHFIterable(dataset)
 
     iterable_dataset = datasets.iterable_dataset.IterableDataset(
@@ -98,7 +98,10 @@ def process_datasets(
     eval_dataset: DataIterator,
 ) -> Tuple["IterableDataset", "IterableDataset"]:
     """Convert Ray train and validation to HF IterableDatasets."""
-    train_torch_dataset = process_dataset_for_hf(train_dataset)
+    if train_dataset:
+        train_torch_dataset = process_dataset_for_hf(train_dataset)
+    else:
+        train_torch_dataset = None
 
     if eval_dataset:
         eval_torch_dataset = process_dataset_for_hf(eval_dataset)

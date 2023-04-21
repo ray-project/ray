@@ -272,7 +272,7 @@ class Node:
         if head:
             gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
             if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
 
@@ -485,7 +485,7 @@ class Node:
     @property
     def address(self):
         """Get the address for bootstrapping, e.g. the address to pass to
-        `ray start` or `ray.int()` to start worker nodes, that has been
+        `ray start` or `ray.init()` to start worker nodes, that has been
         converted to ip:port format.
         """
         return self._gcs_address

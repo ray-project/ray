@@ -4,7 +4,7 @@
 Integrations
 ============
 
-If you’re new to Ray Datasets, we recommend starting with the :ref:`Ray Datasets Quick Start <datasets_getting_started>`.
+If you’re new to Ray Data, we recommend starting with the :ref:`Ray Data Quick Start <data_getting_started>`.
 
 This is a guide on how to run Dask, Spark, Mars or Modin on Ray.
 

@@ -9,16 +9,16 @@ Here, we cover the main concepts in AIR.
     :local:
 
 
-Datasets
---------
+Datastreams
+-----------
 
-:ref:`Ray Datasets <datasets>` are the standard way to load and exchange data in Ray AIR. In AIR, Datasets are used extensively for data loading, preprocessing, and batch inference.
+:ref:`Ray Data <data>` is the standard way to load and exchange data in Ray AIR. It provides a `Datastream <datastream_concept>` concept which is used extensively for data loading, preprocessing, and batch inference.
 
 
 Preprocessors
 -------------
 
-Preprocessors are primitives that can be used to transform input data into features. Preprocessors operate on :ref:`Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
+Preprocessors are primitives that can be used to transform input data into features. Preprocessors operate on :ref:`Datastreams <datastream_concept>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
 
 A Preprocessor is fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
 
@@ -33,7 +33,7 @@ See the documentation on :ref:`Preprocessors <air-preprocessor-ref>`.
 Trainers
 --------
 
-Trainers are wrapper classes around third-party training frameworks such as XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Ray Tune, and Ray Datasets.
+Trainers are wrapper classes around third-party training frameworks such as XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Ray Tune, and Ray Data.
 
 See the documentation on :ref:`Trainers <air-trainers>`.
 
