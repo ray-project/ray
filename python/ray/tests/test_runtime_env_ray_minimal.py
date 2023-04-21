@@ -28,7 +28,7 @@ def _test_task_and_actor(capsys):
 
     def stderr_checker():
         captured = capsys.readouterr()
-        return "ray[default]" in captured.err
+        return "install virtualenv" in captured.err
 
     wait_for_condition(stderr_checker)
 
@@ -90,7 +90,7 @@ def test_ray_init(shutdown_only, capsys):
 
     def stderr_checker():
         captured = capsys.readouterr()
-        return "ray[default]" in captured.err
+        return "install virtualenv" in captured.err
 
     wait_for_condition(stderr_checker)
 
@@ -110,7 +110,7 @@ def test_ray_init(shutdown_only, capsys):
 def test_ray_client_init(call_ray_start):
     with pytest.raises(ConnectionAbortedError) as excinfo:
         ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
-    assert "ray[default]" in str(excinfo.value)
+    assert "install virtualenv" in str(excinfo.value)
 
 
 if __name__ == "__main__":
