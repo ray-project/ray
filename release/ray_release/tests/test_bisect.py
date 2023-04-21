@@ -15,6 +15,11 @@ def test_bisect():
         "c1": {
             "c0": "passed",
             "c1": "hard_failed",
+            "c2": "hard_failed",
+        },
+        "cc1": {
+            "cc0": "passed",
+            "cc1": "hard_failed",
         },
     }
 
@@ -27,4 +32,5 @@ def test_bisect():
             "ray_release.scripts.ray_bisect._run_test",
             side_effect=_mock_run_test,
         ):
-            assert _bisect({}, list(input.keys())) == output
+            for concurreny in range(1, 4):
+                assert _bisect({}, list(input.keys()), concurreny) == output
