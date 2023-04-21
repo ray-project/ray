@@ -607,6 +607,10 @@ class JobManager:
                                 and job_info.entrypoint_num_gpus > 0
                             )
                             or (
+                                job_info.entrypoint_memory is not None
+                                and job_info.entrypoint_memory > 0
+                            )
+                            or (
                                 job_info.entrypoint_resources is not None
                                 and len(job_info.entrypoint_resources) > 0
                             )
@@ -615,7 +619,7 @@ class JobManager:
                             err_msg += (
                                 " This may be because the job entrypoint's specified "
                                 "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources) aren't available on the cluster."
+                                "entrypoint_resources, entrypoint_memory) aren't available on the cluster."
                                 " Try checking the cluster's available resources with "
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
@@ -826,6 +830,7 @@ class JobManager:
         metadata: Optional[Dict[str, str]] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[Union[int, float]] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
@@ -855,6 +860,9 @@ class JobManager:
             entrypoint_num_gpus: The quantity of GPUs to reserve for
                 the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
+            entrypoint_memory: The quantity of Memory to reserve for
+                the entrypoint command, separately from any tasks or actors launched
+                by it. Defaults to 0.
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
@@ -870,6 +878,8 @@ class JobManager:
             entrypoint_num_cpus = 0
         if entrypoint_num_gpus is None:
             entrypoint_num_gpus = 0
+        if entrypoint_memory is None:
+            entrypoint_memory = 0
         if submission_id is None:
             submission_id = generate_job_id()
 
@@ -882,6 +892,7 @@ class JobManager:
             runtime_env=runtime_env,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
         new_key_added = await self._job_info_client.put_info(
@@ -901,6 +912,7 @@ class JobManager:
                 [
                     entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
                     entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
+                    entrypoint_memory is not None and entrypoint_memory > 0,
                     entrypoint_resources not in [None, {}],
                 ]
             )
@@ -916,6 +928,7 @@ class JobManager:
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
+                num_memory=entrypoint_memory,
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
