@@ -242,11 +242,11 @@ class TestServeRun:
 
     def test_import_path_deployment_decorated(self, serve_instance):
         func = serve.deployment(name="decorated_func", route_prefix="/decorated_func")(
-            "ray.serve.tests.test_application.decorated_func"
+            "ray.serve.tests.test_built_application.decorated_func"
         )
 
         clss = serve.deployment(name="decorated_clss", route_prefix="/decorated_clss")(
-            "ray.serve.tests.test_application.DecoratedClass"
+            "ray.serve.tests.test_built_application.DecoratedClass"
         )
 
         deployments = [func, clss]
