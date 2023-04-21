@@ -381,7 +381,7 @@ def call_app_builder_with_args_if_necessary(
     app = builder(args)
     if not isinstance(app, (ClassNode, FunctionNode)):
         raise TypeError(
-            "Application builder functionss must return a `ClassNode` or "
+            "Application builder functions must return a `ClassNode` or "
             "`FunctionNode` returned from `Deployment.bind()`, "
             f"but got: {type(app)}."
         )
