@@ -338,6 +338,12 @@ def _init_storage(storage_uri: str, is_head: bool):
             _init_filesystem(create_valid_file=True)
 
 
+def _get_storage_uri() -> Optional[str]:
+    """Get storage API, if configured."""
+    global _storage_uri
+    return _storage_uri
+
+
 def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
     """Internal version of get_filesystem() that doesn't hit Ray client hooks.
 

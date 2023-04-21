@@ -99,7 +99,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*periodical_runner=*/&pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
 }
@@ -657,6 +658,7 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
+        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 
   // Install job event listeners.

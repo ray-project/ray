@@ -4,7 +4,6 @@ import {
   IconButton,
   Link,
   makeStyles,
-  Paper,
   Tooltip,
   Typography,
 } from "@material-ui/core";
@@ -12,6 +11,7 @@ import copy from "copy-to-clipboard";
 import React, { useState } from "react";
 import { RiFileCopyLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
+import { Section } from "../../common/Section";
 import { HelpInfo } from "../Tooltip";
 
 export type StringOnlyMetadataContent = {
@@ -55,7 +55,6 @@ const useStyles = makeStyles((theme) =>
       gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
       rowGap: theme.spacing(1),
       columnGap: theme.spacing(4),
-      padding: theme.spacing(2),
     },
     label: {
       color: theme.palette.text.secondary,
@@ -193,15 +192,8 @@ export const MetadataSection = ({
   metadataList: Metadata[];
 }) => {
   return (
-    <Box marginTop={1} marginBottom={4}>
-      {header && (
-        <Box paddingBottom={2}>
-          <Typography variant="h2">{header}</Typography>
-        </Box>
-      )}
-      <Paper variant="outlined">
-        <MetadataList metadataList={metadataList} />
-      </Paper>
-    </Box>
+    <Section title={header} marginTop={1} marginBottom={4}>
+      <MetadataList metadataList={metadataList} />
+    </Section>
   );
 };
