@@ -6,7 +6,6 @@ import time
 import ray
 
 from pyarrow import fs
-from cloud_detect import provider
 import numpy as np
 import torch
 
@@ -34,6 +33,7 @@ def create_parser():
     )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--repeat-times", type=int, default=16)
+    parser.add_argument("--cloud", type=str, choices=["aws", "gcp"])
     return parser
 
 
@@ -91,8 +91,8 @@ def create_torch_iterator(split, batch_size, rank=None):
     return torch_iterator
 
 
-def create_dataset(filenames, repeat_times):
-    if provider() == "gcp":
+def create_dataset(filenames, repeat_times, cloud):
+    if cloud == "gcp":
         filesystem = fs.GcsFileSystem()
     else:
         filesystem = None
@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    pipeline = create_dataset(PATHS[provider()], args.repeat_times)
+    pipeline = create_dataset(PATHS[args.cloud], args.repeat_times, args.cloud)
     splits = pipeline.split(args.num_workers)
 
     @ray.remote(num_gpus=1)
