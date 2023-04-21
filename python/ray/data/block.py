@@ -22,9 +22,8 @@ import numpy as np
 import ray
 from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
-from ray.data._internal.usage import record_block_format_usage
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import psutil
 
@@ -59,6 +58,7 @@ AggType = TypeVar("AggType")
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
+@PublicAPI
 class StrictModeError(ValueError):
     pass
 
@@ -160,8 +160,8 @@ VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
 VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
 
-def apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
-    ctx = ray.data.DatasetContext.get_current()
+def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         if given_batch_format == "default":
             given_batch_format = "numpy"
@@ -396,7 +396,7 @@ class BlockAccessor(Generic[T]):
         if isinstance(batch, np.ndarray):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            ctx = ray.data.DatasetContext.get_current()
+            ctx = ray.data.DataContext.get_current()
             if ctx.strict_mode:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(batch)}: "
@@ -432,22 +432,19 @@ class BlockAccessor(Generic[T]):
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            record_block_format_usage("arrow")
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
-            record_block_format_usage("pandas")
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            record_block_format_usage("arrow")
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
-            ctx = ray.data.DatasetContext.get_current()
+            ctx = ray.data.DataContext.get_current()
             if ctx.strict_mode:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(block)}: "
@@ -456,7 +453,6 @@ class BlockAccessor(Generic[T]):
                     "wrap them in a dict of numpy arrays, e.g., "
                     "return `{'item': np.array(batch)}` instead of just `batch`."
                 )
-            record_block_format_usage("simple")
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
