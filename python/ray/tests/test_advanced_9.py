@@ -450,20 +450,22 @@ def test_node_registeration_syncer(monkeypatch, shutdown_only):
         "NodeInfoGcsService.grpc_server.GetAllNodeInfo=5000000:5000000",
     )
     cluster = ray.cluster_utils.Cluster()
-    cluster.add_node(True, num_cpus=1)
+    cluster.add_node(True, num_cpus=0, num_gpus=1)
     ray.init(cluster.address)
 
-    @ray.remote(num_cpus=1)
-    class A:
-        def f(self):
-            return
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def gpu_task():
+        return
 
-    a = A.remote()
-    ray.get(a.f.remote())
+    @ray.remote(num_cpus=1, num_gpus=0)
+    def cpu_task():
+        return ray.get(gpu_task.remote())
 
-    cluster.add_node(True, num_cpus=1)
-    # This is to make sure the new node added will receive the resource usage.
-    ray.get(a.f.remote())
+    cluster.add_node(True, num_cpus=1, num_gpus=0)
+
+    # This task will be scheduled to node2
+    # and node2 will fail to schedule task to node1
+    ray.get(cpu_task.remote(), timeout=10)
 
 
 if __name__ == "__main__":
