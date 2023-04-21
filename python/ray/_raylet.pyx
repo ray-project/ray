@@ -1764,7 +1764,7 @@ cdef class GcsPublisher:
             c_string c_job_id
 
         job_id = log_json.get("job")
-        log_batch.set_ip(log_json.get("ip", b""))
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
         log_batch.set_pid(str(log_json.get("pid")) if log_json.get("pid") else b"")
         log_batch.set_job_id(job_id.encode() if job_id else b"")
         log_batch.set_is_error(bool(log_json.get("is_err")))
