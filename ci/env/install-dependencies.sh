@@ -314,34 +314,10 @@ retry_pip_install() {
   fi
 }
 
-#compile_ray_requirements() {
-#  # Compile boundaries
-#  # shellcheck disable=SC2262
-#  alias pip="python -m pip"
-#  pip install pip-tools
-#
-#  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
-#    echo requirements_compiled already exists
-#  else
-#    pip-compile --resolver=backtracking -q \
-#       --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
-#      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
-#      "${WORKSPACE_DIR}/python/requirements.txt" \
-#      "${WORKSPACE_DIR}/python/requirements_pinned.txt" \
-#      "${WORKSPACE_DIR}/python/requirements_test.txt" \
-#      "${WORKSPACE_DIR}/python/requirements_linters.txt"
-#  fi
-#
-#  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
-#}
-
 install_pip_packages() {
   # Install modules needed in all jobs.
   # shellcheck disable=SC2262
   alias pip="python -m pip"
-
-  # Pin requirements
-  # compile_ray_requirements
 
   # Array to hold all requirements files to install later
   requirements_files=()
