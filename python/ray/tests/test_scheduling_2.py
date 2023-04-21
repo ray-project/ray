@@ -15,6 +15,11 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray._private.test_utils import (
+    wait_for_condition,
+    get_metric_check_condition,
+    MetricSamplePattern,
+)
 
 
 @pytest.mark.skipif(
@@ -733,6 +738,37 @@ def test_data_locality_spilled_objects(
         task = check_locality.remote(x)
         print(i, x, task)
         ray.get(task)
+
+
+def test_workload_placement_metrics(ray_start_regular):
+    @ray.remote(num_cpus=1)
+    def task():
+        pass
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+
+    placement_metric_condition = get_metric_check_condition(
+        [
+            MetricSamplePattern(
+                name="ray_workload_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={
+                    "WorkloadType": "Actor"
+                },
+            ),
+            MetricSamplePattern(
+                name="ray_workload_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={
+                    "WorkloadType": "Task"
+                },
+            )
+        ],
+    )
+    wait_for_condition(placement_metric_condition, timeout=60)
 
 
 if __name__ == "__main__":

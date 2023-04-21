@@ -20,6 +20,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/util/logging.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -522,6 +523,20 @@ bool TaskSpecification::IsRetriable() const {
   }
   return true;
 }
+
+  void TaskSpecification::EmitTaskMetrics() const {
+      double duration_s = (GetMessage().lease_grant_timestamp_ms() -
+                           GetMessage().dependency_resolution_timestamp_ms()) /
+        1000;
+
+      if (IsActorCreationTask()) {
+        stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Actor"}});
+      } else {
+        RAY_LOG(ERROR) << "EMITTING TASK WORKLOAD" << DebugString();
+        stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
+        RAY_LOG(ERROR) << "EMITTING TASK WORKLOAD DONE";
+      }
+  }
 
 std::string TaskSpecification::CallSiteString() const {
   std::ostringstream stream;

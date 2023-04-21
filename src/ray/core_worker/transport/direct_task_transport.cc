@@ -21,22 +21,6 @@
 namespace ray {
 namespace core {
 
-int64_t CurrentTimestampMs() {
-  // NOTE: Using high_resolution_clock for consistnecy with the rest of this
-  // file, but this should probably use stead_clock.
-  // https://en.cppreference.com/w/cpp/chrono/high_resolution_clock
-  auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
-  return std::chrono::duration_cast<std::chrono::milliseconds>(time).count();
-}
-
-void RecordTaskMetrics(const TaskSpecification &task_spec) {
-  double duration_s = (task_spec.GetMessage().lease_grant_timestamp_ms() -
-                       task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
-                      1000;
-
-  stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
-}
-
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
@@ -113,7 +97,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
       if (keep_executing) {
         task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-            CurrentTimestampMs());
+                                                                             current_sys_time_ms());
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
         const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
@@ -240,8 +224,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
 
-      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(CurrentTimestampMs());
-      RecordTaskMetrics(task_spec);
+      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
+      task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);

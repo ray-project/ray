@@ -23,6 +23,14 @@
 namespace ray {
 namespace gcs {
 
+void RecordTaskMetrics(const TaskSpecification &task_spec) {
+  double duration_s = (task_spec.GetMessage().lease_grant_timestamp_ms() -
+                        task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
+    1000;
+
+  stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Actor"}});
+}
+
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
@@ -404,6 +412,8 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
+    actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(current_sys_time_ms());
+    actor->GetCreationTaskSpecification().EmitTaskMetrics();
     // Make sure to connect to the client before persisting actor info to GCS.
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320

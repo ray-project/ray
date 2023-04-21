@@ -413,6 +413,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
+  void EmitTaskMetrics() const;
+
  private:
   void ComputeResources();
 
@@ -435,6 +437,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
+
 
 /// \class WorkerCacheKey
 ///
