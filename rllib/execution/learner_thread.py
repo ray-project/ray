@@ -104,6 +104,8 @@ class LearnerThread(threading.Thread):
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
         """Add internal metrics to a result dict."""
 
+        assert False
+
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
 

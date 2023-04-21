@@ -274,6 +274,9 @@ class APPO(Impala):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
+        #TODO
+        print(f"minibatch_size={self.config.minibatch_size}")
+
         # TODO(avnishn):
         # this attribute isn't used anywhere else in the code. I think we can safely
         # delete it.

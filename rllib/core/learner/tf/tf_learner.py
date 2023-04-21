@@ -442,7 +442,7 @@ class TfLearner(Learner):
         reduce_fn: Callable[[ResultDict], ResultDict] = ...,
     ) -> Mapping[str, Any]:
         # TODO (Kourosh): The update of learner is vastly differnet than the base
-        # class. So we need to unify them.
+        #  class. So we need to unify them.
         missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
         if len(missing_module_ids) > 0:
             raise ValueError(
@@ -459,7 +459,7 @@ class TfLearner(Learner):
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
             # TODO (Avnish): converting to tf tensor and then from nested dict back to
-            # dict will most likely hit us in perf. But let's go with this for now.
+            #  dict will most likely hit us in perf. But let's go with this for now.
             tensorbatch = self._convert_batch_type(minibatch)
             update_outs = self._update_fn(tensorbatch)
             loss = update_outs["loss"]
@@ -485,8 +485,8 @@ class TfLearner(Learner):
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
             # TODO (Kourosh): We need to go back to NestedDict because that's the
-            # constraint on forward_train and compute_loss APIs. This seems to be
-            # in-efficient. Make it efficient.
+            #  constraint on forward_train and compute_loss APIs. This seems to be
+            #  in-efficient. Make it efficient.
             _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 t0 = tf.timestamp()

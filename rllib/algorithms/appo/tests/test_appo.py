@@ -20,6 +20,25 @@ class TestAPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_TEST_TODO_REMOVE_appo_compilation(self):
+        config = (
+            appo.APPOConfig()
+            .framework("tf2", eager_tracing=True)
+            .rollouts(num_rollout_workers=1, rollout_fragment_length=100)
+            .resources(num_learner_workers=4, num_cpus_per_learner_worker=1, num_gpus_per_learner_worker=0, num_gpus=0)
+            .exploration(exploration_config={})
+            .training(train_batch_size=1600, minibatch_size="auto", vtrace=True, num_sgd_iter=2, _enable_learner_api=True)
+            .rl_module(_enable_rl_module_api=True)
+        )
+        num_iterations = 100
+
+        algo = config.build(env="CartPole-v1")
+        for i in range(num_iterations):
+            results = algo.train()
+            print(results)
+
+        algo.stop()
+
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
         config = appo.APPOConfig().rollouts(num_rollout_workers=1)

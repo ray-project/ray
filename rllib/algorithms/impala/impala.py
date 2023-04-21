@@ -486,6 +486,7 @@ class ImpalaConfig(AlgorithmConfig):
 
 
 def make_learner_thread(local_worker, config):
+    assert False
     if not config["simple_optimizer"]:
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
@@ -693,6 +694,9 @@ class Impala(Algorithm):
         unprocessed_sample_batches = self.get_samples_from_workers(
             return_object_refs=use_tree_aggregation,
         )
+        for _, b in unprocessed_sample_batches:
+            print(f"got {len(b)} from samplers")
+
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         workers_that_need_updates = {
@@ -707,14 +711,20 @@ class Impala(Algorithm):
         # Resolve collected batches here on local process (using the mixin buffer).
         else:
             batches = self.process_experiences_directly(unprocessed_sample_batches)
+            if batches:
+                print(f"pulled {sum(len(b) for b in batches)} samples from buffer")
 
         # Increase sampling counters now that we have the actual SampleBatches on
         # the local process (and can measure their sizes).
         for batch in batches:
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        if batches:
+            print(f"Increased SAMPLED counter to {self._counters[NUM_ENV_STEPS_SAMPLED]}")
         # Concatenate single batches into batches of size `train_batch_size`.
         self.concatenate_batches_and_pre_queue(batches)
+        if self.batches_to_place_on_learner:
+            print(f"Batches to place on learner {sum(len(b) for b in self.batches_to_place_on_learner)}")
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
         if self.config._enable_learner_api:
@@ -926,9 +936,12 @@ class Impala(Algorithm):
 
         """
         result = {}
+        # There are batches on the queue -> Send them to the learner group.
         if self.batches_to_place_on_learner:
-            batches = self.batches_to_place_on_learner
-            self.batches_to_place_on_learner = []
+            batches = self.batches_to_place_on_learner[:]
+            ## Keep track of the queue size (before we purge it for learning).
+            #self._counters["learner_group_queue_size"] = len(batches)
+            self.batches_to_place_on_learner.clear()
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
@@ -939,18 +952,26 @@ class Impala(Algorithm):
                 num_iters=self.config.num_sgd_iter,
                 minibatch_size=self.config.minibatch_size,
             )
+        # Nothing on the queue -> Don't send requests to learner group.
         else:
+            #self._counters["learner_group_queue_size"] = 0
             lg_results = None
 
         if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES][
+            print(f"Learned {lg_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]} env steps")
+            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
                 NUM_ENV_STEPS_TRAINED
-            ]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES][
+            )
+            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
                 NUM_AGENT_STEPS_TRAINED
-            ]
-            del lg_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
-            del lg_results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED]
+            )
+            self._counters["learner_group_queue_size"] = lg_results[ALL_MODULES].pop(
+                "learner_group_queue_size"
+            )
+            self._counters["learner_group_queue_ts_dropped"] += lg_results[ALL_MODULES].pop(
+                "learner_group_queue_ts_dropped"
+            )
+            print(f"Increased TRAINED counter to {self._counters[NUM_ENV_STEPS_TRAINED]}")
             result = lg_results
 
         return result
@@ -961,6 +982,7 @@ class Impala(Algorithm):
         NOTE: This method is called if self.config._enable_learner_api is False.
 
         """
+        assert False
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
@@ -1196,11 +1218,7 @@ class Impala(Algorithm):
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
-        if self.config._enable_learner_api:
-            result["custom_metrics"] = {
-                "learner_group_queue_size": self.learner_group.in_queue_size
-            }
-        else:
+        if not self.config._enable_learner_api:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )

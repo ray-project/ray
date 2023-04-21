@@ -1,6 +1,6 @@
-from collections import deque
 from functools import partial
 import pathlib
+import queue
 import socket
 from typing import (
     Any,
@@ -27,6 +27,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
 from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
@@ -90,14 +91,14 @@ class LearnerGroup:
         learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        # explicit
+        #  explicit.
         self._is_local = scaling_config.num_workers == 0
         self._learner = None
         self._workers = None
-        # if a user calls self.shutdown() on their own then this flag is set to true.
+        # If a user calls self.shutdown() on their own then this flag is set to true.
         # When del is called the backend executor isn't shutdown twice if this flag is
         # true. the backend executor would otherwise log a warning to the console from
-        # ray train
+        # ray train.
         self._is_shut_down = False
 
         self._is_module_trainable = _is_module_trainable
@@ -124,15 +125,15 @@ class LearnerGroup:
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
-            # run the neural network building code on remote workers
+            # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
-            # use only 1 max in flight request per worker since training workers have to
+            # Use only 1 max in flight request per worker since training workers have to
             # be synchronously executed.
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
                 max_remote_requests_in_flight_per_actor=1,
             )
-            self._in_queue = deque(maxlen=max_queue_len)
+            self._in_queue = queue.Queue(maxsize=max_queue_len)
 
     @property
     def in_queue_size(self) -> int:
@@ -141,7 +142,7 @@ class LearnerGroup:
         If the queue is reaching its max size, then this learner group likely needs
         more workers to process incoming batches.
         """
-        return len(self._in_queue)
+        return self._in_queue.qsize()
 
     @property
     def is_local(self) -> bool:
@@ -257,19 +258,33 @@ class LearnerGroup:
                 ])))
             return results
         else:
-            if batches is not None:
-                self._in_queue.extend(batches)
-            results = self._worker_manager.fetch_ready_async_reqs()
-            if self._worker_manager_ready() and self._in_queue:
-                batches = list(self._in_queue)
-                self._in_queue.clear()
+            # Queue the new batches.
+            num_ts_dropped = 0
+            if batches:
                 for batch in batches:
-                    self._worker_manager.foreach_actor_async([
-                        partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ])
+                    try:
+                        self._in_queue.put_nowait(batch)
+                    except queue.Full:
+                        num_ts_dropped += len(batch)
 
-        return self._get_results(results)
+            # Retrieve all ready results (kicked off by prior calls to this method).
+            results = self._worker_manager.fetch_ready_async_reqs()
+            # Only if there are no more requests in-flight on any of the learners,
+            # we can send in one new batch for sharding and parallel learning.
+            if self._worker_manager_ready() and not self._in_queue.empty():
+                # Pull a single batch from the queue.
+                batch = self._in_queue.get()
+                self._worker_manager.foreach_actor_async([
+                    partial(_learner_update, minibatch=minibatch)
+                    for minibatch in ShardBatchIterator(batch, len(self._workers))
+                ])
+
+            results = self._get_results(results)
+
+            # Add num_ts_dropped and current queue size to results.
+            results[ALL_MODULES]["learner_group_queue_size"] = self.in_queue_size()
+            results[ALL_MODULES]["learner_group_queue_ts_dropped"] = num_ts_dropped
+            return results
 
     def _worker_manager_ready(self):
         return self._worker_manager.num_outstanding_async_reqs() == 0

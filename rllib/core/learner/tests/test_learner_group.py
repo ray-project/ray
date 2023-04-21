@@ -24,9 +24,9 @@ from ray.util.timer import _Timer
 
 
 REMOTE_SCALING_CONFIGS = {
-    "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
-    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
-    "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
+    #"remote-cpu": LearnerGroupScalingConfig(num_workers=1),
+    #"remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
+    #"multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
     "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
     # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
     #     num_workers=2, num_gpus_per_worker=2
