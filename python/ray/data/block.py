@@ -11,7 +11,6 @@ from typing import (
     Generic,
     Iterator,
     List,
-    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -34,9 +33,9 @@ except ImportError:
     resource = None
 
 if sys.version_info >= (3, 8):
-    from typing import Protocol
+    from typing import Literal, Protocol
 else:
-    from typing_extensions import Protocol
+    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas
