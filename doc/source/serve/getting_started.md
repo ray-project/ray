@@ -177,7 +177,7 @@ Bonjour monde!
 ## Composing Multiple Models
 
 Ray Serve allows you to compose multiple deployments into a single Ray Serve application. This makes it easy to combine multiple machine learning models along with business logic to serve a single request.
-We can use parameters like `num_replicas`, `num_cpus`, and `num_gpus` to independently configure and scale each deployment in the application.
+We can use parameters like `autoscaling_config`, `num_replicas`, `num_cpus`, and `num_gpus` to independently configure and scale each deployment in the application.
 
 For example, let's deploy a machine learning pipeline with two steps:
 
