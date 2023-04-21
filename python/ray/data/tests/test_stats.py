@@ -5,10 +5,12 @@ import numpy as np
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.stats import _StatsActor, DatastreamStats
 from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datastream import MaterializedDatastream
 from ray.tests.conftest import *  # noqa
 
 from unittest.mock import patch
@@ -262,18 +264,12 @@ Datastream iterator time breakdown:
 
 
 def test_dataset__repr__(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-
-    n = 4
-    ds = ray.data.range(n).materialize()
+    n = 100
+    ds = ray.data.range(n)
     assert len(ds.take_all()) == n
-    ds2 = ds.map_batches(lambda x: x).materialize()
-    assert len(ds2.take_all()) == n
-    ss = ds._plan.stats().to_summary()
-    ss2 = ds2._plan.stats().to_summary()
+    ds = ds.materialize()
 
-    assert canonicalize(repr(ss)) == (
+    assert canonicalize(repr(ds._plan.stats().to_summary())) == (
         "DatastreamStatsSummary(\n"
         "   datastream_uuid=U,\n"
         "   base_name=None,\n"
@@ -298,7 +294,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=N,\n"
+        "      iter_unknown_location=None,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -307,7 +303,10 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   parents=[],\n"
         ")"
     )
-    assert canonicalize(repr(ss2)) == (
+
+    ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    assert canonicalize(repr(ds2._plan.stats().to_summary())) == (
         "DatastreamStatsSummary(\n"
         "   datastream_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
@@ -367,7 +366,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
-        "            iter_unknown_location=N,\n"
+        "            iter_unknown_location=None,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
