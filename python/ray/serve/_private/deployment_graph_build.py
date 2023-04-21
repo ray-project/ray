@@ -3,7 +3,7 @@ import json
 from typing import List
 from collections import OrderedDict
 
-from ray.serve.deployment import Application, Deployment, schema_to_deployment
+from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
