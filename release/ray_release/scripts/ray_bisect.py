@@ -18,25 +18,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 @click.argument("test_name", required=True, type=str)
 @click.argument("passing_commit", required=True, type=str)
 @click.argument("failing_commit", required=True, type=str)
-@click.option(
-    "--concurrency",
-    default=3,
-    type=int,
-    help=(
-        "Maximum number of concurrent test jobs to run. Higher number uses more "
-        "capacity, but reduce the bisect duration"
-    ),
-)
-def main(
-    test_name: str,
-    passing_commit: str,
-    failing_commit: str,
-    concurrency: Optional[int] = 1,
-) -> None:
-    if concurrency <= 0:
-        raise ValueError(
-            f"Concurrency input need to be a positive number, received: {concurrency}"
-        )
+def main(test_name: str, passing_commit: str, failing_commit: str) -> None:
     test = _get_test(test_name)
     pre_sanity_check = _sanity_check(test, passing_commit, failing_commit)
     if not pre_sanity_check:
@@ -46,11 +28,11 @@ def main(
         )
         return
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
-    blamed_commit = _bisect(test, commit_lists, concurrency)
+    blamed_commit = _bisect(test, commit_lists)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
-def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
+def _bisect(test: Test, commit_list: List[str]) -> str:
     while len(commit_list) > 2:
         logger.info(
             f"Bisecting between {len(commit_list)} commits: "
@@ -92,7 +74,7 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
 
 
-def _run_test(test: Test, commits: Set[str]) -> Dict[str, str]:
+def _run_test(test: Test, commits: List[str]) -> Dict[str, str]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
         _trigger_test_run(test, commit)
