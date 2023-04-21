@@ -57,8 +57,8 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
             f"{commit_list[0]} to {commit_list[-1]}"
         )
         idx_to_commit = {}
-        for i in range(1, concurrency + 1):
-            idx = len(commit_list) * i // (concurrency + 1)
+        for i in range(concurrency):
+            idx = len(commit_list) * (i + 1) // (concurrency + 1)
             idx_to_commit[idx] = commit_list[idx]
         outcomes = _run_test(test, set(idx_to_commit.values()))
         passing_idx = 0
