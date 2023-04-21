@@ -16,7 +16,7 @@ from typing import (
 import numpy as np
 
 import ray
-from python.ray.data.datasource.tfrecords_datasource import unwrap_single_value_columns
+from ray.data.datasource.tfrecords_datasource import unwrap_single_value_columns
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -1257,7 +1257,7 @@ def read_tfrecords(
     Raises:
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """  # noqa: E501
-    dataset = read_datasource(
+    ds = read_datasource(
         TFRecordDatasource(filesystem=filesystem),
         parallelism=parallelism,
         paths=paths,
@@ -1270,9 +1270,9 @@ def read_tfrecords(
     )
 
     if schema_inference and not tf_schema:
-        return unwrap_single_value_columns(dataset)
+        return unwrap_single_value_columns(ds)
 
-    return dataset
+    return ds
 
 
 @PublicAPI(stability="alpha")

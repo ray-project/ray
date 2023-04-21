@@ -1,4 +1,3 @@
-import logging
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -14,8 +13,10 @@ import struct
 
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+
 
 from ray.data.aggregate import AggregateFn
 
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from ray.data import Datastream
 
 
-logger = logging.getLogger(__name__)
+logger = DatastreamLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -37,12 +38,39 @@ class TFRecordDatasource(FileBasedDatasource):
     _FILE_EXTENSION = "tfrecords"
 
     def __init__(self, filesystem: Optional["pyarrow.fs.FileSystem"]):
+        # TODO: remove filesystem assignment after
+        #  https://github.com/ray-project/ray/issues/33777 is resolved
         self._fs = filesystem
         super(TFRecordDatasource, self).__init__()
 
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
+        import platform
+
+        try:
+            from tfx_bsl.cc.tfx_bsl_extension.coders import (  # noqa: F401
+                ExamplesToRecordBatchDecoder,
+            )
+        except ModuleNotFoundError:
+            if platform.processor() == "arm":
+                logger.get_logger().warning(
+                    "This function depends on tfx-bsl which is currently not supported"
+                    " on devices with Apple silicon (e.g. M1) and requires an"
+                    " environment with x86 CPU architecture."
+                )
+            else:
+                logger.get_logger().warning(
+                    "To use TFRecordDatasource with large datasets, please install"
+                    " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
+                )
+            logger.get_logger().info(
+                "Falling back to slower strategy for reading tf.records. This"
+                "reading strategy should be avoided when reading large datasets."
+            )
+
+            yield from self._slow_read(f, path, **reader_args)
+
         yield from self._fast_read(f, path, **reader_args)
 
     def _fast_read(
@@ -50,24 +78,7 @@ class TFRecordDatasource(FileBasedDatasource):
     ) -> Iterator[Block]:
         import pyarrow as pa
         import tensorflow as tf
-        import platform
-
-        try:
-            from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
-        except ModuleNotFoundError:
-            if platform.processor() == "arm":
-                logger.warning(
-                    "This function depends on tfx-bsl which is currently not supported"
-                    " on devices with Apple silicon (e.g. M1) and requires an"
-                    " environment with x86 CPU architecture."
-                )
-            else:
-                logger.warning(
-                    "To use TFRecordDatasource with large datasets, please install"
-                    " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
-                )
-            logger.info("Falling back to slower strategy for reading tf.records.")
-            yield from self._fallback_read(f, path, **reader_args)
+        from tfx_bsl.cc.tfx_bsl_extension.coders import ExamplesToRecordBatchDecoder
 
         batch_size = reader_args.get("batch_size", 2048)
         compression = reader_args.get("arrow_open_stream_args", {}).get(
@@ -93,7 +104,7 @@ class TFRecordDatasource(FileBasedDatasource):
         ).batch(batch_size):
             yield pa.Table.from_batches([decoder.DecodeBatch(record.numpy())])
 
-    def _fallback_read(
+    def _slow_read(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
         from google.protobuf.message import DecodeError
@@ -455,7 +466,7 @@ def _read_records(
             raise RuntimeError(error_message) from e
 
 
-def unwrap_single_value_columns(dataset: Datastream):
+def unwrap_single_value_columns(dataset: "Datastream"):
     list_sizes = dataset.aggregate(_MaxListSize(dataset.schema().names))
 
     return dataset.map_batches(
@@ -494,7 +505,7 @@ class _MaxListSize(AggregateFn):
 
         return merged
 
-    def _accumulate_row(self, acc: Dict[str, int], row: pd.Series):
+    def _accumulate_row(self, acc: Dict[str, int], row: "pd.Series"):
         for k in row:
             value = row[k]
             if value:
