@@ -350,7 +350,7 @@ cc_proto_library(
 
 proto_library(
     name = "autoscaler_proto",
-    srcs = ["autoscaler.proto"],
+    srcs = ["experimental/autoscaler.proto"],
 )
 
 python_grpc_compile(
