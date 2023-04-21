@@ -102,14 +102,14 @@ def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
                     "buildkite-agent",
                     "step",
                     "get",
-                    "'outcome'",
+                    "outcome",
                     "--step",
-                    f"'{key}'",
+                    key,
                 ]
             ).decode("utf-8")
             if outcome:
                 outcomes[key] = outcome
-        if len(outcome) == len(buildkite_step_keys):
+        if len(outcomes) == len(buildkite_step_keys):
             break
         time.sleep(wait)
         total_wait = total_wait + wait
