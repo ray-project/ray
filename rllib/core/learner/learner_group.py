@@ -243,6 +243,10 @@ class LearnerGroup:
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
+        # Make sure minibatch size is reduced to the correct number of shards as well
+        # (just like we split each batch into the number of learner workers).
+        if minibatch_size is not None:
+            minibatch_size //= len(self._workers)
 
         def _learner_update(learner, minibatch):
             return learner.update(
@@ -284,7 +288,7 @@ class LearnerGroup:
                         partial(_learner_update, minibatch=minibatch)
                         for minibatch in ShardBatchIterator(batch, len(self._workers))
                     ])
-                    count += 2
+                    count += 1
 
             results = self._get_results(results)
 

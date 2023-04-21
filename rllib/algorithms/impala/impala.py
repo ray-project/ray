@@ -486,7 +486,6 @@ class ImpalaConfig(AlgorithmConfig):
 
 
 def make_learner_thread(local_worker, config):
-    assert False
     if not config["simple_optimizer"]:
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
@@ -982,7 +981,6 @@ class Impala(Algorithm):
         NOTE: This method is called if self.config._enable_learner_api is False.
 
         """
-        assert False
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:

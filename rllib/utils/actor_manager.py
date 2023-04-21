@@ -232,8 +232,8 @@ class FaultTolerantActorManager:
     def __init__(
         self,
         actors: Optional[List[ActorHandle]] = None,
-        max_remote_requests_in_flight_per_actor: Optional[int] = 2,
-        init_id: Optional[int] = 0,
+        max_remote_requests_in_flight_per_actor: int = 2,
+        init_id: int = 0,
     ):
         """Construct a FaultTolerantActorManager.
 
