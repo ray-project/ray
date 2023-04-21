@@ -3,16 +3,14 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-import ray._private.ray_constants as ray_constants
+import ray
+from ray._private import ray_constants
 from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-
-# Keep in sync with RESOURCE_UNIT_SCALING in fixed_point.h
-RESOURCE_UNIT_SCALING = 10000
 
 
 @dataclass
@@ -71,7 +69,7 @@ def _validate_resource_quantity(name, quantity):
         return f"The quantity of resource {name} cannot be negative"
     if (
         isinstance(quantity, float)
-        and not (quantity * RESOURCE_UNIT_SCALING).is_integer()
+        and not (quantity * ray._raylet.RESOURCE_UNIT_SCALING).is_integer()
     ):
         return (
             f"The precision of the fractional quantity of resource {name}"
