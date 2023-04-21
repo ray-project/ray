@@ -357,7 +357,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     deployments: List[DeploymentSchema] = Field(
         default=[],
-        description=("Deployment options that override options specified in the code."),
+        description="Deployment options that override options specified in the code.",
+    )
+    args: Dict = Field(
+        default={},
+        description="Arguments that will be passed to the application builder.",
     )
 
     @validator("runtime_env")

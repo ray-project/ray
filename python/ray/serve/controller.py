@@ -558,6 +558,7 @@ class ServeController:
                 updated_versions,
                 app_config_dict.get("route_prefix", DEFAULT.VALUE),
                 app_config.name,
+                app_config.args,
             )
 
             self.application_state_manager.create_application_state(
@@ -881,6 +882,7 @@ def deploy_serve_application(
     deployment_versions: Dict,
     route_prefix: str,
     name: str,
+    args: Dict,
 ):
     """Deploy Serve application from a user-provided config.
 
@@ -899,9 +901,11 @@ def deploy_serve_application(
     try:
         from ray import serve
         from ray.serve.api import build
+        from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
-        app = build(import_attr(import_path), name)
+        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
+        app = build(app, name)
 
         # Override options for each deployment.
         for options in deployment_override_options:

@@ -7,6 +7,8 @@ import json
 from tempfile import NamedTemporaryFile
 from typing import List
 
+import click
+from pydantic import BaseModel
 import pytest
 import requests
 import yaml
@@ -20,7 +22,7 @@ from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_ME
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve.scripts import remove_ansi_escape_sequences
+from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -45,6 +47,20 @@ def assert_deployments_live(names: List[str]):
         else:
             all_deployments_live, nonliving_deployment = False, deployment_name
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
+
+
+def test_convert_args_to_dict():
+    assert convert_args_to_dict(tuple()) == {}
+
+    with pytest.raises(
+        click.ClickException, match="Invalid application argument 'bad_arg'"
+    ):
+        convert_args_to_dict(("bad_arg",))
+
+    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
+        "key1": "val1",
+        "key2": "val2",
+    }
 
 
 def test_start_shutdown(ray_start_stop):
@@ -353,6 +369,38 @@ def test_deploy_single_with_name(ray_start_stop):
         )
     assert "name" in e.value.output.decode("utf-8")
     assert MULTI_APP_MIGRATION_MESSAGE in e.value.output.decode("utf-8")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_multi_app_builder_with_args(ray_start_stop):
+    """Deploys a config file containing multiple applications that take arguments."""
+    # Create absolute file names to YAML config file.
+    apps_with_args = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "apps_with_args.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", apps_with_args])
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/untyped_default").text
+        == "DEFAULT",
+        timeout=10,
+    )
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/untyped_hello").text == "hello",
+        timeout=10,
+    )
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/typed_default").text == "DEFAULT",
+        timeout=10,
+    )
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/typed_hello").text == "hello",
+        timeout=10,
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -751,6 +799,72 @@ def test_run_deployment_node(ray_start_stop):
     p.send_signal(signal.SIGINT)
     p.wait()
     assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
+
+
+@serve.deployment
+class Echo:
+    def __init__(self, message: str):
+        print("Echo message:", message)
+        self._message = message
+
+    def __call__(self, *args):
+        return self._message
+
+
+def build_echo_app(args):
+    return Echo.bind(args.get("message", "DEFAULT"))
+
+
+class TypedArgs(BaseModel):
+    message: str = "DEFAULT"
+
+
+def build_echo_app_typed(args: TypedArgs):
+    return Echo.bind(args.message)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize(
+    "import_path",
+    [
+        "ray.serve.tests.test_cli.build_echo_app",
+        "ray.serve.tests.test_cli.build_echo_app_typed",
+    ],
+)
+def test_run_builder_with_args(ray_start_stop, import_path: str):
+    """Test `serve run` with args passed into a builder function.
+
+    Tests both the untyped and typed args cases.
+    """
+    # First deploy without any arguments, should get default response.
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            import_path,
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+
+    # Now deploy passing a message as an argument, should get passed message.
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            import_path,
+            "message=hello world",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "hello world", timeout=10)
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
 
 @serve.deployment
