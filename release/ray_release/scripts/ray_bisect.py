@@ -79,10 +79,13 @@ def _trigger_test_run(test: Test, commit: str) -> None:
     step = get_step(test, ray_wheels=ray_wheels_url)
     step["label"] = f'{test["name"]}:{commit[:7]}'
     step["key"] = commit
-    pipeline = json.dumps({"steps": [step]})
-    subprocess.check_output([
-        'echo', f'"{pipeline}"', '|', 'buildkite-agent', 'pipeline', 'upload',
-    ])
+    pipeline = subprocess.Popen(
+        ["echo", json.dumps({"steps": [step]})], stdout=subprocess.PIPE
+    )
+    subprocess.check_output(
+        ["buildkite-agent", "pipeline", "upload"], stdin=pipeline.stdout
+    )
+    pipeline.stdout.close()
 
 
 def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
@@ -94,9 +97,16 @@ def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
         for key in buildkite_step_keys:
             if key in outcomes:
                 continue
-            outcome = subprocess.check_output([
-                'buildkite-agent', 'step', 'get', '"outcome"', '--step', f'"{key}"',
-            ]).decode("utf-8")
+            outcome = subprocess.check_output(
+                [
+                    "buildkite-agent",
+                    "step",
+                    "get",
+                    "outcome",
+                    "--step",
+                    key,
+                ]
+            ).decode("utf-8")
             if outcome:
                 outcomes[key] = outcome
         if len(outcome) == len(buildkite_step_keys):
