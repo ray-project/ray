@@ -3,7 +3,7 @@ import subprocess
 import os
 import json
 import time
-from typing import List, Dict
+from typing import Dict, List
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -102,9 +102,9 @@ def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
                     "buildkite-agent",
                     "step",
                     "get",
-                    "outcome",
+                    "'outcome'",
                     "--step",
-                    key,
+                    f"'{key}'",
                 ]
             ).decode("utf-8")
             if outcome:
