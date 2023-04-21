@@ -36,7 +36,7 @@ Reading image data
         :end-before: __read_images1_stop__
         :dedent:
 
-    Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+    Then, apply a :ref:`user-defined function <transform_datastreams_writing_udfs>` to
     encode the class names as integer targets.
 
     .. literalinclude:: ./doc_code/computer_vision.py
@@ -50,7 +50,7 @@ Reading image data
 
 .. tabbed:: NumPy
 
-    To load NumPy arrays into a :class:`~ray.data.dataset.Dataset`, separately read the image and label arrays.
+    To load NumPy arrays into a :class:`~ray.data.Datastream`, separately read the image and label arrays.
 
     .. literalinclude:: ./doc_code/computer_vision.py
         :start-after: __read_numpy1_start__
@@ -89,14 +89,14 @@ Reading image data
             }
         }
 
-    To load examples stored in this format, read the TFRecords into a :class:`~ray.data.dataset.Dataset`.
+    To load examples stored in this format, read the TFRecords into a :class:`~ray.data.Datastream`.
 
     .. literalinclude:: ./doc_code/computer_vision.py
         :start-after: __read_tfrecords1_start__
         :end-before: __read_tfrecords1_stop__
         :dedent:
 
-    Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+    Then, apply a :ref:`user-defined function <transform_datastreams_writing_udfs>` to
     decode the raw image bytes.
 
     .. literalinclude:: ./doc_code/computer_vision.py
@@ -114,7 +114,7 @@ Reading image data
         :dedent:
 
 
-For more information on creating datasets, see :ref:`Creating Datasets <creating_datasets>`.
+For more information on creating datastreams, see :ref:`Creating Datastreams <creating_datastreams>`.
 
 
 Transforming images
@@ -153,7 +153,7 @@ standard way to preprocess data with Ray.
 
 For more information on transforming data, see
 :ref:`Using Preprocessors <air-preprocessors>` and
-:ref:`Transforming Datasets <transforming_datasets>`.
+:ref:`Transforming Datastreams <transforming_datastreams>`.
 
 Training vision models
 ----------------------

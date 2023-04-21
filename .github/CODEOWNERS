@@ -15,9 +15,9 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
@@ -75,10 +75,8 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @c21
-/python/ray/data/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
-/python/ray/data/tests/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
-/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla @c21 @ray-project/ray-docs
+/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani
+/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @maxpumperla @ray-project/ray-docs
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
@@ -98,7 +96,7 @@
 /doc/source/train/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
 
 # Serve (docs)
-/doc/source/serve/ @edoakes @simon-mo @jiaodong @shrekris-anyscale @sihanwang41 @architkulkarni @ray-project/ray-docs
+/doc/source/serve/ @edoakes @shrekris-anyscale @sihanwang41 @zcin @architkulkarni @ray-project/ray-docs
 
 # AIR (docs)
 /doc/source/ray-air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs

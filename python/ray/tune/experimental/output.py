@@ -22,6 +22,7 @@ try:
 except ImportError:
     rich = None
 
+import ray
 from ray._private.dict import unflattened_lookup
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.callback import Callback
@@ -81,11 +82,7 @@ class AirVerbosity(IntEnum):
     VERBOSE = 2
 
 
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
 def get_air_verbosity() -> Optional[AirVerbosity]:
@@ -739,7 +736,8 @@ class AirResultProgressCallback(Callback):
                 ]
             )
         )
-        self._print_config(trial)
+        if has_config:
+            self._print_config(trial)
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):

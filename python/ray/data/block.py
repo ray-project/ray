@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import collections
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -20,9 +21,9 @@ import numpy as np
 
 import ray
 from ray import ObjectRefGenerator
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import psutil
 
@@ -40,7 +41,6 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data import Dataset
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
 
@@ -50,25 +50,32 @@ U = TypeVar("U", covariant=True)
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
-# A function that extracts a concrete value from a record in a Dataset, used
+# A function that extracts a concrete value from a record in a Datastream, used
 # in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
 # It can either be None (intepreted as the identity function), the name
-# of a Dataset column, or a lambda function that extracts the desired value
+# of a Datastream column, or a lambda function that extracts the desired value
 # from the object.
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
-def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
-    """Check the key function is valid on the given dataset."""
-    schema = ds.schema(fetch_if_missing=True)
+@PublicAPI
+class StrictModeError(ValueError):
+    pass
+
+
+def _validate_key_fn(
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+    key: KeyFn,
+) -> None:
+    """Check the key function is valid on the given schema."""
     if schema is None:
-        # Dataset is empty/cleared, validation not possible.
+        # Datastream is empty/cleared, validation not possible.
         return
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
             raise ValueError(
-                "String key '{}' requires dataset format to be "
+                "String key '{}' requires datastream format to be "
                 "'arrow' or 'pandas', was 'simple'.".format(key)
             )
         if len(schema.names) > 0 and key not in schema.names:
@@ -79,13 +86,13 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     elif key is None:
         if not is_simple_format:
             raise ValueError(
-                "The `None` key '{}' requires dataset format to be "
+                "The `None` key '{}' requires datastream format to be "
                 "'simple'.".format(key)
             )
     elif callable(key):
         if not is_simple_format:
             raise ValueError(
-                "Callable key '{}' requires dataset format to be "
+                "Callable key '{}' requires datastream format to be "
                 "'simple'".format(key)
             )
     else:
@@ -149,6 +156,21 @@ BlockPartitionMetadata = List["BlockMetadata"]
 MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
+
+VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
+
+
+def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+    ctx = ray.data.DataContext.get_current()
+    if ctx.strict_mode:
+        if given_batch_format == "default":
+            given_batch_format = "numpy"
+        if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
+            raise StrictModeError(
+                f"The given batch format {given_batch_format} is not allowed "
+                f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+            )
+    return given_batch_format
 
 
 @DeveloperAPI
@@ -370,10 +392,34 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, (np.ndarray, dict)):
+
+        if isinstance(batch, np.ndarray):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
+            ctx = ray.data.DataContext.get_current()
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    f"Error validating {_truncated_repr(batch)}: "
+                    "Standalone numpy arrays are not "
+                    "allowed in strict mode. Return a dict of field -> array, "
+                    "e.g., `{'data': array}` instead of `array`."
+                )
+
             return ArrowBlockAccessor.numpy_to_block(batch)
+        elif isinstance(batch, collections.abc.Mapping):
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+            import pyarrow as pa
+
+            try:
+                return ArrowBlockAccessor.numpy_to_block(
+                    batch, passthrough_arrow_not_implemented_errors=True
+                )
+            except pa.ArrowNotImplementedError:
+                import pandas as pd
+
+                # TODO(ekl) once we support Python objects within Arrow blocks, we
+                # don't need this fallback path.
+                return pd.DataFrame(dict(batch))
         return batch
 
     @staticmethod
@@ -398,6 +444,15 @@ class BlockAccessor(Generic[T]):
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
+            ctx = ray.data.DataContext.get_current()
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    f"Error validating {_truncated_repr(block)}: "
+                    "Standalone Python objects are not "
+                    "allowed in strict mode. To use Python objects in a datastream, "
+                    "wrap them in a dict of numpy arrays, e.g., "
+                    "return `{'item': np.array(batch)}` instead of just `batch`."
+                )
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))

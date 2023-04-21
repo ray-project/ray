@@ -1,4 +1,5 @@
 import abc
+import collections
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict, Any
@@ -7,7 +8,7 @@ from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
+    from ray.data import Datastream, DatasetPipeline
     import pandas as pd
     import numpy as np
     from ray.air.data_batch_type import DataBatchType
@@ -24,8 +25,8 @@ class PreprocessorNotFittedException(RuntimeError):
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
 
-    Preprocessors are stateful objects that can be fitted against a Dataset and used
-    to transform both local data batches and distributed datasets. For example, a
+    Preprocessors are stateful objects that can be fitted against a Datastream and used
+    to transform both local data batches and distributed data. For example, a
     Normalization preprocessor may calculate the mean and stdev of a field during
     fitting, and uses these attributes to implement its normalization transform.
 
@@ -69,20 +70,20 @@ class Preprocessor(abc.ABC):
 
     @Deprecated
     def transform_stats(self) -> Optional[str]:
-        """Return Dataset stats for the most recent transform call, if any."""
+        """Return Datastream stats for the most recent transform call, if any."""
 
         raise DeprecationWarning(
             "`preprocessor.transform_stats()` is no longer supported in Ray 2.4. "
-            "With Datasets now lazy by default, the stats are only populated "
-            "after execution. Once the dataset transform is executed, the "
-            "stats can be accessed directly from the transformed dataset "
+            "With Datastream now lazy by default, the stats are only populated "
+            "after execution. Once the datastream transform is executed, the "
+            "stats can be accessed directly from the transformed datastream "
             "(`ds.stats()`), or can be viewed in the ray-data.log "
             "file saved in the Ray logs directory "
             "(defaults to /tmp/ray/session_{SESSION_ID}/logs/)."
         )
 
-    def fit(self, dataset: "Dataset") -> "Preprocessor":
-        """Fit this Preprocessor to the Dataset.
+    def fit(self, ds: "Datastream") -> "Preprocessor":
+        """Fit this Preprocessor to the Datastream.
 
         Fitted state attributes will be directly set in the Preprocessor.
 
@@ -90,7 +91,7 @@ class Preprocessor(abc.ABC):
         ``preprocessor.fit(A).fit(B)`` is equivalent to ``preprocessor.fit(B)``.
 
         Args:
-            dataset: Input dataset.
+            ds: Input datastream.
 
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
@@ -110,32 +111,32 @@ class Preprocessor(abc.ABC):
                 "All previously fitted state will be overwritten!"
             )
 
-        return self._fit(dataset)
+        return self._fit(ds)
 
-    def fit_transform(self, dataset: "Dataset") -> "Dataset":
-        """Fit this Preprocessor to the Dataset and then transform the Dataset.
+    def fit_transform(self, ds: "Datastream") -> "Datastream":
+        """Fit this Preprocessor to the Datastream and then transform the Datastream.
 
         Calling it more than once will overwrite all previously fitted state:
         ``preprocessor.fit_transform(A).fit_transform(B)``
         is equivalent to ``preprocessor.fit_transform(B)``.
 
         Args:
-            dataset: Input Dataset.
+            ds: Input Datastream.
 
         Returns:
-            ray.data.Dataset: The transformed Dataset.
+            ray.data.Datastream: The transformed Datastream.
         """
-        self.fit(dataset)
-        return self.transform(dataset)
+        self.fit(ds)
+        return self.transform(ds)
 
-    def transform(self, dataset: "Dataset") -> "Dataset":
-        """Transform the given dataset.
+    def transform(self, ds: "Datastream") -> "Datastream":
+        """Transform the given datastream.
 
         Args:
-            dataset: Input Dataset.
+            ds: Input Datastream.
 
         Returns:
-            ray.data.Dataset: The transformed Dataset.
+            ray.data.Datastream: The transformed Datastream.
 
         Raises:
             PreprocessorNotFittedException: if ``fit`` is not called yet.
@@ -149,7 +150,7 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        transformed_ds = self._transform(dataset)
+        transformed_ds = self._transform(ds)
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
@@ -195,8 +196,8 @@ class Preprocessor(abc.ABC):
         ):
             raise RuntimeError(
                 "Streaming/pipelined ingest only works with "
-                "Preprocessors that do not need to be fit on the entire dataset. "
-                "It is not possible to fit on Datasets "
+                "Preprocessors that do not need to be fit on the entire datastream. "
+                "It is not possible to fit on Datastreams "
                 "in a streaming fashion."
             )
 
@@ -212,7 +213,7 @@ class Preprocessor(abc.ABC):
         return bool(fitted_vars)
 
     @DeveloperAPI
-    def _fit(self, dataset: "Dataset") -> "Preprocessor":
+    def _fit(self, ds: "Datastream") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
         raise NotImplementedError()
 
@@ -246,21 +247,21 @@ class Preprocessor(abc.ABC):
             )
 
     def _transform(
-        self, dataset: Union["Dataset", "DatasetPipeline"]
-    ) -> Union["Dataset", "DatasetPipeline"]:
+        self, ds: Union["Datastream", "DatasetPipeline"]
+    ) -> Union["Datastream", "DatasetPipeline"]:
         # TODO(matt): Expose `batch_size` or similar configurability.
-        # The default may be too small for some datasets and too large for others.
+        # The default may be too small for some datastreams and too large for others.
         transform_type = self._determine_transform_to_use()
 
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
         kwargs = self._get_transform_config()
         if transform_type == BatchFormat.PANDAS:
-            return dataset.map_batches(
+            return ds.map_batches(
                 self._transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
             )
         elif transform_type == BatchFormat.NUMPY:
-            return dataset.map_batches(
+            return ds.map_batches(
                 self._transform_numpy, batch_format=BatchFormat.NUMPY, **kwargs
             )
         else:
@@ -270,7 +271,7 @@ class Preprocessor(abc.ABC):
             )
 
     def _get_transform_config(self) -> Dict[str, Any]:
-        """Returns kwargs to be passed to :meth:`ray.data.Dataset.map_batches`.
+        """Returns kwargs to be passed to :meth:`ray.data.Datastream.map_batches`.
 
         This can be implemented by subclassing preprocessors.
         """
@@ -290,7 +291,9 @@ class Preprocessor(abc.ABC):
         except ImportError:
             pyarrow = None
 
-        if not isinstance(data, (pd.DataFrame, pyarrow.Table, dict, np.ndarray)):
+        if not isinstance(
+            data, (pd.DataFrame, pyarrow.Table, collections.abc.Mapping, np.ndarray)
+        ):
             raise ValueError(
                 "`transform_batch` is currently only implemented for Pandas "
                 "DataFrames, pyarrow Tables, NumPy ndarray and dictionary of "

@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", function() {
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
             "Ray AI Runtime (AIR)", "Ray AIR API",
-            "Ray Data", "Ray Datasets API", "Integrations",
+            "Ray Data", "Ray Data API", "Integrations",
             "Ray Train", "Ray Train API",
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             "Ray Serve", "Ray Serve API",
@@ -57,12 +57,13 @@ document.addEventListener("DOMContentLoaded", function() {
             if (navItem.classList.contains('toctree-l1')) {
                 navItem.style.fontWeight = "bold";
             }
+            const href = navItem.querySelector("a").getAttribute("href");
             navItem.innerHTML +=
-                '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
-                + i + '" name="toctree-checkbox-1" type="checkbox">'
-            navItem.innerHTML +=
-                '<label htmlFor="toctree-checkbox-'
-                + i + '"><i class="fas fa-chevron-up"></i></label>'
+                '<a href="'+ href +'" style="display: none">'
+                + '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
+                + i + '" name="toctree-checkbox-' + i + '" type="button"></a>'
+                + '<label for="toctree-checkbox-' + i + '">' +
+                '<i class="fas fa-chevron-down"></i></label>'
         }
     }
 });
@@ -101,23 +102,3 @@ window.onload = function() {
         localStorage.removeItem("scroll");
     }
 };
-
-
-let firstLink = document.getElementsByClassName("caption")[0];
-firstLink.classList.add("toctree-l1", "current");
-firstLink.style.textTransform = "none";
-firstLink.style.fontWeight = "normal";
-firstLink.innerText = "";
-
-let home = document.createElement("a");
-home.classList.add("reference", "internal");
-
-const version = window.location.href.split("/")[4];
-const res = (version === "latest" || version === "master") ? version : "latest";
-
-home.href = "https://docs.ray.io/en/" + res + "/index.html";
-home.textContent = "Ray Docs Home";
-
-home.style = firstLink.style;
-home.style.color = "#5a5a5a";
-firstLink.appendChild(home);

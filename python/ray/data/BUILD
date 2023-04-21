@@ -26,27 +26,35 @@ py_test_module_list(
 )
 
 py_test(
-    name = "test_dataset_formats",
+    name = "test_formats",
     size = "medium",
-    srcs = ["tests/test_dataset_formats.py"],
+    srcs = ["tests/test_formats.py"],
     data = glob(["tests/image-folder/**/*"]),
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_sql",
+    name = "test_strict_mode",
     size = "small",
-    srcs = ["tests/test_dataset_sql.py"],
+    srcs = ["tests/test_strict_mode.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_mongo_dataset",
+    name = "test_sql",
+    size = "small",
+    srcs = ["tests/test_sql.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_mongo",
     size = "large",
-    srcs = ["tests/test_mongo_dataset.py"],
-    tags = ["team:data", "exclusive", "dataset_integration"],
+    srcs = ["tests/test_mongo.py"],
+    tags = ["team:data", "exclusive", "data_integration"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -107,153 +115,153 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_all_to_all",
+    name = "test_all_to_all",
     size = "large",
-    srcs = ["tests/test_dataset_all_to_all.py"],
+    srcs = ["tests/test_all_to_all.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_binary",
+    name = "test_binary",
     size = "small",
-    srcs = ["tests/test_dataset_binary.py"],
+    srcs = ["tests/test_binary.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_consumption",
+    name = "test_consumption",
     size = "large",
-    srcs = ["tests/test_dataset_consumption.py"],
+    srcs = ["tests/test_consumption.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_csv",
+    name = "test_csv",
     size = "medium",
-    srcs = ["tests/test_dataset_csv.py"],
+    srcs = ["tests/test_csv.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_ecosystem",
+    name = "test_ecosystem",
     size = "small",
-    srcs = ["tests/test_dataset_ecosystem.py"],
+    srcs = ["tests/test_ecosystem.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_image",
+    name = "test_image",
     size = "small",
-    srcs = ["tests/test_dataset_image.py"],
+    srcs = ["tests/test_image.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_iterator",
+    name = "test_iterator",
     size = "small",
-    srcs = ["tests/test_dataset_iterator.py"],
+    srcs = ["tests/test_iterator.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_json",
+    name = "test_json",
+    size = "medium",
+    srcs = ["tests/test_json.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_logger",
     size = "small",
-    srcs = ["tests/test_dataset_json.py"],
+    srcs = ["tests/test_logger.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_logger",
-    size = "small",
-    srcs = ["tests/test_dataset_logger.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_dataset_map",
+    name = "test_map",
     size = "large",
-    srcs = ["tests/test_dataset_map.py"],
+    srcs = ["tests/test_map.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_numpy",
+    name = "test_numpy",
     size = "small",
-    srcs = ["tests/test_dataset_numpy.py"],
+    srcs = ["tests/test_numpy.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_pandas",
+    name = "test_pandas",
     size = "small",
-    srcs = ["tests/test_dataset_pandas.py"],
+    srcs = ["tests/test_pandas.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_parquet",
+    name = "test_parquet",
     size = "medium",
-    srcs = ["tests/test_dataset_parquet.py"],
+    srcs = ["tests/test_parquet.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_pipeline",
+    name = "test_pipeline",
     size = "medium",
-    srcs = ["tests/test_dataset_pipeline.py"],
+    srcs = ["tests/test_pipeline.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_tensor",
+    name = "test_tensor",
     size = "small",
-    srcs = ["tests/test_dataset_tensor.py"],
+    srcs = ["tests/test_tensor.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_text",
+    name = "test_text",
     size = "small",
-    srcs = ["tests/test_dataset_text.py"],
+    srcs = ["tests/test_text.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_tf",
+    name = "test_tf",
     size = "small",
-    srcs = ["tests/test_dataset_tf.py"],
+    srcs = ["tests/test_tf.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_tfrecords",
+    name = "test_tfrecords",
     size = "small",
-    srcs = ["tests/test_dataset_tfrecords.py"],
+    srcs = ["tests/test_tfrecords.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_dataset_torch",
+    name = "test_torch",
     size = "small",
-    srcs = ["tests/test_dataset_torch.py"],
+    srcs = ["tests/test_torch.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -268,7 +276,7 @@ py_test(
 
 py_test(
     name = "test_execution_optimizer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -292,7 +300,7 @@ py_test(
 
 py_test(
     name = "test_mars",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_mars.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -372,10 +380,10 @@ py_test(
 )
 
 py_test(
-    name = "test_raydp_dataset",
+    name = "test_raydp",
     size = "medium",
-    srcs = ["tests/test_raydp_dataset.py"],
-    tags = ["team:data", "exclusive", "dataset_integration"],
+    srcs = ["tests/test_raydp.py"],
+    tags = ["team:data", "exclusive", "data_integration"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -428,6 +436,14 @@ py_test(
 )
 
 py_test(
+    name = "test_streaming_backpressure_edge_case",
+    size = "medium",
+    srcs = ["tests/test_streaming_backpressure_edge_case.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_transform_pyarrow",
     size = "small",
     srcs = ["tests/test_transform_pyarrow.py"],
@@ -444,9 +460,9 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_webdataset",
+    name = "test_webdataset",
     size = "medium",
-    srcs = ["tests/test_dataset_webdataset.py"],
+    srcs = ["tests/test_webdataset.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

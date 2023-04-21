@@ -66,65 +66,66 @@ training.
 
     .. code-block:: diff
 
-        import torch
-        from torch.nn.parallel import DistributedDataParallel
+         import torch
+         from torch.nn.parallel import DistributedDataParallel
         +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
-        def train_func():
-        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
-        -         torch.cuda.is_available() else "cpu")
-        -   torch.cuda.set_device(device)
+         def train_func():
+        -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+        -        torch.cuda.is_available() else "cpu")
+        -    torch.cuda.set_device(device)
 
-            # Create model.
-            model = NeuralNetwork()
+             # Create model.
+             model = NeuralNetwork()
 
-        -   model = model.to(device)
-        -   model = DistributedDataParallel(model,
-        -       device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
+        -    model = model.to(device)
+        -    model = DistributedDataParallel(model,
+        -        device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
 
-        +   model = train.torch.prepare_model(model)
+        +    model = train.torch.prepare_model(model)
 
-            ...
+             ...
+            
 
 
     Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
-    and move the batches to the right device. This step is not necessary if you are passing in Ray Datasets to your Trainer
+    and move the batches to the right device. This step is not necessary if you are passing in Ray Data to your Trainer
     (see :ref:`train-datasets`):
 
     .. code-block:: diff
 
-        import torch
-        from torch.utils.data import DataLoader, DistributedSampler
+         import torch
+         from torch.utils.data import DataLoader, DistributedSampler
         +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
-        def train_func():
-        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
-        -          torch.cuda.is_available() else "cpu")
-        -   torch.cuda.set_device(device)
+         def train_func():
+        -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+        -        torch.cuda.is_available() else "cpu")
+        -    torch.cuda.set_device(device)
 
-            ...
+             ...
 
-        -   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
+        -    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
 
-        +   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
-        +   data_loader = train.torch.prepare_data_loader(data_loader)
+        +    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+        +    data_loader = train.torch.prepare_data_loader(data_loader)
 
-            for X, y in data_loader:
-        -       X = X.to_device(device)
-        -       y = y.to_device(device)
+             for X, y in data_loader:
+        -        X = X.to_device(device)
+        -        y = y.to_device(device)
 
     .. tip::
-       Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
-       The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+        Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
+        The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
-        .. code-block::
-
+        .. code-block:: python
+            
             global_batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: TensorFlow
@@ -300,11 +301,11 @@ Then, you can pass in the config dictionary as an argument to ``Trainer``:
 .. code-block:: diff
 
     +config = {} # This should be populated.
-    trainer = TorchTrainer(
-        train_func,
-    +   train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=2)
-    )
+     trainer = TorchTrainer(
+         train_func,
+    +    train_loop_config=config,
+         scaling_config=ScalingConfig(num_workers=2)
+     )
 
 Putting this all together, you can run your training function with different
 configurations. As an example:
@@ -407,13 +408,13 @@ of the :py:class:`~ray.air.result.Result` object returned by ``Trainer.fit()``.
 
 .. _train-datasets:
 
-Distributed Data Ingest with Ray Datasets and Ray Train
+Distributed Data Ingest with Ray Data and Ray Train
 -------------------------------------------------------
 
-:ref:`Ray Datasets <datasets>` are the recommended way to work with large datasets in Ray Train. Datasets provides automatic loading, sharding, and pipelined ingest (optional) of Data across multiple Train workers.
-To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
+:ref:`Ray Data <data>` is the recommended way to work with large datasets in Ray Train. Ray Data provides automatic loading, sharding, and streamed ingest of Data across multiple Train workers.
+To get started, pass in one or more datastreams under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
 
-Here's a simple code overview of the Datasets integration:
+Here's a simple code overview of the Ray Data integration:
 
 .. code-block:: python
 
@@ -502,6 +503,8 @@ The following figure shows how these two sessions look like in a Data Parallel t
 
 ..
   https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
+
+.. _train-dl-saving-checkpoints:
 
 Saving checkpoints
 ++++++++++++++++++
@@ -686,6 +689,8 @@ You may also config ``CheckpointConfig`` to keep the "N best" checkpoints persis
     print(result.best_checkpoints[1][0].get_internal_representation())
     # ('local_path', '/home/ubuntu/ray_results/TorchTrainer_2022-06-24_21-34-49/TorchTrainer_7988b_00000_0_2022-06-24_21-34-49/checkpoint_000002')
 
+
+.. _train-dl-loading-checkpoints:
 
 Loading checkpoints
 +++++++++++++++++++
@@ -944,25 +949,124 @@ metrics from multiple workers.
 
 .. _train-fault-tolerance:
 
-Fault Tolerance & Elastic Training
-----------------------------------
+Fault Tolerance
+---------------
+
+Automatically Recover from Train Worker Failures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Train has built-in fault tolerance to recover from worker failures (i.e.
 ``RayActorError``\s). When a failure is detected, the workers will be shut
-down and new workers will be added in. The training function will be
-restarted, but progress from the previous execution can be resumed through
-checkpointing.
+down and new workers will be added in.
 
-.. warning:: In order to retain progress when recovery, your training function
-   **must** implement logic for both saving *and* loading :ref:`checkpoints
-   <train-checkpointing>`.
+.. note:: Elastic Training is not yet supported.
+
+The training function will be restarted, but progress from the previous execution can
+be resumed through checkpointing.
+
+.. tip::
+    In order to retain progress when recovery, your training function
+    **must** implement logic for both :ref:`saving <train-dl-saving-checkpoints>`
+    *and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`.
 
 Each instance of recovery from a worker failure is considered a retry. The
 number of retries is configurable through the ``max_failures`` attribute of the
-``failure_config`` argument set in the ``run_config`` argument passed to the
-``Trainer``.
+:class:`~ray.air.FailureConfig` argument set in the :class:`~ray.air.RunConfig`
+passed to the ``Trainer``:
 
-.. note:: Elastic Training is not yet supported.
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __failure_config_start__
+    :end-before: __failure_config_end__
+
+.. _train-restore-guide:
+
+Restore a Ray Train Experiment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At the experiment level, :ref:`Trainer restoration <trainer-restore>`
+allows you to resume a previously interrupted experiment from where it left off.
+
+A Train experiment may be interrupted due to one of the following reasons:
+
+- The experiment was manually interrupted (e.g., Ctrl+C, or pre-empted head node instance).
+- The head node crashed (e.g., OOM or some other runtime error).
+- The entire cluster went down (e.g., network error affecting all nodes).
+
+Trainer restoration is possible for all of Ray Train's built-in trainers,
+but we use ``TorchTrainer`` in the examples for demonstration.
+We also use ``<Framework>Trainer`` to refer to methods that are shared across all
+built-in trainers.
+
+Let's say your initial Train experiment is configured as follows.
+The actual training loop is just for demonstration purposes: the important detail is that
+:ref:`saving <train-dl-saving-checkpoints>` *and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`
+has been implemented.
+
+.. literalinclude:: doc_code/dl_guide.py
+    :language: python
+    :start-after: __ft_initial_run_start__
+    :end-before: __ft_initial_run_end__
+
+The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.air.config.RunConfig`.
+If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
+
+.. literalinclude:: doc_code/dl_guide.py
+    :language: python
+    :start-after: __ft_restored_run_start__
+    :end-before: __ft_restored_run_end__
+
+.. tip::
+
+    You can also restore from a remote path (e.g., from an experiment directory stored in a s3 bucket).
+
+    .. literalinclude:: doc_code/dl_guide.py
+        :language: python
+        :dedent:
+        :start-after: __ft_restore_from_cloud_initial_start__
+        :end-before: __ft_restore_from_cloud_initial_end__
+
+    .. literalinclude:: doc_code/dl_guide.py
+        :language: python
+        :dedent:
+        :start-after: __ft_restore_from_cloud_restored_start__
+        :end-before: __ft_restore_from_cloud_restored_end__
+
+.. note::
+
+    Different trainers may allow more parameters to be optionally re-specified on restore.
+    Only **datasets** are required to be re-specified on restore, if they were supplied originally.
+
+    See :ref:`train-framework-specific-restore` for more details.
+
+
+Auto-resume
++++++++++++
+
+Adding the branching logic below will allow you to run the same script after the interrupt,
+picking up training from where you left on the previous run. Notice that we use the
+:meth:`<Framework>Trainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
+to determine the existence and validity of the given experiment directory.
+
+.. literalinclude:: doc_code/dl_guide.py
+    :language: python
+    :start-after: __ft_autoresume_start__
+    :end-before: __ft_autoresume_end__
+
+.. seealso::
+
+    See the :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>` docstring
+    for a full example.
+
+.. note::
+
+    `<Framework>Trainer.restore` is different from
+    :class:`<Framework>Trainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`.
+    `resume_from_checkpoint` is meant to be used to start a *new* Train experiment,
+    which writes results to a new directory and starts over from iteration 0.
+
+    `<Framework>Trainer.restore` is used to continue an existing experiment, where
+    new results will continue to be appended to existing logs.
 
 .. Running on pre-emptible machines
 .. --------------------------------
@@ -1083,29 +1187,29 @@ precision datatype for operations like linear layers and convolutions.
 
     .. code-block:: diff
 
-        def train_func():
-        +   train.torch.accelerate(amp=True)
+         def train_func():
+        +    train.torch.accelerate(amp=True)
 
-            model = NeuralNetwork()
-            model = train.torch.prepare_model(model)
+             model = NeuralNetwork()
+             model = train.torch.prepare_model(model)
 
-            data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
-            data_loader = train.torch.prepare_data_loader(data_loader)
+             data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+             data_loader = train.torch.prepare_data_loader(data_loader)
 
-            optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
-        +   optimizer = train.torch.prepare_optimizer(optimizer)
+             optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        +    optimizer = train.torch.prepare_optimizer(optimizer)
 
-            model.train()
-            for epoch in range(90):
-                for images, targets in dataloader:
-                    optimizer.zero_grad()
+             model.train()
+             for epoch in range(90):
+                 for images, targets in dataloader:
+                     optimizer.zero_grad()
 
-                    outputs = model(images)
-                    loss = torch.nn.functional.cross_entropy(outputs, targets)
+                     outputs = model(images)
+                     loss = torch.nn.functional.cross_entropy(outputs, targets)
 
-        -           loss.backward()
-        +           train.torch.backward(loss)
-                    optimizer.step()
+        -            loss.backward()
+        +            train.torch.backward(loss)
+                     optimizer.step()
             ...
 
 
@@ -1126,13 +1230,13 @@ Reproducibility
 
     .. code-block:: diff
 
-        def train_func():
-        +   train.torch.enable_reproducibility()
+         def train_func():
+        +    train.torch.enable_reproducibility()
 
-            model = NeuralNetwork()
-            model = train.torch.prepare_model(model)
+             model = NeuralNetwork()
+             model = train.torch.prepare_model(model)
 
-            ...
+             ...
 
     .. warning:: :func:`ray.train.torch.enable_reproducibility` can't guarantee
         completely reproducible results across executions. To learn more, read

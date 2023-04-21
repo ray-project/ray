@@ -4,7 +4,7 @@ import os
 import time
 from typing import Callable
 
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 
 
 class Benchmark:
@@ -47,7 +47,7 @@ class Benchmark:
         print(f"Running case: {name}")
         start_time = time.perf_counter()
         output_ds = fn(**fn_run_args)
-        output_ds.cache()
+        output_ds.materialize()
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.

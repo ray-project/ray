@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Union, List
 
 import ray
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 
 from benchmark import Benchmark
 
@@ -70,7 +70,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
         batch["__value__"] = label
         return batch
 
-    ds = ds.map_batches(add_label).cache()
+    ds = ds.map_batches(add_label).materialize()
 
     # Test iter_torch_batches() with default args.
     benchmark.run(

@@ -25,13 +25,14 @@ import yaml
 
 import ray
 from ray import air, tune
-from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
+from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -185,8 +186,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
-    if isinstance(x, dict):
-        assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
+    if isinstance(x, (dict, NestedDict)):
+        assert isinstance(
+            y, (dict, NestedDict)
+        ), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"
@@ -1168,3 +1171,93 @@ def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
     )
     reader = DatasetReader(dataset, ioctx)
     return reader
+
+
+class ModelChecker:
+    """Helper class to compare architecturally identical Models across frameworks.
+
+    Holds a ModelConfig, such that individual models can be added simply via their
+    framework string (by building them with config.build(framework=...).
+    A call to `check()` forces all added models to be compared in terms of their
+    number of trainable and non-trainable parameters, as well as, their
+    computation results given a common weights structure and values and identical
+    inputs to the models.
+    """
+
+    def __init__(self, config):
+        self.config = config
+
+        # To compare number of params between frameworks.
+        self.param_counts = {}
+        # To compare computed outputs from fixed-weights-nets between frameworks.
+        self.output_values = {}
+
+        # We will pass an observation filled with this one random value through
+        # all DL networks (after they have been set to fixed-weights) to compare
+        # the computed outputs.
+        self.random_fill_input_value = np.random.uniform(-0.1, 0.1)
+
+        # Dict of models to check against each other.
+        self.models = {}
+
+    def add(self, framework: str = "torch") -> Any:
+        """Builds a new Model for the given framework."""
+        model = self.models[framework] = self.config.build(framework=framework)
+
+        # Pass a B=1 observation through the model.
+        from ray.rllib.core.models.specs.specs_dict import SpecDict
+
+        if isinstance(model.input_specs, SpecDict):
+            inputs = {}
+            for key, spec in model.input_specs.items():
+                dict_ = inputs
+                for i, sub_key in enumerate(key):
+                    if sub_key not in dict_:
+                        dict_[sub_key] = {}
+                    if i < len(key) - 1:
+                        dict_ = dict_[sub_key]
+                if spec is not None:
+                    dict_[sub_key] = spec.fill(self.random_fill_input_value)
+                else:
+                    dict_[sub_key] = None
+        else:
+            inputs = model.input_specs.fill(self.random_fill_input_value)
+
+        outputs = model(inputs)
+
+        # Bring model into a reproducible, comparable state (so we can compare
+        # computations across frameworks). Use only a value-sequence of len=1 here
+        # as it could possibly be that the layers are stored in different order
+        # across the different frameworks.
+        model._set_to_dummy_weights(value_sequence=(self.random_fill_input_value,))
+
+        # Perform another forward pass.
+        comparable_outputs = model(inputs)
+
+        # Store the number of parameters for this framework's net.
+        self.param_counts[framework] = model.get_num_parameters()
+        # Store the fixed-weights-net outputs for this framework's net.
+        if framework == "torch":
+            self.output_values[framework] = tree.map_structure(
+                lambda s: s.detach().numpy() if s is not None else None,
+                comparable_outputs,
+            )
+        else:
+            self.output_values[framework] = tree.map_structure(
+                lambda s: s.numpy() if s is not None else None, comparable_outputs
+            )
+        return outputs
+
+    def check(self, rtol=None):
+        """Compares all added Models with each other and possibly raises errors."""
+
+        main_key = next(iter(self.models.keys()))
+        # Compare number of trainable and non-trainable params between all
+        # frameworks.
+        for c in self.param_counts.values():
+            check(c, self.param_counts[main_key])
+
+        # Compare dummy outputs by exact values given that all nets received the
+        # same input and all nets have the same (dummy) weight values.
+        for v in self.output_values.values():
+            check(v, self.output_values[main_key], rtol=rtol or 0.002)

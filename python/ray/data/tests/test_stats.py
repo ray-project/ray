@@ -5,18 +5,20 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import _StatsActor, DatasetStats
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.stats import _StatsActor, DatastreamStats
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
 from unittest.mock import patch
 
 
 def canonicalize(stats: str) -> str:
+    # Dataset UUID expression.
+    s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
-    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", stats)
+    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
     # Handle zero values specially so we can check for missing values.
     s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
@@ -32,29 +34,29 @@ def dummy_map_batches(x):
 
 
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.streaming_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.bulk_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
-        logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        logger = DatastreamLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(dummy_map_batches).cache()
+        ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
@@ -86,7 +88,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 """
                 )
 
-        ds = ds.map(dummy_map_batches).cache()
+        ds = ds.map(dummy_map_batches).materialize()
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
 
@@ -118,7 +120,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
                 )
     for batch in ds.iter_batches():
         pass
-    stats = canonicalize(ds.cache().stats())
+    stats = canonicalize(ds.materialize().stats())
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
@@ -144,7 +146,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
@@ -180,7 +182,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
 * Num blocks local: Z
@@ -216,7 +218,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
@@ -248,7 +250,7 @@ Stage N Map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -259,12 +261,131 @@ Dataset iterator time breakdown:
             )
 
 
+def test_dataset__repr__(ray_start_regular_shared):
+    context = DataContext.get_current()
+    context.optimize_fuse_stages = True
+
+    n = 4
+    ds = ray.data.range(n).materialize()
+    assert len(ds.take_all()) == n
+    ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    ss = ds._plan.stats().to_summary()
+    ss2 = ds2._plan.stats().to_summary()
+
+    assert canonicalize(repr(ss)) == (
+        "DatastreamStatsSummary(\n"
+        "   datastream_uuid=U,\n"
+        "   base_name=None,\n"
+        "   number=N,\n"
+        "   extra_metrics={},\n"
+        "   stage_stats=[\n"
+        "      StageStatsSummary(\n"
+        "         stage_name='Read',\n"
+        "         is_substage=False,\n"
+        "         time_total_s=T,\n"
+        "         block_execution_summary_str=N/N blocks executed in T\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=N,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   parents=[],\n"
+        ")"
+    )
+    assert canonicalize(repr(ss2)) == (
+        "DatastreamStatsSummary(\n"
+        "   datastream_uuid=U,\n"
+        "   base_name=MapBatches(<lambda>),\n"
+        "   number=N,\n"
+        "   extra_metrics={\n"
+        "      obj_store_mem_alloc: N,\n"
+        "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_peak: N,\n"
+        "   },\n"
+        "   stage_stats=[\n"
+        "      StageStatsSummary(\n"
+        "         stage_name='MapBatches(<lambda>)',\n"
+        "         is_substage=False,\n"
+        "         time_total_s=T,\n"
+        "         block_execution_summary_str=N/N blocks executed in T\n"
+        "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
+        "      ),\n"
+        "   ],\n"
+        "   iter_stats=IterStatsSummary(\n"
+        "      wait_time=T,\n"
+        "      get_time=T,\n"
+        "      iter_blocks_local=None,\n"
+        "      iter_blocks_remote=None,\n"
+        "      iter_unknown_location=N,\n"
+        "      next_time=T,\n"
+        "      format_time=T,\n"
+        "      user_time=T,\n"
+        "      total_time=T,\n"
+        "   ),\n"
+        "   parents=[\n"
+        "      DatastreamStatsSummary(\n"
+        "         datastream_uuid=U,\n"
+        "         base_name=None,\n"
+        "         number=N,\n"
+        "         extra_metrics={},\n"
+        "         stage_stats=[\n"
+        "            StageStatsSummary(\n"
+        "               stage_name='Read',\n"
+        "               is_substage=False,\n"
+        "               time_total_s=T,\n"
+        "               block_execution_summary_str=N/N blocks executed in T\n"
+        "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
+        "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
+        "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
+        "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
+        "            ),\n"
+        "         ],\n"
+        "         iter_stats=IterStatsSummary(\n"
+        "            wait_time=T,\n"
+        "            get_time=T,\n"
+        "            iter_blocks_local=None,\n"
+        "            iter_blocks_remote=None,\n"
+        "            iter_unknown_location=N,\n"
+        "            next_time=T,\n"
+        "            format_time=T,\n"
+        "            user_time=T,\n"
+        "            total_time=T,\n"
+        "         ),\n"
+        "         parents=[],\n"
+        "      ),\n"
+        "   ],\n"
+        ")"
+    )
+
+
 def test_dataset_stats_shuffle(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
-    stats = canonicalize(ds.cache().stats())
+    stats = canonicalize(ds.materialize().stats())
     assert (
         stats
         == """Stage N ReadRange->RandomShuffle: executed in T
@@ -309,45 +430,45 @@ Stage N Repartition: executed in T
 def test_dataset_stats_repartition(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.repartition(1, shuffle=False)
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "Repartition" in stats, stats
 
 
 def test_dataset_stats_union(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.union(ds)
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "Union" in stats, stats
 
 
 def test_dataset_stats_zip(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.zip(ds)
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "Zip" in stats, stats
 
 
 def test_dataset_stats_sort(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.sort()
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "SortMap" in stats, stats
     assert "SortReduce" in stats, stats
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(range(10))
-    stats = ds.cache().stats()
+    stats = ds.materialize().stats()
     assert "FromItems" in stats, stats
 
 
 def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
-    stats = canonicalize(ds.cache().stats())
+    stats = canonicalize(ds.materialize().stats())
     if context.new_execution_backend:
         assert (
             stats
@@ -377,12 +498,12 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
     dses = ds.split_at_indices([49])
     dses = [ds.map(lambda x: x + 1) for ds in dses]
     for ds_ in dses:
-        stats = canonicalize(ds_.cache().stats())
+        stats = canonicalize(ds_.materialize().stats())
 
         if context.new_execution_backend:
             assert (
@@ -447,30 +568,30 @@ Stage N Map: N/N blocks executed in T
 
 
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.streaming_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatasetLogger(
+            logger = DatastreamLogger(
                 "ray.data._internal.execution.bulk_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
-        logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        logger = DatastreamLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
 
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(dummy_map_batches).cache()
+        ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
@@ -625,10 +746,10 @@ Stage N Map: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -680,10 +801,10 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -702,7 +823,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
     assert "[execution cached]" not in stats
 
     # CACHED (called cache()).
-    ds = ray.data.range(10).cache().repeat(2).map_batches(lambda x: x)
+    ds = ray.data.range(10).materialize().repeat(2).map_batches(lambda x: x)
     ds.take(999)
     stats = ds.stats()
     assert "[execution cached]" in stats
@@ -716,7 +837,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
 
 
 def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     pipe = ds.repeat(2)
@@ -756,10 +877,10 @@ Stage N ReadRange: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -790,10 +911,10 @@ Stage N Read: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
+* Time stalled waiting for next datastream: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next dataset: T
+* Waiting for next datastream: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -805,11 +926,11 @@ DatasetPipeline iterator time breakdown:
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatasetStats(
+    stats = DatastreamStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
@@ -850,15 +971,15 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
 
 
 def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatasetStats(
+    stats = DatastreamStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
-    stats.dataset_uuid = "test-uuid"
+    stats.datastream_uuid = "test-uuid"
 
     calculated_stats = stats.to_summary()
     summarized_lines = calculated_stats.to_string().split("\n")
@@ -929,14 +1050,14 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
 def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating stage-level stats:
-    `DatasetStats.get_max_wall_time()`,
-    `DatasetStats.get_total_cpu_time()`,
-    `DatasetStats.get_max_heap_memory()`."""
-    context = DatasetContext.get_current()
+    `DatastreamStats.get_max_wall_time()`,
+    `DatastreamStats.get_total_cpu_time()`,
+    `DatastreamStats.get_max_heap_memory()`."""
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatasetStats(
+    stats = DatastreamStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
@@ -953,9 +1074,9 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
-def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context):
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = True
+def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = True
 
     ds = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
     ds.take_all()
@@ -972,7 +1093,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context)
 * Extra metrics: \
 {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
 
-Dataset iterator time breakdown:
+Datastream iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T

@@ -3,7 +3,7 @@ from typing import Tuple
 import ray
 from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
 from ray.data.block import Block, KeyFn
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 import pyarrow.compute as pac
 
 from benchmark import Benchmark
@@ -28,7 +28,7 @@ def run_h2oai(benchmark: Benchmark):
         # Number of blocks (parallelism) should be set as number of available CPUs
         # to get best performance.
         num_blocks = int(ray.cluster_resources().get("CPU", 1))
-        input_ds = input_ds.repartition(num_blocks).cache()
+        input_ds = input_ds.repartition(num_blocks).materialize()
 
         q_list = [
             (h2oai_q1, "q1"),
