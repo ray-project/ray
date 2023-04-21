@@ -109,6 +109,12 @@ div.navbar-brand-box {
     display: flex;
     flex-direction: column;
 }
+
+.bd-sidebar li {
+    position: relative;
+    word-wrap: break-word;
+}
+
 nav.bd-links {
     overflow-y: auto;
     flex: 1;
