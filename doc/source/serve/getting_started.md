@@ -139,10 +139,10 @@ To test locally, we run the script with the `serve run` CLI command. This comman
 to our deployment formatted as `module:application`. Make sure to run the command from a directory containing a local copy of this script saved as `serve_quickstart.py`, so it can import the application:
 
 ```console
-$ serve run serve_quickstart:translator
+$ serve run serve_quickstart:translator_app
 ```
 
-This command will run the `translator` application and then block, streaming logs to the console. It can be killed with `Ctrl-C`, which will tear down the application.
+This command will run the `translator_app` application and then block, streaming logs to the console. It can be killed with `Ctrl-C`, which will tear down the application.
 
 We can now test our model over HTTP. It can be reached at the following URL by default:
 
@@ -163,7 +163,7 @@ We'll send a POST request with JSON data containing our English text.
 To test our deployment, first make sure `Translator` is running:
 
 ```
-$ serve run serve_deployment:translator
+$ serve run serve_deployment:translator_app
 ```
 
 While `Translator` is running, we can open a separate terminal window and run the client script. This will get a response over HTTP:
