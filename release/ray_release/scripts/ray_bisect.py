@@ -108,6 +108,7 @@ def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
     outcomes = {}
     wait = 5
     total_wait = 0
+    time.sleep(wait)
     while True:
         logger.info(f"... waiting for test result ...({total_wait} seconds)")
         for key in buildkite_step_keys:
