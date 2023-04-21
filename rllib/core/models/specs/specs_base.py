@@ -3,6 +3,7 @@ from copy import deepcopy
 import numpy as np
 from typing import Any, Optional, Dict, List, Tuple, Union, Type
 from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import TensorType
@@ -115,8 +116,10 @@ class TensorSpec(Spec):
         if framework not in ("tf2", "torch", "np", "jax", None):
             raise ValueError(f"Unknown framework {self._framework}")
 
-    @property
-    def _expected_type(self) -> Type:
+        self._type = self._get_expected_type()
+
+    @OverrideToImplementCustomLogic
+    def _get_expected_type(self) -> Type:
         if self._framework == "torch":
             return torch.Tensor
         elif self._framework == "tf2":
@@ -130,10 +133,45 @@ class TensorSpec(Spec):
             # Don't restrict the type of the tensor if no framework is specified.
             return object
 
+    @OverrideToImplementCustomLogic
+    def get_shape(self, tensor: TensorType) -> Tuple[int]:
+        """Returns the shape of a tensor.
+
+        Args:
+            tensor: The tensor whose shape is to be returned.
+        Returns:
+            A `tuple` specifying the shape of the tensor.
+        """
+        if self._framework == "tf2":
+            # tf2 returns `Dimension` objects instead of `int` objects.
+            return tuple(int(i) for i in tensor.shape)
+        return tuple(tensor.shape)
+
+    @OverrideToImplementCustomLogic
+    def get_dtype(self, tensor: TensorType) -> Any:
+        """Returns the expected data type of the checked tensor.
+
+        Args:
+            tensor: The tensor whose data type is to be returned.
+        Returns:
+            The data type of the tensor.
+        """
+        return tensor.dtype
+
+    @property
+    def dtype(self) -> Any:
+        """Returns the expected data type of the checked tensor."""
+        return self._dtype
+
     @property
     def shape(self) -> Tuple[Union[int, str]]:
         """Returns a `tuple` specifying the abstract tensor shape (int and str)."""
         return self._expected_shape
+
+    @property
+    def type(self) -> Type:
+        """Returns the expected type of the checked tensor."""
+        return self._type
 
     @property
     def full_shape(self) -> Tuple[int]:
@@ -176,11 +214,6 @@ class TensorSpec(Spec):
         copy_._full_shape = self._get_full_shape()
         return copy_
 
-    @property
-    def dtype(self) -> Any:
-        """Returns a dtype specifying the tensor dtype."""
-        return self._dtype
-
     @override(Spec)
     def validate(self, tensor: TensorType) -> None:
         """Checks if the shape and dtype of the tensor matches the specification.
@@ -192,12 +225,10 @@ class TensorSpec(Spec):
             ValueError: If the shape or dtype of the tensor does not match the
         """
 
-        if not isinstance(tensor, self._expected_type):
-            raise ValueError(
-                _INVALID_TYPE.format(self._expected_type, type(tensor).__name__)
-            )
+        if not isinstance(tensor, self.type):
+            raise ValueError(_INVALID_TYPE.format(self.type, type(tensor).__name__))
 
-        shape = tuple(tensor.shape)
+        shape = self.get_shape(tensor)
         if len(shape) != len(self._expected_shape):
             raise ValueError(_INVALID_SHAPE.format(self._expected_shape, shape))
 

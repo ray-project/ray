@@ -67,9 +67,9 @@ class PPORLModuleBase(RLModule, abc.ABC):
         spec = SpecDict(
             {
                 SampleBatch.ACTION_DIST: Distribution,
-                SampleBatch.ACTION_LOGP: TensorSpec("b"),
-                SampleBatch.VF_PREDS: TensorSpec("b"),
-                "entropy": TensorSpec("b"),
+                SampleBatch.ACTION_LOGP: TensorSpec("b", framework=self.framework),
+                SampleBatch.VF_PREDS: TensorSpec("b", framework=self.framework),
+                "entropy": TensorSpec("b", framework=self.framework),
             }
         )
         return spec

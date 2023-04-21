@@ -56,57 +56,64 @@ class TestSpecs(unittest.TestCase):
             self.assertEqual(x.shape, (1, 2, 3, 3))
             self.assertEqual(x.dtype, double_type)
 
-    # def test_validation(self):
+    def test_validation(self):
 
-    #    b, h = 2, 3
+        b, h = 2, 3
 
-    #    for fw in FRAMEWORKS_TO_TEST:
-    #        double_type = DOUBLE_TYPE[fw]
-    #        float_type = FLOAT_TYPE[fw]
+        for fw in FRAMEWORKS_TO_TEST:
+            double_type = DOUBLE_TYPE[fw]
+            float_type = FLOAT_TYPE[fw]
 
-    #        tensor_2d = TensorSpec("b,h", b=b, h=h, framework=fw,
-    #                               dtype=double_type).fill()
+            tensor_2d = TensorSpec(
+                "b,h", b=b, h=h, framework=fw, dtype=double_type
+            ).fill()
 
-    #        matching_specs = [
-    #            TensorSpec("b,h", framework=fw),
-    #            TensorSpec("b,h", h=h, framework=fw),
-    #            TensorSpec("b,h", h=h, b=b, framework=fw),
-    #            TensorSpec("b,h", b=b, framework=fw, dtype=double_type),
-    #        ]
+            matching_specs = [
+                TensorSpec("b,h", framework=fw),
+                TensorSpec("b,h", h=h, framework=fw),
+                TensorSpec("b,h", h=h, b=b, framework=fw),
+                TensorSpec("b,h", b=b, framework=fw, dtype=double_type),
+            ]
 
-    #        # check if get_shape returns a tuple of ints
-    #        shape = matching_specs[0].get_shape(tensor_2d)
-    #        self.assertIsInstance(shape, tuple)
-    #        self.assertTrue(all(isinstance(x, int) for x in shape))
+            # check if get_shape returns a tuple of ints
+            shape = matching_specs[0].get_shape(tensor_2d)
+            self.assertIsInstance(shape, tuple)
+            print(fw)
+            print(shape)
+            self.assertTrue(all(isinstance(x, int) for x in shape))
 
-    #        # check matching
-    #        for spec in matching_specs:
-    #            spec.validate(tensor_2d)
+            # check matching
+            for spec in matching_specs:
+                spec.validate(tensor_2d)
 
-    #        non_matching_specs = [
-    #            TensorSpec("b", framework=fw),
-    #            TensorSpec("b,h1,h2", framework=fw),
-    #            TensorSpec("b,h", h=h + 1, framework=fw),
-    #        ]
-    #        if fw != "jax":
-    #            non_matching_specs.append(TensorSpec("b,h", framework=fw,
-    #                                                 dtype=float_type))
+            non_matching_specs = [
+                TensorSpec("b", framework=fw),
+                TensorSpec("b,h1,h2", framework=fw),
+                TensorSpec("b,h", h=h + 1, framework=fw),
+            ]
+            if fw != "jax":
+                non_matching_specs.append(
+                    TensorSpec("b,h", framework=fw, dtype=float_type)
+                )
 
-    #        for spec in non_matching_specs:
-    #            self.assertRaises(ValueError, lambda: spec.validate(tensor_2d))
+            for spec in non_matching_specs:
+                self.assertRaises(ValueError, lambda: spec.validate(tensor_2d))
 
-    #        # non unique dimensions
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,b", framework=fw))
-    #        # unknown dimensions
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h=2, c=3,
-    #                                                         framework=fw))
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b1", b2=1, framework=fw))
-    #        # zero dimensions
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h=0,
-    #                                                         framework=fw))
-    #        non-integer dimension
-    #        self.assertRaises(ValueError, lambda: TensorSpec("b,h", b=1, h="h",
-    #                                                         framework=fw))
+            # non unique dimensions
+            self.assertRaises(ValueError, lambda: TensorSpec("b,b", framework=fw))
+            # unknown dimensions
+            self.assertRaises(
+                ValueError, lambda: TensorSpec("b,h", b=1, h=2, c=3, framework=fw)
+            )
+            self.assertRaises(ValueError, lambda: TensorSpec("b1", b2=1, framework=fw))
+            # zero dimensions
+            self.assertRaises(
+                ValueError, lambda: TensorSpec("b,h", b=1, h=0, framework=fw)
+            )
+            # non-integer dimension
+            self.assertRaises(
+                ValueError, lambda: TensorSpec("b,h", b=1, h="h", framework=fw)
+            )
 
     def test_equal(self):
 
