@@ -136,9 +136,9 @@ def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
                     "buildkite-agent",
                     "step",
                     "get",
-                    "'outcome'",
+                    "outcome",
                     "--step",
-                    f"'{key}'",
+                    key,
                 ]
             ).decode("utf-8")
             if outcome:
