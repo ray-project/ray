@@ -10,7 +10,7 @@ ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
 import ray
 
 ds = ray.data.range(1000)
-# -> Dataset(num_blocks=200, num_rows=1000, schema=<class 'int'>)
+# -> Datastream(num_blocks=200, num_rows=1000, schema=<class 'int'>)
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 
@@ -31,7 +31,7 @@ ds.repartition(3).write_parquet("/tmp/multi_parquet")
 import ray
 
 ds = ray.data.range(1000)
-# -> Dataset(num_blocks=200, num_rows=1000, schema=<class 'int'>)
+# -> Datastream(num_blocks=200, num_rows=1000, schema=<class 'int'>)
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 
@@ -52,7 +52,7 @@ ds.repartition(3).write_csv("/tmp/multi_csv")
 import ray
 
 ds = ray.data.range(1000)
-# -> Dataset(num_blocks=200, num_rows=1000, schema=<class 'int'>)
+# -> Datastream(num_blocks=200, num_rows=1000, schema=<class 'int'>)
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 
@@ -74,7 +74,7 @@ import ray
 import numpy as np
 
 ds = ray.data.from_numpy(np.arange(1000))
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=1,
 #        num_rows=1000,
 #        schema={value: <ArrowTensorType: shape=(), dtype=int64>},
@@ -105,7 +105,7 @@ ds = ray.data.from_items(
         {"some_int": 2, "some_float": 2.0, "some_bytestring": b"def"},
     ]
 )
-# -> Dataset(
+# -> Datastream(
 #        num_blocks=2, 
 #        num_rows=2, 
 #        schema={some_int: int64, some_float: double, some_bytestring: binary}
