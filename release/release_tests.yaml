@@ -4892,7 +4892,7 @@
 
   run:
     timeout: 1800
-    script: python dataset_shuffle_data_loader.py --env aws
+    script: python dataset_shuffle_data_loader.py --cloud aws
 
   variations:
     - __suffix__: aws
@@ -4902,7 +4902,7 @@
       cluster:
         cluster_compute: shuffle_compute_gce.yaml
       run:
-        script: python dataset_shuffle_data_loader.py --env gcp
+        script: python dataset_shuffle_data_loader.py --cloud gcp
 
 - name: parquet_metadata_resolution
   group: data-tests
