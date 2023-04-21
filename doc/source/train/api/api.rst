@@ -232,4 +232,4 @@ Restoration API for Built-in Trainers
 
 .. seealso::
 
-    See :ref:`train-restore-faq` for more details on when and how trainer restore should be used.
+    See :ref:`train-restore-guide` for more details on when and how trainer restore should be used.

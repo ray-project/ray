@@ -27,7 +27,7 @@ Status GcsPublisher::PublishActor(const ActorID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_actor_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -41,7 +41,7 @@ Status GcsPublisher::PublishJob(const JobID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_job_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -55,7 +55,7 @@ Status GcsPublisher::PublishNodeInfo(const NodeID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_node_info_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -69,7 +69,7 @@ Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_worker_delta_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -83,7 +83,7 @@ Status GcsPublisher::PublishError(const std::string &id,
   msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   msg.set_key_id(id);
   *msg.mutable_error_info_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
