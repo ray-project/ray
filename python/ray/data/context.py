@@ -2,6 +2,7 @@ import os
 import threading
 from typing import Optional, TYPE_CHECKING
 
+from ray._private.ray_constants import env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -123,6 +124,11 @@ DEFAULT_BATCH_SIZE = 4096
 # Default batch size for batch transformations in strict mode.
 STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
 
+# Whether to enable progress bars.
+DEFAULT_ENABLE_PROGRESS_BARS = not bool(
+    env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
+)
+
 
 @DeveloperAPI
 class DataContext:
@@ -161,6 +167,7 @@ class DataContext:
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
         strict_mode: bool,
+        enable_progress_bars: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -193,6 +200,7 @@ class DataContext:
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
         self.strict_mode = strict_mode
+        self.enable_progress_bars = enable_progress_bars
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -241,6 +249,7 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     strict_mode=DEFAULT_STRICT_MODE,
+                    enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                 )
 
             return _default_context

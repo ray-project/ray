@@ -8,7 +8,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 # Force strict mode.
-ctx = ray.data.DatasetContext.get_current()
+ctx = ray.data.DataContext.get_current()
 ctx.strict_mode = True
 
 
@@ -143,6 +143,17 @@ def test_strict_object_support(ray_start_regular_shared):
     ds.map_batches(lambda x: x, batch_format="numpy").materialize()
 
 
+def test_strict_compute(ray_start_regular_shared):
+    with pytest.raises(StrictModeError):
+        ray.data.range(10).map(lambda x: x, compute="actors").show()
+    with pytest.raises(StrictModeError):
+        ray.data.range(10).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
+        ).show()
+    with pytest.raises(StrictModeError):
+        ray.data.range(10).map(lambda x: x, compute="tasks").show()
+
+
 def test_strict_schema(ray_start_regular_shared):
     import pyarrow
     from ray.data._internal.pandas_block import PandasBlockSchema
@@ -150,6 +161,23 @@ def test_strict_schema(ray_start_regular_shared):
     ds = ray.data.from_items([{"x": 2}])
     schema = ds.schema()
     assert isinstance(schema.base_schema, pyarrow.lib.Schema)
+    assert str(schema) == "Schema({'x': DataType(int64)})"
+
+    ds = ray.data.from_items([{"x": 2, "y": [1, 2]}])
+    schema = ds.schema()
+    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
+    assert (
+        str(schema)
+        == "Schema({'x': DataType(int64), 'y': ListType(list<item: int64>)})"
+    )
+
+    ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
+    schema = ds.schema()
+    assert isinstance(schema.base_schema, PandasBlockSchema)
+    assert str(schema) == (
+        "Schema({'x': DataType(int64), 'y': "
+        "<class 'object'>, 'z': <class 'object'>})"
+    )
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
@@ -157,9 +185,19 @@ def test_strict_schema(ray_start_regular_shared):
     assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
-    # TODO(ekl) fix this to return ndarray
-    assert str(schema) == "Schema({'data': TensorDtype(shape=(10,), dtype=float64)})"
+    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
     assert isinstance(schema.base_schema, PandasBlockSchema)
+
+
+def test_use_raw_dicts(ray_start_regular_shared):
+    assert type(ray.data.range(10).take(1)[0]) is dict
+    assert type(ray.data.from_items([1]).take(1)[0]) is dict
+
+    def checker(x):
+        assert type(x) is dict
+        return x
+
+    ray.data.range(10).map(checker).show()
 
 
 if __name__ == "__main__":
