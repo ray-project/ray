@@ -441,10 +441,44 @@ ray::Status NodeManager::RegisterGcs() {
 
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
-  auto on_done = [](Status status) { RAY_CHECK_OK(status); };
+  auto on_node_change_subscribe_done = [](Status status) {
+    RAY_CHECK_OK(status);
+
+    if (RayConfig::instance().use_ray_syncer()) {
+      // Register resource manager and scheduler
+      ray_syncer_.Register(
+          /* message_type */ syncer::MessageType::RESOURCE_VIEW,
+          /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+          /* receiver */ this,
+          /* pull_from_reporter_interval_ms */
+          RayConfig::instance().raylet_report_resources_period_milliseconds());
+
+      // Register a commands channel.
+      // It's only used for GC right now.
+      ray_syncer_.Register(
+          /* message_type */ syncer::MessageType::COMMANDS,
+          /* reporter */ this,
+          /* receiver */ this,
+          /* pull_from_reporter_interval_ms */ 0);
+
+      auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+      ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
+      periodical_runner_.RunFnPeriodically(
+          [this] {
+            auto triggered_by_global_gc = TryLocalGC();
+            // If plasma store is under high pressure, we should try to schedule a global
+            // gc.
+            if (triggered_by_global_gc) {
+              ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+            }
+          },
+          RayConfig::instance().raylet_check_gc_period_milliseconds(),
+          "NodeManager.CheckGC");
+    }
+  };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+      on_node_change, on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -508,38 +542,6 @@ ray::Status NodeManager::RegisterGcs() {
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
-  }
-
-  if (RayConfig::instance().use_ray_syncer()) {
-    // Register resource manager and scheduler
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
-        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
-
-    // Register a commands channel.
-    // It's only used for GC right now.
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::COMMANDS,
-        /* reporter */ this,
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */ 0);
-
-    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
-    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-    periodical_runner_.RunFnPeriodically(
-        [this] {
-          auto triggered_by_global_gc = TryLocalGC();
-          // If plasma store is under high pressure, we should try to schedule a global
-          // gc.
-          if (triggered_by_global_gc) {
-            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-          }
-        },
-        RayConfig::instance().raylet_check_gc_period_milliseconds(),
-        "NodeManager.CheckGC");
   }
   // Raylet periodically check whether it's alive in GCS.
   // For failure cases, GCS might think this raylet dead, but this
