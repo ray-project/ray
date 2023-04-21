@@ -120,6 +120,7 @@ class TensorSpec(Spec):
 
     @OverrideToImplementCustomLogic
     def _get_expected_type(self) -> Type:
+        """Returns the expected type of the checked tensor."""
         if self._framework == "torch":
             return torch.Tensor
         elif self._framework == "tf2":
