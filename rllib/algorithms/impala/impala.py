@@ -954,7 +954,6 @@ class Impala(Algorithm):
             )
         # Nothing on the queue -> Don't send requests to learner group.
         else:
-            #self._counters["learner_group_queue_size"] = 0
             lg_results = None
 
         if lg_results:
@@ -965,11 +964,12 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
                 NUM_AGENT_STEPS_TRAINED
             )
-            self._counters["learner_group_queue_size"] = lg_results[ALL_MODULES].pop(
-                "learner_group_queue_size"
+            lg_queue_stats = self.learner_group.get_in_queue_stats()
+            self._counters["learner_group_queue_size"] = (
+                lg_queue_stats["learner_group_queue_size"]
             )
-            self._counters["learner_group_queue_ts_dropped"] += lg_results[ALL_MODULES].pop(
-                "learner_group_queue_ts_dropped"
+            self._counters["learner_group_queue_ts_dropped"] += (
+                lg_queue_stats["learner_group_queue_ts_dropped"]
             )
             print(f"Increased TRAINED counter to {self._counters[NUM_ENV_STEPS_TRAINED]}")
             result = lg_results

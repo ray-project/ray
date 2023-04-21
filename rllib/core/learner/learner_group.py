@@ -103,6 +103,9 @@ class LearnerGroup:
 
         self._is_module_trainable = _is_module_trainable
 
+        # How many timesteps had to be dropped due to a full input queue?
+        self._in_queue_ts_dropped = 0
+
         if self._is_local:
             self._learner = learner_class(**learner_spec.get_params_dict())
             self._learner.build()
@@ -135,14 +138,13 @@ class LearnerGroup:
             )
             self._in_queue = queue.Queue(maxsize=max_queue_len)
 
-    @property
-    def in_queue_size(self) -> int:
-        """Returns the number of batches currently in the in queue to be processed.
-
-        If the queue is reaching its max size, then this learner group likely needs
-        more workers to process incoming batches.
+    def get_in_queue_stats(self) -> Mapping[str, Any]:
+        """Returns the current stats for the input queue for this learner group.
         """
-        return self._in_queue.qsize()
+        return {
+            "learner_group_queue_size": self._in_queue.qsize(),
+            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+        }
 
     @property
     def is_local(self) -> bool:
@@ -259,13 +261,12 @@ class LearnerGroup:
             return results
         else:
             # Queue the new batches.
-            num_ts_dropped = 0
             if batches:
                 for batch in batches:
                     try:
                         self._in_queue.put_nowait(batch)
                     except queue.Full:
-                        num_ts_dropped += len(batch)
+                        self._in_queue_ts_dropped += len(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).
             results = self._worker_manager.fetch_ready_async_reqs()
@@ -281,9 +282,6 @@ class LearnerGroup:
 
             results = self._get_results(results)
 
-            # Add num_ts_dropped and current queue size to results.
-            results[ALL_MODULES]["learner_group_queue_size"] = self.in_queue_size()
-            results[ALL_MODULES]["learner_group_queue_ts_dropped"] = num_ts_dropped
             return results
 
     def _worker_manager_ready(self):
