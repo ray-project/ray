@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 from ray import air, tune
+from ray.air import session
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
@@ -105,7 +106,7 @@ def train_mnist(config):
         acc = test(model, test_loader)
 
         # Send the current training result back to Tune
-        tune.report(mean_accuracy=acc)
+        session.report(mean_accuracy=acc)
 
         if i % 5 == 0:
             # This saves the model to the trial directory
