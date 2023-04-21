@@ -968,7 +968,7 @@ class Impala(Algorithm):
             self._counters["learner_group_queue_size"] = (
                 lg_queue_stats["learner_group_queue_size"]
             )
-            self._counters["learner_group_queue_ts_dropped"] += (
+            self._counters["learner_group_queue_ts_dropped"] = (
                 lg_queue_stats["learner_group_queue_ts_dropped"]
             )
             print(f"Increased TRAINED counter to {self._counters[NUM_ENV_STEPS_TRAINED]}")

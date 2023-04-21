@@ -1,6 +1,6 @@
+from collections import deque
 from functools import partial
 import pathlib
-import queue
 import socket
 from typing import (
     Any,
@@ -134,15 +134,16 @@ class LearnerGroup:
             # be synchronously executed.
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
-                max_remote_requests_in_flight_per_actor=1,
+                #TEST: Test allowing 2 in-flight update requests per actor
+                max_remote_requests_in_flight_per_actor=2,
             )
-            self._in_queue = queue.Queue(maxsize=max_queue_len)
+            self._in_queue = deque(maxlen=max_queue_len)
 
     def get_in_queue_stats(self) -> Mapping[str, Any]:
         """Returns the current stats for the input queue for this learner group.
         """
         return {
-            "learner_group_queue_size": self._in_queue.qsize(),
+            "learner_group_queue_size": len(self._in_queue),
             "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
         }
 
@@ -263,29 +264,35 @@ class LearnerGroup:
             # Queue the new batches.
             if batches:
                 for batch in batches:
-                    try:
-                        self._in_queue.put_nowait(batch)
-                    except queue.Full:
-                        self._in_queue_ts_dropped += len(batch)
+                    # If queue is full, kick out the oldest item (and thus add its
+                    # length to the "dropped ts" counter).
+                    if len(self._in_queue) == self._in_queue.maxlen:
+                        self._in_queue_ts_dropped += len(self._in_queue[0])
+                    self._in_queue.append(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).
             results = self._worker_manager.fetch_ready_async_reqs()
             # Only if there are no more requests in-flight on any of the learners,
             # we can send in one new batch for sharding and parallel learning.
-            if self._worker_manager_ready() and not self._in_queue.empty():
-                # Pull a single batch from the queue.
-                batch = self._in_queue.get()
-                self._worker_manager.foreach_actor_async([
-                    partial(_learner_update, minibatch=minibatch)
-                    for minibatch in ShardBatchIterator(batch, len(self._workers))
-                ])
+            if self._worker_manager_ready():
+                count = 0
+                while len(self._in_queue) > 0 and count < 2:
+                    #TODO: TOTEST Pull a single batch from the queue (from the right side, meaning:
+                    # use the newest ones first!).
+                    batch = self._in_queue.pop()
+                    self._worker_manager.foreach_actor_async([
+                        partial(_learner_update, minibatch=minibatch)
+                        for minibatch in ShardBatchIterator(batch, len(self._workers))
+                    ])
+                    count += 2
 
             results = self._get_results(results)
 
             return results
 
     def _worker_manager_ready(self):
-        return self._worker_manager.num_outstanding_async_reqs() == 0
+        #TODO: TOTEST: Allow for some number of in-flight requests.
+        return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors
 
     def _get_results(self, results):
         processed_results = []
