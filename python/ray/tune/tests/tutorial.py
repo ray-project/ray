@@ -106,7 +106,7 @@ def train_mnist(config):
         acc = test(model, test_loader)
 
         # Send the current training result back to Tune
-        session.report(mean_accuracy=acc)
+        session.report({"mean_accuracy": acc})
 
         if i % 5 == 0:
             # This saves the model to the trial directory
