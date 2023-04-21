@@ -20,7 +20,6 @@ import numpy as np
 
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal import progress_bar
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
@@ -95,7 +94,7 @@ class DatasetPipeline(Generic[T]):
         base_iterable: Iterable[Callable[[], Datastream[T]]],
         stages: List[Callable[[Datastream[Any]], Datastream[Any]]] = None,
         length: Optional[int] = None,
-        progress_bars: bool = progress_bar._enabled,
+        progress_bars: bool = DataContext.get_current().enable_progress_bars,
         _executed: List[bool] = None,
     ):
         """Construct a DatasetPipeline (internal API).
