@@ -576,12 +576,12 @@ class Inferencer(object):
 
             with self.lock:
                 for i in range(self._batch_size):
+                    print(f" {i} {output[0]}")
                     output_ids = output[0][i].view(1, -1).int()
                     request_id = self.pend_engine_request[engine_id][i]
                     # finished
                     if output_ids[0][-1] == EOS or output_ids[0][0] != EOS:
-                        output = self._tokenizer.decode(output_ids[0])
-                        self.finished_requests[request_id] = output
+                        self.finished_requests[request_id] = output_ids
                     else:
                         self._queue.append((request_id, output_ids))
 
