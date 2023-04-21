@@ -1136,8 +1136,7 @@ def test_build_kubernetes_flag():
             "port": 8000,
             "deployments": [
                 {
-                    "name": f"{SERVE_DEFAULT_APP_NAME}"
-                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}global_f",
+                    "name": "global_f",
                     "numReplicas": 2,
                     "rayActorOptions": {
                         "numCpus": 2.0,

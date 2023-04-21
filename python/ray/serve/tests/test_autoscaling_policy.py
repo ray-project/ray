@@ -1030,7 +1030,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
                     "class_name",
                     "=",
                     f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                    "{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
+                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
                 ),
                 ("state", "=", "DEAD"),
             ]

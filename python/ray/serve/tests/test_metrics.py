@@ -348,7 +348,7 @@ class TestRequestContextMetrics:
             async def app2(self):
                 return await (await self.handle2.remote())
 
-        serve.run(G.bind(g1.bind(), g2.bind()))
+        serve.run(G.bind(g1.bind(), g2.bind()), name="app")
         resp = requests.get("http://127.0.0.1:8000/api")
         assert resp.text == '"ok1"'
         resp = requests.get("http://127.0.0.1:8000/api2")
@@ -368,9 +368,9 @@ class TestRequestContextMetrics:
         requests_metrics = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_request_counter")
         )
-        assert requests_metrics["G"] == {"/api", "/api2"}
-        assert requests_metrics["g1"] == {"/api"}
-        assert requests_metrics["g2"] == {"/api2"}
+        assert requests_metrics["app_G"] == {"/api", "/api2"}
+        assert requests_metrics["app_g1"] == {"/api"}
+        assert requests_metrics["app_g2"] == {"/api2"}
 
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
