@@ -18,7 +18,7 @@ pyyaml
 aiosignal
 frozenlist
 requests
-virtualenv>=20.0.24
+virtualenv>=20.0.24, < 20.21.1
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
