@@ -81,7 +81,7 @@ def _trigger_test_run(test: Test, commit: str) -> None:
     step["key"] = commit
     pipeline = json.dumps({"steps": [step]})
     subprocess.check_output([
-        'echo', '"{pipeline}"', '|', 'buildkite-agent', 'pipeline', 'upload',
+        'echo', f'"{pipeline}"', '|', 'buildkite-agent', 'pipeline', 'upload',
     ])
 
 
@@ -95,7 +95,7 @@ def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
             if key in outcomes:
                 continue
             outcome = subprocess.check_output([
-                'buildkite-agent', 'step', 'get', '"outcome"', '--step', '"{key}"',
+                'buildkite-agent', 'step', 'get', '"outcome"', '--step', f'"{key}"',
             ]).decode("utf-8")
             if outcome:
                 outcomes[key] = outcome
