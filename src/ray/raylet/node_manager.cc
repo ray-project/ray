@@ -441,7 +441,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
-  auto on_node_change_subscribe_done = [](Status status) {
+  auto on_node_change_subscribe_done = [this](Status status) {
     RAY_CHECK_OK(status);
 
     if (RayConfig::instance().use_ray_syncer()) {
