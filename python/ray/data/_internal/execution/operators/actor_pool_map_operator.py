@@ -185,6 +185,7 @@ class ActorPoolMapOperator(MapOperator):
         while self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_running_workers=self._actor_pool.num_running_actors(),
+            num_free_slots=self._actor_pool.num_free_slots(),
         ):
             self._start_actor()
 
@@ -430,12 +431,13 @@ class AutoscalingPolicy:
         """The maximum number of actors that can be added to the actor pool."""
         return self._config.max_workers
 
-    def should_scale_up(self, num_total_workers: int, num_running_workers: int) -> bool:
+    def should_scale_up(self, num_total_workers: int, num_running_workers: int, num_free_slots: int) -> bool:
         """Whether the actor pool should scale up by adding a new actor.
 
         Args:
             num_total_workers: Total number of workers in actor pool.
             num_running_workers: Number of currently running workers in actor pool.
+            num_free_slots: Number of free slots for existing actors in the pool.
 
         Returns:
             Whether the actor pool should be scaled up by one actor.
