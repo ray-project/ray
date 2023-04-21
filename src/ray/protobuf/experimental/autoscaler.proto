@@ -155,7 +155,7 @@ message Instance {
     STOPPED = 5;
     // The instance is in a bad state - but it is still able to send updates.
     FAILING = 6;
-    // The subscribe service moves instances to this state if they 
+    // The subscribe service moves instances to this state if they
     // have been idle for too long. This allows the cluster manager to
     // make a final decision on whether or not to commence a drain
     // sequence for this instance.
