@@ -4,6 +4,7 @@ ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
+COPY requirements_pinned.txt ./
 COPY requirements_test.txt ./
 COPY requirements_linters.txt ./
 COPY requirements_no_deps.txt ./
@@ -23,14 +24,6 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip pip-tools \
-    # First, compile requirements. This command should be kept in sync
-    # with install-dependencies.sh
-    && $HOME/anaconda3/bin/pip-compile --resolver=backtracking -q \
-       --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
-      requirements_pinned.txt \
-      requirements.txt \
-      requirements_test.txt \
-      requirements_linters.txt \
     # Install no-deps requirements. Their dependencies may be overwritten
     # in subsequent steps
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
@@ -47,6 +40,7 @@ RUN sudo apt-get update \
            -r requirements_upstream.txt \
     # explicitly install (overwrite) pytorch with CUDA support
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -c requirements_pinned.txt \
            -r requirements_ml_docker.txt \
     # Remove dataclasses & typing because they are included in Python > 3.6
     && if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \

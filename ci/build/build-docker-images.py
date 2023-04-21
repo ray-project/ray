@@ -386,6 +386,7 @@ def prep_ray_ml():
 
     requirements_files = [
         "python/requirements.txt",
+        "python/requirements_pinned.txt",
         "python/requirements_test.txt",
         "python/requirements_linters.txt",
     ]
