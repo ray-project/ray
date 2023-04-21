@@ -103,7 +103,7 @@ message NodeState {
 //
 // Autoscaler periodically calls to
 // two snapshot APIs, GetClusterResourceState
-// and ReportAutoscalingState. 
+// and ReportAutoscalingState.
 // The GetClusterResourceState will return a snapshot
 // of Ray state that Autoscaler interested, along with
 // the cluster_resource_state_version (version).
@@ -155,7 +155,7 @@ message Instance {
     STOPPED = 5;
     // The instance is in a bad state - but it is still able to send updates.
     FAILING = 6;
-    // The subscribe service moves instances to this state if they
+    // The subscribe service moves instances to this state if they 
     // have been idle for too long. This allows the cluster manager to
     // make a final decision on whether or not to commence a drain
     // sequence for this instance.
@@ -172,7 +172,7 @@ message Instance {
   // the instance hasn't be started yet.
   string instance_id = 11;
   // the status of the instance.
-  InstanceStatus status = 12; 
+  InstanceStatus status = 12;
   // the node id of the instance.
   string node_type = 13;
   // The corresponding total resources on the node.
