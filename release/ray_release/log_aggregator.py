@@ -3,10 +3,11 @@ from typing import List
 
 TRACEBACK_PATTERN = "Traceback (most recent call last)"
 
-class LogAggregator():
+
+class LogAggregator:
     def __init__(self, log: str):
         self.log = log
-    
+
     def compute_crash_pattern(self) -> str:
         stack_trace = LogAggregator._compute_stack_trace(self.log.splitlines())
         # truncate short enough to store in databases, but long enough to keep the
