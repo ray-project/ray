@@ -45,7 +45,7 @@ Next, we define a class `TFMnistModel` that will accept HTTP requests and run th
 :end-before: __doc_define_servable_end__
 ```
 
-:::{note} 
+:::{note}
 When `TFMnistModel` is deployed and instantiated, it will load the Tensorflow model from your file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
@@ -56,7 +56,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :end-before: __doc_deploy_end__
 ```
 
-:::{note} 
+:::{note}
 `TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
 :::
 
@@ -72,7 +72,7 @@ If you see the following error:
 ```console
 TypeError: Descriptors cannot not be created directly.
     If this call came from a _pb2.py file, your generated code is out of date and must be regenerated with protoc >= 3.19.0.
-    If you cannot immediately regenerate your protos, some other possible workarounds are:   
+    If you cannot immediately regenerate your protos, some other possible workarounds are:
      1. Downgrade the protobuf package to 3.20.x or lower.
      2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
 ```
@@ -144,7 +144,7 @@ We define a class `ImageModel` that parses the input data, transforms the images
 :end-before: __doc_define_servable_end__
 ```
 
-:::{note} 
+:::{note}
 When `ImageModel` is deployed and instantiated, it will load the resnet18 model from `torchvision` so that it can be ready to run inference on the model and serve requests later.
 :::
 
@@ -155,7 +155,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :end-before: __doc_deploy_end__
 ```
 
-:::{note} 
+:::{note}
 `ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
 :::
 
@@ -208,7 +208,7 @@ Open a new Python file called `tutorial_sklearn.py`. Let's import Ray Serve and 
 
 **Train a Classifier**
 
-We will train a classifier with the [iris dataset](https://scikit-learn.org/stable/auto_examples/datasets/plot_iris_data.html).
+We will train a classifier with the [iris dataset](https://scikit-learn.org/stable/auto_examples/datasets/plot_iris_dataset.html).
 
 
 First, let's instantiate a `GradientBoostingClassifier` loaded from Scikit-Learn.
@@ -243,7 +243,7 @@ We define a class `BoostingModel` that runs inference on the `GradientBoosingCla
 :end-before: __doc_define_servable_end__
 ```
 
-:::{note} 
+:::{note}
 When `BoostingModel` is deployed and instantiated, it will load the classifier model that we trained from your file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
@@ -254,7 +254,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :end-before: __doc_deploy_end__
 ```
 
-:::{note} 
+:::{note}
 `BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
 :::
 
