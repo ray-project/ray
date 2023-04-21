@@ -275,7 +275,11 @@ def transform_ray_dag_to_serve_dag(
 
         if "deployment_schema" in dag_node._bound_other_args_to_resolve:
             schema = dag_node._bound_other_args_to_resolve["deployment_schema"]
-            deployment_name = schema.name
+            if (
+                inspect.isfunction(dag_node._body)
+                and schema.name != dag_node._body.__name__
+            ):
+                deployment_name = schema.name
 
         if name:
             deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name

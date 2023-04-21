@@ -1025,7 +1025,15 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             ]
         )
         dead_actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:scaler"), ("state", "=", "DEAD")]
+            filters=[
+                (
+                    "class_name",
+                    "=",
+                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                    "{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
+                ),
+                ("state", "=", "DEAD"),
+            ]
         )
 
         return len(live_actors) == live and len(dead_actors) == dead
