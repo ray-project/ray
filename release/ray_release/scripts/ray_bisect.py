@@ -3,7 +3,7 @@ import subprocess
 import os
 import json
 import time
-from typing import List, Dict, Set, Optional
+from typing import Dict, List, Optional, Set
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -102,9 +102,9 @@ def _trigger_test_run(test: Test, commit: str) -> None:
         timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
     )
     step = get_step(
-        test, 
-        ray_wheels=ray_wheels_url, 
-        env = {
+        test,
+        ray_wheels=ray_wheels_url,
+        env={
             "RAY_COMMIT_OF_WHEEL": commit,
         },
     )
