@@ -6,13 +6,13 @@ from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
 
 CONFIGS = [
     {"mini_batch_size": 128, "num_sgd_iter": 3, "agent_steps": (56, 56)},
-    {"mini_batch_size": 128, "num_sgd_iter": 7, "agent_steps": (56, 56)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 56)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 3)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 4)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 55)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (400, 400)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (64, 64)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 7, "agent_steps": (56, 56)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 56)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 3)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 4)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 55)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (400, 400)},
+    #{"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (64, 64)},
 ]
 
 

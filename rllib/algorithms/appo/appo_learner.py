@@ -54,6 +54,7 @@ class AppoHyperparameters(ImpalaHyperparameters):
 
     """
 
+    use_kl_loss: bool = False
     kl_target: float = 0.01
     kl_coeff: float = 0.1
     clip_param: float = 0.2
@@ -94,7 +95,8 @@ class AppoLearner(ImpalaLearner):
             module_id:
         """
         self._update_module_target_networks(module_id)
-        self._update_module_kl_coeff(module_id, sampled_kls)
+        if self._hps.use_kl_loss:
+            self._update_module_kl_coeff(module_id, sampled_kls)
         return {}
 
     @abc.abstractmethod

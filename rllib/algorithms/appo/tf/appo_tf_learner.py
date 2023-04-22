@@ -113,12 +113,17 @@ class APPOTfLearner(TfLearner, AppoLearner):
             pg_advantages * logp_ratio,
             (
                 pg_advantages
-                * tf.clip_by_value(logp_ratio, 1 - self._hps.clip_param, 1 + self._hps.clip_param)
+                * tf.clip_by_value(
+                    logp_ratio, 1 - self._hps.clip_param, 1 + self._hps.clip_param
+                )
             ),
         )
 
-        action_kl = old_target_policy_dist.kl(target_policy_dist)
-        mean_kl_loss = tf.math.reduce_mean(action_kl)
+        if self._hps.use_kl_loss:
+            action_kl = old_target_policy_dist.kl(target_policy_dist)
+            mean_kl_loss = tf.math.reduce_mean(action_kl)
+        else:
+            mean_kl_loss = 0.0
         mean_pi_loss = -tf.math.reduce_mean(surrogate_loss)
 
         # The baseline loss.
@@ -145,6 +150,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
             LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.kl_coeffs[module_id],
         }
 
+    @override(AppoLearner)
     def _update_module_target_networks(self, module_id: ModuleID):
         """Update the target policy of each module with the current policy.
 

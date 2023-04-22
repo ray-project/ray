@@ -248,6 +248,7 @@ class APPOConfig(ImpalaConfig):
     def get_learner_hyperparameters(self) -> AppoHyperparameters:
         base_hps = super().get_learner_hyperparameters()
         return AppoHyperparameters(
+            use_kl_loss=self.use_kl_loss,
             kl_target=self.kl_target,
             kl_coeff=self.kl_coeff,
             clip_param=self.clip_param,
@@ -325,11 +326,12 @@ class APPO(Impala):
             )
             if (cur_ts - last_update) >= target_update_steps_freq:
                 kls_to_update = {}
-                for module_id, module_results in train_results.items():
-                    if module_id != ALL_MODULES:
-                        kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
-                            LEARNER_RESULTS_KL_KEY
-                        ]
+                if self.config.use_kl_loss:
+                    for module_id, module_results in train_results.items():
+                        if module_id != ALL_MODULES:
+                            kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
+                                LEARNER_RESULTS_KL_KEY
+                            ]
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
                 self.learner_group.additional_update(sampled_kls=kls_to_update)

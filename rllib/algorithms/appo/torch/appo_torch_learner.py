@@ -116,8 +116,11 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             ),
         )
 
-        action_kl = old_target_policy_dist.kl(target_policy_dist)
-        mean_kl_loss = torch.mean(action_kl)
+        if self._hps.use_kl_loss:
+            action_kl = old_target_policy_dist.kl(target_policy_dist)
+            mean_kl_loss = torch.mean(action_kl)
+        else:
+            mean_kl_loss = 0.0
         mean_pi_loss = -torch.mean(surrogate_loss)
 
         # The baseline loss.
