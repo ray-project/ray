@@ -30,7 +30,7 @@ ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_servi
           auto now = absl::Now();
           auto threshold =
               now - absl::Milliseconds(
-                  RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+                        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
           for (auto &[node_id, resource] : received_node_resources_) {
             auto modified_ts = GetNodeResourceModifiedTs(node_id);
             if (modified_ts && *modified_ts < threshold) {
@@ -88,7 +88,7 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
   local_view.total = node_resources.total;
- if (resource_data.resources_available_changed()) {
+  if (resource_data.resources_available_changed()) {
     local_view.available = node_resources.available;
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }

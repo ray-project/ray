@@ -32,7 +32,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     : local_node_id_(local_node_id),
       is_node_available_fn_(is_node_available_fn),
       is_local_node_with_raylet_(is_local_node_with_raylet) {
-  Init(io_service, local_node_resources,
+  Init(io_service,
+       local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
 }
@@ -47,7 +48,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   NodeResources node_resources =
       ResourceMapToNodeResources(local_node_resources, local_node_resources);
-  Init(io_service, node_resources, get_used_object_store_memory, get_pull_manager_at_capacity);
+  Init(io_service,
+       node_resources,
+       get_used_object_store_memory,
+       get_pull_manager_at_capacity);
 }
 
 void ClusterResourceScheduler::Init(
