@@ -510,7 +510,7 @@ class ActorReplicaWrapper:
                 if self._is_cross_language:
                     return ReplicaStartupStatus.SUCCEEDED
 
-                self._deployment_config, self._version = ray.get(self._ready_obj_ref)
+                _, self._version = ray.get(self._ready_obj_ref)
                 self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
                     self._allocated_obj_ref
                 )

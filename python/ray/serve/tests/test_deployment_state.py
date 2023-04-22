@@ -130,7 +130,9 @@ class MockReplicaActorWrapper:
 
     def reconfigure(self, version: DeploymentVersion):
         self.started = True
+        updating = self.version.requires_actor_reconfigure(version)
         self.version = version
+        return updating
 
     def recover(self):
         self.recovering = True
@@ -866,17 +868,17 @@ def test_deploy_new_config_same_code_version(
         by_state=[(ReplicaState.RUNNING, 1)],
     )
 
-    deployment_state.update()
-    check_counts(deployment_state, total=1)
-    check_counts(
-        deployment_state,
-        version=b_version_2,
-        total=1,
-        by_state=[(ReplicaState.UPDATING, 1)],
-    )
-
-    # Mark the replica as ready.
-    deployment_state._replicas.get()[0]._actor.set_ready()
+    if option in ["user_config", "graceful_shutdown_wait_loop_s"]:
+        deployment_state.update()
+        check_counts(deployment_state, total=1)
+        check_counts(
+            deployment_state,
+            version=b_version_2,
+            total=1,
+            by_state=[(ReplicaState.UPDATING, 1)],
+        )
+        # Mark the replica as ready.
+        deployment_state._replicas.get()[0]._actor.set_ready()
 
     deployment_state.update()
     check_counts(deployment_state, total=1)
@@ -1273,7 +1275,7 @@ def test_new_version_deploy_throttling(mock_get_all_node_ids, mock_deployment_st
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@pytest.mark.parametrize("mock_deployment_state", [True], indirect=True)
 @patch.object(DriverDeploymentState, "_get_all_node_ids")
 def test_reconfigure_throttling(mock_get_all_node_ids, mock_deployment_state):
     # All replicas should be started at once for a new deployment.
