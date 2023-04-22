@@ -4,9 +4,9 @@ import json
 from typing import Any, Optional, Dict, List
 from zlib import crc32
 
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
-from ray.serve.config import DeploymentConfig, DeploymentOptionUpdateType
+from ray.serve.config import DeploymentConfig
 
 import logging
 
@@ -58,6 +58,12 @@ class DeploymentVersion:
             self.code_version != new_version.code_version
             or self.ray_actor_options_hash != new_version.ray_actor_options_hash
         )
+
+    def requires_actor_reconfigure(self, new_version):
+        """Compares the current version with the new version, and determines whether the
+        new version requires actors of the current version to be restarted.
+        """
+        return self.reconfigure_actor_hash != new_version.reconfigure_actor_hash
 
     def compute_hashes(self):
         # If this changes, the controller will directly restart all existing replicas.

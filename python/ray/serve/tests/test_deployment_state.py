@@ -27,6 +27,12 @@ from ray.serve._private.deployment_state import (
     VersionedReplica,
     rank_replicas_for_stopping,
 )
+from ray.serve._private.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -811,8 +817,21 @@ def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
 
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@pytest.mark.parametrize(
+    "option,value",
+    [
+        ("user_config", {"hello": "world"}),
+        ("max_concurrent_queries", 10),
+        ("graceful_shutdown_timeout_s", DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S + 1),
+        ("graceful_shutdown_wait_loop_s", DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S + 1),
+        ("health_check_period_s", DEFAULT_HEALTH_CHECK_PERIOD_S + 1),
+        ("health_check_timeout_s", DEFAULT_HEALTH_CHECK_TIMEOUT_S + 1),
+    ],
+)
 @patch.object(DriverDeploymentState, "_get_all_node_ids")
-def test_deploy_new_config_same_version(mock_get_all_node_ids, mock_deployment_state):
+def test_deploy_new_config_same_code_version(
+    mock_get_all_node_ids, mock_deployment_state, option, value
+):
     # Deploying a new config with the same version should not deploy a new
     # replica.
     deployment_state, timer = mock_deployment_state
@@ -835,8 +854,8 @@ def test_deploy_new_config_same_version(mock_get_all_node_ids, mock_deployment_s
     )
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    # Update to a new config without changing the version.
-    b_info_2, b_version_2 = deployment_info(version="1", user_config={"hello": "world"})
+    # Update to a new config without changing the code version.
+    b_info_2, b_version_2 = deployment_info(version="1", **{option: value})
     updated = deployment_state.deploy(b_info_2)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
@@ -848,7 +867,6 @@ def test_deploy_new_config_same_version(mock_get_all_node_ids, mock_deployment_s
     )
 
     deployment_state.update()
-    print("replicas", deployment_state._replicas.get())
     check_counts(deployment_state, total=1)
     check_counts(
         deployment_state,

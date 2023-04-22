@@ -431,14 +431,18 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def reconfigure(self, version: DeploymentVersion):
+    def reconfigure(self, version: DeploymentVersion) -> bool:
         """
-        Update user config of existing actor behind current
-        DeploymentReplica instance.
+        Update replica version. Also, updates the deployment config on the actor
+        behind this DeploymentReplica instance if necessary.
+
+        Returns: whether the actor is being updated.
         """
-        if self._version.reconfigure_actor_hash != version.reconfigure_actor_hash:
+        updating = False
+        if self._version.requires_actor_reconfigure(version):
             # Call into replica actor reconfigure() with updated user config and
             # graceful_shutdown_wait_loop_s
+            updating = True
             deployment_config = copy(version.deployment_config)
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
@@ -448,6 +452,7 @@ class ActorReplicaWrapper:
             )
 
         self._version = version
+        return updating
 
     def recover(self):
         """
@@ -773,12 +778,14 @@ class DeploymentReplica(VersionedReplica):
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
 
-    def reconfigure(self, version: DeploymentVersion):
+    def reconfigure(self, version: DeploymentVersion) -> bool:
         """
-        Update deployment config of existing actor behind current
-        DeploymentReplica instance.
+        Update replica version. Also, updates the deployment config on the actor
+        behind this DeploymentReplica instance if necessary.
+
+        Returns: whether the actor is being updated.
         """
-        self._actor.reconfigure(version)
+        return self._actor.reconfigure(version)
 
     def recover(self):
         """
@@ -1280,8 +1287,11 @@ class DeploymentState:
             # we update it dynamically without restarting the replica.
             else:
                 reconfigure_changes += 1
-                replica.reconfigure(self._target_state.version)
-                self._replicas.add(ReplicaState.UPDATING, replica)
+                actor_updating = replica.reconfigure(self._target_state.version)
+                if actor_updating:
+                    self._replicas.add(ReplicaState.UPDATING, replica)
+                else:
+                    self._replicas.add(ReplicaState.RUNNING, replica)
                 logger.debug(
                     "Adding UPDATING to replica_tag: "
                     f"{replica.replica_tag}, deployment_name: {self._name}"

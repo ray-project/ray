@@ -3,7 +3,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Dict, Set
+from typing import Dict, Set, Any
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import pytest
@@ -1094,27 +1094,13 @@ class TestDeployApp:
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
     @pytest.mark.parametrize(
-        "field_to_update,option_to_update,config_update",
-        [
-            ("import_path", "", False),
-            ("runtime_env", "", False),
-            ("deployments", "num_replicas", True),
-            ("deployments", "autoscaling_config", True),
-            ("deployments", "user_config", True),
-            ("deployments", "ray_actor_options", False),
-        ],
+        "field_to_update",
+        ["import_path", "runtime_env", "ray_actor_options"],
     )
-    def test_deploy_config_update(
-        self,
-        client: ServeControllerClient,
-        field_to_update: str,
-        option_to_update: str,
-        config_update: bool,
+    def test_deploy_config_update_heavyweight(
+        self, client: ServeControllerClient, field_to_update: str
     ):
-        """
-        Check that replicas stay alive when lightweight config updates are made and
-        replicas are torn down when code updates are made.
-        """
+        """Check that replicas are torn down when code updates are made."""
 
         def deployment_running():
             serve_status = client.get_serve_status()
@@ -1147,16 +1133,8 @@ class TestDeployApp:
             ] = "ray.serve.tests.test_config_files.pid.bnode"
         elif field_to_update == "runtime_env":
             config_template["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
-        elif field_to_update == "deployments":
-            updated_options = {
-                "num_replicas": 2,
-                "autoscaling_config": {"max_replicas": 2},
-                "user_config": {"name": "bob"},
-                "ray_actor_options": {"num_cpus": 0.2},
-            }
-            config_template["deployments"][0][option_to_update] = updated_options[
-                option_to_update
-            ]
+        elif field_to_update == "ray_actor_options":
+            config_template["deployments"][0]["ray_actor_options"] = {"num_cpus": 0.2}
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(deployment_running, timeout=15)
@@ -1167,7 +1145,62 @@ class TestDeployApp:
         pids = []
         for _ in range(4):
             pids.append(int(requests.get("http://localhost:8000/f").text))
-        assert (pid1 in pids) == config_update
+        assert pid1 not in pids
+
+    @pytest.mark.parametrize(
+        "option_to_update,original_value,updated_value",
+        [
+            ("num_replicas", 1, 2),
+            ("max_concurrent_queries", 100, 101),
+            ("user_config", {"name": "alice"}, {"name": "bob"}),
+            ("autoscaling_config", {"max_replicas": 2}, {"max_replicas": 5}),
+        ],
+    )
+    def test_deploy_config_update_lightweight(
+        self,
+        client: ServeControllerClient,
+        option_to_update: str,
+        original_value: Any,
+        updated_value: Any,
+    ):
+        """
+        Check that replicas stay alive when lightweight config updates are made.
+        """
+
+        def deployment_running():
+            serve_status = client.get_serve_status()
+            return (
+                serve_status.get_deployment_status("f") is not None
+                and serve_status.app_status.status == ApplicationStatus.RUNNING
+                and serve_status.get_deployment_status("f").status
+                == DeploymentStatus.HEALTHY
+            )
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.pid.node",
+            "deployments": [{"name": "f"}],
+        }
+        if original_value is not None:
+            config_template["deployments"][0][option_to_update] = original_value
+
+        # Deploy first time
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(deployment_running, timeout=15)
+        pid1 = int(requests.get("http://localhost:8000/f").text)
+
+        # Redeploy with updated option
+        config_template["deployments"][0][option_to_update] = updated_value
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(deployment_running, timeout=15)
+
+        # This assumes that Serve implements round-robin routing for its replicas. As
+        # long as that doesn't change, this test shouldn't be flaky; however if that
+        # routing ever changes, this test could become mysteriously flaky
+        pids = []
+        for _ in range(4):
+            pids.append(int(requests.get("http://localhost:8000/f").text))
+
+        assert pid1 in pids
 
     def test_deploy_separate_runtime_envs(self, client: ServeControllerClient):
         """Deploy two applications with separate runtime envs."""

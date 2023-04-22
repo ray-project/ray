@@ -129,14 +129,10 @@ def test_num_replicas():
 
 def test_autoscaling_config():
     v1 = DeploymentVersion(
-        "1",
-        DeploymentConfig(autoscaling_config={"min_replicas": 1, "max_replicas": 5}),
-        {},
+        "1", DeploymentConfig(autoscaling_config={"max_replicas": 2}), {}
     )
     v2 = DeploymentVersion(
-        "1",
-        DeploymentConfig(autoscaling_config={"min_replicas": 1, "max_replicas": 10}),
-        {},
+        "1", DeploymentConfig(autoscaling_config={"max_replicas": 5}), {}
     )
 
     assert v1 == v2
@@ -147,6 +143,50 @@ def test_max_concurrent_queries():
     v1 = DeploymentVersion("1", DeploymentConfig(max_concurrent_queries=5), {})
     v2 = DeploymentVersion("1", DeploymentConfig(max_concurrent_queries=5), {})
     v3 = DeploymentVersion("1", DeploymentConfig(max_concurrent_queries=10), {})
+
+    assert v1 == v2
+    assert hash(v1) == hash(v2)
+    assert v1 != v3
+    assert hash(v1) != hash(v3)
+
+
+def test_health_check_period_s():
+    v1 = DeploymentVersion("1", DeploymentConfig(health_check_period_s=5), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(health_check_period_s=5), {})
+    v3 = DeploymentVersion("1", DeploymentConfig(health_check_period_s=10), {})
+
+    assert v1 == v2
+    assert hash(v1) == hash(v2)
+    assert v1 != v3
+    assert hash(v1) != hash(v3)
+
+
+def test_health_check_timeout_s():
+    v1 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=5), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=5), {})
+    v3 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=10), {})
+
+    assert v1 == v2
+    assert hash(v1) == hash(v2)
+    assert v1 != v3
+    assert hash(v1) != hash(v3)
+
+
+def test_graceful_shutdown_timeout_s():
+    v1 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_timeout_s=5), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_timeout_s=5), {})
+    v3 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_timeout_s=10), {})
+
+    assert v1 == v2
+    assert hash(v1) == hash(v2)
+    assert v1 != v3
+    assert hash(v1) != hash(v3)
+
+
+def test_graceful_shutdown_wait_loop_s():
+    v1 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_wait_loop_s=5), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_wait_loop_s=5), {})
+    v3 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_wait_loop_s=10), {})
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
