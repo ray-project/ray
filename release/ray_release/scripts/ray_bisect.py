@@ -31,7 +31,7 @@ def main(
     test_name: str,
     passing_commit: str,
     failing_commit: str,
-    concurrency: Optional[int] = 1,
+    concurrency: int = 1,
 ) -> None:
     if concurrency <= 0:
         raise ValueError(
@@ -59,6 +59,9 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
         idx_to_commit = {}
         for i in range(concurrency):
             idx = len(commit_list) * (i + 1) // (concurrency + 1)
+            # make sure that idx is not at the boundary, this avoids rerun bisect
+            # on the previously used revision
+            idx = min(max(idx, 1), len(commit_list) - 2)
             idx_to_commit[idx] = commit_list[idx]
         outcomes = _run_test(test, set(idx_to_commit.values()))
         passing_idx = 0
