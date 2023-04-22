@@ -81,6 +81,7 @@ from ray.data._internal.stage_impl import (
     RandomShuffleStage,
     ZipStage,
     SortStage,
+    LimitStage,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -2197,40 +2198,11 @@ class Datastream(Generic[T]):
         Returns:
             The truncated datastream.
         """
-        start_time = time.perf_counter()
-        # Truncate the block list to the minimum number of blocks that contains at least
-        # `limit` rows.
-        block_list = self._plan.execute().truncate_by_rows(limit)
-        blocks, metadata, _, _ = _split_at_index(block_list, limit)
-        split_duration = time.perf_counter() - start_time
-        meta_for_stats = [
-            BlockMetadata(
-                num_rows=m.num_rows,
-                size_bytes=m.size_bytes,
-                schema=m.schema,
-                input_files=m.input_files,
-                exec_stats=None,
-            )
-            for m in metadata
-        ]
-        datastream_stats = DatastreamStats(
-            stages={"Limit": meta_for_stats},
-            parent=self._plan.stats(),
-        )
-        datastream_stats.time_total_s = split_duration
-        return Datastream(
-            ExecutionPlan(
-                BlockList(
-                    blocks,
-                    metadata,
-                    owned_by_consumer=block_list._owned_by_consumer,
-                ),
-                datastream_stats,
-                run_by_consumer=block_list._owned_by_consumer,
-            ),
-            self._epoch,
-            self._lazy,
-        )
+        plan = self._plan.with_stage(LimitStage(limit))
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            raise NotImplementedError("TODO")
+        return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take_batch(

@@ -344,3 +344,48 @@ class SortStage(AllToAllStage):
             do_sort,
             sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
         )
+
+
+class LimitStage(AllToAllStage):
+    def __init__(self, limit: int):
+        self._limit = limit
+        super().__init__(
+            "Limit",
+            None,
+            self.do_limit,
+        )
+
+    def do_limit(
+        self,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+        *_,
+    ):
+        if clear_input_blocks:
+            blocks = block_list.copy().get_blocks()
+            block_list.clear()
+        else:
+            blocks = block_list.get_blocks()
+        res_blocks = []
+        res_metadata = []
+        for block_ref, metadata in zip(blocks, block_list.get_metadata()):
+            block = BlockAccessor.for_block(ray.get(block_ref))
+            if self._limit >= block.num_rows():
+                res_blocks.append(block_ref)
+                self._limit -= block.num_rows()
+            else:
+                res_blocks.append(
+                    ray.put(block.slice(0, self._limit, copy=False))
+                )
+                self._limit = 0
+            res_metadata.append(metadata)
+            if self._limit <= 0:
+                break
+        return (
+            BlockList(
+                res_blocks,
+                res_metadata,
+                owned_by_consumer=block_list._owned_by_consumer,
+            ),
+            {},
+        )
