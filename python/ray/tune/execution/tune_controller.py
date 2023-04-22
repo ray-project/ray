@@ -971,13 +971,6 @@ class TuneController(_TuneControllerBase):
                 dir_or_data=future,
                 storage_mode=storage,
                 metrics=result,
-                local_to_remote_path_fn=partial(
-                    TrainableUtil.get_remote_storage_path,
-                    logdir=trial.logdir,
-                    remote_checkpoint_dir=trial.remote_checkpoint_dir,
-                )
-                if trial.uses_cloud_checkpointing
-                else None,
             )
             trial.saving_to = checkpoint
 
