@@ -31,7 +31,7 @@ def main(
     test_name: str,
     passing_commit: str,
     failing_commit: str,
-    concurrency: int = 1,
+    concurrency: Optional[int] = 1,
 ) -> None:
     if concurrency <= 0:
         raise ValueError(
