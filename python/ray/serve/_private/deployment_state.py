@@ -8,7 +8,7 @@ import random
 import time
 import traceback
 from collections import defaultdict, OrderedDict
-from copy import copy, deepcopy
+from copy import copy
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -200,11 +200,8 @@ class ActorReplicaWrapper:
         self._ready_obj_ref: ObjectRef = None
 
         self._actor_resources: Dict[str, float] = None
-        self._max_concurrent_queries: int = None
-        self._graceful_shutdown_timeout_s: float = 0.0
+        self._version: DeploymentVersion = None
         self._healthy: bool = True
-        self._health_check_period_s: float = 0.0
-        self._health_check_timeout_s: float = 0.0
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
@@ -259,8 +256,33 @@ class ActorReplicaWrapper:
         return self._actor_handle
 
     @property
-    def max_concurrent_queries(self) -> int:
-        return self._max_concurrent_queries
+    def version(self) -> Optional[DeploymentVersion]:
+        return self._version
+
+    @property
+    def deployment_config(self) -> Optional[DeploymentConfig]:
+        if self._version:
+            return self._version.deployment_config
+
+    @property
+    def max_concurrent_queries(self) -> Optional[int]:
+        if self.deployment_config:
+            return self.deployment_config.max_concurrent_queries
+
+    @property
+    def graceful_shutdown_timeout_s(self) -> Optional[float]:
+        if self.deployment_config:
+            return self.deployment_config.graceful_shutdown_timeout_s
+
+    @property
+    def health_check_period_s(self) -> Optional[float]:
+        if self.deployment_config:
+            return self.deployment_config.health_check_period_s
+
+    @property
+    def health_check_timeout_s(self) -> Optional[float]:
+        if self.deployment_config:
+            return self.deployment_config.health_check_timeout_s
 
     @property
     def pid(self) -> Optional[int]:
@@ -290,18 +312,7 @@ class ActorReplicaWrapper:
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        self._max_concurrent_queries = (
-            deployment_info.deployment_config.max_concurrent_queries
-        )
-        self._graceful_shutdown_timeout_s = (
-            deployment_info.deployment_config.graceful_shutdown_timeout_s
-        )
-        self._health_check_period_s = (
-            deployment_info.deployment_config.health_check_period_s
-        )
-        self._health_check_timeout_s = (
-            deployment_info.deployment_config.health_check_timeout_s
-        )
+        self._version = version
 
         self._actor_resources = deployment_info.replica_config.resource_dict
         # it is currently not possible to create a placement group
@@ -420,17 +431,23 @@ class ActorReplicaWrapper:
                 temp = msgpack_deserialize(temp)
         return temp
 
-    def reconfigure(self, deployment_config: DeploymentConfig):
+    def reconfigure(self, version: DeploymentVersion):
         """
         Update user config of existing actor behind current
         DeploymentReplica instance.
         """
-        # Call into replica actor with updated user config and
-        # graceful_shutdown_wait_loop_s
-        deployment_config.user_config = self._format_user_config(
-            deployment_config.user_config
-        )
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(deployment_config)
+        if self._version.reconfigure_actor_hash != version.reconfigure_actor_hash:
+            # Call into replica actor reconfigure() with updated user config and
+            # graceful_shutdown_wait_loop_s
+            deployment_config = copy(version.deployment_config)
+            deployment_config.user_config = self._format_user_config(
+                deployment_config.user_config
+            )
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_config
+            )
+
+        self._version = version
 
     def recover(self):
         """
@@ -453,7 +470,7 @@ class ActorReplicaWrapper:
         else:
             self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
-    def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[DeploymentVersion]]:
+    def check_ready(self) -> ReplicaStartupStatus:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -470,36 +487,25 @@ class ActorReplicaWrapper:
                     - replica initialization failed.
                 SUCCEEDED:
                     - replica initialization succeeded.
-            version:
-                None:
-                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION, or FAILED states
-                version:
-                    - for SUCCEEDED state
         """
 
         # Check whether the replica has been allocated.
         if not self._check_obj_ref_ready(self._allocated_obj_ref):
-            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+            return ReplicaStartupStatus.PENDING_ALLOCATION
 
         # Check whether relica initialization has completed.
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
-            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+            return ReplicaStartupStatus.PENDING_INITIALIZATION
         else:
             try:
                 # TODO(simon): fully implement reconfigure for Java replicas.
                 if self._is_cross_language:
-                    return ReplicaStartupStatus.SUCCEEDED, None
+                    return ReplicaStartupStatus.SUCCEEDED
 
-                deployment_config, version = ray.get(self._ready_obj_ref)
-                self._max_concurrent_queries = deployment_config.max_concurrent_queries
-                self._graceful_shutdown_timeout_s = (
-                    deployment_config.graceful_shutdown_timeout_s
-                )
-                self._health_check_period_s = deployment_config.health_check_period_s
-                self._health_check_timeout_s = deployment_config.health_check_timeout_s
+                self._deployment_config, self._version = ray.get(self._ready_obj_ref)
                 self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
                     self._allocated_obj_ref
                 )
@@ -508,13 +514,13 @@ class ActorReplicaWrapper:
                     f"Exception in replica '{self._replica_tag}', "
                     "the replica will be stopped."
                 )
-                return ReplicaStartupStatus.FAILED, None
+                return ReplicaStartupStatus.FAILED
         if self._deployment_is_cross_language:
             # todo: The replica's userconfig whitch java client created
             #  is different from the controller's userconfig
-            return ReplicaStartupStatus.SUCCEEDED, None
+            return ReplicaStartupStatus.SUCCEEDED
         else:
-            return ReplicaStartupStatus.SUCCEEDED, version
+            return ReplicaStartupStatus.SUCCEEDED
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
@@ -535,7 +541,7 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
-        return self._graceful_shutdown_timeout_s
+        return self.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
@@ -582,12 +588,12 @@ class ActorReplicaWrapper:
                     f"Health check for replica {self._replica_tag} failed: {e}"
                 )
                 response = ReplicaHealthCheckResponse.APP_FAILURE
-        elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
+        elif time.time() - self._last_health_check_time > self.health_check_timeout_s:
             # Health check hasn't returned and the timeout is up, consider it failed.
             logger.warning(
                 "Didn't receive health check response for replica "
                 f"{self._replica_tag} after "
-                f"{self._health_check_timeout_s}s, marking it unhealthy."
+                f"{self.health_check_timeout_s}s, marking it unhealthy."
             )
             response = ReplicaHealthCheckResponse.APP_FAILURE
         else:
@@ -604,7 +610,7 @@ class ActorReplicaWrapper:
 
         A health check will be started if:
             1) There is not already an active health check.
-            2) It has been more than self._health_check_period_s since the
+            2) It has been more than health_check_period_s since the
                previous health check was *started*.
 
         This assumes that self._health_check_ref is reset to `None` when an
@@ -619,7 +625,7 @@ class ActorReplicaWrapper:
         # check. Add some randomness to avoid synchronizing across all
         # replicas.
         time_since_last = time.time() - self._last_health_check_time
-        randomized_period = self._health_check_period_s * random.uniform(0.9, 1.1)
+        randomized_period = self.health_check_period_s * random.uniform(0.9, 1.1)
         return time_since_last > randomized_period
 
     def check_health(self) -> bool:
@@ -708,7 +714,6 @@ class DeploymentReplica(VersionedReplica):
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
-        self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
 
@@ -749,7 +754,7 @@ class DeploymentReplica(VersionedReplica):
 
     @property
     def version(self):
-        return self._version
+        return self._actor.version
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -767,32 +772,13 @@ class DeploymentReplica(VersionedReplica):
         self._actor.start(deployment_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
-        self._version = version
 
     def reconfigure(self, version: DeploymentVersion):
         """
         Update deployment config of existing actor behind current
         DeploymentReplica instance.
         """
-        # Update options from deployment config that are tracked in ActorReplicaWrapper
-        self._actor._max_concurrent_queries = (
-            version.deployment_config.max_concurrent_queries
-        )
-        self._actor._graceful_shutdown_timeout_s = (
-            version.deployment_config.graceful_shutdown_timeout_s
-        )
-        self._actor._health_check_period_s = (
-            version.deployment_config.health_check_period_s
-        )
-        self._actor._health_check_timeout_s = (
-            version.deployment_config.health_check_timeout_s
-        )
-
-        # Call into replica actor reconfigure() with updated config options
-        if self._version.reconfigure_actor_hash != version.reconfigure_actor_hash:
-            self._actor.reconfigure(version.deployment_config)
-
-        self._version = deepcopy(version)
+        self._actor.reconfigure(version)
 
     def recover(self):
         """
@@ -813,15 +799,7 @@ class DeploymentReplica(VersionedReplica):
             status: Most recent state of replica by
                 querying actor obj ref
         """
-        status, version = self._actor.check_ready()
-
-        if status == ReplicaStartupStatus.SUCCEEDED:
-            # Re-assign DeploymentVersion if start / update / recover succeeded
-            # by reading re-computed version in RayServeReplica
-            if version is not None:
-                self._version = version
-
-        return status
+        return self._actor.check_ready()
 
     def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
@@ -1290,14 +1268,10 @@ class DeploymentState:
         code_version_changes = 0
         reconfigure_changes = 0
         for replica in replicas_to_update:
-            # If code version or ray actor options change, stop the replica. A new one
-            # with the correct version will be started later as part of the normal
-            # scale-up process.
-            if (
-                replica.version.code_version != self._target_state.version.code_version
-                or replica.version.ray_actor_options_hash
-                != self._target_state.version.ray_actor_options_hash
-            ):
+            # If the new version requires the actors to be restarted, stop the replica.
+            # A new one with the correct version will be started later as part of the
+            # normal scale-up process.
+            if replica.version.requires_actor_restart(self._target_state.version):
                 code_version_changes += 1
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)

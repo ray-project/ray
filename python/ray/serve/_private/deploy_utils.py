@@ -140,7 +140,15 @@ def deploy_args_to_deployment_info(
     )
 
 
-def get_app_code_version(app_config: ServeApplicationSchema):
+def get_app_code_version(app_config: ServeApplicationSchema) -> str:
+    """Returns the code version of an application.
+
+    Args:
+        app_config: The application config.
+
+    Returns: a hash of the import path and (application level) runtime env representing
+            the code version of the application.
+    """
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,

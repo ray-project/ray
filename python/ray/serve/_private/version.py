@@ -29,6 +29,8 @@ class DeploymentVersion:
             self.unversioned = False
             self.code_version = code_version
 
+        # Options for this field may be mutated over time, so any logic that uses this
+        # should access this field directly
         self.deployment_config: DeploymentConfig = deployment_config
         self.ray_actor_options: Dict = ray_actor_options
         self.compute_hashes()
@@ -47,6 +49,15 @@ class DeploymentVersion:
         if not isinstance(other, DeploymentVersion):
             return False
         return self._hash == other._hash
+
+    def requires_actor_restart(self, new_version):
+        """Compares the current version with the new version, and determines whether the
+        new version requires actors of the current version to be restarted.
+        """
+        return (
+            self.code_version != new_version.code_version
+            or self.ray_actor_options_hash != new_version.ray_actor_options_hash
+        )
 
     def compute_hashes(self):
         # If this changes, the controller will directly restart all existing replicas.

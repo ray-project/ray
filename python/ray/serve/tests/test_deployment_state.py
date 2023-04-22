@@ -122,12 +122,9 @@ class MockReplicaActorWrapper:
         self.version = version
         self.deployment_info = deployment_info
 
-    def reconfigure(self, deployment_config: Any):
+    def reconfigure(self, version: DeploymentVersion):
         self.started = True
-        self.version = DeploymentVersion.from_deployment_version(
-            self.version,
-            deployment_config,
-        )
+        self.version = version
 
     def recover(self):
         self.recovering = True
@@ -141,7 +138,7 @@ class MockReplicaActorWrapper:
             self.recovering = False
             self.started = True
             self.version = self.starting_version
-        return ready, self.version
+        return ready
 
     def resource_requirements(self) -> Tuple[str, str]:
         assert self.started
@@ -851,6 +848,7 @@ def test_deploy_new_config_same_version(mock_get_all_node_ids, mock_deployment_s
     )
 
     deployment_state.update()
+    print("replicas", deployment_state._replicas.get())
     check_counts(deployment_state, total=1)
     check_counts(
         deployment_state,
