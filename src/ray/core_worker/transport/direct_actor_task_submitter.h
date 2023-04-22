@@ -157,6 +157,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return string.
   std::string DebugString(const ActorID &actor_id) const;
 
+
+  /// Whether the specified actor is alive.
+  ///
+  /// \param[in] actor_id The actor ID.
+  /// \return Whether this actor is alive.
+  bool IsActorAlive(const ActorID &actor_id) const;
  private:
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
@@ -279,12 +285,6 @@ class CoreWorkerDirectActorTaskSubmitter
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
-
-  /// Whether the specified actor is alive.
-  ///
-  /// \param[in] actor_id The actor ID.
-  /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;

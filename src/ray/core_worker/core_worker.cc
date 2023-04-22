@@ -2175,17 +2175,22 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   }
 }
 
-std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
+Status CoreWorker::SubmitActorTask(
     const ActorID &actor_id,
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
-    const TaskOptions &task_options) {
+    const TaskOptions &task_options,
+    std::optional<std::vector<rpc::ObjectReference>> &task_returns) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
+  task_returns = std::nullopt;
+  if(!direct_actor_submitter_->IsActorAlive(actor_id)) {
+    return Status::NotFound("Can't find this actor. It might be dead or it's from a different cluster");
+  }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
                    << ". " << direct_actor_submitter_->DebugString(actor_id);
-    return std::nullopt;
+    return Status::OutOfResource("Too many tasks pending to be executed. Please try later");
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
@@ -2248,7 +2253,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  return {std::move(returned_refs)};
+  task_returns = {std::move(returned_refs)};
+  return Status::OK();
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id,

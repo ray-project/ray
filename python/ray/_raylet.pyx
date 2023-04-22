@@ -2419,12 +2419,15 @@ cdef class CoreWorker:
                 &incremented_put_arg_ids)
 
             with nogil:
-                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name))
+                        name, num_returns, c_resources, concurrency_group_name),
+                     return_refs)
+            if not status.ok():
+                raise Exception(f"Failed to submit task to actor {actor_id} due to {status.message()}")
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we

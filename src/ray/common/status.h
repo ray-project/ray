@@ -114,6 +114,7 @@ enum class StatusCode : char {
   OutOfDisk = 28,
   ObjectUnknownOwner = 29,
   RpcError = 30,
+  OutOfResource = 31
 };
 
 #if defined(__clang__)
@@ -239,6 +240,10 @@ class RAY_EXPORT Status {
 
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
+  }
+
+  static Status OutOfResource(const std::string &msg) {
+    return Status(StatusCode::OutOfResource, msg);
   }
 
   static StatusCode StringToCode(const std::string &str);
