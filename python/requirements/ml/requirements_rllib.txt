@@ -17,7 +17,7 @@ mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.22.3; python_version >= '3.7'
 pymunk==6.2.1
-supersuit==3.7.2; python_version >= '3.7'
+supersuit==3.7.1; python_version >= '3.7'
 # For tests on minigrid.
 minigrid==2.1.1
 # For tests on RecSim and Kaggle envs.
