@@ -2183,14 +2183,16 @@ Status CoreWorker::SubmitActorTask(
     std::optional<std::vector<rpc::ObjectReference>> &task_returns) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns = std::nullopt;
-  if(!direct_actor_submitter_->IsActorAlive(actor_id)) {
-    return Status::NotFound("Can't find this actor. It might be dead or it's from a different cluster");
+  if (!direct_actor_submitter_->IsActorAlive(actor_id)) {
+    return Status::NotFound(
+        "Can't find this actor. It might be dead or it's from a different cluster");
   }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
                    << ". " << direct_actor_submitter_->DebugString(actor_id);
-    return Status::OutOfResource("Too many tasks pending to be executed. Please try later");
+    return Status::OutOfResource(
+        "Too many tasks pending to be executed. Please try later");
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);

@@ -809,12 +809,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] task_returns The object returned by this task
   ///
   /// \return Status of this submission
-  Status SubmitActorTask(
-      const ActorID &actor_id,
-      const RayFunction &function,
-      const std::vector<std::unique_ptr<TaskArg>> &args,
-      const TaskOptions &task_options,
-      std::optional<std::vector<rpc::ObjectReference>>& task_returns);
+  Status SubmitActorTask(const ActorID &actor_id,
+                         const RayFunction &function,
+                         const std::vector<std::unique_ptr<TaskArg>> &args,
+                         const TaskOptions &task_options,
+                         std::optional<std::vector<rpc::ObjectReference>> &task_returns);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///

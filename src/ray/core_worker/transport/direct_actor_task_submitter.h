@@ -157,12 +157,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return string.
   std::string DebugString(const ActorID &actor_id) const;
 
-
   /// Whether the specified actor is alive.
   ///
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
+
  private:
   /// A helper function to get task finisher without holding mu_
   /// We should use this function when access
