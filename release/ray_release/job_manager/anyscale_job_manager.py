@@ -335,7 +335,7 @@ class AnyscaleJobManager:
             # Many of Ray components have their separated logs (e.g. dashboard,
             # gcs_server, etc.), so the interesting errors are not always in the
             # job logs. If the job has no logs, check other ray logs for error patterns.
-            if not output:
+            if "### Starting ###" not in output:
                 output = self._get_ray_error_logs()
             assert output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
