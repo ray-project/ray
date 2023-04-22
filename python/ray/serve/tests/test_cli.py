@@ -23,7 +23,6 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
-from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
