@@ -32,9 +32,14 @@ namespace rpc {
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
-/// For testing
-/// Drain the executor and reset it.
-void DrainAndResetServerCallExecutor();
+/// Drain the executor.
+void DrainServerCallExecutor();
+
+/// Reset the server call executor.
+/// Testing only. After you drain the executor
+/// you need to regenerate the executor
+/// because they are global.
+void ResetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
