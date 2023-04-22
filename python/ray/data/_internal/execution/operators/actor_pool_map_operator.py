@@ -122,6 +122,8 @@ class ActorPoolMapOperator(MapOperator):
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
+        self._scale_up_if_needed()
+        self._scale_down_if_needed()
         free_slots = self._actor_pool.num_free_slots()
         if input_queue_size > free_slots and under_resource_limits:
             # Try to scale up if work remains in the work queue.
@@ -180,11 +182,10 @@ class ActorPoolMapOperator(MapOperator):
             # Only try to scale down if the work queue has been fully consumed.
             self._scale_down_if_needed()
 
-    def _scale_up_if_needed(self):
+    def _scale_up_if_needed(self, ):
         """Try to scale up the pool if the autoscaling policy allows it."""
         while self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
-            num_running_workers=self._actor_pool.num_running_actors(),
             num_free_slots=self._actor_pool.num_free_slots(),
         ):
             self._start_actor()
@@ -377,9 +378,6 @@ class AutoscalingConfig:
     # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
     # prefetching has been ported to this new actor pool.
     max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT
-    # Minimum ratio of ready workers to the total number of workers. If the pool is
-    # above this ratio, it will be allowed to be scaled up.
-    ready_to_total_workers_ratio: float = 0.8
     # Maximum ratio of idle workers to the total number of workers. If the pool goes
     # above this ratio, the pool will be scaled down.
     idle_to_total_workers_ratio: float = 0.5
@@ -409,7 +407,6 @@ class AutoscalingConfig:
             max_workers=compute_strategy.max_size,
             max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor
             or DEFAULT_MAX_TASKS_IN_FLIGHT,
-            ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
         )
 
 
@@ -431,20 +428,18 @@ class AutoscalingPolicy:
         """The maximum number of actors that can be added to the actor pool."""
         return self._config.max_workers
 
-    def should_scale_up(self, num_total_workers: int, num_running_workers: int, num_free_slots: int) -> bool:
+    def should_scale_up(self, num_total_workers: int, num_free_slots: int, input_queue_size: int) -> bool:
         """Whether the actor pool should scale up by adding a new actor.
 
         Args:
             num_total_workers: Total number of workers in actor pool.
             num_running_workers: Number of currently running workers in actor pool.
             num_free_slots: Number of free slots for existing actors in the pool.
+            input_queue_size: Size of the input queue for this operator.
 
         Returns:
             Whether the actor pool should be scaled up by one actor.
         """
-        # TODO: Replace the ready-to-total-ratio heuristic with a a work queue
-        # heuristic such that scale-up is only triggered if the current pool doesn't
-        # have enough worker slots to process the work queue.
         # TODO: Use profiling of the bundle arrival rate, worker startup
         # time, and task execution time to tailor the work queue heuristic to the
         # running workload and observed Ray performance. E.g. this could be done via an
@@ -456,15 +451,9 @@ class AutoscalingPolicy:
             return (
                 # 1. The actor pool will not exceed the configured maximum size.
                 num_total_workers < self._config.max_workers
-                # TODO: Remove this once we have a good work queue heuristic and our
-                # resource-based backpressure is working well.
-                # 2. At least 80% of the workers in the pool have already started.
-                # This will ensure that workers will be launched in parallel while
-                # bounding the worker pool to requesting 125% of the cluster's
-                # available resources.
-                and num_total_workers > 0
-                and num_running_workers / num_total_workers
-                > self._config.ready_to_total_workers_ratio
+                # 2. The number of free slots for the current actor pool is not enough
+                # to handle all the inputs for this operator.
+                and num_free_slots < input_queue_size
             )
 
     def should_scale_down(
