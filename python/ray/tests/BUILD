@@ -216,7 +216,7 @@ py_test_module_list(
     "test_ray_deploy.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "ray_e2e", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
