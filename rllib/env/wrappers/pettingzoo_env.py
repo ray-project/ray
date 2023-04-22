@@ -136,7 +136,7 @@ class PettingZooEnv(MultiAgentEnv):
         return all(self.observation_space.contains(val) for val in x.values())
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        info = self.env.reset(seed=seed, return_info=True, options=options)
+        info = self.env.reset(seed=seed, options=options)
         return (
             {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
             info or {},
@@ -175,7 +175,7 @@ class PettingZooEnv(MultiAgentEnv):
         self.env.close()
 
     def render(self):
-        return self.env.render(self.render_mode)
+        return self.env.render()
 
     @property
     def get_sub_environments(self):
@@ -221,7 +221,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        obs, info = self.par_env.reset(seed=seed, return_info=True, options=options)
+        obs, info = self.par_env.reset(seed=seed, options=options)
         return obs, info or {}
 
     def step(self, action_dict):
