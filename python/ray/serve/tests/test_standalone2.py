@@ -1079,9 +1079,11 @@ class TestDeployApp:
         deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
 
         # Delete all deployments, but don't update config
-        client.delete_deployments(
-            ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
-        )
+        deployments = [
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{name}"
+            for name in ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
+        ]
+        client.delete_deployments(deployments)
 
         ray.kill(client._controller, no_restart=False)
 
@@ -1129,11 +1131,12 @@ class TestDeployApp:
         """
 
         def deployment_running():
+            name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
             serve_status = client.get_serve_status()
             return (
-                serve_status.get_deployment_status("f") is not None
+                serve_status.get_deployment_status(name) is not None
                 and serve_status.app_status.status == ApplicationStatus.RUNNING
-                and serve_status.get_deployment_status("f").status
+                and serve_status.get_deployment_status(name).status
                 == DeploymentStatus.HEALTHY
             )
 
