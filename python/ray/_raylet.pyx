@@ -179,6 +179,7 @@ cdef extern from "ray/common/constants.h" nogil:
 
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
 
+
 class ObjectRefGenerator:
     def __init__(self, refs):
         # TODO(swang): As an optimization, can also store the generator
