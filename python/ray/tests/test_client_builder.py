@@ -115,7 +115,6 @@ def test_connect_to_cluster(ray_start_regular_shared):
         assert client_context.protocol_version == protocol_version
 
     server.stop(0)
-    subprocess.check_output("ray stop --force", shell=True)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
