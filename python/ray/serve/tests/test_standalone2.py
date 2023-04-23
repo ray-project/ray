@@ -23,7 +23,11 @@ from ray.exceptions import RayActorError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 from ray.serve.context import get_global_client
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -247,12 +251,15 @@ def test_get_serve_status(shutdown_ray):
     def f(*args):
         return "Hello world"
 
-    serve.run(f.bind(), name="app")
+    serve.run(f.bind())
 
     client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
-    assert status_info_1.deployment_statuses[0].name == "app_f"
+    assert (
+        status_info_1.deployment_statuses[0].name
+        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+    )
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
     serve.shutdown()
@@ -366,14 +373,14 @@ def test_controller_recover_and_delete(shutdown_ray):
     def f():
         pass
 
-    f.deploy()
+    serve.run(f.bind())
 
     actors = list_actors(
         address=ray_context.address_info["address"], filters=[("state", "=", "ALIVE")]
     )
 
-    # Try to delete the deployments and kill the controller right after
-    client.delete_deployments(["f"], blocking=False)
+    # Try to delete the application and kill the controller right after
+    serve.delete(SERVE_DEFAULT_APP_NAME, _blocking=False)
     ray.kill(client._controller, no_restart=False)
 
     # All replicas should be removed already or after the controller revives
@@ -400,7 +407,12 @@ def test_controller_recover_and_delete(shutdown_ray):
     # The deployment should be deleted, meaning its state should not be stored
     # in the DeploymentStateManager. This can be checked by attempting to
     # retrieve the deployment's status through the controller.
-    assert client.get_serve_status().get_deployment_status("f") is None
+    assert (
+        client.get_serve_status().get_deployment_status(
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+        )
+        is None
+    )
 
     serve.shutdown()
     ray.shutdown()
