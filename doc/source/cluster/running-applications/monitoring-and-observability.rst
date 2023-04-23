@@ -21,32 +21,34 @@ including the running jobs, actors, workers, nodes, etc.
 By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
 not publicly expose the port.
 
-.. tabbed:: If using the VM cluster launcher
+.. tab-set::
 
-    You can securely port-forward local traffic to the dashboard via the ``ray
-    dashboard`` command.
+    .. tab-item:: If using the VM cluster launcher
 
-    .. code-block:: shell
+        You can securely port-forward local traffic to the dashboard via the ``ray
+        dashboard`` command.
 
-        $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
+        .. code-block:: shell
 
-    The dashboard will now be visible at ``http://localhost:8265``.
+            $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
 
-.. tabbed:: If using Kubernetes
+        The dashboard will now be visible at ``http://localhost:8265``.
 
-    The KubeRay operator makes the dashboard available via a Service targeting
-    the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
-    dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
+    .. tab-item:: If using Kubernetes
 
-    You can also view the dashboard from outside the Kubernetes cluster by
-    using port-forwarding:
+        The KubeRay operator makes the dashboard available via a Service targeting
+        the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
+        dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
-    .. code-block:: shell
+        You can also view the dashboard from outside the Kubernetes cluster by
+        using port-forwarding:
 
-        $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+        .. code-block:: shell
 
-    For more information about configuring network access to a Ray cluster on
-    Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
+            $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+
+        For more information about configuring network access to a Ray cluster on
+        Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
 
 
 Using Ray Cluster CLI tools
@@ -63,29 +65,31 @@ These CLI commands can be run on any node in a Ray Cluster. Examples for
 executing these commands from a machine outside the Ray Cluster are provided
 below.
 
-.. tabbed:: If using the VM cluster launcher
+.. tab-set::
 
-    Execute a command on the cluster using ``ray exec``:
+    .. tab-item:: If using the VM cluster launcher
 
-    .. code-block:: shell
+        Execute a command on the cluster using ``ray exec``:
 
-        $ ray exec <cluster config file> "ray status"
+        .. code-block:: shell
 
-.. tabbed:: If using Kubernetes
+            $ ray exec <cluster config file> "ray status"
 
-    Execute a command on the cluster using ``kubectl exec`` and the configured
-    RayCluster name. We will use the Service targeting the Ray head pod to
-    execute a CLI command on the cluster.
+    .. tab-item:: If using Kubernetes
 
-    .. code-block:: shell
+        Execute a command on the cluster using ``kubectl exec`` and the configured
+        RayCluster name. We will use the Service targeting the Ray head pod to
+        execute a CLI command on the cluster.
 
-        # First, find the name of the Ray head service.
-        $ kubectl get pod | grep <RayCluster name>-head
-        # NAME                                             READY   STATUS    RESTARTS   AGE
-        # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+        .. code-block:: shell
 
-        # Then, use the name of the Ray head service to run `ray status`.
-        $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
+            # First, find the name of the Ray head service.
+            $ kubectl get pod | grep <RayCluster name>-head
+            # NAME                                             READY   STATUS    RESTARTS   AGE
+            # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+
+            # Then, use the name of the Ray head service to run `ray status`.
+            $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
 
 .. _multi-node-metrics:
 
