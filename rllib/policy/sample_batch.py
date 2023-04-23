@@ -1358,11 +1358,29 @@ class MultiAgentBatch:
             return policy_batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
 
-    @staticmethod
     @PublicAPI
-    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
-    def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
-        return concat_samples_into_ma_batch(samples)
+    def shuffle(self) -> "MultiAgentBatch":
+        """Shuffles the rows of all SampleBatches within this MultiAgentBatch in-place.
+
+        Returns:
+            This very (now shuffled) MultiAgentBatch.
+
+        Raises:
+            ValueError: If any of the SampleBatches in `self` has
+                SampleBatch.SEQ_LENS defined.
+
+        Examples:
+            >>> from ray.rllib.policy.sample_batch import MultiAgentBatch
+            >>> batch = MultiAgentBatch({  # doctest: +SKIP
+            ...     "policy1": {"a": [1, 2, 3]},
+            ...     "policy2": {"a": [4, 5, 6]},
+            ... )
+            >>> print(batch.shuffle()) # doctest: +SKIP
+            {"policy1": {"a": [3, 1, 2]}, "policy2": {"a": [4, 6, 5]}}
+        """
+        for batch in self.policy_batches.values():
+            batch.shuffle()
+        return self
 
     @PublicAPI
     def copy(self) -> "MultiAgentBatch":
@@ -1436,6 +1454,11 @@ class MultiAgentBatch:
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count
         )
+
+    @staticmethod
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
+    def concat_samples(*args, **kwargs):
+        pass
 
 
 @PublicAPI

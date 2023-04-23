@@ -23,7 +23,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
 from ray.rllib.utils.typing import ResultDict
@@ -272,6 +272,10 @@ class LearnerGroup:
                     # length to the "dropped ts" counter).
                     if len(self._in_queue) == self._in_queue.maxlen:
                         self._in_queue_ts_dropped += len(self._in_queue[0])
+
+                    # Shuffle batch when not using sequence information.
+                    if batch.get(SampleBatch.SEQ_LENS) is None:
+                        batch.shuffle()
                     self._in_queue.append(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).
@@ -296,7 +300,7 @@ class LearnerGroup:
 
     def _worker_manager_ready(self):
         #TODO: TOTEST: Allow for some number of in-flight requests.
-        return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors
+        return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors()
 
     def _get_results(self, results):
         processed_results = []
