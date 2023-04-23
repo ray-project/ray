@@ -366,6 +366,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
+    # This is needed or else the Ray Client tests run into a gRPC forking problem
+    # similar to https://github.com/grpc/grpc/issues/31885
+    - pip install pip install grpcio==1.50.0
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -415,6 +418,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
+    # This is needed or else the Ray Client tests run into a gRPC forking problem
+    # similar to https://github.com/grpc/grpc/issues/31885
+    - pip install pip install grpcio==1.50.0
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
