@@ -129,7 +129,12 @@ def convert_pandas_to_torch_tensor(
                 # NOTE: RuntimeError is raised when trying to stack ragged tensors.
                 # Try to coerce the tensor to a nested tensor, if possible.
                 # If this fails, the exception will be propagated up to the caller.
-                return torch.nested_tensor(tensors)
+                try:
+                    # PyTorch >= 1.13
+                    return torch.nested.nested_tensor(tensors)
+                except AttributeError:
+                    # PyTorch 1.12
+                    return torch.nested_tensor(tensors)
         else:
             return torch.as_tensor(vals, dtype=dtype)
 
