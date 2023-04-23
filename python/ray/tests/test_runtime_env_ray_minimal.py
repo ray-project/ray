@@ -15,31 +15,25 @@ import pytest
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition
 
 
-def _test_task_and_actor(capsys):
+def _test_task_and_actor():
     @ray.remote
     def f():
         return 1
 
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match="install virtualenv"):
         ray.get(f.options(runtime_env={"pip": ["requests"]}).remote())
-
-    def stderr_checker():
-        captured = capsys.readouterr()
-        return "install virtualenv" in captured.err
-
-    wait_for_condition(stderr_checker)
 
     @ray.remote
     class A:
         def task(self):
             return 1
 
-    A.options(runtime_env={"pip": ["requests"]}).remote()
+    a = A.options(runtime_env={"pip": ["requests"]}).remote()
 
-    wait_for_condition(stderr_checker)
+    with pytest.raises(RuntimeEnvSetupError, match="install virtualenv"):
+        ray.get(a.task.remote())
 
 
 @pytest.mark.skipif(
@@ -54,9 +48,9 @@ def _test_task_and_actor(capsys):
     ["ray start --head --ray-client-server-port 25553 --port 0"],
     indirect=True,
 )
-def test_ray_client_task_actor(call_ray_start, capsys):
+def test_ray_client_task_actor(call_ray_start):
     ray.init("ray://localhost:25553")
-    _test_task_and_actor(capsys)
+    _test_task_and_actor()
 
 
 @pytest.mark.skipif(
@@ -66,9 +60,9 @@ def test_ray_client_task_actor(call_ray_start, capsys):
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test is only run in CI with a minimal Ray installation.",
 )
-def test_task_actor(shutdown_only, capsys):
+def test_task_actor(shutdown_only):
     ray.init()
-    _test_task_and_actor(capsys)
+    _test_task_and_actor()
 
 
 @pytest.mark.skipif(
@@ -78,21 +72,15 @@ def test_task_actor(shutdown_only, capsys):
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test is only run in CI with a minimal Ray installation.",
 )
-def test_ray_init(shutdown_only, capsys):
-    with pytest.raises(RuntimeEnvSetupError):
-        ray.init(runtime_env={"pip": ["requests"]})
+def test_ray_init(shutdown_only):
+    ray.init(runtime_env={"pip": ["requests"]})
 
-        @ray.remote
-        def f():
-            return 1
+    @ray.remote
+    def f():
+        return 1
 
+    with pytest.raises(RuntimeEnvSetupError, match="install virtualenv"):
         ray.get(f.remote())
-
-    def stderr_checker():
-        captured = capsys.readouterr()
-        return "install virtualenv" in captured.err
-
-    wait_for_condition(stderr_checker)
 
 
 @pytest.mark.skipif(
