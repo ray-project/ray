@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+from pathlib import Path
 
 from typing import TYPE_CHECKING, Dict, TextIO
 
@@ -36,6 +37,7 @@ class CSVLogger(Logger):
             self._continuing = (
                 os.path.exists(progress_file) and os.path.getsize(progress_file) > 0
             )
+            Path(progress_file).parent.absolute().mkdir(parents=True, exist_ok=True)
             self._file = open(progress_file, "a")
             self._csv_out = None
             self._initialized = True
