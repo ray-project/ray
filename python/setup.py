@@ -18,13 +18,22 @@ import zipfile
 from enum import Enum
 from itertools import chain
 
+# Workaround for setuptools_scm (used on macos) adding junk files
+# https://stackoverflow.com/a/61274968/8162137
+try:
+    import setuptools_scm.integration
+
+    setuptools_scm.integration.find_files = lambda _: []
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
-SUPPORTED_BAZEL = (4, 2, 2)
+SUPPORTED_BAZEL = (5, 4, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -101,7 +110,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
 
@@ -198,7 +207,14 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
-ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk(
+        "ray/dashboard/modules/metrics/dashboards"
+    )
+    for filename in filenames
+    if filename.endswith(".json")
+]
 
 # html templates for notebook integration
 ray_files += [
@@ -209,18 +225,11 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    if sys.version_info >= (3, 7):
-        pandas_dep = "pandas >= 1.3"
-        numpy_dep = "numpy >= 1.20"
-    else:
-        # Pandas dropped python 3.6 support in 1.2.
-        pandas_dep = "pandas >= 1.0.5"
-        # NumPy dropped python 3.6 support in 1.20.
-        numpy_dep = "numpy >= 1.19"
-    if sys.version_info >= (3, 7) and sys.platform != "win32":
+    pandas_dep = "pandas >= 1.3"
+    numpy_dep = "numpy >= 1.20"
+    if sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
-        # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
@@ -245,12 +254,12 @@ if setup_spec.type == SetupType.RAY:
             "smart_open",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
-            "opentelemetry-api==1.1.0",
-            "opentelemetry-sdk==1.1.0",
-            "opentelemetry-exporter-otlp==1.1.0",
+            "opentelemetry-api",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-otlp",
         ],
     }
 
@@ -303,10 +312,11 @@ if setup_spec.type == SetupType.RAY:
         "dataclasses; python_version < '3.7'",
         "filelock",
         # Tracking issue: https://github.com/ray-project/ray/issues/30984
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
-        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
-        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
+        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
+        # Original issue: https://github.com/ray-project/ray/issues/33833
+        "grpcio >= 1.32.0, <= 1.51.3; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
+        "grpcio >= 1.42.0, <= 1.51.3; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
@@ -764,7 +774,6 @@ setuptools.setup(
         "reinforcement-learning deep-learning serving python"
     ),
     classifiers=[
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
@@ -775,7 +784,7 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.26", "wheel"],
+    setup_requires=["cython >= 0.29.32", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [
@@ -789,6 +798,11 @@ setuptools.setup(
         "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
+    exclude_package_data={
+        # Empty string means "any package".
+        # Therefore, exclude BUILD from every package:
+        "": ["BUILD"],
+    },
     zip_safe=False,
     license="Apache 2.0",
 ) if __name__ == "__main__" else None

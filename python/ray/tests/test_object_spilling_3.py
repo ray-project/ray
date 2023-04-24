@@ -322,8 +322,9 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
 
 def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,

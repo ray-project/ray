@@ -30,16 +30,19 @@ RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
+BUILDKITE_MAX_RETRIES=1
+BUILDKITE_RETRY_CODE=79
+BUILDKITE_TIME_LIMIT_FOR_RETRY=1800
 
 # This is not a great idea if your OS is different to the one
 # used in the product clusters. However, we need this in CI as reloading
 # Ray within the python process does not work for protobuf changes.
 INSTALL_MATCHING_RAY=${BUILDKITE-false}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -q -r requirements.txt
+  pip install --use-deprecated=legacy-resolver -q -r requirements.txt
   pip install -q -U boto3 botocore
 
   if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
@@ -64,12 +67,13 @@ fi
 
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
+  echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
   pushd "${TMPDIR}/release" || true
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -e .
+  pip install --use-deprecated=legacy-resolver -c requirements.txt -e .
 fi
 
 RETRY_NUM=0
@@ -102,11 +106,27 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
   fi
 
+  _term() {
+    echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
+    kill "$proc"
+    wait "$proc"
+  }
+
+  START=`date +%s`
   set +e
-  python "${RAY_TEST_SCRIPT}" "$@"
+
+  trap _term SIGINT SIGTERM
+  python "${RAY_TEST_SCRIPT}" "$@" &
+  proc=$!
+
+  wait "$proc"
   EXIT_CODE=$?
+
   set -e
+  END=`date +%s`
+
   REASON=$(reason "${EXIT_CODE}")
+  RUNTIME=$((END-START))
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 
   case ${EXIT_CODE} in
@@ -144,7 +164,7 @@ done
 echo "----------------------------------------"
 
 REASON=$(reason "${EXIT_CODE}")
-echo "Final release test exit code is ${EXIT_CODE} (${REASON})"
+echo "Final release test exit code is ${EXIT_CODE} (${REASON}). Took ${RUNTIME}s"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "RELEASE MANAGER: This test seems to have passed."
@@ -159,4 +179,8 @@ if [ -z "${NO_CLONE}" ]; then
   rm -rf "${TMPDIR}" || true
 fi
 
-exit $EXIT_CODE
+if [[ ("$REASON" == "infra error" || "$REASON" == "infra timeout") && ("$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY") ]]; then
+  exit $BUILDKITE_RETRY_CODE
+else
+  exit $EXIT_CODE
+fi

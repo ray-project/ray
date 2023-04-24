@@ -19,7 +19,7 @@ filegroup(
 
 py_test(
     name = "test_api",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -28,6 +28,14 @@ py_test(
 py_test(
     name = "test_application",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_application_state",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -123,6 +131,14 @@ py_test(
 
 py_test(
     name = "test_metrics",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_telemetry",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -274,6 +290,14 @@ py_test(
 py_test(
     name = "test_standalone2",
     size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_standalone3",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -538,6 +562,14 @@ py_test(
 py_test(
     name = "test_grpc",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_common",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

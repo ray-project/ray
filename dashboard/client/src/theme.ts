@@ -32,6 +32,14 @@ const basicTheme: ThemeOptions = {
     body1: {
       fontSize: "0.75rem",
     },
+    body2: {
+      fontSize: "14px",
+      lineHeight: "20px",
+    },
+    caption: {
+      fontSize: "0.75rem",
+      lineHeight: "16px",
+    },
   },
   props: {
     MuiPaper: {
@@ -39,9 +47,31 @@ const basicTheme: ThemeOptions = {
     },
   },
   overrides: {
+    MuiCssBaseline: {
+      "@global": {
+        a: {
+          color: "#036DCF",
+        },
+      },
+    },
+    MuiTooltip: {
+      tooltip: {
+        fontSize: "0.75rem",
+        fontWeight: 400,
+        boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
+        padding: 8,
+      },
+      tooltipPlacementRight: {
+        margin: "0 8px",
+        "@media (min-width: 600px)": {
+          margin: "0 8px",
+        },
+      },
+    },
     MuiPaper: {
       outlined: {
         borderColor: "#D2DCE6",
+        borderRadius: 8,
       },
     },
   },

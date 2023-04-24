@@ -29,7 +29,7 @@ except ImportError:
 
 
 def get_ray_status_output(address):
-    gcs_client = gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
@@ -50,7 +50,9 @@ def get_ray_status_output(address):
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            health_check_initial_delay_ms=0,
+            health_check_failure_threshold=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -79,7 +81,9 @@ def test_create_placement_group_during_gcs_server_restart(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            health_check_initial_delay_ms=0,
+            health_check_failure_threshold=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,

@@ -205,14 +205,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         }
       }
     }
-    if (taskSpec.getType() == TaskType.ACTOR_TASK && !isConcurrentActor(taskSpec)) {
-      ObjectId dummyObjectId =
-          new ObjectId(
-              taskSpec.getActorTaskSpec().getPreviousActorTaskDummyObjectId().toByteArray());
-      if (!objectStore.isObjectReady(dummyObjectId)) {
-        unreadyObjects.add(dummyObjectId);
-      }
-    } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
+    if (taskSpec.getType() == TaskType.ACTOR_TASK) {
       // Code path of concurrent actors.
       // For concurrent actors, we should make sure the actor created
       // before we submit the following actor tasks.
@@ -332,19 +325,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
     List<ObjectId> returnIds =
-        getReturnIds(TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns + 1);
+        getReturnIds(TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns);
     TaskSpec taskSpec =
         builder
-            .setNumReturns(numReturns + 1)
+            .setNumReturns(numReturns)
             .setActorTaskSpec(
                 ActorTaskSpec.newBuilder()
                     .setActorId(ByteString.copyFrom(actor.getId().getBytes()))
-                    .setPreviousActorTaskDummyObjectId(
-                        ByteString.copyFrom(
-                            ((LocalModeActorHandle) actor)
-                                .exchangePreviousActorTaskDummyObjectId(
-                                    returnIds.get(returnIds.size() - 1))
-                                .getBytes()))
                     .build())
             .setConcurrencyGroupName(options.concurrencyGroupName)
             .build();

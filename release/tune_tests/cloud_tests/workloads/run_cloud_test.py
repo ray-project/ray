@@ -6,7 +6,7 @@ We are considering several scenarios depending on the combination of the
 following Tune properties:
 
 syncer ("auto" or None)
-upload_dir
+storage_path
 
 Generally the flow is as follows:
 
@@ -49,6 +49,7 @@ from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
+ARTIFACT_FILENAME = "artifact.txt"
 
 # Classes to hold data from experiment checkpoints
 
@@ -77,7 +78,7 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        local_dir: str,
+        _local_experiment_path: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
         relative_logdir: str,
@@ -88,7 +89,7 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_dir = local_dir
+        self.local_experiment_path = _local_experiment_path
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
         self.relative_logdir = relative_logdir
@@ -127,6 +128,7 @@ class TrialCheckpointData:
     progress: List[Dict[str, Any]]
     checkpoints: List[Tuple[str, Dict[Any, Any]]]
     num_skipped: int
+    artifact_data: str
 
 
 # Utility functions
@@ -205,7 +207,7 @@ def wait_for_nodes(
 
 def start_run(
     no_syncer: bool,
-    upload_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
 ) -> subprocess.Popen:
@@ -213,8 +215,8 @@ def start_run(
     if no_syncer:
         args.append("--no-syncer")
 
-    if upload_dir:
-        args.extend(["--upload-dir", upload_dir])
+    if storage_path:
+        args.extend(["--storage-path", storage_path])
 
     if experiment_name:
         args.extend(["--experiment-name", experiment_name])
@@ -307,13 +309,13 @@ def run_tune_script_for_time(
     experiment_name: str,
     indicator_file: str,
     no_syncer: bool,
-    upload_dir: Optional[str],
+    storage_path: Optional[str],
     run_start_timeout: int = 30,
 ):
     # Start run
     process = start_run(
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
     )
@@ -337,7 +339,7 @@ def run_resume_flow(
     experiment_name: str,
     indicator_file: str,
     no_syncer: bool,
-    upload_dir: Optional[str],
+    storage_path: Optional[str],
     first_run_time: int = 33,
     second_run_time: int = 33,
     run_start_timeout: int = 30,
@@ -375,7 +377,7 @@ def run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
         run_start_timeout=run_start_timeout,
     )
 
@@ -395,7 +397,7 @@ def run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
     )
 
     if after_experiments_callback:
@@ -469,10 +471,10 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         if trial.was_on_driver_node:
             # Trial was run on driver
             shutil.rmtree(tmpdir)
-            shutil.copytree(trial.local_dir, tmpdir)
+            shutil.copytree(trial.local_experiment_path, tmpdir)
             print(
                 "Copied local node experiment dir",
-                trial.local_dir,
+                trial.local_experiment_path,
                 "to",
                 tmpdir,
                 "for trial",
@@ -482,7 +484,7 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         else:
             # Trial was run on remote node
             fetch_remote_directory_content(
-                trial.node_ip, remote_dir=trial.local_dir, local_dir=tmpdir
+                trial.node_ip, remote_dir=trial.local_experiment_path, local_dir=tmpdir
             )
 
         dirmap[trial] = tmpdir
@@ -655,12 +657,20 @@ def load_trial_checkpoint_data(
             continue
         checkpoints.append((cp_dir, checkpoint_data))
 
+    # Load the artifact data
+    trial_artifact_path = os.path.join(trial_dir, ARTIFACT_FILENAME)
+    artifact_data = None
+    if os.path.exists(trial_artifact_path):
+        with open(trial_artifact_path, "r") as f:
+            artifact_data = f.read()
+
     return TrialCheckpointData(
         params=params,
         results=results,
         progress=progress,
         checkpoints=checkpoints,
         num_skipped=num_skipped,
+        artifact_data=artifact_data,
     )
 
 
@@ -792,6 +802,68 @@ def assert_checkpoint_count(
             )
 
 
+def assert_artifact_existence_and_validity(
+    experiment_dir_cp: ExperimentDirCheckpoint,
+    exists_for_driver_trials: bool,
+    exists_for_worker_trials: bool,
+    skip_validation: bool = False,
+):
+    for trial, trial_cp in experiment_dir_cp.trial_to_cps.items():
+        artifact_data = trial_cp.artifact_data
+        artifact_exists = artifact_data is not None
+        # exists_for_xxx_trials == artifact_exists covers 2 cases:
+        # 1. Artifact should not exist for driver trial + it actually doesn't exist
+        # 2. Artifact should exist + it actually exists
+        if trial.was_on_driver_node:
+            assert exists_for_driver_trials == artifact_exists, (
+                "Trial {trial.trial_id} was ON THE DRIVER, where the artifact "
+                f"SHOULD {'' if exists_for_driver_trials else 'NOT'} exist, "
+                f"but found that it DOES {'' if artifact_exists else 'NOT'} exist.\n"
+                f"Directory: {experiment_dir_cp.dir}"
+            )
+        else:
+            assert exists_for_worker_trials == artifact_exists, (
+                "Trial {trial.trial_id} was NOT ON THE DRIVER, where the artifact "
+                f"SHOULD {'' if exists_for_driver_trials else 'NOT'} exist, "
+                f"but found that it DOES {'' if artifact_exists else 'NOT'} exist.\n"
+                f"Directory: {experiment_dir_cp.dir}"
+            )
+
+        if not artifact_exists or skip_validation:
+            continue
+
+        # NOTE: This expects `artifact_data` to be comma-separated string
+        # with the trial.config["id"] showing up as many times as the
+        # latest checkpoint iteration.
+        # Ex: checkpoint_5 is the latest checkpoint for trial with id=0
+        # -> Expect artifact_data == "0,0,0,0,0,"
+        artifact_data_list = artifact_data.split(",")[:-1]  # Account for extra ,
+        artifact_iter = len(artifact_data_list)
+        checkpoint_iters = sorted(
+            [
+                checkpoint_data["internal_iter"]
+                for _, checkpoint_data in trial_cp.checkpoints
+            ],
+            reverse=True,
+        )
+        # TODO(ml-team): Compare to latest checkpoint only after
+        # checkpoint+artifact saving is done atomically.
+        top_two = checkpoint_iters[:2]
+        print(
+            f"\nGot artifact_iter = {artifact_iter}, "
+            f"and top 2 checkpoint iters were {top_two}"
+        )
+        trial_id = trial.config["id"]
+        assert all(
+            id == str(trial_id) for id in artifact_data_list
+        ), f"The artifact data should contain only {trial_id}: {artifact_data_list}"
+        assert artifact_iter >= min(top_two), (
+            "The artifact data is not synced with respect to the latest checkpoint! "
+            f"Expected the artifact to contain at least {min(top_two)} "
+            f"iterations of data, but only got {artifact_iter}."
+        )
+
+
 def assert_trial_progressed_training(trial: TrialStub):
     assert (
         trial.last_result["training_iteration"]
@@ -811,7 +883,7 @@ def test_no_sync_down():
     No down syncing, so:
 
         syncer=None
-        upload_dir=None
+        storage_path=None
 
     Expected results after first checkpoint:
 
@@ -819,9 +891,12 @@ def test_no_sync_down():
         - At least one trial ran on the head node
         - At least one trial ran remotely
         - Driver has trial checkpoints from head node trial
+        - Driver has trial artifacts for head node trials
         - Driver has no trial checkpoints from remote node trials
+        - Driver has no trial artifacts for remote node trials
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
+        - Remote trial dirs have artifacts for node-local trials
 
     Then, remote checkpoint directories are cleaned up. This means only
     one trial can continue training (the one trained on the head node)
@@ -861,6 +936,12 @@ def test_no_sync_down():
             driver_dir_cp, for_driver_trial=2, for_worker_trial=0, max_additional=1
         )
 
+        # Req: Driver has trial artifacts for head node trials
+        # Req: Driver has no trial artifacts for remote node trials
+        assert_artifact_existence_and_validity(
+            driver_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=False
+        )
+
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
 
@@ -883,6 +964,13 @@ def test_no_sync_down():
                     exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
+                # Req: Remote trial dirs have artifacts for node-local trials
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=False,
+                    exists_for_worker_trials=True,
+                )
+
         # Delete remote checkpoints before resume
         print("Deleting remote checkpoints before resume")
         cleanup_remote_node_experiment_dir(experiment_name)
@@ -902,6 +990,16 @@ def test_no_sync_down():
                 # Req: The running trial progressed with training
                 assert_trial_progressed_training(trial)
 
+                exp_dir_cp = trial_exp_checkpoint_data[trial]
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=trial.was_on_driver_node,
+                    exists_for_worker_trials=not trial.was_on_driver_node,
+                    # TODO(ml-team): Set this flag to True after restoration w/
+                    # artifacts is supported.
+                    skip_validation=True,
+                )
+
         # Req: 1 trial is running, 3 errored
         assert num_errored == 3, (
             f"Only one trial should have had a valid checkpoint, but "
@@ -916,7 +1014,7 @@ def test_no_sync_down():
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=True,
-        upload_dir=None,
+        storage_path=None,
         first_run_time=run_time,
         second_run_time=run_time,
         between_experiments_callback=between_experiments,
@@ -929,7 +1027,7 @@ def test_ssh_sync():
     SSH syncing, so:
 
         syncer="auto"
-        upload_dir=None
+        storage_path=None
 
     Expected results after first checkpoint:
 
@@ -938,8 +1036,10 @@ def test_ssh_sync():
         - At least one trial ran remotely
         - Driver has trial checkpoints from head node trial
         - Driver has trial checkpoints from remote node trials
+        - Driver has trial artifacts from all trials
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
+        - Remote trial dirs have artifacts for node-local trials
 
     Then, remote checkpoint directories are cleaned up.
 
@@ -976,6 +1076,11 @@ def test_ssh_sync():
             driver_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=1
         )
 
+        # Req: Driver has trial artifacts from all trials
+        assert_artifact_existence_and_validity(
+            driver_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=True
+        )
+
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
 
@@ -998,6 +1103,13 @@ def test_ssh_sync():
                     exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
+                # Req: Remote trial dirs have artifacts for node-local trials
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=False,
+                    exists_for_worker_trials=True,
+                )
+
         # Delete remote checkpoints before resume
         print("Deleting remote checkpoints before resume")
         cleanup_remote_node_experiment_dir(experiment_name)
@@ -1017,13 +1129,23 @@ def test_ssh_sync():
         for trial in experiment_state.trials:
             assert_trial_progressed_training(trial)
 
+            exp_dir_cp = trial_exp_checkpoint_data[trial]
+            assert_artifact_existence_and_validity(
+                exp_dir_cp,
+                exists_for_driver_trials=trial.was_on_driver_node,
+                exists_for_worker_trials=True,
+                # TODO(ml-team): Set this flag to True after restoration w/
+                # artifacts is supported.
+                skip_validation=True,
+            )
+
     run_time = int(os.getenv("TUNE_RUN_TIME", "180")) or 180
 
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=False,
-        upload_dir=None,
+        storage_path=None,
         first_run_time=run_time + 10,  # More time because of SSH syncing
         second_run_time=run_time + 10,
         between_experiments_callback=between_experiments,
@@ -1036,7 +1158,7 @@ def test_durable_upload(bucket: str):
     Sync trial and experiment checkpoints to cloud, so:
 
         syncer="auto"
-        upload_dir="s3://"
+        storage_path="s3://"
 
     Expected results after first checkpoint:
 
@@ -1044,11 +1166,15 @@ def test_durable_upload(bucket: str):
         - At least one trial ran on the head node
         - At least one trial ran remotely
         - Driver has trial checkpoints from head node trial
+        - Driver has trial artifacts from head node trial
         - Driver has no trial checkpoints from remote node trials
+        - Driver has no trial artifacts from remote node trials
         - Remote trial dirs only have data for one trial
         - Remote trial dirs have checkpoints for node-local trials
+        - Remote trial dirs have trial artifacts for node-local trials
         - Cloud checkpoint is valid
         - Cloud checkpoint has checkpoints from all trials
+        - Cloud checkpoint has artifacts from all trials
 
     Then, remote checkpoint directories are cleaned up.
 
@@ -1058,6 +1184,7 @@ def test_durable_upload(bucket: str):
         - All trials progressed with training
         - Cloud checkpoint is valid
         - Cloud checkpoint has checkpoints from all trials
+        - Cloud checkpoint has newly appended synced artifacts from all trials
 
     """
     if not bucket:
@@ -1095,6 +1222,12 @@ def test_durable_upload(bucket: str):
             driver_dir_cp, for_driver_trial=2, for_worker_trial=0, max_additional=1
         )
 
+        # Req: Driver has trial artifacts from head node trial
+        # Req: Driver has no trial artifacts from remote node trials
+        assert_artifact_existence_and_validity(
+            driver_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=False
+        )
+
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
 
@@ -1117,6 +1250,13 @@ def test_durable_upload(bucket: str):
                     exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
+                # Req: Remote trial dirs have artifacts for node-local trials
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=False,
+                    exists_for_worker_trials=True,
+                )
+
         bucket_state_cp, bucket_dir_cp = get_bucket_data(bucket, experiment_name)
 
         # Req: Cloud checkpoint is valid
@@ -1125,6 +1265,11 @@ def test_durable_upload(bucket: str):
         # Req: Cloud checkpoint has checkpoints from all trials
         assert_checkpoint_count(
             bucket_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=2
+        )
+
+        # Req: Cloud checkpoint has artifacts from all trials
+        assert_artifact_existence_and_validity(
+            bucket_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=True
         )
 
         # Delete remote checkpoints before resume
@@ -1156,6 +1301,15 @@ def test_durable_upload(bucket: str):
             bucket_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=2
         )
 
+        assert_artifact_existence_and_validity(
+            bucket_dir_cp,
+            exists_for_driver_trials=True,
+            exists_for_worker_trials=True,
+            # TODO(ml-team): Set this flag to True after restoration w/
+            # artifacts is supported.
+            skip_validation=True,
+        )
+
         # clear_bucket_contents(bucket)
 
     run_time = int(os.getenv("TUNE_RUN_TIME", "180")) or 180
@@ -1166,7 +1320,7 @@ def test_durable_upload(bucket: str):
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=False,
-        upload_dir=bucket,
+        storage_path=bucket,
         first_run_time=run_time,
         second_run_time=run_time,
         run_start_timeout=run_start_timeout,

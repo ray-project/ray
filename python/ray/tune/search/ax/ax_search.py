@@ -1,7 +1,8 @@
 import copy
-import pickle
+import numpy as np
 from typing import Dict, List, Optional, Union
 
+from ray import cloudpickle
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
@@ -151,7 +152,7 @@ class AxSearch(Searcher):
         parameter_constraints: Optional[List] = None,
         outcome_constraints: Optional[List] = None,
         ax_client: Optional[AxClient] = None,
-        **ax_kwargs
+        **ax_kwargs,
     ):
         assert (
             ax is not None
@@ -324,12 +325,21 @@ class AxSearch(Searcher):
 
     def _process_result(self, trial_id, result):
         ax_trial_index = self._live_trial_mapping[trial_id]
-        metric_dict = {self._metric: (result[self._metric], None)}
-        outcome_names = [
+        metrics_to_include = [self._metric] + [
             oc.metric.name
             for oc in self._ax.experiment.optimization_config.outcome_constraints
         ]
-        metric_dict.update({on: (result[on], None) for on in outcome_names})
+        metric_dict = {}
+        for key in metrics_to_include:
+            val = result[key]
+            if np.isnan(val) or np.isinf(val):
+                # Don't report trials with NaN metrics to Ax
+                self._ax.abandon_trial(
+                    trial_index=ax_trial_index,
+                    reason=f"nan/inf metrics reported by {trial_id}",
+                )
+                return
+            metric_dict[key] = (val, None)
         self._ax.complete_trial(trial_index=ax_trial_index, raw_data=metric_dict)
 
     @staticmethod
@@ -415,9 +425,9 @@ class AxSearch(Searcher):
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
         with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(save_object, outputFile)
+            cloudpickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
-            save_object = pickle.load(inputFile)
+            save_object = cloudpickle.load(inputFile)
         self.__dict__.update(save_object)

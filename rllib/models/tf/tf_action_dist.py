@@ -197,7 +197,7 @@ class MultiCategorical(TFActionDistribution):
             high_ = np.max(action_space.high)
             assert np.all(action_space.low == low_)
             assert np.all(action_space.high == high_)
-            np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
+            return np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
         # MultiDiscrete space.
         else:
             # nvec is already integer, so no casting needed.

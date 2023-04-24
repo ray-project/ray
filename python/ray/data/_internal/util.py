@@ -1,19 +1,25 @@
 import importlib
 import logging
 import os
-from typing import List, Union, Optional, TYPE_CHECKING
+from typing import Any, List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
 import numpy as np
 
 import ray
-from ray.data.context import DatasetContext
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
+    import pyarrow
+    import pandas
+    from ray.data._internal.arrow_block import ArrowRow
+    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +64,7 @@ def _check_pyarrow_version():
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
-                    f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"Datastream requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
                     f'`pip install -U "pyarrow"`. '
                     "If you want to disable this pyarrow version check, set the "
@@ -69,7 +75,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Datasets. "
+                "compatibility with Ray Datastream. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -79,7 +85,7 @@ def _check_pyarrow_version():
 def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
-    ctx: DatasetContext,
+    ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int):
@@ -98,7 +104,7 @@ def _autodetect_parallelism(
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
-        ctx: The current Dataset context to use for configs.
+        ctx: The current Datastream context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
         avail_cpus: Override avail cpus detection (for testing only).
 
@@ -136,7 +142,7 @@ def _autodetect_parallelism(
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
-    """Estimates the available CPU parallelism for this Dataset in the cluster.
+    """Estimates the available CPU parallelism for this Datastream in the cluster.
 
     If we aren't in a placement group, this is trivially the number of CPUs in the
     cluster. Otherwise, we try to calculate how large the placement group is relative
@@ -150,7 +156,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     # If we're in a placement group, we shouldn't assume the entire cluster's
     # resources are available for us to use. Estimate an upper bound on what's
-    # reasonable to assume is available for datasets to use.
+    # reasonable to assume is available for datastreams to use.
     if cur_pg:
         pg_cpus = 0
         for bundle in cur_pg.bundle_specs:
@@ -170,7 +176,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
 
 def _estimate_available_parallelism() -> int:
-    """Estimates the available CPU parallelism for this Dataset in the cluster.
+    """Estimates the available CPU parallelism for this Datastream in the cluster.
     If we are currently in a placement group, take that into account."""
     cur_pg = ray.util.get_current_placement_group()
     return _estimate_avail_cpus(cur_pg)
@@ -239,3 +245,262 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
             f"but found mixed {paths}"
         )
     return num == len(paths)
+
+
+def _is_tensor_schema(column_names: List[str]):
+    return column_names == [TENSOR_COLUMN_NAME]
+
+
+def _truncated_repr(obj: Any) -> str:
+    """Utility to return a truncated object representation for error messages."""
+    msg = str(obj)
+    if len(msg) > 200:
+        msg = msg[:200] + "..."
+    return msg
+
+
+def _insert_doc_at_pattern(
+    obj,
+    *,
+    message: str,
+    pattern: str,
+    insert_after: bool = True,
+    directive: Optional[str] = None,
+    skip_matches: int = 0,
+) -> str:
+    if "\n" in message:
+        raise ValueError(
+            "message shouldn't contain any newlines, since this function will insert "
+            f"its own linebreaks when text wrapping: {message}"
+        )
+
+    doc = obj.__doc__.strip()
+    if not doc:
+        doc = ""
+
+    if pattern == "" and insert_after:
+        # Empty pattern + insert_after means that we want to append the message to the
+        # end of the docstring.
+        head = doc
+        tail = ""
+    else:
+        tail = doc
+        i = tail.find(pattern)
+        skip_matches_left = skip_matches
+        while i != -1:
+            if insert_after:
+                # Set offset to the first character after the pattern.
+                offset = i + len(pattern)
+            else:
+                # Set offset to the first character in the matched line.
+                offset = tail[:i].rfind("\n") + 1
+            head = tail[:offset]
+            tail = tail[offset:]
+            skip_matches_left -= 1
+            if skip_matches_left <= 0:
+                break
+            elif not insert_after:
+                # Move past the found pattern, since we're skipping it.
+                tail = tail[i - offset + len(pattern) :]
+            i = tail.find(pattern)
+        else:
+            raise ValueError(
+                f"Pattern {pattern} not found after {skip_matches} skips in docstring "
+                f"{doc}"
+            )
+    # Get indentation of the to-be-inserted text.
+    after_lines = list(filter(bool, tail.splitlines()))
+    if len(after_lines) > 0:
+        lines = after_lines
+    else:
+        lines = list(filter(bool, reversed(head.splitlines())))
+    # Should always have at least one non-empty line in the docstring.
+    assert len(lines) > 0
+    indent = " " * (len(lines[0]) - len(lines[0].lstrip()))
+    # Handle directive.
+    message = message.strip("\n")
+    if directive is not None:
+        base = f"{indent}.. {directive}::\n"
+        message = message.replace("\n", "\n" + indent + " " * 4)
+        message = base + indent + " " * 4 + message
+    else:
+        message = indent + message.replace("\n", "\n" + indent)
+    # Add two blank lines before/after message, if necessary.
+    if insert_after ^ (pattern == "\n\n"):
+        # Only two blank lines before message if:
+        # 1. Inserting message after pattern and pattern is not two blank lines.
+        # 2. Inserting message before pattern and pattern is two blank lines.
+        message = "\n\n" + message
+    if (not insert_after) ^ (pattern == "\n\n"):
+        # Only two blank lines after message if:
+        # 1. Inserting message before pattern and pattern is not two blank lines.
+        # 2. Inserting message after pattern and pattern is two blank lines.
+        message = message + "\n\n"
+
+    # Insert message before/after pattern.
+    parts = [head, message, tail]
+    # Build new docstring.
+    obj.__doc__ = "".join(parts)
+
+
+def _consumption_api(
+    if_more_than_read: bool = False,
+    datasource_metadata: Optional[str] = None,
+    extra_condition: Optional[str] = None,
+    delegate: Optional[str] = None,
+    pattern="Examples:",
+    insert_after=False,
+):
+    """Annotate the function with an indication that it's a consumption API, and that it
+    will trigger Datastream execution.
+    """
+    base = (
+        " will trigger execution of the lazy transformations performed on "
+        "this datastream."
+    )
+    if delegate:
+        message = delegate + base
+    elif not if_more_than_read:
+        message = "This operation" + base
+    else:
+        condition = "If this datastream consists of more than a read, "
+        if datasource_metadata is not None:
+            condition += (
+                f"or if the {datasource_metadata} can't be determined from the "
+                "metadata provided by the datasource, "
+            )
+        if extra_condition is not None:
+            condition += extra_condition + ", "
+        message = condition + "then this operation" + base
+
+    def wrap(obj):
+        _insert_doc_at_pattern(
+            obj,
+            message=message,
+            pattern=pattern,
+            insert_after=insert_after,
+            directive="note",
+        )
+        return obj
+
+    return wrap
+
+
+def ConsumptionAPI(*args, **kwargs):
+    """Annotate the function with an indication that it's a consumption API, and that it
+    will trigger Datastream execution.
+    """
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return _consumption_api()(args[0])
+    return _consumption_api(*args, **kwargs)
+
+
+def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
+    """Split the list into `num_splits` lists.
+
+    The splits will be even if the `num_splits` divides the length of list, otherwise
+    the remainder (suppose it's R) will be allocated to the first R splits (one for
+    each).
+    This is the same as numpy.array_split(). The reason we make this a separate
+    implementation is to allow the heterogeneity in the elements in the list.
+    """
+    assert num_splits > 0
+    q, r = divmod(len(arr), num_splits)
+    splits = [
+        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
+    ]
+    return splits
+
+
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))
+
+
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    import pyarrow as pa
+
+    block = pa.table(df)
+    return (
+        block,
+        BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        ),
+    )
+
+
+def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block[np.ndarray]":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    if strict_mode:
+        block = BlockAccessor.batch_to_block({"data": ndarray})
+    else:
+        block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )
+    return block, metadata
+
+
+def get_table_block_metadata(
+    table: Union["pyarrow.Table", "pandas.DataFrame"]
+) -> "BlockMetadata":
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    stats = BlockExecStats.builder()
+    return BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )
+
+
+def unify_block_metadata_schema(
+    metadata: List["BlockMetadata"],
+) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    """For the input list of BlockMetadata, return a unified schema of the
+    corresponding blocks. If the metadata have no valid schema, returns None.
+    """
+    # Some blocks could be empty, in which case we cannot get their schema.
+    # TODO(ekl) validate schema is the same across different blocks.
+
+    # First check if there are blocks with computed schemas, then unify
+    # valid schemas from all such blocks.
+    schemas_to_unify = []
+    for m in metadata:
+        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            schemas_to_unify.append(m.schema)
+    if schemas_to_unify:
+        # Check valid pyarrow installation before attempting schema unification
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pa = None
+        # If the result contains PyArrow schemas, unify them
+        if pa is not None and any(isinstance(s, pa.Schema) for s in schemas_to_unify):
+            return unify_schemas(schemas_to_unify)
+        # Otherwise, if the resulting schemas are simple types (e.g. int),
+        # return the first schema.
+        return schemas_to_unify[0]
+    return None

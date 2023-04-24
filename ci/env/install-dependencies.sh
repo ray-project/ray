@@ -82,22 +82,31 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    case "${OSTYPE}" in
-      linux*) miniconda_dir="/opt/miniconda";;
-      darwin*) miniconda_dir="/usr/local/opt/miniconda";;
-      msys) miniconda_dir="${ALLUSERSPROFILE}\Miniconda3";;  # Avoid spaces; prefer the default path
-    esac
-
-    local miniconda_version="Miniconda3-py37_4.9.2" miniconda_platform="" exe_suffix=".sh"
-    case "${OSTYPE}" in
-      linux*) miniconda_platform=Linux;;
-      darwin*) miniconda_platform=MacOSX;;
-      msys*) miniconda_platform=Windows; exe_suffix=".exe";;
-    esac
+    local miniconda_version="Miniconda3-py37_4.9.2"
+    local miniconda_platform=""
+    local exe_suffix=".sh"
 
     case "${OSTYPE}" in
-      # The hosttype variable is deprecated.
-      darwin*) HOSTTYPE="x86_64";;
+      linux*)
+        miniconda_dir="/opt/miniconda"
+        miniconda_platform=Linux
+        ;;
+      darwin*)
+        if [ "$(uname -m)" = "arm64" ]; then
+          HOSTTYPE="arm64"
+          miniconda_version="Miniconda3-py38_23.1.0-1"
+          miniconda_dir="/opt/homebrew/opt/miniconda"
+        else
+          HOSTTYPE="x86_64"
+          miniconda_dir="/usr/local/opt/miniconda"
+        fi
+        miniconda_platform=MacOSX
+        ;;
+      msys*)
+        miniconda_dir="${ALLUSERSPROFILE}\Miniconda3" # Avoid spaces; prefer the default path
+        miniconda_platform=Windows
+        exe_suffix=".exe"
+        ;;
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
@@ -244,7 +253,11 @@ install_node() {
 
   if [ -n "${BUILDKITE-}" ] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
-      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+      if [ "$(uname -m)" = "arm64" ]; then
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      else
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+      fi
     else
       # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
       curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
@@ -255,7 +268,7 @@ install_node() {
 
   # Install the latest version of Node.js in order to build the dashboard.
   (
-    set +x # suppress set -x since it'll get very noisy here
+    set +x # suppress set -x since it'll get very noisy here.
     . "${HOME}/.nvm/nvm.sh"
     NODE_VERSION="14"
     nvm install $NODE_VERSION
@@ -287,10 +300,15 @@ download_mnist() {
 install_pip_packages() {
 
   # Install modules needed in all jobs.
+  # shellcheck disable=SC2262
   alias pip="python -m pip"
 
   if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    # Some architectures will build dm-tree from source.
+    # Move bazelrc to a different location temporarily to disable --config=ci settings
+    mv "$HOME/.bazelrc" "$HOME/._brc" || true
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+    mv "$HOME/._brc" "$HOME/.bazelrc" || true
   fi
 
   if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
@@ -362,7 +380,6 @@ install_pip_packages() {
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    rm -rf "${SITE_PACKAGES}"/ruamel* # https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
@@ -441,6 +458,11 @@ install_pip_packages() {
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     "${SCRIPT_DIR}"/install-horovod.sh
+  fi
+
+  # install hdfs if needed.
+  if [ "${INSTALL_HDFS-}" = 1 ]; then
+    "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

@@ -25,7 +25,7 @@ class Node:
         self.child_number_visits = np.zeros(
             [self.action_space_size], dtype=np.float32
         )  # N
-        self.valid_actions = obs["action_mask"].astype(np.bool)
+        self.valid_actions = obs["action_mask"].astype(np.bool_)
 
         self.reward = reward
         self.done = done

@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
@@ -380,7 +379,6 @@ def get_maml_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
             validate_config(config)
 
             # Initialize base class.

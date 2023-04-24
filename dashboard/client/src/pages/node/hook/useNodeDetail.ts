@@ -17,7 +17,7 @@ export const useNodeDetail = () => {
 
   const { data: nodeDetail } = useSWR(
     ["useNodeDetail", params.id],
-    async (_, nodeId) => {
+    async ([_, nodeId]) => {
       const { data } = await getNodeDetail(nodeId);
       const { data: rspData, msg, result } = data;
 

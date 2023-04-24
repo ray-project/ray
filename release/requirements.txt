@@ -1,9 +1,10 @@
 # Requirements to run release tests from the local machine (including client tests)
 click
 # Copy anyscale pin to requirements_buildkite.txt and util.py
-anyscale==0.5.51
+anyscale
 slackclient
 boto3
+google-cloud-storage
 jinja2
 PyGithub
 pydantic < 1.10.0

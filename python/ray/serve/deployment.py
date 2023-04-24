@@ -43,8 +43,8 @@ class Deployment:
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
-        _internal=False,
         is_driver_deployment: Optional[bool] = False,
+        _internal=False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -82,10 +82,25 @@ class Deployment:
         if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
             raise TypeError("ray_actor_options must be a dict.")
 
+        if is_driver_deployment is True:
+            if config.num_replicas != 1:
+                raise ValueError("num_replicas should not be set for driver deployment")
+            if config.autoscaling_config:
+                raise ValueError("autoscaling should not be set for driver deployment")
+
         if init_args is None:
             init_args = ()
         if init_kwargs is None:
             init_kwargs = {}
+
+        docs_path = None
+        if (
+            inspect.isclass(func_or_class)
+            and hasattr(func_or_class, "__module__")
+            and func_or_class.__module__ == "ray.serve.api"
+            and hasattr(func_or_class, "__fastapi_docs_path__")
+        ):
+            docs_path = func_or_class.__fastapi_docs_path__
 
         self._func_or_class = func_or_class
         self._name = name
@@ -96,6 +111,7 @@ class Deployment:
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
         self._is_driver_deployment = is_driver_deployment
+        self._docs_path = docs_path
 
     @property
     def name(self) -> str:
@@ -415,7 +431,7 @@ class Deployment:
             new_config.health_check_timeout_s = health_check_timeout_s
 
         if is_driver_deployment is DEFAULT.VALUE:
-            self._is_driver_deployment = False
+            is_driver_deployment = self._is_driver_deployment
 
         return Deployment(
             func_or_class,
@@ -427,7 +443,7 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
-            is_driver_deployment=self._is_driver_deployment,
+            is_driver_deployment=is_driver_deployment,
         )
 
     @PublicAPI(stability="alpha")
@@ -513,8 +529,18 @@ class Deployment:
         return str(self)
 
 
-def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    """Converts a live deployment object to a corresponding structured schema."""
+def deployment_to_schema(
+    d: Deployment, include_route_prefix: bool = True
+) -> DeploymentSchema:
+    """Converts a live deployment object to a corresponding structured schema.
+
+    Args:
+        d: Deployment object to convert
+        include_route_prefix: Whether to include the route_prefix in the returned
+            schema. This should be set to False if the schema will be included in a
+            higher-level object describing an application, and you want to place
+            route_prefix at the application level.
+    """
 
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
@@ -524,7 +550,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     deployment_options = {
         "name": d.name,
         "num_replicas": None if d._config.autoscaling_config else d.num_replicas,
-        "route_prefix": d.route_prefix,
         "max_concurrent_queries": d.max_concurrent_queries,
         "user_config": d.user_config,
         "autoscaling_config": d._config.autoscaling_config,
@@ -535,6 +560,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "ray_actor_options": ray_actor_options_schema,
         "is_driver_deployment": d._is_driver_deployment,
     }
+
+    if include_route_prefix:
+        deployment_options["route_prefix"] = d.route_prefix
 
     # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking
@@ -565,6 +593,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
+    if s.is_driver_deployment is DEFAULT.VALUE:
+        is_driver_deployment = False
+    else:
+        is_driver_deployment = s.is_driver_deployment
+
     config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -586,5 +619,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         _internal=True,
-        is_driver_deployment=s.is_driver_deployment,
+        is_driver_deployment=is_driver_deployment,
     )

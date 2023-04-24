@@ -1,5 +1,7 @@
-User Guides
-===========
+.. _train-userguides:
+
+Ray Train User Guides
+=====================
 
 .. panels::
     :container: container pb-4 full-width

@@ -1,4 +1,12 @@
+from typing import TYPE_CHECKING, Dict, Union
+
 from torch.utils.data import IterableDataset
+
+if TYPE_CHECKING:
+    import torch
+
+
+TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
 
 
 class TorchIterableDataset(IterableDataset):

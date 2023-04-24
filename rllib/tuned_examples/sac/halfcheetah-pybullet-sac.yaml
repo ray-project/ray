@@ -5,7 +5,7 @@ halfcheetah-pybullet-sac:
         episode_reward_mean: 800.0
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]

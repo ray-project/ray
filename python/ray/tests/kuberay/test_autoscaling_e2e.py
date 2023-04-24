@@ -334,6 +334,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 3. Confirm new pod number and presence of fake GPU worker.
         logger.info("Confirming fake GPU worker up-scaling.")
         wait_for_pods(goal_num_pods=4, namespace=RAY_CLUSTER_NAMESPACE)
+
         gpu_workers = [
             pod_name
             for pod_name in get_pod_names(namespace=RAY_CLUSTER_NAMESPACE)

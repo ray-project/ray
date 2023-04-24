@@ -86,7 +86,7 @@ Current Datasets will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
 avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
+For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
 just two of the five columns of Iris dataset.
 
 Parquet Row Pruning
@@ -95,7 +95,8 @@ Parquet Row Pruning
 Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
-For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
+For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
+(where ``pyarrow`` has to be imported)
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
@@ -129,12 +130,12 @@ To get an idea of the performance you can expect, here are some run time results
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
    :align: center
 
-To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_BASED_SHUFFLE=1`` when running your application:
+To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASED_SHUFFLE=1`` when running your application:
 
 .. code-block:: bash
 
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
-    $ RAY_DATASET_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
+    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
     # [dataset]: Run `pip install tqdm` to enable progress reporting.
     # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
@@ -142,13 +143,13 @@ To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_B
     # ...
 
 You can also specify the shuffle implementation during program execution by
-setting the ``DatasetContext.use_push_based_shuffle`` flag:
+setting the ``DataContext.use_push_based_shuffle`` flag:
 
 .. code-block:: python
 
     import ray.data
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     ctx.use_push_based_shuffle = True
 
     n = 1000

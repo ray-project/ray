@@ -88,7 +88,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   const TaskID &GetCurrentTaskId();
 
-  const JobID &GetCurrentJobID();
+  JobID GetCurrentJobID();
 
   const ActorID &GetCurrentActorID();
 

@@ -17,7 +17,9 @@
 #include <boost/range/iterator_range.hpp>
 #include <memory>
 
+#include "ray/common/constants.h"
 #include "ray/util/logging.h"
+#include "util.h"
 
 namespace ray {
 namespace internal {
@@ -151,6 +153,7 @@ void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> &path
     }
   }
 
+  RAY_LOG(INFO) << std::string(kLibraryPathEnvName) << ": " << getLibraryPathEnv();
   // Try to load all found libraries.
   for (auto lib : dynamic_libraries) {
     LoadDll(lib);

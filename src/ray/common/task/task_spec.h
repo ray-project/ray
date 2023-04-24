@@ -45,7 +45,9 @@ inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
     return (lhs.node_affinity_scheduling_strategy().node_id() ==
             rhs.node_affinity_scheduling_strategy().node_id()) &&
            (lhs.node_affinity_scheduling_strategy().soft() ==
-            rhs.node_affinity_scheduling_strategy().soft());
+            rhs.node_affinity_scheduling_strategy().soft()) &&
+           (lhs.node_affinity_scheduling_strategy().spill_on_unavailable() ==
+            rhs.node_affinity_scheduling_strategy().spill_on_unavailable());
   }
   case ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy: {
     return (lhs.placement_group_scheduling_strategy().placement_group_id() ==
@@ -114,6 +116,8 @@ struct hash<ray::rpc::SchedulingStrategy> {
       // soft returns a bool
       hash ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(
@@ -218,7 +222,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   JobID JobId() const;
 
+  const rpc::JobConfig &JobConfig() const;
+
   TaskID ParentTaskId() const;
+
+  TaskID SubmitterTaskId() const;
 
   size_t ParentCounter() const;
 
@@ -311,10 +319,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
-  /// \param add_dummy_dependency whether to add a dummy object in the returned objects.
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies(
-      bool add_dummy_dependency = true) const;
+  std::vector<rpc::ObjectReference> GetDependencies() const;
 
   std::string GetDebuggerBreakpoint() const;
 
@@ -366,8 +372,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ActorCreationDummyObjectId() const;
 
-  ObjectID PreviousActorTaskDummyObjectId() const;
-
   int MaxActorConcurrency() const;
 
   bool IsAsyncioActor() const;
@@ -377,6 +381,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
+
+  // A one-line summary of the runtime environment for the task. May contain sensitive
+  // information such as user-specified environment variables.
+  std::string RuntimeEnvDebugString() const;
 
   // A one-word summary of the task func as a call site (e.g., __main__.foo).
   std::string CallSiteString() const;
@@ -467,6 +475,8 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
+  std::size_t CalculateHash() const;
+
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
@@ -475,9 +485,9 @@ class WorkerCacheKey {
   const bool is_actor;
   /// Whether the worker is to use a GPU.
   const bool is_gpu;
-  /// The cached hash of the worker's environment.  This is set to 0
+  /// The hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
-  mutable std::size_t hash_ = 0;
+  const std::size_t hash_ = 0;
 };
 
 }  // namespace ray

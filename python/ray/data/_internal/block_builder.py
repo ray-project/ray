@@ -18,6 +18,10 @@ class BlockBuilder(Generic[T]):
         """Append an entire block to the block being built."""
         raise NotImplementedError
 
+    def will_build_yield_copy(self) -> bool:
+        """Whether building this block will yield a new block copy."""
+        raise NotImplementedError
+
     def build(self) -> Block:
         """Build the block."""
         raise NotImplementedError

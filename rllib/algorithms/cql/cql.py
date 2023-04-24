@@ -20,7 +20,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
@@ -134,9 +133,6 @@ class CQLConfig(SACConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-
         # CQL-torch performs the optimizer steps inside the loss function.
         # Using the multi-GPU optimizer will therefore not work (see multi-GPU
         # check above) and we must use the simple optimizer for now.
@@ -216,20 +212,3 @@ class CQL(SAC):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(CQLConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-CQL_DEFAULT_CONFIG = DEFAULT_CONFIG

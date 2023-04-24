@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <boost/bimap.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
@@ -129,7 +131,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Drain the given node.
   /// Idempotent.
-  void DrainNode(const NodeID &node_id);
+  virtual void DrainNode(const NodeID &node_id);
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
@@ -173,6 +175,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
                    boost::bimaps::unordered_set_of<std::string>>;
   NodeIDAddrBiMap node_map_;
+
+  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs

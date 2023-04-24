@@ -25,7 +25,8 @@ from ray.autoscaler.tags import (
 
 logger = logging.getLogger(__name__)
 
-logging.getLogger("filelock").setLevel(logging.WARNING)
+filelock_logger = logging.getLogger("filelock")
+filelock_logger.setLevel(logging.WARNING)
 
 
 class ClusterState:

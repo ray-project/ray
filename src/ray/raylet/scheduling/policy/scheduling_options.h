@@ -20,8 +20,10 @@
 namespace ray {
 namespace raylet {
 class SchedulingPolicyTest;
-}
+}  // namespace raylet
 namespace raylet_scheduling_policy {
+
+class HybridSchedulingPolicyTest;
 
 // Different scheduling types. Please refer to
 // scheduling_policy.h to see detailed behaviors.
@@ -57,23 +59,33 @@ struct SchedulingOptions {
   }
 
   // construct option for hybrid scheduling policy.
-  static SchedulingOptions Hybrid(bool avoid_local_node, bool require_node_available) {
+  static SchedulingOptions Hybrid(bool avoid_local_node,
+                                  bool require_node_available,
+                                  const std::string &preferred_node_id = std::string()) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
                              avoid_local_node,
                              require_node_available,
-                             RayConfig::instance().scheduler_avoid_gpu_nodes());
+                             RayConfig::instance().scheduler_avoid_gpu_nodes(),
+                             /*max_cpu_fraction_per_node*/ 1.0,
+                             /*scheduling_context*/ nullptr,
+                             preferred_node_id);
   }
 
   static SchedulingOptions NodeAffinity(bool avoid_local_node,
                                         bool require_node_available,
                                         std::string node_id,
-                                        bool soft) {
+                                        bool soft,
+                                        bool spill_on_unavailable = false) {
+    if (spill_on_unavailable) {
+      RAY_CHECK(soft);
+    }
     SchedulingOptions scheduling_options =
         Hybrid(avoid_local_node, require_node_available);
     scheduling_options.scheduling_type = SchedulingType::NODE_AFFINITY;
     scheduling_options.node_affinity_node_id = node_id;
     scheduling_options.node_affinity_soft = soft;
+    scheduling_options.node_affinity_spill_on_unavailable = spill_on_unavailable;
     return scheduling_options;
   }
 
@@ -152,24 +164,38 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
+  bool node_affinity_spill_on_unavailable = false;
+  // The node where the task is preferred to be placed. By default, this node id
+  // is empty, which means no preferred node.
+  std::string preferred_node_id;
+  int32_t schedule_top_k_absolute;
+  float scheduler_top_k_fraction;
 
  private:
-  SchedulingOptions(SchedulingType type,
-                    float spread_threshold,
-                    bool avoid_local_node,
-                    bool require_node_available,
-                    bool avoid_gpu_nodes,
-                    double max_cpu_fraction_per_node = 1.0,
-                    std::shared_ptr<SchedulingContext> scheduling_context = nullptr)
+  SchedulingOptions(
+      SchedulingType type,
+      float spread_threshold,
+      bool avoid_local_node,
+      bool require_node_available,
+      bool avoid_gpu_nodes,
+      double max_cpu_fraction_per_node = 1.0,
+      std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
+      const std::string &preferred_node_id = std::string(),
+      int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
+      float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction())
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
         require_node_available(require_node_available),
         avoid_gpu_nodes(avoid_gpu_nodes),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        scheduling_context(std::move(scheduling_context)) {}
+        scheduling_context(std::move(scheduling_context)),
+        preferred_node_id(preferred_node_id),
+        schedule_top_k_absolute(schedule_top_k_absolute),
+        scheduler_top_k_fraction(scheduler_top_k_fraction) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
+  friend class HybridSchedulingPolicyTest;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

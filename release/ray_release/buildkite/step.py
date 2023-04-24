@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
-from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
+from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
@@ -13,7 +13,6 @@ from ray_release.config import (
     parse_python_version,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
-from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import get_test_env_var
 from ray_release.util import python_version_str, DeferredEnvVar
 
@@ -21,6 +20,8 @@ DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
 RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
 RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
+
+DOCKER_PLUGIN_KEY = "docker#v5.2.0"
 
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
@@ -35,7 +36,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "agents": {"queue": str(RELEASE_QUEUE_DEFAULT)},
     "plugins": [
         {
-            "docker#v5.2.0": {
+            DOCKER_PLUGIN_KEY: {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
@@ -49,6 +50,14 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     ],
     "artifact_paths": [f"{DEFAULT_ARTIFACTS_DIR_HOST}/**/*"],
     "priority": 0,
+    "retry": {
+        "automatic": [
+            {
+                "exit_status": os.environ.get("BUILDKITE_RETRY_CODE", 79),
+                "limit": os.environ.get("BUILDKITE_MAX_RETRIES", 1),
+            }
+        ]
+    },
 }
 
 
@@ -64,18 +73,18 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = f"./release/run_release_test.sh \"{test['name']}\" "
+    cmd = ["./release/run_release_test.sh", test["name"]]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
-        cmd += " --report"
+        cmd += ["--report"]
 
     if smoke_test:
-        cmd += " --smoke-test"
+        cmd += ["--smoke-test"]
 
     if ray_wheels:
-        cmd += f" --ray-wheels {ray_wheels}"
+        cmd += ["--ray-wheels", ray_wheels]
 
-    step["command"] = cmd
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
@@ -88,7 +97,7 @@ def get_step(
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    step["plugins"][0]["docker#v5.2.0"][
+    step["plugins"][0][DOCKER_PLUGIN_KEY][
         "image"
     ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
 
@@ -96,19 +105,11 @@ def get_step(
     branch = get_test_env_var("RAY_BRANCH")
     label = commit[:7] if commit else branch
 
-    concurrency_group = test.get("concurrency_group", None)
-    if concurrency_group:
-        if concurrency_group not in CONCURRENY_GROUPS:
-            raise ReleaseTestConfigError(
-                f"Unknown concurrency group: {concurrency_group}"
-            )
-        concurrency_limit = CONCURRENY_GROUPS[concurrency_group]
+    if smoke_test:
+        concurrency_test = as_smoke_test(test)
     else:
-        if smoke_test:
-            concurrency_test = as_smoke_test(test)
-        else:
-            concurrency_test = test
-        concurrency_group, concurrency_limit = get_concurrency_group(concurrency_test)
+        concurrency_test = test
+    concurrency_group, concurrency_limit = get_concurrency_group(concurrency_test)
 
     step["concurrency_group"] = concurrency_group
     step["concurrency"] = concurrency_limit

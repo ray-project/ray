@@ -82,16 +82,9 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
                                             const json &custom_fields) {
   json j;
 
-  auto time_stamp = event.timestamp();
-  time_t epoch_time_as_time_t = time_stamp / 1000000;
+  auto timestamp = event.timestamp();
 
-  absl::Time absl_time = absl::FromTimeT(epoch_time_as_time_t);
-  std::stringstream time_stamp_buffer;
-  time_stamp_buffer << absl::FormatTime(
-                           "%Y-%m-%d %H:%M:%S.", absl_time, absl::LocalTimeZone())
-                    << std::setw(6) << std::setfill('0') << time_stamp % 1000000;
-
-  j["time_stamp"] = time_stamp_buffer.str();
+  j["timestamp"] = timestamp;
   j["severity"] = Event_Severity_Name(event.severity());
   j["label"] = event.label();
   j["event_id"] = event.event_id();
@@ -103,7 +96,7 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   j["custom_fields"] = custom_fields;
 
   // the final string is like:
-  // {"time_stamp":"2020-08-29 14:18:15.998084","severity":"INFO","label":"label
+  // {"timestamp":"<timestamp>","severity":"INFO","label":"label
   // 1","event_id":"de150792ceb151c815d359d4b675fcc6266a","source_type":"CORE_WORKER","host_name":"Macbool.local","pid":"20830","message":"send
   // message 1","custom_fields":{"task_id":"task 1","job_id":"job 1","node_id":"node 1"}}
 
@@ -214,6 +207,15 @@ void RayEventContext::UpdateCustomFields(
 /// RayEvent
 ///
 static rpc::Event_Severity severity_threshold_ = rpc::Event_Severity::Event_Severity_INFO;
+static std::atomic<bool> emit_event_to_log_file_ = false;
+
+static void SetEmitEventToLogFile(bool emit_event_to_log_file) {
+  emit_event_to_log_file_ = emit_event_to_log_file;
+}
+
+void RayEvent::SetEmitToLogFile(bool emit_to_log_file) {
+  SetEmitEventToLogFile(emit_to_log_file);
+}
 
 static void SetEventLevel(const std::string &event_level) {
   std::string level = event_level;
@@ -244,6 +246,8 @@ void RayEvent::ReportEvent(const std::string &severity,
       severity_ele, EventLevelToLogLevel(severity_ele), label, file_name, line_number)
       << message;
 }
+
+bool RayEvent::EmitToLogFile() { return emit_event_to_log_file_; }
 
 bool RayEvent::IsLevelEnabled(rpc::Event_Severity event_level) {
   return event_level >= severity_threshold_;
@@ -299,7 +303,7 @@ void RayEvent::SendMessage(const std::string &message) {
     event.set_severity(severity_);
     event.set_label(label_);
     event.set_message(message);
-    event.set_timestamp(current_sys_time_us());
+    event.set_timestamp(current_sys_time_s());
 
     auto mp = context.GetCustomFields();
     for (const auto &pair : mp) {
@@ -311,9 +315,11 @@ void RayEvent::SendMessage(const std::string &message) {
   } else {
     event_id = kEmptyEventIdHex;
   }
-  if (ray::RayLog::IsLevelEnabled(log_severity_)) {
-    ::ray::RayLog(file_name_, line_number_, log_severity_)
-        << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
+  if (EmitToLogFile()) {
+    if (ray::RayLog::IsLevelEnabled(log_severity_)) {
+      ::ray::RayLog(file_name_, line_number_, log_severity_)
+          << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
+    }
   }
 }
 
@@ -322,15 +328,20 @@ static absl::once_flag init_once_;
 void RayEventInit(rpc::Event_SourceType source_type,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
-                  const std::string &event_level) {
-  absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
-    RayEventContext::Instance().SetEventContext(source_type, custom_fields);
-    auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
-    ray::EventManager::Instance().AddReporter(
-        std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-    SetEventLevel(event_level);
-    RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
-  });
+                  const std::string &event_level,
+                  bool emit_event_to_log_file) {
+  absl::call_once(
+      init_once_,
+      [&source_type, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
+        RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+        auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
+        ray::EventManager::Instance().AddReporter(
+            std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+        SetEventLevel(event_level);
+        SetEmitEventToLogFile(emit_event_to_log_file);
+        RAY_LOG(INFO) << "Ray Event initialized for "
+                      << Event_SourceType_Name(source_type);
+      });
 }
 
 }  // namespace ray

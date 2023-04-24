@@ -16,7 +16,8 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
-from ray._private.gcs_utils import GcsAioClient, GcsClient
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 from ray.experimental.internal_kv import (
@@ -48,7 +49,18 @@ except AttributeError:
 
 logger = logging.getLogger(__name__)
 
-aiogrpc.init_grpc_aio()
+# We would want to suppress deprecating warnings from aiogrpc library
+# with the usage of asyncio.get_event_loop() in python version >=3.10
+# This could be removed once https://github.com/grpc/grpc/issues/32526
+# is released, and we used higher versions of grpcio that that.
+if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+        aiogrpc.init_grpc_aio()
+else:
+    aiogrpc.init_grpc_aio()
 
 
 class DashboardAgent:
@@ -243,7 +255,7 @@ class DashboardAgent:
                                     error = True
                         except Exception as e:
                             msg += f"Failed to read Raylet logs at {log_path}: {e}!"
-                            logger.exception()
+                            logger.exception(msg)
                             error = True
                         if error:
                             logger.error(msg)

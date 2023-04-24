@@ -59,11 +59,37 @@ def generate_variants(
 
 
 @PublicAPI(stability="beta")
-def grid_search(values: Iterable) -> Dict[str, List]:
-    """Convenience method for specifying grid search over a value.
+def grid_search(values: Iterable) -> Dict[str, Iterable]:
+    """Specify a grid of values to search over.
 
-    Arguments:
-        values: An iterable whose parameters will be gridded.
+    Values specified in a grid search are guaranteed to be sampled.
+
+    If multiple grid search variables are defined, they are combined with the
+    combinatorial product. This means every possible combination of values will
+    be sampled.
+
+    Example:
+
+        >>> from ray import tune
+        >>> param_space={
+        ...   "x": tune.grid_search([10, 20]),
+        ...   "y": tune.grid_search(["a", "b", "c"])
+        ... }
+
+    This will create a grid of 6 samples:
+    ``{"x": 10, "y": "a"}``, ``{"x": 10, "y": "b"}``, etc.
+
+    When specifying ``num_samples`` in the
+    :class:`TuneConfig <ray.tune.tune_config.TuneConfig>`, this will specify
+    the number of random samples per grid search combination.
+
+    For instance, in the example above, if ``num_samples=4``,
+    a total of 24 trials will be started -
+    4 trials for each of the 6 grid search combinations.
+
+    Args:
+        values: An iterable whose parameters will be used for creating a trial grid.
+
     """
     return {"grid_search": values}
 
@@ -315,9 +341,27 @@ def _get_preset_variants(
 
 @DeveloperAPI
 def assign_value(spec: Dict, path: Tuple, value: Any):
+    """Assigns a value to a nested dictionary.
+
+    Handles the special case of tuples, in which case the tuples
+    will be re-constructed to accomodate the updated value.
+    """
+    parent_spec = None
+    parent_key = None
     for k in path[:-1]:
+        parent_spec = spec
+        parent_key = k
         spec = spec[k]
-    spec[path[-1]] = value
+    key = path[-1]
+    if not isinstance(spec, tuple):
+        # spec is mutable. Just assign the value.
+        spec[key] = value
+    else:
+        if parent_spec is None:
+            raise ValueError("Cannot assign value to a tuple.")
+        assert isinstance(key, int), "Tuple key must be an int."
+        # Special handling since tuples are immutable.
+        parent_spec[parent_key] = spec[:key] + (value,) + spec[key + 1 :]
 
 
 def _get_value(spec: Dict, path: Tuple) -> Any:

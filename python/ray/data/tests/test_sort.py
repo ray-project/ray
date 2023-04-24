@@ -57,7 +57,7 @@ def test_sort_partition_same_key_to_same_block(
 def test_sort_arrow(
     ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
@@ -101,7 +101,7 @@ def test_sort_arrow(
 def test_sort_arrow_with_empty_blocks(
     ray_start_regular, use_push_based_shuffle, use_polars
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
@@ -289,7 +289,7 @@ def test_push_based_shuffle_schedule():
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     try:
         original = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = True
@@ -307,14 +307,15 @@ def test_push_based_shuffle_stats(ray_start_cluster):
 
         parallelism = 100
         ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
-        assert "random_shuffle_merge" in ds.stats()
+        ds = ds.materialize()
+        assert "RandomShuffleMerge" in ds.stats()
         # Check all nodes used.
         assert "2 nodes used" in ds.stats()
         assert "1 nodes used" not in ds.stats()
 
         # Check all merge tasks are included in stats.
         internal_stats = ds._plan.stats()
-        num_merge_tasks = len(internal_stats.stages["random_shuffle_merge"])
+        num_merge_tasks = len(internal_stats.stages["RandomShuffleMerge"])
         # Merge factor is 2 for random_shuffle ops.
         merge_factor = 2
         assert (
@@ -381,7 +382,7 @@ def patch_ray_get(callback):
 
 @pytest.mark.parametrize("pipeline", [False, True])
 def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     try:
         original = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = True

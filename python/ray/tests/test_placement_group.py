@@ -512,6 +512,32 @@ def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client
             ray.util.placement_group([])
 
 
+def test_placement_group_equal_hash(ray_start_regular):
+    from copy import copy
+
+    pg1 = ray.util.placement_group([{"CPU": 1}])
+    pg2 = copy(pg1)
+
+    # __eq__
+    assert pg1 == pg2
+
+    # __hash__
+    s = set()
+    s.add(pg1)
+    assert pg2 in s
+
+    # Compare in remote task
+    @ray.remote(num_cpus=0)
+    def same(a, b):
+        return a == b and b in {a}
+
+    assert ray.get(same.remote(pg1, pg2))
+
+    # Compare before/after object store
+    assert ray.get(ray.put(pg1)) == pg1
+
+
+@pytest.mark.filterwarnings("default:placement_group parameter is deprecated")
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -557,6 +583,12 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     assert not w
 
 
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for actors is deprecated"
+)
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for bundles is deprecated"
+)
 def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
     with warnings.catch_warnings(record=True) as w:
 

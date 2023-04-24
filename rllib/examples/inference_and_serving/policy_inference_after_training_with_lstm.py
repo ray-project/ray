@@ -23,7 +23,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -90,10 +90,13 @@ if __name__ == "__main__":
                 "lstm_cell_size": 256,
                 "lstm_use_prev_action": args.prev_action,
                 "lstm_use_prev_reward": args.prev_reward,
-            }
+            },
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

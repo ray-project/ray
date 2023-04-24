@@ -138,9 +138,6 @@ def task_with_dynamic_returns_bad(n):
     return return_value_refs
 
 
-# Note: currently actor tasks don't support dynamic returns
-# so the previous approach needs to be used if you want to
-# return dynamic number of objects from an actor task.
 @ray.remote(num_returns="dynamic")
 def task_with_dynamic_returns_good(n):
     for i in range(n):

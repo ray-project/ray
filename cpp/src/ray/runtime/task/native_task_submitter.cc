@@ -27,7 +27,9 @@ using ray::core::TaskOptions;
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   if (invocation.remote_function_holder.lang_type == LangType::CPP) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-        invocation.remote_function_holder.function_name);
+        invocation.remote_function_holder.function_name,
+        "",
+        invocation.remote_function_holder.class_name);
     return RayFunction(ray::Language::CPP, function_descriptor);
   } else if (invocation.remote_function_holder.lang_type == LangType::PYTHON) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildPython(
