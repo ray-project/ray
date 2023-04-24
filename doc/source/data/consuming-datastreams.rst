@@ -84,37 +84,39 @@ The supported formats include Parquet, CSV, JSON, NumPy. To control the number
 of output files, you may use :meth:`ds.repartition() <ray.data.Datastream.repartition>`
 to repartition the Datastream before writing out.
 
-.. tabbed:: Parquet
+.. tab-set::
 
-  .. literalinclude:: ./doc_code/saving_datastreams.py
-    :language: python
-    :start-after: __write_parquet_begin__
-    :end-before: __write_parquet_end__
+    .. tab-item:: Parquet
 
-.. tabbed:: CSV
+      .. literalinclude:: ./doc_code/saving_datastreams.py
+        :language: python
+        :start-after: __write_parquet_begin__
+        :end-before: __write_parquet_end__
 
-  .. literalinclude:: ./doc_code/saving_datastreams.py
-    :language: python
-    :start-after: __write_csv_begin__
-    :end-before: __write_csv_end__
+    .. tab-item:: CSV
 
-.. tabbed:: JSON
+      .. literalinclude:: ./doc_code/saving_datastreams.py
+        :language: python
+        :start-after: __write_csv_begin__
+        :end-before: __write_csv_end__
 
-  .. literalinclude:: ./doc_code/saving_datastreams.py
-    :language: python
-    :start-after: __write_json_begin__
-    :end-before: __write_json_end__
+    .. tab-item:: JSON
 
-.. tabbed:: NumPy
+      .. literalinclude:: ./doc_code/saving_datastreams.py
+        :language: python
+        :start-after: __write_json_begin__
+        :end-before: __write_json_end__
 
-  .. literalinclude:: ./doc_code/saving_datastreams.py
-    :language: python
-    :start-after: __write_numpy_begin__
-    :end-before: __write_numpy_end__
+    .. tab-item:: NumPy
 
-.. tabbed:: TFRecords
+      .. literalinclude:: ./doc_code/saving_datastreams.py
+        :language: python
+        :start-after: __write_numpy_begin__
+        :end-before: __write_numpy_end__
 
-  .. literalinclude:: ./doc_code/saving_datastreams.py
-    :language: python
-    :start-after: __write_tfrecords_begin__
-    :end-before: __write_tfrecords_end__
+    .. tab-item:: TFRecords
+
+      .. literalinclude:: ./doc_code/saving_datastreams.py
+        :language: python
+        :start-after: __write_tfrecords_begin__
+        :end-before: __write_tfrecords_end__

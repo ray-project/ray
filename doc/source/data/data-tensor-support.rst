@@ -16,93 +16,95 @@ Creating Tensor Datastreams
 
 This section shows how to create single and multi-column tensor datastreams.
 
-.. tabbed:: Synthetic Data
+.. tab-set::
 
-  Create a synthetic tensor datastream from a range of integers.
+    .. tab-item:: Synthetic Data
 
-  **Single-column only**:
+      Create a synthetic tensor datastream from a range of integers.
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_range_begin__
-    :end-before: __create_range_end__
+      **Single-column only**:
 
-.. tabbed:: Pandas UDF
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_range_begin__
+        :end-before: __create_range_end__
 
-  Create tensor datastreams by returning ``List[np.ndarray]`` columns from a Pandas
-  :ref:`user-defined function <transform_datastreams_writing_udfs>`.
+    .. tab-item:: Pandas UDF
 
-  **Single-column**:
+      Create tensor datastreams by returning ``List[np.ndarray]`` columns from a Pandas
+      :ref:`user-defined function <transform_datastreams_writing_udfs>`.
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_pandas_begin__
-    :end-before: __create_pandas_end__
+      **Single-column**:
 
-  **Multi-column**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_pandas_begin__
+        :end-before: __create_pandas_end__
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_pandas_2_begin__
-    :end-before: __create_pandas_2_end__
+      **Multi-column**:
 
-.. tabbed:: NumPy
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_pandas_2_begin__
+        :end-before: __create_pandas_2_end__
 
-  Create from in-memory NumPy data or from previously saved NumPy (.npy) files.
+    .. tab-item:: NumPy
 
-  **Single-column only**:
+      Create from in-memory NumPy data or from previously saved NumPy (.npy) files.
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_numpy_begin__
-    :end-before: __create_numpy_end__
+      **Single-column only**:
 
-.. tabbed:: Parquet
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_numpy_begin__
+        :end-before: __create_numpy_end__
 
-  There are two ways to construct a Parquet tensor datastream: (1) loading a
-  previously-saved tensor datastream, or (2) casting non-tensor Parquet columns to tensor
-  type. When casting data, a tensor schema or deserialization
-  :ref:`user-defined function <transform_datastreams_writing_udfs>`  must be provided. The
-  following are examples for each method.
+    .. tab-item:: Parquet
 
-  **Previously-saved tensor datastreams**:
+      There are two ways to construct a Parquet tensor datastream: (1) loading a
+      previously-saved tensor datastream, or (2) casting non-tensor Parquet columns to tensor
+      type. When casting data, a tensor schema or deserialization
+      :ref:`user-defined function <transform_datastreams_writing_udfs>`  must be provided. The
+      following are examples for each method.
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_parquet_1_begin__
-    :end-before: __create_parquet_1_end__
+      **Previously-saved tensor datastreams**:
 
-  **Cast from data stored in C-contiguous format**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_parquet_1_begin__
+        :end-before: __create_parquet_1_end__
 
-  For tensors stored as raw NumPy ndarray bytes in C-contiguous order (e.g., via
-  `ndarray.tobytes() <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.tobytes.html>`__), all you need to specify is the tensor column schema. The following is an end-to-end example:
+      **Cast from data stored in C-contiguous format**:
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_parquet_2_begin__
-    :end-before: __create_parquet_2_end__
+      For tensors stored as raw NumPy ndarray bytes in C-contiguous order (e.g., via
+      `ndarray.tobytes() <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.tobytes.html>`__), all you need to specify is the tensor column schema. The following is an end-to-end example:
 
-  **Cast from data stored in custom formats**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_parquet_2_begin__
+        :end-before: __create_parquet_2_end__
 
-  For tensors stored in other formats (e.g., pickled), you can specify a deserializer
-  :ref:`user-defined function <transform_datastreams_writing_udfs>` that returns
-  :class:`~ray.data.extensions.tensor_extension.TensorArray` columns:
+      **Cast from data stored in custom formats**:
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_parquet_3_begin__
-    :end-before: __create_parquet_3_end__
+      For tensors stored in other formats (e.g., pickled), you can specify a deserializer
+      :ref:`user-defined function <transform_datastreams_writing_udfs>` that returns
+      :class:`~ray.data.extensions.tensor_extension.TensorArray` columns:
 
-.. tabbed:: Images
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_parquet_3_begin__
+        :end-before: __create_parquet_3_end__
 
-  Load image data stored as individual files using :func:`~ray.data.read_images`:
+    .. tab-item:: Images
 
-  **Image and label columns**:
+      Load image data stored as individual files using :func:`~ray.data.read_images`:
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_images_begin__
-    :end-before: __create_images_end__
+      **Image and label columns**:
+
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __create_images_begin__
+        :end-before: __create_images_end__
 
 .. note::
 
@@ -114,69 +116,71 @@ Transforming / Consuming Tensor Data
 
 Like any other Datastream, Datastreams with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=\<format\>) <ray.data.Datastream.iter_batches>` and :meth:`ds.map_batches(fn, batch_format=\<format\>) <ray.data.Datastream.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
-.. tabbed:: "default"
+.. tab-set::
 
-  **Single-column**:
+    .. tab-item:: "default"
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_native_begin__
-    :end-before: __consume_native_end__
+      **Single-column**:
 
-  **Multi-column**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_native_begin__
+        :end-before: __consume_native_end__
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_native_2_begin__
-    :end-before: __consume_native_2_end__
+      **Multi-column**:
 
-.. tabbed:: "pandas"
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_native_2_begin__
+        :end-before: __consume_native_2_end__
 
-  **Single-column**:
+    .. tab-item:: "pandas"
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_pandas_begin__
-    :end-before: __consume_pandas_end__
+      **Single-column**:
 
-  **Multi-column**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_pandas_begin__
+        :end-before: __consume_pandas_end__
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_pandas_2_begin__
-    :end-before: __consume_pandas_2_end__
+      **Multi-column**:
 
-.. tabbed:: "pyarrow"
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_pandas_2_begin__
+        :end-before: __consume_pandas_2_end__
 
-  **Single-column**:
+    .. tab-item:: "pyarrow"
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_pyarrow_begin__
-    :end-before: __consume_pyarrow_end__
+      **Single-column**:
 
-  **Multi-column**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_pyarrow_begin__
+        :end-before: __consume_pyarrow_end__
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_pyarrow_2_begin__
-    :end-before: __consume_pyarrow_2_end__
+      **Multi-column**:
 
-.. tabbed:: "numpy"
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_pyarrow_2_begin__
+        :end-before: __consume_pyarrow_2_end__
 
-  **Single-column**:
+    .. tab-item:: "numpy"
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_numpy_begin__
-    :end-before: __consume_numpy_end__
+      **Single-column**:
 
-  **Multi-column**:
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_numpy_begin__
+        :end-before: __consume_numpy_end__
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __consume_numpy_2_begin__
-    :end-before: __consume_numpy_2_end__
+      **Multi-column**:
+
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __consume_numpy_2_begin__
+        :end-before: __consume_numpy_2_end__
 
 Saving Tensor Datastreams
 -------------------------
@@ -185,19 +189,21 @@ Because tensor datastreams rely on Datastreams-specific extension types, they ca
 saved in formats that preserve Arrow metadata (currently only Parquet). In addition,
 single-column tensor datastreams can be saved in NumPy format.
 
-.. tabbed:: Parquet
+.. tab-set::
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __write_1_begin_
-    :end-before: __write_1_end__
+    .. tab-item:: Parquet
 
-.. tabbed:: NumPy
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __write_1_begin_
+        :end-before: __write_1_end__
 
-  .. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __write_2_begin_
-    :end-before: __write_2_end__
+    .. tab-item:: NumPy
+
+      .. literalinclude:: ./doc_code/tensor.py
+        :language: python
+        :start-after: __write_2_begin_
+        :end-before: __write_2_end__
 
 .. _ragged_tensor_support:
 
