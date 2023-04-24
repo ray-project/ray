@@ -175,7 +175,6 @@ void WorkerPool::Start() {
 }
 
 void WorkerPool::MaybeRefillIdlePool() {
-    //cache_size_policy_
     //TODO add num_prestart_python_workers_ 
 
     size_t num_idle_workers_to_create = cache_size_policy_->GetNumIdleProcsToCreate(
@@ -185,6 +184,7 @@ void WorkerPool::MaybeRefillIdlePool() {
     );
 
     RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_idle_workers_to_create: " << num_idle_workers_to_create;
+    PrestartDefaultCpuWorkers(Language::PYTHON, num_idle_workers_to_create);
 }
 
 size_t WorkerPool::GetNumStartingWorkers() {
@@ -1440,6 +1440,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                    << backlog_size << " and available CPUs " << num_available_cpus;
     // musing(cade): I should not use the MaybeRefillIdlePool function here as it's a scheduling hint (not desired state).
     // We should modify this later, for example with forkserver.
+    // This means that Ray's goodness depends on waiting 2s for killing...
     PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
   }
 }
