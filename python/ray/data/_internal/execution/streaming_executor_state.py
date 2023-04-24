@@ -443,7 +443,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
         return req
 
     for op, state in topology.items():
-        per_task_resource = op.incremental_resource_usage()
+        per_task_resource = op.incremental_resource_usage(state.num_queued)
         task_bundle = to_bundle(per_task_resource)
         resource_request.extend([task_bundle] * op.num_active_work_refs())
         # Only include incremental resource usage for ops that are ready for

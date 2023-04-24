@@ -122,12 +122,10 @@ class ActorPoolMapOperator(MapOperator):
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
-        self._scale_up_if_needed()
-        self._scale_down_if_needed()
         free_slots = self._actor_pool.num_free_slots()
         if input_queue_size > free_slots and under_resource_limits:
             # Try to scale up if work remains in the work queue.
-            self._scale_up_if_needed()
+            self._scale_up_if_needed(num_inputs=input_queue_size)
         else:
             # Try to remove any idle actors.
             self._scale_down_if_needed()
@@ -182,11 +180,17 @@ class ActorPoolMapOperator(MapOperator):
             # Only try to scale down if the work queue has been fully consumed.
             self._scale_down_if_needed()
 
-    def _scale_up_if_needed(self, ):
-        """Try to scale up the pool if the autoscaling policy allows it."""
+    def _scale_up_if_needed(self, num_inputs: int):
+        """Try to scale up the pool if the autoscaling policy allows it.
+
+        Args:
+            num_inputs: The number of inputs for this operator.
+
+        """
         while self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_free_slots=self._actor_pool.num_free_slots(),
+            num_inputs=num_inputs,
         ):
             self._start_actor()
 
@@ -289,12 +293,13 @@ class ActorPoolMapOperator(MapOperator):
             object_store_memory=self._metrics.cur,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(self, input_queue_size: int) -> ExecutionResources:
         # We would only have nonzero incremental CPU/GPU resources if a new task would
         # require scale-up to run.
         if self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_running_workers=self._actor_pool.num_running_actors(),
+            num_inputs=input_queue_size + 1,
         ):
             # A new task would trigger scale-up, so we include the actor resouce
             # requests in the incremental resources.
@@ -428,14 +433,15 @@ class AutoscalingPolicy:
         """The maximum number of actors that can be added to the actor pool."""
         return self._config.max_workers
 
-    def should_scale_up(self, num_total_workers: int, num_free_slots: int, input_queue_size: int) -> bool:
+    def should_scale_up(
+        self, num_total_workers: int, num_free_slots: int, num_inputs: int
+    ) -> bool:
         """Whether the actor pool should scale up by adding a new actor.
 
         Args:
             num_total_workers: Total number of workers in actor pool.
-            num_running_workers: Number of currently running workers in actor pool.
             num_free_slots: Number of free slots for existing actors in the pool.
-            input_queue_size: Size of the input queue for this operator.
+            num_inputs: The number of inputs this operator needs to execute.
 
         Returns:
             Whether the actor pool should be scaled up by one actor.
@@ -453,7 +459,7 @@ class AutoscalingPolicy:
                 num_total_workers < self._config.max_workers
                 # 2. The number of free slots for the current actor pool is not enough
                 # to handle all the inputs for this operator.
-                and num_free_slots < input_queue_size
+                and num_free_slots < num_inputs
             )
 
     def should_scale_down(
