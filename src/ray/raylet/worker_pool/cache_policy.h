@@ -22,9 +22,16 @@ namespace ray {
 
 namespace raylet {
 
-class CacheSizePolicyInterface {
+class IdlePoolSizePolicyInterface {
  public:
-  virtual const size_t GetNumProcsToCreate(
+  virtual const size_t GetNumIdleProcsToCreate(
+    size_t idle_size,
+    size_t running_size,
+    size_t starting_size,
+    size_t terminating_size
+  ) = 0;
+
+  virtual const size_t GetNumIdleProcsToKill(
     size_t idle_size,
     size_t running_size,
     size_t starting_size,
@@ -32,16 +39,24 @@ class CacheSizePolicyInterface {
   ) = 0;
 };
 
-class CacheSizePolicy : public CacheSizePolicyInterface {
+class IdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
  public:
-  CacheSizePolicy(size_t max_total_size, size_t desired_cache_size, size_t max_starting_size);
+  IdlePoolSizePolicy(size_t max_total_size, size_t desired_cache_size, size_t max_starting_size);
 
-  const size_t GetNumProcsToCreate(
+  const size_t GetNumIdleProcsToCreate(
     size_t idle_size,
     size_t running_size,
     size_t starting_size,
     size_t terminating_size
   );
+
+  const size_t GetNumIdleProcsToKill(
+    size_t idle_size,
+    size_t running_size,
+    size_t starting_size,
+    size_t terminating_size
+  );
+
 };
 
 
