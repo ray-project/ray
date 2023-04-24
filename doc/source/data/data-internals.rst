@@ -22,31 +22,33 @@ When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is impor
 
 As an example, the following shows two ways to use Ray Data together with Tune:
 
-.. tabbed:: Limiting Tune Concurrency
+.. tab-set::
 
-    By limiting the number of concurrent Tune trials, we ensure CPU resources are always available for Ray Data execution.
-    This can be done using the ``max_concurrent_trials`` Tune option.
+    .. tab-item:: Limiting Tune Concurrency
 
-    .. literalinclude:: ./doc_code/key_concepts.py
-      :language: python
-      :start-after: __resource_allocation_1_begin__
-      :end-before: __resource_allocation_1_end__
+        By limiting the number of concurrent Tune trials, we ensure CPU resources are always available for Ray Data execution.
+        This can be done using the ``max_concurrent_trials`` Tune option.
 
-.. tabbed:: Reserving CPUs (Experimental)
+        .. literalinclude:: ./doc_code/key_concepts.py
+          :language: python
+          :start-after: __resource_allocation_1_begin__
+          :end-before: __resource_allocation_1_end__
 
-    Alternatively, we can tell Tune to set aside CPU resources for other libraries.
-    This can be done by setting ``_max_cpu_fraction_per_node=0.8``, which reserves
-    20% of node CPUs for Datastream execution.
+    .. tab-item:: Reserving CPUs (Experimental)
 
-    .. literalinclude:: ./doc_code/key_concepts.py
-      :language: python
-      :start-after: __resource_allocation_2_begin__
-      :end-before: __resource_allocation_2_end__
+        Alternatively, we can tell Tune to set aside CPU resources for other libraries.
+        This can be done by setting ``_max_cpu_fraction_per_node=0.8``, which reserves
+        20% of node CPUs for Datastream execution.
 
-    .. warning::
+        .. literalinclude:: ./doc_code/key_concepts.py
+          :language: python
+          :start-after: __resource_allocation_2_begin__
+          :end-before: __resource_allocation_2_end__
 
-        This option is experimental and not currently recommended for use with
-        autoscaling clusters (scale-up will not trigger properly).
+        .. warning::
+
+            This option is experimental and not currently recommended for use with
+            autoscaling clusters (scale-up will not trigger properly).
 
 .. _datastreams_pg:
 
