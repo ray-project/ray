@@ -259,7 +259,7 @@ class HTTPProxy:
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
-            None, None, controller_name, None
+            None, None, controller_name, None, None
         )
 
         # Used only for displaying the route table.

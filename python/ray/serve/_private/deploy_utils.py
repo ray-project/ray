@@ -95,6 +95,7 @@ def deploy_args_to_deployment_info(
     deployer_job_id: Union[str, bytes],
     previous_deployment: DeploymentInfo,
     is_driver_deployment: Optional[bool] = False,
+    app_name: Optional[str] = None,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.
@@ -137,6 +138,7 @@ def deploy_args_to_deployment_info(
         start_time_ms=int(time.time() * 1000),
         autoscaling_policy=autoscaling_policy,
         is_driver_deployment=is_driver_deployment,
+        app_name=app_name,
     )
 
 

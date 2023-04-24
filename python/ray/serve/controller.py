@@ -408,6 +408,7 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
+        app_name: str = None,
     ) -> bool:
         """Deploys a deployment."""
 
@@ -423,6 +424,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             previous_deployment=self.deployment_state_manager.get_deployment(name),
             is_driver_deployment=is_driver_deployment,
+            app_name=app_name,
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if
