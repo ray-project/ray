@@ -350,6 +350,8 @@ class SortStage(AllToAllStage):
 
 
 class LimitStage(AllToAllStage):
+    """Implementation of `Datastream.limit()`."""
+
     def __init__(self, limit: int):
         self._limit = limit
         super().__init__(
