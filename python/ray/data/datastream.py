@@ -3693,8 +3693,11 @@ class Datastream(Generic[T]):
         """
         import raydp
 
+        schema = self.schema()
+        if isinstance(schema, Schema):
+            schema = schema.base_schema  # Backwards compat for RayDP.
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_internal_block_refs()
+            spark, schema, self.get_internal_block_refs()
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
