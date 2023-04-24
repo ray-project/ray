@@ -115,3 +115,18 @@ class Aggregate(AbstractAllToAll):
         )
         self._key = key
         self._aggs = aggs
+
+
+class Limit(AbstractAllToAll):
+    """Logical operator for limit."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        limit: int,
+    ):
+        super().__init__(
+            "Limit",
+            input_op,
+        )
+        self._limit = limit

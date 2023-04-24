@@ -29,6 +29,7 @@ from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.operators.all_to_all_operator import (
+    Limit,
     RandomShuffle,
     RandomizeBlocks,
     Repartition,
@@ -2201,8 +2202,8 @@ class Datastream(Generic[T]):
         plan = self._plan.with_stage(LimitStage(limit))
         logical_plan = self._logical_plan
         if logical_plan is not None:
-            # TODO(hchen): Implement logical_plan for limit.
-            pass
+            op = Limit(logical_plan.dag, limit=limit)
+            logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI(pattern="Time complexity:")
