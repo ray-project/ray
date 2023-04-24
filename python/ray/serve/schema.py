@@ -815,6 +815,15 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
             "when the application was deployed."
         ),
     )
+    deployment_statuses: List[DeploymentStatusInfo] = Field(
+        default=[],
+        description=(
+            "List of statuses for all the deployments running in this Serve "
+            "application. Each status contains the deployment name, the "
+            "deployment's status, and a message providing extra context on "
+            "the status."
+        ),
+    )
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
