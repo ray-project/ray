@@ -188,7 +188,8 @@ class RayServeHandle:
         """
         return get_or_create_event_loop() == self.router._event_loop
 
-    def _options(self,
+    def _options(
+        self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
