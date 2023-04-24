@@ -11,8 +11,9 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.application import Application
-from ray.serve.deployment_graph import ClassNode, FunctionNode, RayServeDAGHandle
+from ray.serve.built_application import BuiltApplication
+from ray.serve.deployment import Application
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
@@ -389,13 +390,13 @@ def test_run_get_ingress_app(serve_instance):
     def g():
         return "got g"
 
-    app = Application([g])
+    app = BuiltApplication([g])
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
     serve_instance.delete_deployments(["g"])
 
-    no_ingress_app = Application([g.options(route_prefix=None)])
+    no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
     ingress_handle = serve.run(no_ingress_app)
     assert ingress_handle is None
 
@@ -784,14 +785,14 @@ class TestAppBuilder:
             return self.A.bind()
 
         assert isinstance(
-            call_app_builder_with_args_if_necessary(build_function, {}), ClassNode
+            call_app_builder_with_args_if_necessary(build_function, {}), Application
         )
 
         def build_class(args):
             return self.f.bind()
 
         assert isinstance(
-            call_app_builder_with_args_if_necessary(build_class, {}), FunctionNode
+            call_app_builder_with_args_if_necessary(build_class, {}), Application
         )
 
     def test_args_dict(self):
@@ -806,7 +807,7 @@ class TestAppBuilder:
             )
 
         app = call_app_builder_with_args_if_necessary(build, args_dict)
-        assert isinstance(app, ClassNode)
+        assert isinstance(app, Application)
 
     def test_args_typed(self):
         args_dict = {"message": "hiya", "num_replicas": "3"}
@@ -818,7 +819,7 @@ class TestAppBuilder:
             return self.A.options(num_replicas=args.num_replicas).bind(args.message)
 
         app = call_app_builder_with_args_if_necessary(build, args_dict)
-        assert isinstance(app, ClassNode)
+        assert isinstance(app, Application)
 
         # Sanity check that pydantic validation works.
 
@@ -831,7 +832,7 @@ class TestAppBuilder:
         app = call_app_builder_with_args_if_necessary(
             check_missing_optional, {"message": "hiya"}
         )
-        assert isinstance(app, ClassNode)
+        assert isinstance(app, Application)
 
         # 2) Check that validation rejects a missing required field.
         def check_missing_required(args: self.TypedArgs):
