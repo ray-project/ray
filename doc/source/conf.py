@@ -38,7 +38,6 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
-    "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -58,6 +57,8 @@ extensions = [
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
+    "sphinx_panels",
+    "sphinx_design",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
