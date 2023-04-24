@@ -890,6 +890,18 @@ def fix_docker_images(
     version: str = "nightly",
     repo: str = DOCKER_HUB_REPO,
 ):
+    """Print commands to manually update docker images post-release.
+
+    This function prints commands that can be run to add new layers to
+    fix docker images post-release, e.g. when dependencies have to be fixed
+    or public keys expired.
+
+    The commands can be copied/pasted and executed in a shell.
+
+    Example:
+        FIX_IMAGE=ray-ml FIX_VERSION=2.3.0 python build-docker-images.py
+
+    """
     tags = create_image_tags(
         image_name=image,
         py_versions=list(PY_MATRIX.keys()),
