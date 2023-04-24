@@ -3,7 +3,6 @@ base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightl
 python:
   pip_packages:
     - boto3
-    - pyarrow<7.0.0
   conda_packages: []
 
 post_build_cmds:

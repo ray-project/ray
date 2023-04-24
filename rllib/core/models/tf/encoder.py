@@ -20,7 +20,7 @@ from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -75,11 +75,12 @@ class TfCNNEncoder(TfModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TfTensorSpec(
+                SampleBatch.OBS: TensorSpec(
                     "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
                     c=self.config.input_dims[2],
+                    framework="tf2",
                 ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
@@ -90,7 +91,9 @@ class TfCNNEncoder(TfModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: None,
             }
         )
@@ -125,7 +128,9 @@ class TfMLPEncoder(Encoder, TfModel):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, d", d=self.config.input_dims[0], framework="tf2"
+                ),
                 # STATE_IN: None,
                 # SampleBatch.SEQ_LENS: None,
             }
@@ -135,7 +140,9 @@ class TfMLPEncoder(Encoder, TfModel):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: None,
             }
         )
@@ -180,10 +187,15 @@ class TfGRUEncoder(TfModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TfTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="tf2"
+                ),
                 STATE_IN: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -193,10 +205,15 @@ class TfGRUEncoder(TfModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -262,13 +279,21 @@ class TfLSTMEncoder(TfModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TfTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="tf2"
+                ),
                 STATE_IN: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
-                    "c": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "c": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -278,13 +303,21 @@ class TfLSTMEncoder(TfModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
-                    "c": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "c": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
