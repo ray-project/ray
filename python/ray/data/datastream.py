@@ -596,6 +596,7 @@ class Datastream(Generic[T]):
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
+        target_block_size = None
         if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
