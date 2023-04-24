@@ -1,11 +1,23 @@
-from typing import Deque, Optional
+import ray
+import copy
+from typing import (
+    Deque,
+    List,
+    Optional,
+)
 from collections import deque
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.split import _split_at_indices
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.types import ObjectRef
 
 
 class LimitOperator(PhysicalOperator):
@@ -35,40 +47,33 @@ class LimitOperator(PhysicalOperator):
         assert input_index == 0, input_index
         if self._limit_reached():
             return
-        input_rows = refs.num_rows()
-        if input_rows is None:
-            # If we don't know the number of rows in the input, try to
-            # split at the maximum number of rows we can consume
-            # (`self._limit - self._consumed_rows`).
-            blocks_splits, metadata_splits = _split_at_indices(
-                refs.blocks,
-                [self._limit - self._consumed_rows],
-                owned_by_consumer=refs.owns_blocks,
-            )
-            # Calculate the actual number of rows.
-            input_rows = 0
-            for meta in metadata_splits[0]:
-                assert meta.num_rows is not None
-                input_rows += meta.num_rows
-            refs = RefBundle(
-                list(zip(blocks_splits[0], metadata_splits[0])),
-                owns_blocks=refs.owns_blocks,
-            )
-        elif input_rows + self._consumed_rows > self._limit:
-            # If we know the number of rows in the input, and it's more than
-            # the remaining number of rows we can consume, split it.
-            input_rows = self._limit - self._consumed_rows
-            blocks_splits, metadata_splits = _split_at_indices(
-                refs.blocks,
-                [input_rows],
-                owned_by_consumer=refs.owns_blocks,
-            )
-            refs = RefBundle(
-                list(zip(blocks_splits[0], metadata_splits[0])),
-                owns_blocks=refs.owns_blocks,
-            )
-        self._consumed_rows += input_rows
-        self._buffer.append(refs)
+        out_blocks: List[ObjectRef[Block]] = []
+        out_metadata: List[BlockMetadata] = []
+        for block, metadata in refs.blocks:
+            num_rows = metadata.num_rows
+            assert num_rows is not None
+            if self._consumed_rows + num_rows <= self._limit:
+                self._consumed_rows += num_rows
+                out_blocks.append(block)
+                out_metadata.append(metadata)
+            else:
+                # Slice the last block.
+                num_rows_to_take = self._limit - self._consumed_rows
+                self._consumed_rows = self._limit
+                block = BlockAccessor.for_block(ray.get(block)).slice(
+                    0, num_rows_to_take, copy=True
+                )
+                metadata = copy.deepcopy(metadata)
+                metadata.num_rows = num_rows_to_take
+                metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
+                out_blocks.append(ray.put(block))
+                out_metadata.append(metadata)
+                break
+        out_refs = RefBundle(
+            list(zip(out_blocks, out_metadata)),
+            owns_blocks=refs.owns_blocks,
+        )
+        self._buffer.append(out_refs)
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0
