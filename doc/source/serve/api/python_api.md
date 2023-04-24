@@ -1,4 +1,4 @@
-﻿# Ray Serve Python API
+﻿# Python API
 
 (core-apis)=
 
@@ -9,6 +9,11 @@
 ## Core APIs
 
 ```{eval-rst}
+.. class:: serve.Application
+
+.. autoclass:: serve.Deployment
+   :members: bind, options, set_options, func_or_class
+
 .. autosummary::
    :toctree: doc/
 
@@ -49,5 +54,6 @@
 .. autosummary::
    :toctree: doc/
 
-   serve.api.build
+   serve.build
+   serve.BuiltApplication
 ```

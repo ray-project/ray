@@ -5,8 +5,8 @@
 :maxdepth: '-1'
 
 python_api
-rest_api
 serve_cli
+rest_api
 ```
 
 

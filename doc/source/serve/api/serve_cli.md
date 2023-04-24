@@ -1,6 +1,6 @@
 (serve-cli)=
 
-# Serve CLI
+# Command Line Interface (CLI)
 
 ```{eval-rst}
 .. click:: ray.serve.scripts:cli

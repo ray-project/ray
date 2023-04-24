@@ -32,7 +32,7 @@ from ray.serve.schema import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 class Application(DAGNodeBase):
     """Returned from `Deployment.bind()`.
 
