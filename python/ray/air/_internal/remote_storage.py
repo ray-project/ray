@@ -308,7 +308,9 @@ def get_fs_and_path(
         return fs, path
     except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
-        return None, None
+        pass
+
+    return None, None
 
 
 def delete_at_uri(uri: str):
