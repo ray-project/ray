@@ -1,18 +1,21 @@
 import asyncio
 import os
-from ray.serve.deployment_graph import RayServeDAGHandle
+from typing import Optional
 
+from fastapi import FastAPI
 import requests
+from pydantic import BaseModel, ValidationError
 import pytest
 import starlette.responses
-from fastapi import FastAPI
 
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.application import Application
+from ray.serve.deployment_graph import ClassNode, FunctionNode, RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
+from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
 
 @serve.deployment()
@@ -706,6 +709,138 @@ def test_invalid_driver_deployment_class():
         f.options(num_replicas=2)
     with pytest.raises(ValueError):
         f.options(autoscaling_config={"min_replicas": "1"})
+
+
+class TestAppBuilder:
+    @serve.deployment
+    class A:
+        pass
+
+    @serve.deployment
+    def f():
+        pass
+
+    class TypedArgs(BaseModel):
+        message: str
+        num_replicas: Optional[int]
+
+    def test_prebuilt_app(self):
+        a = self.A.bind()
+        assert call_app_builder_with_args_if_necessary(a, {}) == a
+
+        f = self.f.bind()
+        assert call_app_builder_with_args_if_necessary(f, {}) == f
+
+        with pytest.raises(
+            ValueError,
+            match="Arguments can only be passed to an application builder function",
+        ):
+            call_app_builder_with_args_if_necessary(f, {"key": "val"})
+
+    def test_invalid_builder(self):
+        class ThisShouldBeAFunction:
+            pass
+
+        with pytest.raises(
+            TypeError,
+            match=(
+                "Expected a built Serve application "
+                "or an application builder function"
+            ),
+        ):
+            call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
+
+    def test_invalid_signature(self):
+        def builder_with_two_args(args1, args2):
+            return self.f.bind()
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions should take exactly one parameter",
+        ):
+            call_app_builder_with_args_if_necessary(builder_with_two_args, {})
+
+    def test_builder_returns_bad_type(self):
+        def return_none(args):
+            self.f.bind()
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions must return a",
+        ):
+            call_app_builder_with_args_if_necessary(return_none, {})
+
+        def return_unbound_deployment(args):
+            return self.f
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions must return a",
+        ):
+            call_app_builder_with_args_if_necessary(return_unbound_deployment, {})
+
+    def test_basic_no_args(self):
+        def build_function(args):
+            return self.A.bind()
+
+        assert isinstance(
+            call_app_builder_with_args_if_necessary(build_function, {}), ClassNode
+        )
+
+        def build_class(args):
+            return self.f.bind()
+
+        assert isinstance(
+            call_app_builder_with_args_if_necessary(build_class, {}), FunctionNode
+        )
+
+    def test_args_dict(self):
+        args_dict = {"message": "hiya", "num_replicas": "3"}
+
+        def build(args):
+            assert len(args) == 2
+            assert args["message"] == "hiya"
+            assert args["num_replicas"] == "3"
+            return self.A.options(num_replicas=int(args["num_replicas"])).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, ClassNode)
+
+    def test_args_typed(self):
+        args_dict = {"message": "hiya", "num_replicas": "3"}
+
+        def build(args: self.TypedArgs):
+            assert isinstance(args, self.TypedArgs)
+            assert args.message == "hiya"
+            assert args.num_replicas == 3
+            return self.A.options(num_replicas=args.num_replicas).bind(args.message)
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, ClassNode)
+
+        # Sanity check that pydantic validation works.
+
+        # 1) Check that validation permits a missing optional field.
+        def check_missing_optional(args: self.TypedArgs):
+            assert args.message == "hiya"
+            assert args.num_replicas is None
+            return self.A.bind()
+
+        app = call_app_builder_with_args_if_necessary(
+            check_missing_optional, {"message": "hiya"}
+        )
+        assert isinstance(app, ClassNode)
+
+        # 2) Check that validation rejects a missing required field.
+        def check_missing_required(args: self.TypedArgs):
+            assert False, "Shouldn't get here because validation failed."
+
+        with pytest.raises(ValidationError, match="field required"):
+            call_app_builder_with_args_if_necessary(
+                check_missing_required, {"num_replicas": "10"}
+            )
 
 
 if __name__ == "__main__":
