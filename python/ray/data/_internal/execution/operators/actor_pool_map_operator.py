@@ -298,7 +298,7 @@ class ActorPoolMapOperator(MapOperator):
         # require scale-up to run.
         if self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
-            num_running_workers=self._actor_pool.num_running_actors(),
+            num_free_slots=self._actor_pool.num_free_slots(),
             num_inputs=input_queue_size + 1,
         ):
             # A new task would trigger scale-up, so we include the actor resouce

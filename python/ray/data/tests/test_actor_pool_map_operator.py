@@ -561,9 +561,9 @@ class TestAutoscalingPolicy:
         config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 0
-        num_running_workers = 0
+        num_free_slots = 0
         # Should scale up since under pool min workers.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
+        assert policy.should_scale_up(num_total_workers, num_free_slots)
 
     def test_should_scale_up_over_max_workers(self):
         # Test that scale-up is blocked if the pool would go over the configured max
@@ -571,14 +571,14 @@ class TestAutoscalingPolicy:
         config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 4
-        num_running_workers = 4
+        num_free_slots = 4
         # Shouldn't scale up due to pool max workers.
-        assert not policy.should_scale_up(num_total_workers, num_running_workers)
+        assert not policy.should_scale_up(num_total_workers, num_free_slots)
 
         num_total_workers = 3
-        num_running_workers = 3
+        num_free_slots = 3
         # Should scale up since under pool max workers.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
+        assert policy.should_scale_up(num_total_workers, num_free_slots)
 
     def test_should_scale_up_with_less_slots_than_input_queue_size(self):
         # Tests scale up logic based on number of free slots and number of inputs.
