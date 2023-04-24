@@ -3,11 +3,11 @@ import sys
 
 import ray
 from ray import serve
-from ray.serve.application import Application
+from ray.serve.built_application import BuiltApplication
 from ray._private.test_utils import wait_for_condition
 
 
-class TestApplicationConstruction:
+class TestBuiltApplicationConstruction:
     @serve.deployment
     def f(*args):
         return "got f"
@@ -18,7 +18,7 @@ class TestApplicationConstruction:
             return "got C"
 
     def test_valid_deployments(self):
-        app = Application([self.f, self.C])
+        app = BuiltApplication([self.f, self.C])
 
         assert len(app.deployments) == 2
         app_deployment_names = {d.name for d in app.deployments.values()}
@@ -27,14 +27,14 @@ class TestApplicationConstruction:
 
     def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            Application([self.f, self.C.options(name="f")])
+            BuiltApplication([self.f, self.C.options(name="f")])
 
         with pytest.raises(ValueError):
-            Application([self.C, self.f.options(name="C")])
+            BuiltApplication([self.C, self.f.options(name="C")])
 
     def test_non_deployments(self):
         with pytest.raises(TypeError):
-            Application([self.f, 5, "hello"])
+            BuiltApplication([self.f, 5, "hello"])
 
 
 class TestServeRun:
@@ -68,7 +68,7 @@ class TestServeRun:
 
         for i in range(len(deployments)):
             serve.run(
-                Application([deployments[i]]),
+                BuiltApplication([deployments[i]]),
                 name=f"app{i}",
                 _blocking=blocking,
             )
@@ -102,7 +102,7 @@ class TestServeRun:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_non_blocking_run(self, serve_instance):
-        """Checks Application's deploy() behavior when blocking=False."""
+        """Checks BuiltApplication's deploy() behavior when blocking=False."""
 
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
@@ -144,14 +144,14 @@ class TestServeRun:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        serve.run(Application(deployments), _blocking=True)
+        serve.run(BuiltApplication(deployments), _blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
 
     def test_decorated_deployments(self, serve_instance):
         """
-        Checks Application's deploy behavior when deployments have options set
+        Checks BuiltApplication's deploy behavior when deployments have options set
         in their @serve.deployment decorator.
         """
 
@@ -170,18 +170,18 @@ class TestServeRun:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_empty_list(self, serve_instance):
-        """Checks Application's deploy behavior when deployment group is empty."""
+        """Checks BuiltApplication's deploy behavior when deployment group is empty."""
 
         self.deploy_and_check_responses([], [])
 
     def test_invalid_input(self, serve_instance):
         """
-        Checks Application's deploy behavior when deployment group contains
+        Checks BuiltApplication's deploy behavior when deployment group contains
         non-Deployment objects.
         """
 
         with pytest.raises(TypeError):
-            Application([self.f, self.C, "not a Deployment object"]).deploy(
+            BuiltApplication([self.f, self.C, "not a Deployment object"]).deploy(
                 blocking=True
             )
 
@@ -242,11 +242,11 @@ class TestServeRun:
 
     def test_import_path_deployment_decorated(self, serve_instance):
         func = serve.deployment(name="decorated_func", route_prefix="/decorated_func")(
-            "ray.serve.tests.test_application.decorated_func"
+            "ray.serve.tests.test_built_application.decorated_func"
         )
 
         clss = serve.deployment(name="decorated_clss", route_prefix="/decorated_clss")(
-            "ray.serve.tests.test_application.DecoratedClass"
+            "ray.serve.tests.test_built_application.DecoratedClass"
         )
 
         deployments = [func, clss]
@@ -273,7 +273,7 @@ class DecoratedClass:
 
 
 def test_immutable_deployment_list(serve_instance):
-    app = Application([DecoratedClass, decorated_func])
+    app = BuiltApplication([DecoratedClass, decorated_func])
     assert len(app.deployments.values()) == 2
 
     for name in app.deployments.keys():
