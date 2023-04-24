@@ -178,7 +178,7 @@ def _apply_strict_mode_batch_size(
 ) -> Optional[int]:
     ctx = ray.data.DatasetContext.get_current()
     if ctx.strict_mode:
-        if use_gpu and not given_batch_size or given_batch_size == "default":
+        if use_gpu and (not given_batch_size or given_batch_size == "default"):
             raise StrictModeError(
                 "`batch_size` must be provided to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
