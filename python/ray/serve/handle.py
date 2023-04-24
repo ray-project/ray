@@ -109,6 +109,7 @@ class RayServeHandle:
 
         # Prints "Hello Mr. Magoo"
         print(ray.get(handle.remote("Mr. Magoo")))
+
     """
 
     def __init__(
@@ -222,6 +223,7 @@ class RayServeHandle:
             # The following two lines are equivalent:
             obj_ref = await handle.other_method.remote(*args)
             obj_ref = await handle.options(method_name="other_method").remote(*args)
+
         """
         return self._options(method_name=method_name)
 
@@ -251,6 +253,7 @@ class RayServeHandle:
 
             obj_ref = await handle.remote(*args)
             result = await obj_ref
+
         """
         return await self._remote(
             self.deployment_name, self.handle_options, args, kwargs
@@ -303,6 +306,7 @@ class RayServeSyncHandle(RayServeHandle):
 
         # Prints "Hello Mr. Magoo"
         print(ray.get(handle.remote("Mr. Magoo")))
+
     """
 
     @property
@@ -333,6 +337,7 @@ class RayServeSyncHandle(RayServeHandle):
             # The following two lines are equivalent:
             obj_ref = handle.other_method.remote(*args)
             obj_ref = handle.options(method_name="other_method").remote(*args)
+
         """
         return self._options(method_name=method_name)
 
@@ -346,6 +351,7 @@ class RayServeSyncHandle(RayServeHandle):
 
             obj_ref = handle.remote(*args)
             result = ray.get(obj_ref)
+
         """
         coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
