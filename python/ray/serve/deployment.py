@@ -94,6 +94,39 @@ class Application(DAGNodeBase):
 
 
 @PublicAPI
+class Application(DAGNodeBase):
+    """Returned from `Deployment.bind()`.
+
+    Can be passed into another `Deployment.bind()` to compose multiple deployments in a
+    single application, passed to `serve.run`, or deployed via a Serve config file.
+    """
+
+    def __init__(
+        self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
+    ):
+        """This class should not be constructed directly."""
+        if _internal_dag_node is None:
+            raise RuntimeError("This class should not be constructed directly.")
+
+        self._internal_dag_node = _internal_dag_node
+
+    def _get_internal_dag_node(self) -> Union[ClassNode, FunctionNode]:
+        if self._internal_dag_node is None:
+            raise RuntimeError("Application object should not be constructed directly.")
+
+        return self._internal_dag_node
+
+    @classmethod
+    def _from_internal_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
+        return cls(_internal_dag_node=dag_node)
+
+    # Proxy all method calls to the underlying DAG node. This allows this class to be
+    # passed in place of the ClassNode or FunctionNode in the DAG building code.
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_internal_dag_node(), name)
+
+
+@PublicAPI
 class Deployment:
     """Defines group of Ray actors to be deployed in an application.
 
