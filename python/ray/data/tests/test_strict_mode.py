@@ -88,6 +88,10 @@ def test_strict_convert_map_output(ray_start_regular_shared):
     ds = ray.data.range(1).map_batches(lambda x: {"id": [0, 1, 2, 3]}).materialize()
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, 3]
 
+    with pytest.raises(ValueError):
+        # Strings not converted into array.
+        ray.data.range(1).map_batches(lambda x: {"id": "string"}).materialize()
+
     class UserObj:
         def __eq__(self, other):
             return isinstance(other, UserObj)
