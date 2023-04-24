@@ -122,8 +122,7 @@ class ActorPoolMapOperator(MapOperator):
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
-        free_slots = self._actor_pool.num_free_slots()
-        if input_queue_size > free_slots and under_resource_limits:
+        if under_resource_limits:
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed(num_inputs=input_queue_size)
         else:
