@@ -419,9 +419,8 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self.rl_module_spec = None
         self._enable_rl_module_api = False
-        # Whether to error out if exploration config is set when using RLModules.
-        self._validate_exploration_conf_and_rl_modules = True
-        # Helper to keep track of the original exploration config.
+        # Helper to keep track of the original exploration config when dis-/enabling
+        # rl modules.
         self.__prior_exploration_config = None
 
         # `self.experimental()`
@@ -1014,25 +1013,16 @@ class AlgorithmConfig(_Config):
                 self.rl_module_spec = default_rl_module_spec
 
             if self.exploration_config:
-                if self._validate_exploration_conf_and_rl_modules:
-                    # This is not compatible with RLModules, which have a method
-                    # `forward_exploration` to specify custom exploration behavior.
-                    raise ValueError(
-                        "When RLModule API are enabled, exploration_config can not be "
-                        "set. If you want to implement custom exploration behaviour, "
-                        "please modify the `forward_exploration` method of the "
-                        "RLModule at hand. On configs that have a default exploration "
-                        "config, this must be done with "
-                        "`config.exploration_config={}`."
-                    )
-                else:
-                    # RLModules don't support exploration_configs anymore.
-                    logger.warning(
-                        "When RLModule API are enabled, exploration_config "
-                        "will be ignored. Disable RLModule API make use of an "
-                        "exploration_config."
-                    )
-                    self.exploration_config = None
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API are enabled, exploration_config can not be "
+                    "set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the "
+                    "RLModule at hand. On configs that have a default exploration "
+                    "config, this must be done with "
+                    "`config.exploration_config={}`."
+                )
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
