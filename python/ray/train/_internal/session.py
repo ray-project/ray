@@ -15,7 +15,7 @@ import ray
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Datastream, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
@@ -73,7 +73,7 @@ class _TrainSession:
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        dataset_shard: Optional[Union[Datastream, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         # Deprecated
