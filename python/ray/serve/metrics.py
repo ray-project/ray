@@ -47,7 +47,7 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
     replica_context = context.get_internal_replica_context()
     default_tags[DEPLOYMENT_TAG] = replica_context.deployment
     default_tags[REPLICA_TAG] = replica_context.replica_tag
-    if context.get_internal_replica_context().app_name:
+    if replica_context.app_name:
         default_tags[APPLICATION_TAG] = replica_context.app_name
     return default_tags
 

@@ -27,6 +27,7 @@ def get_deploy_args(
     route_prefix: Optional[str] = None,
     is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
+    app_name: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -83,6 +84,7 @@ def get_deploy_args(
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
+        "app_name": app_name,
     }
 
     return controller_deploy_args

@@ -411,7 +411,6 @@ class ServeController:
         app_name: str = None,
     ) -> bool:
         """Deploys a deployment."""
-
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:

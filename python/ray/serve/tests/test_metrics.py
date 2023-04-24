@@ -218,6 +218,92 @@ def test_http_metrics_fields(serve_start_shutdown):
     print("serve_num_deployment_http_error_requests working as expected.")
 
 
+def test_replica_metrics_fields(serve_start_shutdown):
+    """Test replica metrics fields"""
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    @serve.deployment
+    def g():
+        return "world"
+
+    serve.run(f.bind(), name="app1", route_prefix="/f")
+    serve.run(g.bind(), name="app2", route_prefix="/g")
+    url_f = "http://127.0.0.1:8000/f"
+    url_g = "http://127.0.0.1:8000/g"
+
+    assert "hello" == requests.get(url_f).text
+    assert "world" == requests.get(url_g).text
+
+    def verify_metrics(metric, expected_output):
+        for key in expected_output:
+            assert metric[key] == expected_output[key]
+
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
+        timeout=20,
+    )
+
+    num_requests = get_metric_dictionaries("serve_deployment_request_counter")
+    assert len(num_requests) == 2
+    expected_output = {"route": "/f", "deployment": "app1_f", "application": "app1"}
+    verify_metrics(num_requests[0], expected_output)
+
+    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
+    assert len(start_metrics) == 2
+    expected_output = {"deployment": "app1_f", "application": "app1"}
+    verify_metrics(start_metrics[0], expected_output)
+    expected_output = {"deployment": "app2_g", "application": "app2"}
+    verify_metrics(start_metrics[1], expected_output)
+
+    # Latency metrics
+    for metric_name in [
+        "serve_deployment_processing_latency_ms_count",
+        "serve_deployment_processing_latency_ms_sum",
+    ]:
+        latency_metrics = get_metric_dictionaries(metric_name)
+        print(f"checking metric {metric_name}, {latency_metrics}")
+        assert len(latency_metrics) == 2
+        expected_output1 = {"deployment": "app1_f", "application": "app1"}
+        expected_output2 = {"deployment": "app2_g", "application": "app2"}
+        verify_metrics(latency_metrics[0], expected_output1)
+        verify_metrics(latency_metrics[1], expected_output2)
+
+    processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
+    assert len(processing_queries) == 2
+    expected_output1 = {"deployment": "app1_f", "application": "app1"}
+    expected_output2 = {"deployment": "app2_g", "application": "app2"}
+    verify_metrics(processing_queries[0], expected_output1)
+    verify_metrics(processing_queries[1], expected_output2)
+
+    @serve.deployment
+    def h():
+        return 1 / 0
+
+    serve.run(h.bind(), name="app3", route_prefix="/h")
+    assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
+        timeout=20,
+    )
+    err_requests = get_metric_dictionaries("serve_deployment_error_counter")
+    assert len(err_requests) == 1
+    expected_output = {"route": "/h", "deployment": "app3_h", "application": "app3"}
+    verify_metrics(err_requests[0], expected_output)
+
+    health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
+    assert len(health_metrics) == 3
+    expected_outputs = [
+        {"deployment": "app1_f", "application": "app1"},
+        {"deployment": "app2_g", "application": "app2"},
+        {"deployment": "app3_h", "application": "app3"},
+    ]
+    for i in range(len(health_metrics)):
+        verify_metrics(health_metrics[i], expected_outputs[i])
+
+
 class TestRequestContextMetrics:
     def _generate_metrics_summary(self, metrics):
         """Generate "route" information from metrics.
