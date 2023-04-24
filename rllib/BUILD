@@ -1984,7 +1984,7 @@ py_test(
 )
 
 py_test(
-    name ="tests/test_algorithm_save_load_checkpoint_learner"
+    name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
     size = "small",
     src = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
