@@ -7,7 +7,6 @@ import unittest
 
 from ray.rllib.core.models.specs.specs_base import TensorSpec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.core.models.specs.checker import (
@@ -239,7 +238,7 @@ class TestCheckSpecs(unittest.TestCase):
         class ClassWithTensorSpec:
             @property
             def input_spec1(self) -> TensorSpec:
-                return TorchTensorSpec("b, h", h=4)
+                return TensorSpec("b, h", h=4, framework="torch")
 
             @check_input_specs("input_spec1", cache=False)
             def forward(self, input_data) -> Any:
@@ -290,14 +289,17 @@ class TestCheckSpecs(unittest.TestCase):
 
         # Case: input is a Nested Mapping
         returned = convert_to_canonical_format(
-            {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int, "car": None}}
+            {
+                "foo": {"bar": TensorSpec("b", framework="torch")},
+                "jar": {"tar": int, "car": None},
+            }
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
             returned.asdict(),
             SpecDict(
                 {
-                    "foo": {"bar": TorchTensorSpec("b")},
+                    "foo": {"bar": TensorSpec("b", framework="torch")},
                     "jar": {"tar": TypeSpec(int), "car": None},
                 }
             ).asdict(),
@@ -305,13 +307,21 @@ class TestCheckSpecs(unittest.TestCase):
 
         # Case: input is a SpecDict already
         returned = convert_to_canonical_format(
-            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}})
+            SpecDict(
+                {
+                    "foo": {"bar": TensorSpec("b", framework="torch")},
+                    "jar": {"tar": int},
+                }
+            )
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
             returned.asdict(),
             SpecDict(
-                {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}
+                {
+                    "foo": {"bar": TensorSpec("b", framework="torch")},
+                    "jar": {"tar": TypeSpec(int)},
+                }
             ).asdict(),
         )
 

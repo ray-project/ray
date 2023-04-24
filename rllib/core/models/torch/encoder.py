@@ -20,7 +20,7 @@ from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -60,7 +60,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TorchTensorSpec("b, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, d", d=self.config.input_dims[0], framework="torch"
+                ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
             }
@@ -70,7 +72,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: None,
             }
         )
@@ -125,11 +129,12 @@ class TorchCNNEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TorchTensorSpec(
+                SampleBatch.OBS: TensorSpec(
                     "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
                     c=self.config.input_dims[2],
+                    framework="torch",
                 ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
@@ -140,7 +145,9 @@ class TorchCNNEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: None,
             }
         )
@@ -181,12 +188,17 @@ class TorchGRUEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TorchTensorSpec(
-                    "b, t, d", d=self.config.input_dims[0]
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d",
+                    d=self.config.input_dims[0],
+                    framework="torch",
                 ),
                 STATE_IN: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
                     ),
                 },
             }
@@ -196,10 +208,15 @@ class TorchGRUEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
                     ),
                 },
             }
@@ -257,19 +274,21 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TorchTensorSpec(
-                    "b, t, d", d=self.config.input_dims[0]
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="torch"
                 ),
                 STATE_IN: {
-                    "h": TorchTensorSpec(
+                    "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
                         l=self.config.num_layers,
+                        framework="torch",
                     ),
-                    "c": TorchTensorSpec(
+                    "c": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
                         l=self.config.num_layers,
+                        framework="torch",
                     ),
                 },
             }
@@ -279,17 +298,21 @@ class TorchLSTMEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: {
-                    "h": TorchTensorSpec(
+                    "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
                         l=self.config.num_layers,
+                        framework="torch",
                     ),
-                    "c": TorchTensorSpec(
+                    "c": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
                         l=self.config.num_layers,
+                        framework="torch",
                     ),
                 },
             }
