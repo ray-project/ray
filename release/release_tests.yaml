@@ -3371,14 +3371,14 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
-  
+
   run:
     timeout: 3600
     script: pytest checkpointing_tests/test_learner_group_checkpointing.py
 
     wait_for_nodes:
       num_nodes: 3
-  
+
   alert: default
 
 
@@ -4982,17 +4982,17 @@
 
   run:
     timeout: 1800
-    script: python dataset_shuffle_data_loader.py
+    script: python dataset_shuffle_data_loader.py --cloud aws
 
-  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
-  # variations:
-  #   - __suffix__: aws
-  #   - __suffix__: gce
-  #     env: gce
-  #     frequency: manual
-  #     cluster:
-  #       cluster_env: shuffle_app_config.yaml
-  #       cluster_compute: shuffle_compute_gce.yaml
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: shuffle_compute_gce.yaml
+      run:
+        script: python dataset_shuffle_data_loader.py --cloud gcp
 
 - name: parquet_metadata_resolution
   group: data-tests
