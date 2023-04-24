@@ -107,13 +107,6 @@ def test_strict_default_batch_format(ray_start_regular_shared, enable_strict_mod
     assert isinstance(batch["id"], np.ndarray), batch
 
 
-def test_strict_require_batch_size_for_gpu(enable_strict_mode):
-    ray.init(num_cpus=4, num_gpus=1)
-    ds = ray.data.range(1)
-    with pytest.raises(StrictModeError):
-        ds.map_batches(lambda x: x, num_gpus=1)
-
-
 def test_strict_tensor_support(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.from_items([np.ones(10), np.ones(10)])
     assert np.array_equal(ds.take()[0]["item"], np.ones(10))
@@ -194,6 +187,14 @@ def test_use_raw_dicts(ray_start_regular_shared, enable_strict_mode):
         return x
 
     ray.data.range(10).map(checker).show()
+
+
+def test_strict_require_batch_size_for_gpu(enable_strict_mode):
+    ray.shutdown()
+    ray.init(num_cpus=4, num_gpus=1)
+    ds = ray.data.range(1)
+    with pytest.raises(StrictModeError):
+        ds.map_batches(lambda x: x, num_gpus=1)
 
 
 if __name__ == "__main__":
