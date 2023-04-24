@@ -246,7 +246,12 @@ class RayServeHandle:
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
         points to the final result of the request.
 
-        The final result can be retrieved by `await`ing the ObjectRef.
+        The final result can be retrieved by `await`ing the ObjectRef. Example:
+
+        .. code-block:: python
+
+            obj_ref = await handle.remote(*args)
+            result = await obj_ref
         """
         return await self._remote(
             self.deployment_name, self.handle_options, args, kwargs
@@ -337,6 +342,11 @@ class RayServeSyncHandle(RayServeHandle):
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
+
+        .. code-block:: python
+
+            obj_ref = handle.remote(*args)
+            result = ray.get(obj_ref)
         """
         coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
