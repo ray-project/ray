@@ -187,8 +187,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
-    max_task_retries =
-        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_task_retries);
+    max_task_retries = env->GetIntField(actorCreationOptions,
+                                        java_actor_creation_options_max_task_retries);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -278,22 +278,21 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         placement_options.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  ActorCreationOptions actor_creation_options{
-      max_restarts,
-      max_task_retries,
-      static_cast<int>(max_concurrency),
-      resources,
-      resources,
-      dynamic_worker_options,
-      is_detached,
-      name,
-      ray_namespace,
-      is_async,
-      /*scheduling_strategy=*/scheduling_strategy,
-      serialized_runtime_env,
-      concurrency_groups,
-      /*execute_out_of_order*/ false,
-      max_pending_calls};
+  ActorCreationOptions actor_creation_options{max_restarts,
+                                              max_task_retries,
+                                              static_cast<int>(max_concurrency),
+                                              resources,
+                                              resources,
+                                              dynamic_worker_options,
+                                              is_detached,
+                                              name,
+                                              ray_namespace,
+                                              is_async,
+                                              /*scheduling_strategy=*/scheduling_strategy,
+                                              serialized_runtime_env,
+                                              concurrency_groups,
+                                              /*execute_out_of_order*/ false,
+                                              max_pending_calls};
   return actor_creation_options;
 }
 

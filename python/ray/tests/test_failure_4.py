@@ -702,10 +702,11 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
 
 def test_accessing_actor_after_cluster_crashed(shutdown_only):
     ray.init()
+
     @ray.remote
     class A:
-      def f(self):
-        return
+        def f(self):
+            return
 
     a = A.remote()
 
@@ -716,8 +717,7 @@ def test_accessing_actor_after_cluster_crashed(shutdown_only):
     with pytest.raises(Exception) as exc_info:
         ray.get(a.f.remote())
 
-    assert "It might be dead or it's from a different cluster" \
-        in exc_info.args[0]
+    assert "It might be dead or it's from a different cluster" in exc_info.args[0]
 
 
 if __name__ == "__main__":
