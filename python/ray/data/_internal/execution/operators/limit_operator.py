@@ -2,14 +2,14 @@ from typing import Deque, Optional
 from collections import deque
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
     PhysicalOperator,
+    RefBundle,
 )
 from ray.data._internal.split import _split_at_indices
 
 
 class LimitOperator(PhysicalOperator):
-    """Limit operator."""
+    """Physical operator for limit."""
 
     def __init__(
         self,
@@ -17,17 +17,18 @@ class LimitOperator(PhysicalOperator):
         input_op: PhysicalOperator,
     ):
         self._limit = limit
-        self._current_rows = 0
-        self._name = f"LimitOperator[limit={limit}]"
+        self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
         self._stats: StatsDict = {}
         self._num_outputs_total = input_op.num_outputs_total()
         if self._num_outputs_total is not None:
             self._num_outputs_total = min(self._num_outputs_total, limit)
-        super().__init__(self._name, [input_op])
+
+        name = f"LimitOperator[limit={limit}]"
+        super().__init__(name, [input_op])
 
     def _limit_reached(self) -> bool:
-        return self._current_rows >= self._limit
+        return self._consumed_rows >= self._limit
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -35,10 +36,10 @@ class LimitOperator(PhysicalOperator):
         if self._limit_reached():
             return
         input_rows = refs.num_rows()
-        # TODO: What if input_rows is None?
+        # TODO(hchen): What if input_rows is None?
         assert input_rows is not None, input_rows
-        if input_rows + self._current_rows > self._limit:
-            input_rows = self._limit - self._current_rows
+        if input_rows + self._consumed_rows > self._limit:
+            input_rows = self._limit - self._consumed_rows
             blocks_splits, metadata_splits = _split_at_indices(
                 refs.blocks,
                 [input_rows],
@@ -48,7 +49,7 @@ class LimitOperator(PhysicalOperator):
                 list(zip(blocks_splits[0], metadata_splits[0])),
                 owns_blocks=refs.owns_blocks,
             )
-        self._current_rows += input_rows
+        self._consumed_rows += input_rows
         self._buffer.append(refs)
 
     def has_next(self) -> bool:

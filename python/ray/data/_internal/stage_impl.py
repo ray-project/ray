@@ -8,7 +8,10 @@ from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.split import _split_at_indices, _split_at_index
+from ray.data._internal.split import (
+    _split_at_index,
+    _split_at_indices,
+)
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
