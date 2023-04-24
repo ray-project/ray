@@ -29,7 +29,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 )
 @click.option(
     "--flaky-rerun",
-    default=2,
+    default=1,
     type=int,
     help=(
         "The number of time we re-run test on the same commit, to account for test "
