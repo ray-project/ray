@@ -352,10 +352,14 @@ class LimitStage(AllToAllStage):
         super().__init__(
             "Limit",
             None,
-            self.do_limit,
+            self._do_limit,
         )
 
-    def do_limit(
+    @property
+    def limit(self) -> int:
+        return self._limit
+
+    def _do_limit(
         self,
         block_list: BlockList,
         clear_input_blocks: bool,

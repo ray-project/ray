@@ -2201,7 +2201,8 @@ class Datastream(Generic[T]):
         plan = self._plan.with_stage(LimitStage(limit))
         logical_plan = self._logical_plan
         if logical_plan is not None:
-            raise NotImplementedError("TODO")
+            # TODO(hchen): Implement logical_plan for limit.
+            pass
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI(pattern="Time complexity:")
