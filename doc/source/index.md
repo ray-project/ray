@@ -330,7 +330,7 @@ ppo_algo.evaluate()
             <h3 style="font-size:20px; font-weight:600;">Ray Core</h3>
         </div>
         <p>Scale generic Python code with simple, foundational primitives that enable a high degree of control for building distributed applications or custom platforms.</p>
-        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/installation.html" target="_blank">Learn more about Core ></a>      
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-core/walkthrough.html" target="_blank">Learn more about Core ></a>      
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
