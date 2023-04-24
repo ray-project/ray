@@ -6,7 +6,7 @@ import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
 import shutil
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
 
@@ -174,11 +174,50 @@ def _is_local_windows_path(uri: str) -> bool:
     return False
 
 
+def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
+    """Translate pyarrow s3 query options into s3fs storage_kwargs"""
+    # Map from s3 query keys --> s3fs kwarg names
+    option_map = {
+        "endpoint_override": "endpoint_url",
+        "region": "region_name",
+        "access_key": "aws_access_key_id",
+        "secret_key": "aws_secret_access_key",
+    }
+
+    client_kwargs = {}
+    for opt, target in option_map.items():
+        if opt in options:
+            client_kwargs[target] = options[opt][0]
+
+    return {"client_kwargs": client_kwargs}
+
+
+def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
+    """Translate pyarrow gcs query options into gcsfs storage_kwargs"""
+    # Map from gcs query keys --> gcsfs kwarg names
+    option_map = {
+        "endpoint_override": "endpoint_url",
+    }
+
+    storage_kwargs = {}
+    for opt, target in option_map.items():
+        if opt in options:
+            storage_kwargs[target] = options[opt][0]
+
+    return storage_kwargs
+
+
 def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     parsed = urllib.parse.urlparse(uri)
 
+    storage_kwargs = {}
+    if parsed.scheme in ["s3", "s3a"] and parsed.query:
+        storage_kwargs = _translate_s3_options(urllib.parse.parse_qs(parsed.query))
+    elif parsed.scheme in ["gs", "gcs"] and parsed.query:
+        storage_kwargs = _translate_gcs_options(urllib.parse.parse_qs(parsed.query))
+
     try:
-        fsspec_fs = fsspec.filesystem(parsed.scheme)
+        fsspec_fs = fsspec.filesystem(parsed.scheme, **storage_kwargs)
     except Exception:
         # Raised when protocol not known
         return None
@@ -194,11 +233,13 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
             # For minimal install that only needs python3-setuptools
             if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
                 "2022.7.1"
+            ) and packaging.version.parse(gcsfs.__version__) < packaging.version.parse(
+                "2022.10.0"
             ):
                 raise RuntimeError(
-                    "`gcsfs` versions greater than '2022.7.1' are not "
+                    "`gcsfs` versions between '2022.7.1' and '2022.10.0' are not "
                     f"compatible with pyarrow. You have gcsfs version "
-                    f"{gcsfs.__version__}. Please downgrade your gcsfs "
+                    f"{gcsfs.__version__}. Please downgrade or upgrade your gcsfs "
                     f"version. See more details in "
                     f"https://github.com/fsspec/gcsfs/issues/498."
                 )
