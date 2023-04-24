@@ -265,7 +265,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         log_dir: Optional[str] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
-        dataset_shards: Optional[List[ray.data.dataset.Dataset]] = None,
+        dataset_shards: Optional[List[ray.data.Datastream]] = None,
         # Deprecated: This is all specified in `config` anyways.
         policy_config=DEPRECATED_VALUE,
         input_creator=DEPRECATED_VALUE,

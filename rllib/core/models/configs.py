@@ -609,18 +609,69 @@ class MLPEncoderConfig(_MLPConfig):
 
 @ExperimentalAPI
 @dataclass
-class LSTMEncoderConfig(ModelConfig):
-    """Configuration for a LSTM encoder.
+class RecurrentEncoderConfig(ModelConfig):
+    """Configuration for an LSTM-based or a GRU-based encoder.
 
-    See ModelConfig for usage details.
+    The encoder consists of N LSTM/GRU layers stacked on top of each other and feeding
+    their outputs as inputs to the respective next layer. The internal state is
+    structued as (num_layers, B, hidden-size) for all hidden state components, e.g.
+    h- and c-states of the LSTM layer(s) or h-state of the GRU layer(s).
+    For example, the hidden states of an LSTMEncoder with num_layers=2 and hidden_dim=8
+    would be: {"h": (2, B, 8), "c": (2, B, 8)}.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = RecurrentEncoderConfig(
+            recurrent_layer_type="lstm",
+            input_dims=[16],  # must be 1D tensor
+            hidden_dim=128,
+            num_layers=2,
+            output_dims=[256],  # maybe None or a 1D tensor
+            output_activation="linear",
+            use_bias=True,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # LSTM(16, 128, bias=True)
+        # LSTM(128, 128, bias=True)
+        # Linear(128, 256, bias=True)
+
+        # Resulting shape of the internal states (c- and h-states):
+        # (2, B, 128) for each c- and h-states.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = RecurrentEncoderConfig(
+            recurrent_layer_type="gru",
+            input_dims=[32],  # must be 1D tensor
+            hidden_dim=64,
+            num_layers=1,
+            output_dims=None,  # maybe None or a 1D tensor
+            use_bias=False,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # GRU(32, 64, bias=False)
+
+        # Resulting shape of the internal state:
+        # (1, B, 64)
 
     Attributes:
-        hidden_dim: The size of the hidden layer.
-        num_layers: The number of LSTM layers.
-        batch_first: Wether the input is batch first or not.
-        output_activation: The activation function to use for the output layer.
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
+        recurrent_layer_type: The type of the recurrent layer(s).
+            Either "lstm" or "gru".
+        input_dims: The input dimensions. Must be 1D. This is the 1D shape of the tensor
+            that goes into the first recurrent layer.
+        hidden_dim: The size of the hidden internal state(s) of the recurrent layer(s).
+            For example, for an LSTM, this would be the size of the c- and h-tensors.
+        num_layers: The number of recurrent (LSTM or GRU) layers to stack.
+        batch_major: Wether the input is batch major (B, T, ..) or
+            time major (T, B, ..).
+        output_activation: The activation function to use for the linear output layer.
+        use_bias: Whether to use bias on all layers in the network.
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
@@ -629,32 +680,59 @@ class LSTMEncoderConfig(ModelConfig):
             other spaces that might be present in the view_requirements_dict.
     """
 
+    recurrent_layer_type: str = "lstm"
     hidden_dim: int = None
     num_layers: int = None
-    batch_first: bool = True
+    batch_major: bool = True
     output_activation: str = "linear"
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
+    use_bias: bool = True
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
 
-    @_framework_implemented(tf2=False)
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that settings are valid."""
+        if self.recurrent_layer_type not in ["gru", "lstm"]:
+            raise ValueError(
+                f"`recurrent_layer_type` ({self.recurrent_layer_type}) of "
+                "RecurrentEncoderConfig must be 'gru' or 'lstm'!"
+            )
+        if self.input_dims is not None and len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of RecurrentEncoderConfig must be "
+                "1D, e.g. `[32]`!"
+            )
+
+        # Call these already here to catch errors early on.
+        get_activation_fn(self.output_activation, framework=framework)
+
+    @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
         if (
             self.get_tokenizer_config is not None
             or self.view_requirements_dict is not None
         ):
             raise NotImplementedError(
-                "LSTMEncoderConfig does not support configuring LSTMs that encode "
-                "depending on view_requirements or have a custom tokenizer. "
+                "RecurrentEncoderConfig does not support configuring Models that "
+                "encode depending on view_requirements or have a custom tokenizer. "
                 "Therefore, this config expects `view_requirements_dict=None` and "
                 "`get_tokenizer_config=None`."
             )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
+            from ray.rllib.core.models.torch.encoder import (
+                TorchGRUEncoder as GRU,
+                TorchLSTMEncoder as LSTM,
+            )
+        else:
+            from ray.rllib.core.models.tf.encoder import (
+                TfGRUEncoder as GRU,
+                TfLSTMEncoder as LSTM,
+            )
 
-            return TorchLSTMEncoder(self)
+        if self.recurrent_layer_type == "lstm":
+            return LSTM(self)
+        else:
+            return GRU(self)
 
 
 @ExperimentalAPI

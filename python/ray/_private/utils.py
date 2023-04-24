@@ -1800,9 +1800,7 @@ class DeferSigint(contextlib.AbstractContextManager):
         if threading.current_thread() == threading.main_thread():
             return cls()
         else:
-            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
-            # dropped.
-            return contextlib.suppress()
+            return contextlib.nullcontext()
 
     def _set_task_cancelled(self, signum, frame):
         """SIGINT handler that defers the signal."""
@@ -1895,3 +1893,25 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
             importlib.import_module(module_to_preload)
         except ImportError:
             logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def update_envs(env_vars: Dict[str, str]):
+    """
+    When updating the environment variable, if there is ${X},
+    it will be replaced with the current environment variable.
+    """
+    if not env_vars:
+        return
+
+    replaceable_keys = [
+        "PATH",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_PRELOAD",
+    ]
+
+    for key, value in env_vars.items():
+        if key in replaceable_keys:
+            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
+        else:
+            os.environ[key] = value

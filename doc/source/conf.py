@@ -38,7 +38,6 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
-    "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -58,6 +57,8 @@ extensions = [
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
+    "sphinx_panels",
+    "sphinx_design",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
@@ -257,7 +258,7 @@ html_theme_options = {
     "use_issues_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
-    "home_page_in_toc": False,
+    "home_page_in_toc": True,
     "show_navbar_depth": 1,
     "announcement": "<div class='topnav'></div>",
 }

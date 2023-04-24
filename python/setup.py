@@ -254,7 +254,7 @@ if setup_spec.type == SetupType.RAY:
             "smart_open",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api",
@@ -330,7 +330,7 @@ if setup_spec.type == SetupType.RAY:
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
         "typing_extensions; python_version < '3.8'",
-        "virtualenv>=20.0.24",  # For pip runtime env.
+        "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
     ]
 
 
@@ -774,7 +774,6 @@ setuptools.setup(
         "reinforcement-learning deep-learning serving python"
     ),
     classifiers=[
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
