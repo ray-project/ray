@@ -31,13 +31,12 @@ class LimitOperator(PhysicalOperator):
         self._limit = limit
         self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
-        self._stats: StatsDict = {}
+        self._name = f"LimitOperator[limit={limit}]"
+        self._output_metadata: List[BlockMetadata] = []
         self._num_outputs_total = input_op.num_outputs_total()
         if self._num_outputs_total is not None:
             self._num_outputs_total = min(self._num_outputs_total, limit)
-
-        name = f"LimitOperator[limit={limit}]"
-        super().__init__(name, [input_op])
+        super().__init__(self._name, [input_op])
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
@@ -56,6 +55,7 @@ class LimitOperator(PhysicalOperator):
                 self._consumed_rows += num_rows
                 out_blocks.append(block)
                 out_metadata.append(metadata)
+                self._output_metadata.append(metadata)
             else:
                 # Slice the last block.
                 num_rows_to_take = self._limit - self._consumed_rows
@@ -68,6 +68,7 @@ class LimitOperator(PhysicalOperator):
                 metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
                 out_blocks.append(ray.put(block))
                 out_metadata.append(metadata)
+                self._output_metadata.append(metadata)
                 break
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
@@ -82,7 +83,7 @@ class LimitOperator(PhysicalOperator):
         return self._buffer.popleft()
 
     def get_stats(self) -> StatsDict:
-        return self._stats
+        return {self._name: self._output_metadata}
 
     def num_outputs_total(self) -> Optional[int]:
         if self._limit_reached():
