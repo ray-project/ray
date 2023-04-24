@@ -8,7 +8,7 @@ from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.split import _split_at_indices
+from ray.data._internal.split import _split_at_indices, _split_at_index
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
@@ -361,34 +361,21 @@ class LimitStage(AllToAllStage):
 
     def _do_limit(
         self,
-        block_list: BlockList,
+        input_block_list: BlockList,
         clear_input_blocks: bool,
         *_,
     ):
         if clear_input_blocks:
-            blocks = block_list.copy().get_blocks()
-            block_list.clear()
+            block_list = input_block_list.copy()
+            input_block_list.clear()
         else:
-            blocks = block_list.get_blocks()
-        res_blocks = []
-        res_metadata = []
-        for block_ref, metadata in zip(blocks, block_list.get_metadata()):
-            block = BlockAccessor.for_block(ray.get(block_ref))
-            if self._limit >= block.num_rows():
-                res_blocks.append(block_ref)
-                self._limit -= block.num_rows()
-            else:
-                res_blocks.append(
-                    ray.put(block.slice(0, self._limit, copy=False))
-                )
-                self._limit = 0
-            res_metadata.append(metadata)
-            if self._limit <= 0:
-                break
+            block_list = input_block_list
+        block_list = block_list.truncate_by_rows(self._limit)
+        blocks, metadata, _, _ = _split_at_index(block_list, self._limit)
         return (
             BlockList(
-                res_blocks,
-                res_metadata,
+                blocks,
+                metadata,
                 owned_by_consumer=block_list._owned_by_consumer,
             ),
             {},

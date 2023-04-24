@@ -85,7 +85,7 @@ from ray.data._internal.stage_impl import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
+from ray.data._internal.split import _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
