@@ -23,6 +23,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import column_udf, named_values, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -42,11 +43,13 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
     def run():
         ds0 = ray.data.range(5)
         ds = maybe_pipeline(ds0, pipelined)
-        assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+        assert sorted(
+            extract_values("id", ds.map(column_udf("id", lambda x: x + 1)).take())
+        ) == [1, 2, 3, 4, 5]
         ds = maybe_pipeline(ds0, pipelined)
         assert ds.count() == 5
         ds = maybe_pipeline(ds0, pipelined)
-        assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+        assert sorted(extract_values("id", ds.iter_rows())) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(
@@ -61,8 +64,8 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
-    ds = ds.map(lambda x: x + 1)
-    ds = ds.map(lambda x: x + 1)
+    ds = ds.map(column_udf("id", lambda x: x + 1))
+    ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
@@ -86,15 +89,15 @@ def test_dataset_lineage_serialization(shutdown_only):
     assert ds._plan._datastream_uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
-    assert sorted(ds.take()) == list(range(2, 12))
+    assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
 
 
 def test_dataset_lineage_serialization_unsupported(shutdown_only):
     ray.init()
     # In-memory data sources not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = ds.map(lambda x: x + 1)
-    ds = ds.map(lambda x: x + 1)
+    ds = ds.map(column_udf("item", lambda x: x + 1))
+    ds = ds.map(column_udf("item", lambda x: x + 1))
 
     with pytest.raises(ValueError):
         ds.serialize_lineage()
@@ -108,8 +111,8 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
         ds2.serialize_lineage()
 
     # Post-lazy-read unions not supported.
-    ds = ray.data.range(10).map(lambda x: x + 1)
-    ds1 = ray.data.range(20).map(lambda x: 2 * x)
+    ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
+    ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
     ds2 = ds.union(ds1)
 
     with pytest.raises(ValueError):
@@ -122,7 +125,9 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
 
     serialized_ds = ds2.serialize_lineage()
     ds3 = Dataset.deserialize_lineage(serialized_ds)
-    assert set(ds3.take(30)) == set(list(range(10)) + list(range(20)))
+    assert set(ds3.take(30)) == named_values(
+        "id", set(list(range(10)) + list(range(20)))
+    )
 
     # Zips not supported.
     ds = ray.data.from_items(list(range(10)))
@@ -137,23 +142,25 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
 def test_basic(ray_start_regular_shared, pipelined):
     ds0 = ray.data.range(5)
     ds = maybe_pipeline(ds0, pipelined)
-    assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+    assert sorted(ds.map(column_udf("id", lambda x: x + 1)).take()) == named_values(
+        "id", [1, 2, 3, 4, 5]
+    )
     ds = maybe_pipeline(ds0, pipelined)
     assert ds.count() == 5
     ds = maybe_pipeline(ds0, pipelined)
-    assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+    assert sorted(ds.iter_rows()) == named_values("id", [0, 1, 2, 3, 4])
 
 
 def test_range_table(ray_start_regular_shared):
-    ds = ray.data.range_table(10, parallelism=10)
+    ds = ray.data.range(10, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 10
-    assert ds.take() == [{"value": i} for i in range(10)]
+    assert ds.take() == [{"id": i} for i in range(10)]
 
-    ds = ray.data.range_table(10, parallelism=2)
+    ds = ray.data.range(10, parallelism=2)
     assert ds.num_blocks() == 2
     assert ds.count() == 10
-    assert ds.take() == [{"value": i} for i in range(10)]
+    assert ds.take() == [{"id": i} for i in range(10)]
 
 
 def test_empty_dataset(ray_start_regular_shared):
@@ -163,7 +170,7 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.schema() is None
 
     ds = ray.data.range(1)
-    ds = ds.filter(lambda x: x > 1)
+    ds = ds.filter(lambda x: x["id"] > 1)
     ds = ds.materialize()
     assert (
         str(ds)

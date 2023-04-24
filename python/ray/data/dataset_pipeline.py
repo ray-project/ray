@@ -650,10 +650,10 @@ class DatasetPipeline(Generic[T]):
         if self._length == float("inf"):
             raise ValueError("Cannot count a pipeline of infinite length.")
 
-        pipe = self.map_batches(lambda batch: [len(batch)])
+        pipe = self.map_batches(lambda batch: {"len": np.array([len(batch)])})
         total = 0
         for elem in pipe.iter_rows():
-            total += elem
+            total += elem["len"]
         return total
 
     def sum(self) -> int:
@@ -669,10 +669,12 @@ class DatasetPipeline(Generic[T]):
         if self._length == float("inf"):
             raise ValueError("Cannot sum a pipeline of infinite length.")
 
-        pipe = self.map_batches(lambda batch: [batch.sum()[0]], batch_format="pandas")
+        pipe = self.map_batches(
+            lambda batch: {"sum": np.array([batch.sum()[0]])}, batch_format="pandas"
+        )
         total = 0
         for elem in pipe.iter_rows():
-            total += elem
+            total += elem["sum"]
         return total
 
     def show_windows(self, limit_per_datastream: int = 10) -> None:
