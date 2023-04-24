@@ -28,7 +28,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     ),
 )
 @click.option(
-    "--flaky-repeat",
+    "--flaky-rerun",
     default=1,
     type=int,
     help=(
@@ -41,7 +41,7 @@ def main(
     passing_commit: str,
     failing_commit: str,
     concurrency: int = 1,
-    flaky_repeat: int = 1,
+    flaky_rerun: int = 1,
 ) -> None:
     if concurrency <= 0:
         raise ValueError(
@@ -56,15 +56,15 @@ def main(
         )
         return
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
-    blamed_commit = _bisect(test, commit_lists, concurrency, flaky_repeat)
+    blamed_commit = _bisect(test, commit_lists, concurrency, flaky_rerun)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
 def _bisect(
-    test: Test, 
-    commit_list: List[str], 
-    concurrency: int, 
-    flaky_repeat: int,
+    test: Test,
+    commit_list: List[str],
+    concurrency: int,
+    flaky_rerun: int,
 ) -> str:
     while len(commit_list) > 2:
         logger.info(
@@ -78,11 +78,13 @@ def _bisect(
             # on the previously run revision
             idx = min(max(idx, 1), len(commit_list) - 2)
             idx_to_commit[idx] = commit_list[idx]
-        outcomes = _run_test(test, set(idx_to_commit.values()), flaky_repeat)
+        outcomes = _run_test(test, set(idx_to_commit.values()), flaky_rerun)
         passing_idx = 0
         failing_idx = len(commit_list) - 1
         for idx, commit in idx_to_commit.items():
-            is_passing = all(outcome == "passed" for outcome in outcomes[commit].values())
+            is_passing = all(
+                outcome == "passed" for outcome in outcomes[commit].values()
+            )
             if is_passing and idx > passing_idx:
                 passing_idx = idx
             if not is_passing and idx < failing_idx:
@@ -107,19 +109,19 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
 
 
-def _run_test(test: Test, commits: Set[str], flaky_repeat: int) -> Dict[str, str]:
+def _run_test(test: Test, commits: Set[str], flaky_rerun: int) -> Dict[str, str]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
-        _trigger_test_run(test, commit, flaky_repeat)
-    return _obtain_test_result(commits, flaky_repeat)
+        _trigger_test_run(test, commit, flaky_rerun)
+    return _obtain_test_result(commits, flaky_rerun)
 
 
-def _trigger_test_run(test: Test, commit: str, flaky_repeat: int) -> None:
+def _trigger_test_run(test: Test, commit: str, flaky_rerun: int) -> None:
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
         commit,
         timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
     )
-    for run in range(flaky_repeat):
+    for run in range(flaky_rerun):
         step = get_step(
             test,
             ray_wheels=ray_wheels_url,
@@ -128,7 +130,7 @@ def _trigger_test_run(test: Test, commit: str, flaky_repeat: int) -> None:
             },
         )
         step["label"] = f'{test["name"]}:{commit[:7]}-{run}'
-        step["key"] = f'{commit}-{run}'
+        step["key"] = f"{commit}-{run}"
         pipeline = subprocess.Popen(
             ["echo", json.dumps({"steps": [step]})], stdout=subprocess.PIPE
         )
@@ -138,16 +140,16 @@ def _trigger_test_run(test: Test, commit: str, flaky_repeat: int) -> None:
         pipeline.stdout.close()
 
 
-def _obtain_test_result(commits: Set[str], flaky_repeat: int) -> Dict[str, str]:
+def _obtain_test_result(commits: Set[str], flaky_rerun: int) -> Dict[str, str]:
     outcomes = {}
     wait = 5
     total_wait = 0
     while True:
         logger.info(f"... waiting for test result ...({total_wait} seconds)")
         for commit in commits:
-            if commit in outcomes and len(outcomes[commit]) == flaky_repeat:
+            if commit in outcomes and len(outcomes[commit]) == flaky_rerun:
                 continue
-            for run in range(flaky_repeat):
+            for run in range(flaky_rerun):
                 outcome = subprocess.check_output(
                     [
                         "buildkite-agent",
@@ -163,7 +165,9 @@ def _obtain_test_result(commits: Set[str], flaky_repeat: int) -> Dict[str, str]:
                         outcomes[commit] = {}
                     outcomes[commit][run] = outcome
         commit_finished = len(outcomes) == len(commits)
-        flaky_repeat_finished = all(len(outcome) == flaky_repeat for outcome in outcomes.values())
+        flaky_repeat_finished = all(
+            len(outcome) == flaky_rerun for outcome in outcomes.values()
+        )
         if commit_finished and flaky_repeat_finished:
             break
         time.sleep(wait)
