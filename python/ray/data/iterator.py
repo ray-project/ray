@@ -11,12 +11,12 @@ from typing import (
     Tuple,
     Union,
     Iterator,
+    Mapping,
 )
 
 from ray.types import ObjectRef
 from ray.data.block import BlockAccessor, Block, BlockMetadata, DataBatch, T
 from ray.data.context import DataContext
-from ray.data.row import TableRow
 from ray.util.annotations import PublicAPI
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
@@ -200,12 +200,12 @@ class DataIterator(abc.ABC):
         if stats:
             stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, Mapping]]:
         """Return a local row iterator over the datastream.
 
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
-        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
-        iterator. If the datastream is not tabular, the raw row is yielded.
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dicts
+        are yielded for each row by the iterator. If the datastream is not tabular,
+        the raw row is yielded.
 
         Examples:
             >>> import ray

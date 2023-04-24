@@ -262,8 +262,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
             with disable_client_hook():
                 rtc = ray.get_runtime_context()
-                ctx.job_id = rtc.job_id.binary()
-                ctx.node_id = rtc.node_id.binary()
+                ctx.job_id = ray._private.utils.hex_to_binary(rtc.get_job_id())
+                ctx.node_id = ray._private.utils.hex_to_binary(rtc.get_node_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
