@@ -34,6 +34,7 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/worker.h"
+#include "ray/raylet/worker_pool/cache_policy.h"
 
 namespace ray {
 
@@ -775,6 +776,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  std::shared_ptr<CacheSizePolicyInterface> cache_size_policy = std::make_shared<CacheSizePolicy>(0, 0, 0);
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

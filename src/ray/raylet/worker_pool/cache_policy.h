@@ -1,0 +1,54 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <cstddef>
+
+//#include "gtest/gtest.h"
+
+namespace ray {
+
+namespace raylet {
+
+class CacheSizePolicyInterface {
+ public:
+  virtual const size_t GetNumProcsToCreate(
+    size_t idle_size,
+    size_t running_size,
+    size_t starting_size,
+    size_t terminating_size
+  ) = 0;
+};
+
+class CacheSizePolicy : public CacheSizePolicyInterface {
+ public:
+  CacheSizePolicy(size_t max_total_size, size_t desired_cache_size, size_t max_starting_size);
+
+  const size_t GetNumProcsToCreate(
+    size_t idle_size,
+    size_t running_size,
+    size_t starting_size,
+    size_t terminating_size
+  );
+};
+
+
+//class WorkerPool : public WorkerPoolInterface {
+// public:
+//};
+
+}  // namespace raylet
+
+}  // namespace ray
