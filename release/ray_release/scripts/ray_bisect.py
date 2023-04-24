@@ -160,10 +160,11 @@ def _obtain_test_result(commits: Set[str], flaky_rerun: int) -> Dict[str, str]:
                         f"{commit}-{run}",
                     ]
                 ).decode("utf-8")
-                if outcome:
-                    if commit not in outcomes:
-                        outcomes[commit] = {}
-                    outcomes[commit][run] = outcome
+                if not outcome:
+                    continue
+                if commit not in outcomes:
+                    outcomes[commit] = {}
+                outcomes[commit][run] = outcome
         commit_finished = len(outcomes) == len(commits)
         flaky_repeat_finished = all(
             len(outcome) == flaky_rerun for outcome in outcomes.values()
