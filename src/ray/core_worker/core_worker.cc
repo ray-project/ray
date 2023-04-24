@@ -2183,7 +2183,7 @@ Status CoreWorker::SubmitActorTask(
     std::optional<std::vector<rpc::ObjectReference>> &task_returns) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns = std::nullopt;
-  if (!direct_actor_submitter_->IsActorAlive(actor_id)) {
+  if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
     return Status::NotFound(
         "Can't find this actor. It might be dead or it's from a different cluster");
   }

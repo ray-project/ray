@@ -439,10 +439,10 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_args = ToTaskArgs(env, args);
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
-
-  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id, ray_function, task_args, task_options);
-  if (!return_refs.has_value()) {
+  std::optional<std::vector<rpc::ObjectReference>> return_refs;
+  auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id, ray_function, task_args, task_options, return_refs);
+  if (!status.ok() || !return_refs.has_value()) {
     std::stringstream ss;
     ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()
        << " could not be submitted to " << actor_id;

@@ -151,6 +151,13 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether the corresponding client queue is full or not.
   bool PendingTasksFull(const ActorID &actor_id) const;
 
+  /// Check whether the actor exists
+  ///
+  /// \param[in] actor_id Actor id.
+  ///
+  /// \return Return true if the actor exists.
+  bool CheckActorExists(const ActorID &actor_id) const;
+
   /// Returns debug string for class.
   ///
   /// \param[in] actor_id The actor whose debug string to return.
