@@ -1140,31 +1140,31 @@ A list of commands to run to set up worker nodes of this type. These commands wi
 ``available_node_types.<node_type_name>.node_type.resources.memory``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tab-set::
+.. tabbed:: AWS
 
-    .. tab-item:: AWS
+    The memory in bytes allocated for python worker heap memory on the node.
+    If not configured, Autoscaler will automatically detect the amount of RAM on
+    the node for AWS/Kubernetes and allocate 70% of it for the heap.
 
-        The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
+    * **Required:** No
+    * **Importance:** Low
+    * **Type:** Integer
 
-        * **Required:** No
-        * **Importance:** Low
-        * **Type:** Integer
+.. tabbed:: Azure
 
-    .. tab-item:: Azure
+    The memory in bytes allocated for python worker heap memory on the node.
 
-        The memory in bytes allocated for python worker heap memory on the node.
+    * **Required:** No
+    * **Importance:** High
+    * **Type:** Integer
 
-        * **Required:** No
-        * **Importance:** High
-        * **Type:** Integer
+.. tabbed:: GCP
 
-    .. tab-item:: GCP
+    The memory in bytes allocated for python worker heap memory on the node.
 
-        The memory in bytes allocated for python worker heap memory on the node.
-
-        * **Required:** No
-        * **Importance:** High
-        * **Type:** Integer
+    * **Required:** No
+    * **Importance:** High
+    * **Type:** Integer
 
  .. _cluster-configuration-object-store-memory:
 
