@@ -98,11 +98,16 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
+def get_cluster_env_path(test: "Test") -> str:
     cluster_env_file = test["cluster"]["cluster_env"]
     cluster_env_path = os.path.join(
         RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
     )
+    return cluster_env_path
+
+
+def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
+    cluster_env_path = get_cluster_env_path(test)
 
     env = populate_cluster_env_variables(test, ray_wheels_url=ray_wheels_url)
 

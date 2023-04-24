@@ -1,18 +1,26 @@
-import { makeStyles } from "@material-ui/core";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { UnifiedJob } from "../../type/job";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useJobDetail } from "./hook/useJobDetail";
+import { JobLogsLink } from "./JobDetail";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
+    backgroundColor: "white",
   },
 }));
 
@@ -51,70 +59,120 @@ export const JobDetailInfoPage = () => {
           path: job.job_id ? `/jobs/${job.job_id}/info` : undefined,
         }}
       />
-      <TitleCard title={`JOB - ${params.id}`}>
-        <MetadataSection
-          metadataList={[
-            {
-              label: "Entrypoint",
-              content: job.entrypoint
-                ? {
-                    value: job.entrypoint,
-                    copyableValue: job.entrypoint,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Status",
-              content: <StatusChip type="job" status={job.status} />,
-            },
-            {
-              label: "Job ID",
-              content: job.job_id
-                ? {
-                    value: job.job_id,
-                    copyableValue: job.job_id,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Submission ID",
-              content: job.submission_id
-                ? {
-                    value: job.submission_id,
-                    copyableValue: job.submission_id,
-                  }
-                : {
-                    value: "-",
-                  },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
-            },
-            {
-              label: "Started at",
-              content: {
-                value: job.start_time
-                  ? formatDateFromTimeMs(job.start_time)
-                  : "-",
-              },
-            },
-            {
-              label: "Ended at",
-              content: {
-                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
-              },
-            },
-          ]}
-        />
-      </TitleCard>
+      <Typography variant="h2">{job.job_id}</Typography>
+      <JobMetadataSection job={job} />
     </div>
+  );
+};
+
+const useJobMetadataSectionStyles = makeStyles((theme) =>
+  createStyles({
+    metadataButton: {
+      display: "inline-flex",
+      maxWidth: "100%",
+    },
+  }),
+);
+
+type JobMetadataSectionProps = {
+  job: UnifiedJob;
+};
+
+export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
+  const classes = useJobMetadataSectionStyles();
+
+  return (
+    <MetadataSection
+      metadataList={[
+        {
+          label: "Entrypoint",
+          content: job.entrypoint
+            ? {
+                value: job.entrypoint,
+                copyableValue: job.entrypoint,
+              }
+            : { value: "-" },
+        },
+        {
+          label: "Status",
+          content: <StatusChip type="job" status={job.status} />,
+        },
+        {
+          label: "Job ID",
+          content: job.job_id
+            ? {
+                value: job.job_id,
+                copyableValue: job.job_id,
+              }
+            : { value: "-" },
+        },
+        {
+          label: "Submission ID",
+          content: job.submission_id
+            ? {
+                value: job.submission_id,
+                copyableValue: job.submission_id,
+              }
+            : {
+                value: "-",
+              },
+        },
+        {
+          label: "Duration",
+          content: job.start_time ? (
+            <DurationText startTime={job.start_time} endTime={job.end_time} />
+          ) : (
+            <React.Fragment>-</React.Fragment>
+          ),
+        },
+        {
+          label: "Started at",
+          content: {
+            value: job.start_time ? formatDateFromTimeMs(job.start_time) : "-",
+          },
+        },
+        {
+          label: "Ended at",
+          content: {
+            value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
+          },
+        },
+        ...(job.type === "SUBMISSION"
+          ? [
+              {
+                label: "User-provided metadata",
+                content:
+                  job.metadata && Object.keys(job.metadata).length ? (
+                    <CodeDialogButtonWithPreview
+                      className={classes.metadataButton}
+                      title="User-provided metadata"
+                      code={JSON.stringify(job.metadata, undefined, 2)}
+                    />
+                  ) : undefined,
+              },
+            ]
+          : []),
+        {
+          label: "Actions",
+          content: (
+            <div>
+              <JobLogsLink job={job} />
+              <br />
+              <CpuProfilingLink
+                pid={job.driver_info?.pid}
+                ip={job.driver_info?.node_ip_address}
+                type="Driver"
+              />
+              <br />
+              <CpuStackTraceLink
+                pid={job.driver_info?.pid}
+                ip={job.driver_info?.node_ip_address}
+                type="Driver"
+              />
+            </div>
+          ),
+        },
+      ]}
+    />
   );
 };

@@ -14,104 +14,106 @@ This guide explains how to perform common computer vision tasks like:
 Reading image data
 ------------------
 
-.. tabbed:: Raw images
+.. tab-set::
 
-    Datasets like ImageNet store files like this:
+    .. tab-item:: Raw images
 
-    .. code-block::
+        Datasets like ImageNet store files like this:
 
-        root/dog/xxx.png
-        root/dog/xxy.png
-        root/dog/[...]/xxz.png
+        .. code-block::
 
-        root/cat/123.png
-        root/cat/nsdf3.png
-        root/cat/[...]/asd932_.png
+            root/dog/xxx.png
+            root/dog/xxy.png
+            root/dog/[...]/xxz.png
 
-    To load images stored in this layout, read the raw images and include the
-    class names.
+            root/cat/123.png
+            root/cat/nsdf3.png
+            root/cat/[...]/asd932_.png
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_images1_start__
-        :end-before: __read_images1_stop__
-        :dedent:
+        To load images stored in this layout, read the raw images and include the
+        class names.
 
-    Then, apply a :ref:`user-defined function <transform_datastreams_writing_udfs>` to
-    encode the class names as integer targets.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_images1_start__
+            :end-before: __read_images1_stop__
+            :dedent:
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_images2_start__
-        :end-before: __read_images2_stop__
-        :dedent:
+        Then, apply a :ref:`user-defined function <transform_datastreams_writing_udfs>` to
+        encode the class names as integer targets.
 
-    .. tip::
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_images2_start__
+            :end-before: __read_images2_stop__
+            :dedent:
 
-        You can also use :class:`~ray.data.preprocessors.LabelEncoder` to encode labels.
+        .. tip::
 
-.. tabbed:: NumPy
+            You can also use :class:`~ray.data.preprocessors.LabelEncoder` to encode labels.
 
-    To load NumPy arrays into a :class:`~ray.data.Datastream`, separately read the image and label arrays.
+    .. tab-item:: NumPy
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_numpy1_start__
-        :end-before: __read_numpy1_stop__
-        :dedent:
+        To load NumPy arrays into a :class:`~ray.data.Datastream`, separately read the image and label arrays.
 
-    Then, combine the datasets and rename the columns.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_numpy1_start__
+            :end-before: __read_numpy1_stop__
+            :dedent:
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_numpy2_start__
-        :end-before: __read_numpy2_stop__
-        :dedent:
+        Then, combine the datasets and rename the columns.
 
-.. tabbed:: TFRecords
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_numpy2_start__
+            :end-before: __read_numpy2_stop__
+            :dedent:
 
-    Image datasets often contain ``tf.train.Example`` messages that look like this:
+    .. tab-item:: TFRecords
 
-    .. code-block::
+        Image datasets often contain ``tf.train.Example`` messages that look like this:
 
-        features {
-            feature {
-                key: "image"
-                value {
-                    bytes_list {
-                        value: ...  # Raw image bytes
+        .. code-block::
+
+            features {
+                feature {
+                    key: "image"
+                    value {
+                        bytes_list {
+                            value: ...  # Raw image bytes
+                        }
+                    }
+                }
+                feature {
+                    key: "label"
+                    value {
+                        int64_list {
+                            value: 3
+                        }
                     }
                 }
             }
-            feature {
-                key: "label"
-                value {
-                    int64_list {
-                        value: 3
-                    }
-                }
-            }
-        }
 
-    To load examples stored in this format, read the TFRecords into a :class:`~ray.data.Datastream`.
+        To load examples stored in this format, read the TFRecords into a :class:`~ray.data.Datastream`.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_tfrecords1_start__
-        :end-before: __read_tfrecords1_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_tfrecords1_start__
+            :end-before: __read_tfrecords1_stop__
+            :dedent:
 
-    Then, apply a :ref:`user-defined function <transform_datastreams_writing_udfs>` to
-    decode the raw image bytes.
+        Then, apply a :ref:`user-defined function <transform_datastreams_writing_udfs>` to
+        decode the raw image bytes.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_tfrecords2_start__
-        :end-before: __read_tfrecords2_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_tfrecords2_start__
+            :end-before: __read_tfrecords2_stop__
+            :dedent:
 
-.. tabbed:: Parquet
+    .. tab-item:: Parquet
 
-    To load image data stored in Parquet files, call :func:`ray.data.read_parquet`.
+        To load image data stored in Parquet files, call :func:`ray.data.read_parquet`.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __read_parquet_start__
-        :end-before: __read_parquet_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __read_parquet_start__
+            :end-before: __read_parquet_stop__
+            :dedent:
 
 
 For more information on creating datastreams, see :ref:`Creating Datastreams <creating_datastreams>`.
@@ -123,33 +125,35 @@ Transforming images
 To transform images, create a :class:`~ray.data.preprocessor.Preprocessor`. They're the
 standard way to preprocess data with Ray.
 
-.. tabbed:: Torch
+.. tab-set::
 
-    To apply TorchVision transforms, create a :class:`~ray.data.preprocessors.TorchVisionPreprocessor`.
+    .. tab-item:: Torch
 
-    Create two :class:`TorchVisionPreprocessors <ray.data.preprocessors.TorchVisionPreprocessor>`
-    -- one to normalize images, and another to augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>`,
-    :class:`Predictors <ray.train.predictor.Predictor>`, and
-    :class:`PredictorDeployments <ray.serve.air_integrations.PredictorDeployment>`.
+        To apply TorchVision transforms, create a :class:`~ray.data.preprocessors.TorchVisionPreprocessor`.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_preprocessors_start__
-        :end-before: __torch_preprocessors_stop__
-        :dedent:
+        Create two :class:`TorchVisionPreprocessors <ray.data.preprocessors.TorchVisionPreprocessor>`
+        -- one to normalize images, and another to augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>`,
+        :class:`Predictors <ray.train.predictor.Predictor>`, and
+        :class:`PredictorDeployments <ray.serve.air_integrations.PredictorDeployment>`.
 
-.. tabbed:: TensorFlow
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_preprocessors_start__
+            :end-before: __torch_preprocessors_stop__
+            :dedent:
 
-    To apply TorchVision transforms, create a :class:`~ray.data.preprocessors.BatchMapper`.
+    .. tab-item:: TensorFlow
 
-    Create two :class:`~ray.data.preprocessors.BatchMapper` -- one to normalize images, and another to
-    augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>`,
-    :class:`Predictors <ray.train.predictor.Predictor>`, and
-    :class:`PredictorDeployments <ray.serve.air_integrations.PredictorDeployment>`.
+        To apply TorchVision transforms, create a :class:`~ray.data.preprocessors.BatchMapper`.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_preprocessors_start__
-        :end-before: __tensorflow_preprocessors_stop__
-        :dedent:
+        Create two :class:`~ray.data.preprocessors.BatchMapper` -- one to normalize images, and another to
+        augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>`,
+        :class:`Predictors <ray.train.predictor.Predictor>`, and
+        :class:`PredictorDeployments <ray.serve.air_integrations.PredictorDeployment>`.
+
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_preprocessors_start__
+            :end-before: __tensorflow_preprocessors_stop__
+            :dedent:
 
 For more information on transforming data, see
 :ref:`Using Preprocessors <air-preprocessors>` and
@@ -160,44 +164,46 @@ Training vision models
 
 :class:`Trainers <ray.train.trainer.BaseTrainer>` let you train models in parallel.
 
-.. tabbed:: Torch
+.. tab-set::
 
-    To train a vision model, define the training loop per worker.
+    .. tab-item:: Torch
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_training_loop_start__
-        :end-before: __torch_training_loop_stop__
-        :dedent:
+        To train a vision model, define the training loop per worker.
 
-    Then, create a :class:`~ray.train.torch.TorchTrainer` and call
-    :meth:`~ray.train.torch.TorchTrainer.fit`.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_training_loop_start__
+            :end-before: __torch_training_loop_stop__
+            :dedent:
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_trainer_start__
-        :end-before: __torch_trainer_stop__
-        :dedent:
+        Then, create a :class:`~ray.train.torch.TorchTrainer` and call
+        :meth:`~ray.train.torch.TorchTrainer.fit`.
 
-    For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example` and
-    :ref:`Using Trainers <air-trainers>`.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_trainer_start__
+            :end-before: __torch_trainer_stop__
+            :dedent:
 
-.. tabbed:: TensorFlow
+        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example` and
+        :ref:`Using Trainers <air-trainers>`.
 
-    To train a vision model, define the training loop per worker.
+    .. tab-item:: TensorFlow
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_training_loop_start__
-        :end-before: __tensorflow_training_loop_stop__
-        :dedent:
+        To train a vision model, define the training loop per worker.
 
-    Then, create a :class:`~ray.train.tensorflow.TensorflowTrainer` and call
-    :meth:`~ray.train.tensorflow.TensorflowTrainer.fit`.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_training_loop_start__
+            :end-before: __tensorflow_training_loop_stop__
+            :dedent:
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_trainer_start__
-        :end-before: __tensorflow_trainer_stop__
-        :dedent:
+        Then, create a :class:`~ray.train.tensorflow.TensorflowTrainer` and call
+        :meth:`~ray.train.tensorflow.TensorflowTrainer.fit`.
 
-    For more information, read :ref:`Using Trainers <air-trainers>`.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_trainer_start__
+            :end-before: __tensorflow_trainer_stop__
+            :dedent:
+
+        For more information, read :ref:`Using Trainers <air-trainers>`.
 
 Creating checkpoints
 --------------------
@@ -210,27 +216,29 @@ If you're going from training to prediction, don't create a new checkpoint.
 :class:`~ray.air.result.Result` object. Use
 :attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` instead.
 
-.. tabbed:: Torch
+.. tab-set::
 
-    To create a :class:`~ray.train.torch.TorchCheckpoint`, pass a Torch model and
-    the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
-    to :meth:`TorchCheckpoint.from_model() <ray.train.torch.TorchCheckpoint.from_model>`.
+    .. tab-item:: Torch
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_checkpoint_start__
-        :end-before: __torch_checkpoint_stop__
-        :dedent:
+        To create a :class:`~ray.train.torch.TorchCheckpoint`, pass a Torch model and
+        the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
+        to :meth:`TorchCheckpoint.from_model() <ray.train.torch.TorchCheckpoint.from_model>`.
 
-.. tabbed:: TensorFlow
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_checkpoint_start__
+            :end-before: __torch_checkpoint_stop__
+            :dedent:
 
-    To create a :class:`~ray.train.tensorflow.TensorflowCheckpoint`, pass a TensorFlow model and
-    the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
-    to :meth:`TensorflowCheckpoint.from_model() <ray.train.tensorflow.TensorflowCheckpoint.from_model>`.
+    .. tab-item:: TensorFlow
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_checkpoint_start__
-        :end-before: __tensorflow_checkpoint_stop__
-        :dedent:
+        To create a :class:`~ray.train.tensorflow.TensorflowCheckpoint`, pass a TensorFlow model and
+        the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
+        to :meth:`TensorflowCheckpoint.from_model() <ray.train.tensorflow.TensorflowCheckpoint.from_model>`.
+
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_checkpoint_start__
+            :end-before: __tensorflow_checkpoint_stop__
+            :dedent:
 
 
 Batch predicting images
@@ -239,32 +247,34 @@ Batch predicting images
 :class:`~ray.train.batch_predictor.BatchPredictor` lets you perform inference on large
 image datasets.
 
-.. tabbed:: Torch
+.. tab-set::
 
-    To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
-    :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
-    you created in `Creating checkpoints`_.
+    .. tab-item:: Torch
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_batch_predictor_start__
-        :end-before: __torch_batch_predictor_stop__
-        :dedent:
+        To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
+        :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
+        you created in `Creating checkpoints`_.
 
-    For more in-depth examples, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
-    and :ref:`Using Predictors for Inference <air-predictors>`.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_batch_predictor_start__
+            :end-before: __torch_batch_predictor_stop__
+            :dedent:
 
-.. tabbed:: TensorFlow
+        For more in-depth examples, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
+        and :ref:`Using Predictors for Inference <air-predictors>`.
 
-    To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
-    :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
-    you created in `Creating checkpoints`_.
+    .. tab-item:: TensorFlow
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_batch_predictor_start__
-        :end-before: __tensorflow_batch_predictor_stop__
-        :dedent:
+        To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
+        :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
+        you created in `Creating checkpoints`_.
 
-    For more information, read :ref:`Using Predictors for Inference <air-predictors>`.
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_batch_predictor_start__
+            :end-before: __tensorflow_batch_predictor_stop__
+            :dedent:
+
+        For more information, read :ref:`Using Predictors for Inference <air-predictors>`.
 
 Serving vision models
 ---------------------
@@ -286,44 +296,45 @@ To NumPy ndarrays like this:
     array([[1., 2.],
             [3., 4.]])
 
+.. tab-set::
 
-.. tabbed:: Torch
+    .. tab-item:: Torch
 
-    To deploy a Torch model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
-    to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
-    :func:`~ray.serve.http_adapters.json_to_ndarray` as the HTTP adapter.
+        To deploy a Torch model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
+        to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
+        :func:`~ray.serve.http_adapters.json_to_ndarray` as the HTTP adapter.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_serve_start__
-        :end-before: __torch_serve_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_serve_start__
+            :end-before: __torch_serve_stop__
+            :dedent:
 
-    Then, make a request to classify an image.
+        Then, make a request to classify an image.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __torch_online_predict_start__
-        :end-before: __torch_online_predict_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __torch_online_predict_start__
+            :end-before: __torch_online_predict_stop__
+            :dedent:
 
-    For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example`
-    and :doc:`/ray-air/examples/serving_guide`.
+        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example`
+        and :doc:`/ray-air/examples/serving_guide`.
 
-.. tabbed:: TensorFlow
+    .. tab-item:: TensorFlow
 
-    To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
-    to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
-    :func:`~ray.serve.http_adapters.json_to_multi_ndarray` as the HTTP adapter.
+        To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
+        to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
+        :func:`~ray.serve.http_adapters.json_to_multi_ndarray` as the HTTP adapter.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_serve_start__
-        :end-before: __tensorflow_serve_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_serve_start__
+            :end-before: __tensorflow_serve_stop__
+            :dedent:
 
-    Then, make a request to classify an image.
+        Then, make a request to classify an image.
 
-    .. literalinclude:: ./doc_code/computer_vision.py
-        :start-after: __tensorflow_online_predict_start__
-        :end-before: __tensorflow_online_predict_stop__
-        :dedent:
+        .. literalinclude:: ./doc_code/computer_vision.py
+            :start-after: __tensorflow_online_predict_start__
+            :end-before: __tensorflow_online_predict_stop__
+            :dedent:
 
-    For more information, read :doc:`/ray-air/examples/serving_guide`.
+        For more information, read :doc:`/ray-air/examples/serving_guide`.
