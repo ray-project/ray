@@ -36,9 +36,27 @@ class LimitOperator(PhysicalOperator):
         if self._limit_reached():
             return
         input_rows = refs.num_rows()
-        # TODO(hchen): What if input_rows is None?
-        assert input_rows is not None, input_rows
-        if input_rows + self._consumed_rows > self._limit:
+        if input_rows is None:
+            # If we don't know the number of rows in the input, try to
+            # split at the maximum number of rows we can consume
+            # (`self._limit - self._consumed_rows`).
+            blocks_splits, metadata_splits = _split_at_indices(
+                refs.blocks,
+                [self._limit - self._consumed_rows],
+                owned_by_consumer=refs.owns_blocks,
+            )
+            # Calculate the actual number of rows.
+            input_rows = 0
+            for meta in metadata_splits[0]:
+                assert meta.num_rows is not None
+                input_rows += meta.num_rows
+            refs = RefBundle(
+                list(zip(blocks_splits[0], metadata_splits[0])),
+                owns_blocks=refs.owns_blocks,
+            )
+        elif input_rows + self._consumed_rows > self._limit:
+            # If we know the number of rows in the input, and it's more than
+            # the remaining number of rows we can consume, split it.
             input_rows = self._limit - self._consumed_rows
             blocks_splits, metadata_splits = _split_at_indices(
                 refs.blocks,
