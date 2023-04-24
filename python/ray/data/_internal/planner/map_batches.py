@@ -1,6 +1,6 @@
 import collections
 from types import GeneratorType
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
@@ -51,8 +51,8 @@ def generate_map_batches_fn(
                 )
 
             if isinstance(batch, collections.abc.Mapping):
-                for key, value in batch.items():
-                    if not isinstance(value, np.ndarray):
+                for key, value in list(batch.items()):
+                    if not isinstance(value, (np.ndarray, Iterable)):
                         raise ValueError(
                             f"Error validating {_truncated_repr(batch)}: "
                             "The `fn` you passed to `map_batches` returned a "
@@ -62,6 +62,15 @@ def generate_map_batches_fn(
                             f"{type(value)}. To fix this issue, convert "
                             f"the {type(value)} to a `numpy.ndarray`."
                         )
+                    if not isinstance(value, np.ndarray):
+                        # Try to convert iterable values into an numpy array via
+                        # np.array(), so users don't need to manually cast.
+                        try:
+                            batch[key] = np.array(value)
+                        except Exception:
+                            raise ValueError(
+                                "Failed to convert column values to numpy array: "
+                                f"({_truncated_repr(value)}).")
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
             # Apply UDF.
