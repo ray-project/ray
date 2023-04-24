@@ -627,8 +627,12 @@ void GcsServer::InstallEventListeners() {
         const auto node_ip_address = node->node_manager_address();
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
-        gcs_resource_manager_->OnNodeDead(node_id);
+
+        // When trying to release placement groups, it needs to look up the cluster
+        // resource for the node. So we should remove the node from the placement group
+        // manager first. Then resource manager.
         gcs_placement_group_manager_->OnNodeDead(node_id);
+        gcs_resource_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
