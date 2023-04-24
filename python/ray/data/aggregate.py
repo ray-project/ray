@@ -71,7 +71,7 @@ class AggregateFn(object):
 
             def accumulate_block(a: AggType, block: Block[T]) -> AggType:
                 block_acc = BlockAccessor.for_block(block)
-                for r in block_acc.iter_rows():
+                for r in block_acc.iter_rows(public_row_format=False):
                     a = accumulate_row(a, r)
                 return a
 
@@ -407,7 +407,7 @@ class Quantile(_AggregateOnKeyBase):
         def block_row_ls(block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             ls = []
-            for row in block_acc.iter_rows():
+            for row in block_acc.iter_rows(public_row_format=False):
                 ls.append(row.get(on))
             return ls
 

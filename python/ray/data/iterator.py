@@ -233,7 +233,7 @@ class DataIterator(abc.ABC):
 
         for batch in self.iter_batches(**iter_batch_args):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
+            for row in batch.iter_rows(public_row_format=True):
                 yield row
 
     @abc.abstractmethod

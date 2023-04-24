@@ -418,7 +418,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows()
+            iter = self.iter_rows(public_row_format=False)
             next_row = None
             while True:
                 try:
@@ -509,7 +509,11 @@ class PandasBlockAccessor(TableBlockAccessor):
         key_fn = (lambda r: r[r._row.columns[0]]) if key is not None else (lambda r: 0)
 
         iter = heapq.merge(
-            *[PandasBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+            *[
+                PandasBlockAccessor(block).iter_rows(public_row_format=False)
+                for block in blocks
+            ],
+            key=key_fn,
         )
         next_row = None
         builder = PandasBlockBuilder()

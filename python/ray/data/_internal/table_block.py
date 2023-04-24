@@ -180,7 +180,9 @@ class TableBlockAccessor(BlockAccessor):
             return False
         return _is_tensor_schema(self.column_names())
 
-    def iter_rows(self) -> Iterator[Union[Mapping, np.ndarray]]:
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
         ctx = ray.data.DataContext.get_current()
         outer = self
 
@@ -195,7 +197,11 @@ class TableBlockAccessor(BlockAccessor):
                 self._cur += 1
                 if self._cur < outer.num_rows():
                     row = outer._get_row(self._cur)
-                    if ctx.strict_mode and isinstance(row, TableRow):
+                    if (
+                        public_row_format
+                        and ctx.strict_mode
+                        and isinstance(row, TableRow)
+                    ):
                         return row.as_pydict()
                     else:
                         return row

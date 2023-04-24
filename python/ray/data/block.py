@@ -273,8 +273,13 @@ class BlockAccessor(Generic[T]):
         """Return the number of rows contained in this block."""
         raise NotImplementedError
 
-    def iter_rows(self) -> Iterator[T]:
-        """Iterate over the rows of this block."""
+    def iter_rows(self, public_row_format: bool) -> Iterator[T]:
+        """Iterate over the rows of this block.
+
+        Args:
+            public_row_format: Whether to cast rows into the public Dict row
+                format (this incurs extra copy conversions).
+        """
         raise NotImplementedError
 
     def slice(self, start: int, end: int, copy: bool) -> Block:

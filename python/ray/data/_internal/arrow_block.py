@@ -490,7 +490,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows()
+            iter = self.iter_rows(public_row_format=False)
             next_row = None
             while True:
                 try:
@@ -584,7 +584,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
         )
 
         iter = heapq.merge(
-            *[ArrowBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+            *[
+                ArrowBlockAccessor(block).iter_rows(public_row_format=False)
+                for block in blocks
+            ],
+            key=key_fn,
         )
         next_row = None
         builder = ArrowBlockBuilder()

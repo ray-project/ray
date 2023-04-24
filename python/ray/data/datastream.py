@@ -2378,9 +2378,7 @@ class Datastream(Generic[T]):
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
-    def schema(
-        self, fetch_if_missing: bool = True
-    ) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the datastream.
 
         For datastream of Arrow records, this will return the Arrow schema.
@@ -2400,7 +2398,10 @@ class Datastream(Generic[T]):
         ctx = DataContext.get_current()
         base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if ctx.strict_mode:
-            return Schema(base_schema)
+            if base_schema:
+                return Schema(base_schema)
+            else:
+                return None
         else:
             return base_schema
 

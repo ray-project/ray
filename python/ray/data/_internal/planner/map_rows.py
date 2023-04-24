@@ -22,7 +22,7 @@ def generate_map_rows_fn() -> Callable[
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
         for block in blocks:
             block = BlockAccessor.for_block(block)
-            for row in block.iter_rows():
+            for row in block.iter_rows(public_row_format=True):
                 item = row_fn(row)
                 if context.strict_mode and not isinstance(
                     item, collections.abc.Mapping

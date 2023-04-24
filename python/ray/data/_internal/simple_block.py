@@ -68,7 +68,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def num_rows(self) -> int:
         return len(self._items)
 
-    def iter_rows(self) -> Iterator[T]:
+    def iter_rows(self, _) -> Iterator[T]:
         return iter(self._items)
 
     def slice(self, start: int, end: int, copy: bool = False) -> List[T]:
@@ -87,7 +87,7 @@ class SimpleBlockAccessor(BlockAccessor):
                 f"but got: {columns}."
             )
         callable_col = columns[0]
-        return [callable_col(row) for row in self.iter_rows()]
+        return [callable_col(row) for row in self.iter_rows(True)]
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)
@@ -168,7 +168,7 @@ class SimpleBlockAccessor(BlockAccessor):
             return None
 
         count = 0
-        for r in self.iter_rows():
+        for r in self.iter_rows(True):
             if on is not None:
                 r = on(r)
             if r is not None:
@@ -194,7 +194,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
         has_data = False
         a = init
-        for r in self.iter_rows():
+        for r in self.iter_rows(True):
             if on is not None:
                 r = on(r)
             if r is None:
@@ -323,7 +323,7 @@ class SimpleBlockAccessor(BlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows()
+            iter = self.iter_rows(True)
             next_row = None
             # Use a bool to indicate if next_row is valid
             # instead of checking if next_row is None
@@ -405,7 +405,8 @@ class SimpleBlockAccessor(BlockAccessor):
         key_fn = (lambda r: r[0]) if key else (lambda r: 0)
 
         iter = heapq.merge(
-            *[SimpleBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+            *[SimpleBlockAccessor(block).iter_rows(True) for block in blocks],
+            key=key_fn,
         )
         next_row = None
         ret = []

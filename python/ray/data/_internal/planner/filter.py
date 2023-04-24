@@ -21,7 +21,7 @@ def generate_filter_fn() -> Callable[
         for block in blocks:
             block = BlockAccessor.for_block(block)
             builder = block.builder()
-            for row in block.iter_rows():
+            for row in block.iter_rows(public_row_format=True):
                 if row_fn(row):
                     builder.add(row)
             # NOTE: this yields an empty block if all rows are filtered out.
