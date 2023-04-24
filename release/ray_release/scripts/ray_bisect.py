@@ -32,7 +32,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=1,
     type=int,
     help=(
-        "The number of time we re-run test on the same commit, to account for test "
+        "The number of time we run test on the same commit, to account for test "
         "flakiness. Commit passes only when it passes on all runs"
     ),
 )
