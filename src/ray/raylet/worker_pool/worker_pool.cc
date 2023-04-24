@@ -175,6 +175,42 @@ void WorkerPool::Start() {
 
 void WorkerPool::MaybeRefillIdlePool() {
     //cache_size_policy_
+    //TODO add num_prestart_python_workers_ 
+
+    size_t num_idle_workers_to_create = cache_size_policy_->GetNumIdleProcsToCreate(
+        idle_of_all_languages_.size(),
+        GetNumRunningWorkers(),
+        GetNumStartingWorkers()
+    );
+
+    RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_idle_workers_to_create: " << num_idle_workers_to_create;
+}
+
+size_t WorkerPool::GetNumStartingWorkers() {
+  auto &state = GetStateForLanguage(Language::PYTHON);
+  size_t starting_workers = 0;
+  for (auto &entry : state.worker_processes) {
+    if (entry.second.worker_type == rpc::WorkerType::WORKER) {
+      starting_workers += entry.second.is_pending_registration ? 1 : 0;
+    }
+  }
+  return starting_workers;
+}
+
+size_t WorkerPool::GetNumRunningWorkers() {
+  size_t running_size = 0;
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+      running_size++;
+    }
+  }
+
+  // Subtract the number of pending exit workers first. This will help us killing more
+  // idle workers that it needs to.
+  RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
+  running_size -= pending_exit_idle_workers_.size();
+
+  return running_size;
 }
 
 // NOTE(kfstorm): The node manager cannot be passed via WorkerPool constructor because the

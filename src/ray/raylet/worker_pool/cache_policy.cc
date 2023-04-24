@@ -25,15 +25,13 @@ IdlePoolSizePolicy::IdlePoolSizePolicy(size_t desired_cache_size,
 
 const size_t IdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
                                                          size_t running_size,
-                                                         size_t starting_size,
-                                                         size_t terminating_size) {
+                                                         size_t starting_size) {
   return 0;
 }
 
 const size_t IdlePoolSizePolicy::GetNumIdleProcsToKill(size_t idle_size,
                                                        size_t running_size,
-                                                       size_t starting_size,
-                                                       size_t terminating_size) {
+                                                       size_t starting_size) {
   return 0;
 }
 

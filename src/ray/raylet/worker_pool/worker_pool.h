@@ -780,6 +780,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   // TODO move these to where they go
   std::shared_ptr<IdlePoolSizePolicyInterface> cache_size_policy_;
   void MaybeRefillIdlePool();
+  size_t GetNumStartingWorkers();
+  size_t GetNumRunningWorkers();
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

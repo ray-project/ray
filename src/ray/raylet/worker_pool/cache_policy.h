@@ -26,13 +26,11 @@ class IdlePoolSizePolicyInterface {
  public:
   virtual const size_t GetNumIdleProcsToCreate(size_t idle_size,
                                                size_t running_size,
-                                               size_t starting_size,
-                                               size_t terminating_size) = 0;
+                                               size_t starting_size) = 0;
 
   virtual const size_t GetNumIdleProcsToKill(size_t idle_size,
                                              size_t running_size,
-                                             size_t starting_size,
-                                             size_t terminating_size) = 0;
+                                             size_t starting_size) = 0;
 };
 
 class IdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
@@ -46,13 +44,11 @@ class IdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
 
   const size_t GetNumIdleProcsToCreate(size_t idle_size,
                                        size_t running_size,
-                                       size_t starting_size,
-                                       size_t terminating_size);
+                                       size_t starting_size);
 
   const size_t GetNumIdleProcsToKill(size_t idle_size,
                                      size_t running_size,
-                                     size_t starting_size,
-                                     size_t terminating_size);
+                                     size_t starting_size);
 };
 
 // class WorkerPool : public WorkerPoolInterface {
