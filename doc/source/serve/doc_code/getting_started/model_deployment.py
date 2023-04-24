@@ -39,7 +39,7 @@ translator_app = Translator.bind()
 # __model_deploy_end__
 
 translator_app = Translator.options(ray_actor_options={}).bind()
-serve.run(translator)
+serve.run(translator_app)
 
 # __client_function_start__
 # File name: model_client.py
