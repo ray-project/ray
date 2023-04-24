@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/worker_pool/worker_pool.h"
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>

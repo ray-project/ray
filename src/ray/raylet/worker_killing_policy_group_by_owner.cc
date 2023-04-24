@@ -25,7 +25,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/worker_pool/worker_pool.h"
 
 namespace ray {
 

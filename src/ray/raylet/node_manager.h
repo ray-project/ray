@@ -39,7 +39,7 @@
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/wait_manager.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/worker_pool/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/util/throttler.h"

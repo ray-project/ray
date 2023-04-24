@@ -1424,7 +1424,7 @@ cc_test(
 cc_test(
     name = "worker_pool_test",
     size = "small",
-    srcs = ["src/ray/raylet/worker_pool_test.cc"],
+    srcs = ["src/ray/raylet/worker_pool/worker_pool_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [

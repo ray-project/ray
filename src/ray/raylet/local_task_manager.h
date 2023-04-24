@@ -25,7 +25,7 @@
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/worker_pool/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"

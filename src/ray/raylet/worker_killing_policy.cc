@@ -21,7 +21,7 @@
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_killing_policy_retriable_fifo.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/worker_pool/worker_pool.h"
 
 namespace ray {
 
