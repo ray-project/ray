@@ -113,6 +113,12 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
 #endif
+  
+  cache_size_policy_ = std::make_shared<IdlePoolSizePolicy>(
+    num_workers_soft_limit_,
+    maximum_startup_concurrency_
+  );
+
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
@@ -165,6 +171,10 @@ void WorkerPool::Start() {
   if (RayConfig::instance().enable_worker_prestart()) {
     PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
   }
+}
+
+void WorkerPool::MaybeRefillIdlePool() {
+    //cache_size_policy_
 }
 
 // NOTE(kfstorm): The node manager cannot be passed via WorkerPool constructor because the

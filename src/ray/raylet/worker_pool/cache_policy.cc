@@ -20,9 +20,8 @@ namespace ray {
 
 namespace raylet {
 
-IdlePoolSizePolicy::IdlePoolSizePolicy(size_t max_total_size,
-                                       size_t desired_cache_size,
-                                       size_t max_starting_size) {}
+IdlePoolSizePolicy::IdlePoolSizePolicy(size_t desired_cache_size,
+                                       size_t max_starting_size) : desired_cache_size_(desired_cache_size), max_starting_size_(max_starting_size) {}
 
 const size_t IdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
                                                          size_t running_size,

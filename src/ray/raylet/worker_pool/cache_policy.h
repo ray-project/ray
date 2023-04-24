@@ -36,9 +36,12 @@ class IdlePoolSizePolicyInterface {
 };
 
 class IdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
+ private:
+  const size_t desired_cache_size_;
+  const size_t max_starting_size_;
+
  public:
-  IdlePoolSizePolicy(size_t max_total_size,
-                     size_t desired_cache_size,
+  IdlePoolSizePolicy(size_t desired_cache_size,
                      size_t max_starting_size);
 
   const size_t GetNumIdleProcsToCreate(size_t idle_size,

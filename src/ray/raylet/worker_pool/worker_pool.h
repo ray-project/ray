@@ -777,8 +777,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
 
-  std::shared_ptr<IdlePoolSizePolicyInterface> cache_size_policy =
-      std::make_shared<IdlePoolSizePolicy>(0, 0, 0);
+  // TODO move these to where they go
+  std::shared_ptr<IdlePoolSizePolicyInterface> cache_size_policy_;
+  void MaybeRefillIdlePool();
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;
