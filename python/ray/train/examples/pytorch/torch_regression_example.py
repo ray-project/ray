@@ -12,13 +12,13 @@ import ray
 import ray.train as train
 from ray.air import session
 from ray.air.result import Result
-from ray.data import Dataset
+from ray.data import Datastream
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.air.config import ScalingConfig
 
 
-def get_datasets(split: float = 0.7) -> Tuple[Dataset]:
+def get_datasets(split: float = 0.7) -> Tuple[Datastream]:
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
 
     def combine_x(batch):

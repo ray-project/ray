@@ -1,15 +1,13 @@
 .. _pipelining_datasets:
 
-.. note::
+=============================
+DatasetPipelines (deprecated)
+=============================
 
-  The DatasetPipeline is expected to be deprecated in Ray 2.5. If your use case doesn't
-  need per-window shuffle, we recommend using just plain Datasets, which supports the
-  streaming execution by default in Ray 2.4. For more detail, see
-  :ref:`Streaming Execution <datasets_streaming_execution>`.
+.. warning::
 
-==================
-Pipelining Compute 
-==================
+  DatasetPipelines are deprecated now that Datastream provides pipelined execution
+  by default. For more detail, see :ref:`Streaming Execution <streaming_execution>`.
 
 Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
 
@@ -18,7 +16,7 @@ Dataset pipelines can be read in a streaming fashion by one consumer, or split i
 Creating a DatasetPipeline
 ==========================
 
-A `DatasetPipeline <package-ref.html#datasetpipeline-api>`__ can be constructed in two ways: either by pipelining the execution of an existing Dataset (via :meth:`~ray.data.Dataset.window`), or generating repeats of an existing Dataset (via :meth:`~ray.data.Dataset.repeat`). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
+A `DatasetPipeline <package-ref.html#datasetpipeline-api>`__ can be constructed in two ways: either by pipelining the execution of an existing Dataset (via :meth:`~ray.data.Datastream.window`), or generating repeats of an existing Dataset (via :meth:`~ray.data.Datastream.repeat`). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
 
 .. code-block:: python
 
@@ -60,7 +58,7 @@ A `DatasetPipeline <package-ref.html#datasetpipeline-api>`__ can be constructed 
     print("Total num rows", num_rows)
     # -> Total num rows 1000000
 
-You can also create a DatasetPipeline from a custom iterator over dataset creators using :meth:`~ray.data.DatasetPipeline.from_iterable`. For example, this is how you would implement :meth:`~ray.data.Dataset.repeat` and :meth:`~ray.data.Dataset.window` using :meth:`~ray.data.DatasetPipeline.from_iterable`:
+You can also create a DatasetPipeline from a custom iterator over dataset creators using :meth:`~ray.data.DatastreamPipeline.from_iterable`. For example, this is how you would implement :meth:`~ray.data.Datastream.repeat` and :meth:`~ray.data.Datastream.window` using :meth:`~ray.data.DatastreamPipeline.from_iterable`:
 
 .. code-block:: python
 
@@ -105,7 +103,7 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
     # 0
     # 3
 
-You can also apply arbitrary transformations to each window using :meth:`DatasetPipeline.foreach_window() <ray.data.DatasetPipeline.foreach_window>`:
+You can also apply arbitrary transformations to each window using :meth:`DatasetPipeline.foreach_window() <ray.data.DatastreamPipeline.foreach_window>`:
 
 .. code-block:: python
 
@@ -169,7 +167,7 @@ Ignoring the output, the above script has three separate stages: loading, prepro
 Enabling Pipelining
 ~~~~~~~~~~~~~~~~~~~
 
-We can optimize this by *pipelining* the execution of the dataset with the :meth:`~ray.data.Dataset.window` call, which returns a DatasetPipeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
+We can optimize this by *pipelining* the execution of the dataset with the :meth:`~ray.data.Datastream.window` call, which returns a DatasetPipeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
 
 .. code-block:: python
 
@@ -228,7 +226,7 @@ Dataset pipelines can also be used for streaming data loading into distributed t
 Splitting pipelines for distributed ingest
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Similar to how you can split a Dataset with :meth:`Dataset.split() <ray.data.Dataset.split>`, you can also split a DatasetPipeline with the same method call :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`. This returns a number of DatasetPipeline shards that share a common parent pipeline. Each shard can be passed to a remote task or actor.
+Similar to how you can split a Dataset with :meth:`Dataset.split() <ray.data.Datastream.split>`, you can also split a DatasetPipeline with the same method call :meth:`DatasetPipeline.split() <ray.data.DatastreamPipeline.split>`. This returns a number of DatasetPipeline shards that share a common parent pipeline. Each shard can be passed to a remote task or actor.
 
 **Code**:
 
@@ -260,7 +258,7 @@ Handling Epochs
 ~~~~~~~~~~~~~~~
 
 It's common in ML training to want to divide data ingest into epochs, or repetitions over the original source dataset.
-DatasetPipeline provides a convenient :meth:`DatasetPipeline.iter_epochs() <ray.data.DatasetPipeline.iter_epochs>` method that can be used to split up the pipeline into epoch-delimited pipeline segments.
+DatasetPipeline provides a convenient :meth:`DatasetPipeline.iter_epochs() <ray.data.DatastreamPipeline.iter_epochs>` method that can be used to split up the pipeline into epoch-delimited pipeline segments.
 Epochs are defined by the last call to ``.repeat()`` in a pipeline, for example:
 
 .. code-block:: python
