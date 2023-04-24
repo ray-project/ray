@@ -634,6 +634,34 @@ the collection. The execution results are then used to create a Datastream.
         collection="my_collection",
     )
 
+.. _datastream_from_iceberg:
+
+------------
+From Iceberg
+------------
+
+A Datastream can also be created from `Iceberg <https://iceberg.apache.org/>`__ with
+:py:class:`~ray.data.read_iceberg`.
+You will need to install `PyIceberg <https://py.iceberg.apache.org/>`__ and config a 
+`catalog <https://py.iceberg.apache.org/configuration/>`__ to fetch the iceberg table. The execution
+results are then used to create a Datastream.
+
+.. note::
+  
+  This example is not runnable as-is; you'll need to config your Iceberg catalog.
+
+.. code-block:: python
+    
+    import ray
+
+    # Read an Iceberg table from a catalog named "my_catalog".
+
+    ds = ray.data.read_iceberg(
+      "my_db.my_table",
+      catalog_name="my_catalog",
+    )
+
+
 .. _datastreams_sql_databases:
 
 --------------------------
