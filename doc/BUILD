@@ -229,6 +229,42 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:core"],
 )
 
+# --------------------------------------------------------------------
+# Test all Workspace template notebooks in doc/source/templates
+# as smoke tests.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "workspace_templates",
+    srcs = glob(["source/templates/tests/*.ipynb"]),
+    visibility = ["//doc:__subpackages__"]
+)
+
+# Templates that require GPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = [
+        "source/templates/tests/batch_inference.ipynb",
+        "source/templates/tests/serving_stable_diffusion.ipynb"
+    ],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
+    env = {"SMOKE_TEST": "1"},
+)
+
+# Templates that require timeseries libs
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["source/templates/tests/many_model_training.ipynb"],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs"],
+    env = {"SMOKE_TEST": "1"},
+)
+
 # --------------
 # Run GPU tests
 # --------------

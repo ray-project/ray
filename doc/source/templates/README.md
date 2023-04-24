@@ -45,7 +45,7 @@ To add a template:
 
     **Put this test copy in `doc/source/templates/tests/test-copy.ipynb`.**
 
-3. Add a smoke-test version of the template to run in pre-merge CI in `doc/source/templates/BUILD`.
+3. Add a smoke-test version of the template to run in pre-merge CI in `doc/BUILD` under the templates section.
 
     Set the `SMOKE_TEST` environment variable, which should be used in your template to
     set certain smoke test parameters (like limiting dataset size).
@@ -56,10 +56,10 @@ To add a template:
     ```python
     py_test_run_all_notebooks(
         size = "large",
-        include = ["tests/batch_inference.ipynb"],
+        include = ["source/templates/tests/batch_inference.ipynb"],
         exclude = [],
-        data = ["//doc/source/templates:workspace_templates"],
-        tags = ["exclusive", "team:ml", "ray_air", "gpu", "doc_tested"],
+        data = ["//doc:workspace_templates"],
+        tags = ["exclusive", "team:ml", "ray_air", "gpu"],
         env = {"SMOKE_TEST": "1"},
     )
     ```
