@@ -35,6 +35,33 @@ def test_create_node_returns_dict():
     assert create_node_return_value == expected_return_value
 
 
+def test_terminate_nodes():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    node_type = GCPNodeType.COMPUTE.value
+    id1, id2 = f"instance-id1-{node_type}", f"instance-id2-{node_type}"
+    terminate_node_ids = [id1, id2]
+    mock_resource = MagicMock()
+    mock_resource.create_instances.return_value = [
+        ({"dict": 1}, id1),
+        ({"dict": 2}, id2),
+    ]
+    mock_resource.delete_instance.return_value = "test"
+    expected_terminate_nodes_result_len = 2
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.lock = RLock()
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+        node_provider.create_node(mock_node_config, {}, 1)
+        create_results = node_provider.terminate_nodes(terminate_node_ids)
+
+    assert len(create_results) == expected_terminate_nodes_result_len
+
+
 @pytest.mark.parametrize(
     "test_case",
     [

@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple
 
 import click
 import yaml
@@ -104,6 +104,21 @@ def process_dict_for_yaml_dump(data):
             data[k] = remove_ansi_escape_sequences(v)
 
     return data
+
+
+def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
+    args_dict = dict()
+    for arg in args:
+        split = arg.split("=")
+        if len(split) != 2:
+            raise click.ClickException(
+                f"Invalid application argument '{arg}', "
+                "must be of the form '<key>=<val>'."
+            )
+
+        args_dict[split[0]] = split[1]
+
+    return args_dict
 
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
@@ -214,16 +229,20 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run Serve application(s).",
     help=(
-        "Runs the Serve application from the specified import path (e.g. my_script:"
-        "my_bound_deployment) or application(s) from a YAML config.\n\n"
-        "If using a YAML config, existing deployments with no code changes in an "
-        "application will not be redeployed.\n\n"
-        "Any import path must lead to a FunctionNode or ClassNode object. "
-        "By default, this will block and periodically log status. If you "
-        "Ctrl-C the command, it will tear down the app."
+        "Runs an application from the specified import path (e.g., my_script:"
+        "app) or application(s) from a YAML config.\n\n"
+        "If passing an import path, it must point to a bound Serve application or "
+        "a function that returns one. If a function is used, arguments can be "
+        "passed to it in 'key=val' format after the import path, for example:\n\n"
+        "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
+        "If passing a YAML config, existing applications with no code changes will not "
+        "be updated.\n\n"
+        "By default, this will block and stream logs to the console. If you "
+        "Ctrl-C the command, it will shut down Serve on the cluster."
     ),
 )
 @click.argument("config_or_import_path")
+@click.argument("arguments", nargs=-1, required=False)
 @click.option(
     "--runtime-env",
     type=str,
@@ -301,6 +320,7 @@ def deploy(config_file_name: str, address: str):
 )
 def run(
     config_or_import_path: str,
+    arguments: Tuple[str],
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
@@ -312,7 +332,7 @@ def run(
     gradio: bool,
 ):
     sys.path.insert(0, app_dir)
-
+    args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
@@ -320,9 +340,14 @@ def run(
     )
 
     if pathlib.Path(config_or_import_path).is_file():
+        if len(args_dict) > 0:
+            cli_logger.warning(
+                "Application arguments are ignored when running a config file."
+            )
+
         is_config = True
         config_path = config_or_import_path
-        cli_logger.print(f'Deploying from config file: "{config_path}".')
+        cli_logger.print(f"Running config file: '{config_path}'.")
 
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
@@ -375,8 +400,10 @@ def run(
         if port is None:
             port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
-        cli_logger.print(f'Deploying from import path: "{import_path}".')
-        node = import_attr(import_path)
+        cli_logger.print(f"Running import path: '{import_path}'.")
+        app = _private_api.call_app_builder_with_args_if_necessary(
+            import_attr(import_path), args_dict
+        )
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
@@ -392,7 +419,7 @@ def run(
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            handle = serve.run(node, host=host, port=port)
+            handle = serve.run(app, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:

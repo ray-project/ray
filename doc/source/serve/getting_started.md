@@ -37,18 +37,16 @@ First, let's take a look at our text-translation model. Here's its code:
 :start-after: __start_translation_model__
 :end-before: __end_translation_model__
 :language: python
-:linenos: true
 ```
 
 The Python file, called `model.py`, uses the `Translator` class to translate English text to French.
 
-- The `self.model` variable on line 8 inside `Translator`'s `__init__` method
+- The `self.model` variable inside `Translator`'s `__init__` method
   stores a function that uses the [t5-small](https://huggingface.co/t5-small)
   model to translate text.
 - When `self.model` is called on English text, it returns translated French text
   inside a dictionary formatted as `[{"translation_text": "..."}]`.
-- The `Translator`'s `translate` method extracts the translated text on
-  line 15 by indexing into the dictionary.
+- The `Translator`'s `translate` method extracts the translated text by indexing into the dictionary.
 
 You can copy-paste this script and run it locally. It translates `"Hello world!"`
 into `"Bonjour Monde!"`.
@@ -133,7 +131,6 @@ Here's the full Ray Serve script that we built:
 :start-after: __deployment_full_start__
 :end-before: __deployment_full_end__
 :language: python
-:linenos: true
 ```
 
 We can run our script with the `serve run` CLI command. This command takes in an import path
@@ -201,7 +198,7 @@ For example, let's deploy a machine learning pipeline with two steps:
 You can copy-paste this script and run it locally. It summarizes the snippet from _A Tale of Two Cities_ to `it was the best of times, it was worst of times .`
 
 ```console
-$ python model.py
+$ python summary_model.py
 
 it was the best of times, it was worst of times .
 ```
@@ -212,10 +209,9 @@ Here's a Ray Serve deployment graph that chains the two models together. The gra
 :start-after: __start_graph__
 :end-before: __end_graph__
 :language: python
-:linenos: true
 ```
 
-This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code on lines 44 and 45:
+This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
 
 ```python
 translation_ref = await self.translator.translate.remote(summary)
