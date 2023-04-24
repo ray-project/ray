@@ -2,6 +2,7 @@ import ray._private.worker
 
 try:
     from ray.serve.api import (
+        build,
         deployment,
         get_deployment,
         get_replica_context,
@@ -32,6 +33,7 @@ ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "batch",
+    "build",
     "start",
     "HTTPOptions",
     "get_replica_context",

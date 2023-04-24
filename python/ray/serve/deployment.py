@@ -34,16 +34,44 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="beta")
 class Application(DAGNodeBase):
-    """Returned from `Deployment.bind()`.
+    """One or more deployments bound with arguments that can be deployed together.
 
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
     single application, passed to `serve.run`, or deployed via a Serve config file.
+
+    For example, to define an app and run it in Python:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve import Application
+
+            @serve.deployment
+            class MyDeployment:
+                pass
+
+            app: Application = MyDeployment.bind(OtherDeployment.bind())
+            serve.run(app)
+
+    To run the same app using the command line interface (CLI):
+
+        .. code-block:: bash
+
+            serve run python_file:app
+
+    To deploy the same app via a config file:
+
+        .. code-block:: yaml
+
+            applications:
+                my_app:
+                    import_path: python_file:app
+
     """
 
     def __init__(
         self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
     ):
-        """This class should not be constructed directly."""
         if _internal_dag_node is None:
             raise RuntimeError("This class should not be constructed directly.")
 
@@ -67,6 +95,33 @@ class Application(DAGNodeBase):
 
 @PublicAPI
 class Deployment:
+    """Defines group of Ray actors to be deployed in an application.
+
+    Deployments are used to define a Serve application by binding them together with
+    arguments (and possibly other deployments for composition).
+
+    The resulting `Application` can be deployed using `serve.run` or via a Serve config
+    file.
+
+    Example:
+
+    .. code-block:: python
+
+        @serve.deployment
+        class MyDeployment:
+            def __init__(self, name: str):
+                self._name = name
+
+            def say_hi(self):
+                return "Hello from " + self.name
+
+                app = MyDeployment.bind("Mr. Magoo")
+
+                # Run via `serve.run` or the `serve run` CLI command.
+                serve.run(app)
+
+    """
+
     def __init__(
         self,
         func_or_class: Union[Callable, str],
@@ -80,13 +135,6 @@ class Deployment:
         is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
-        """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
-
-        Deployments should be created, retrieved, and updated using
-        `@serve.deployment`, `serve.get_deployment`, and `Deployment.options`,
-        respectively.
-        """
-
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -154,10 +202,6 @@ class Deployment:
 
     @property
     def version(self) -> Optional[str]:
-        """Version of this deployment.
-
-        If None, will be redeployed every time `.deploy()` is called.
-        """
         return self._version
 
     @property

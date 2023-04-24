@@ -156,24 +156,32 @@ def get_replica_context() -> ReplicaContext:
 
 
 @PublicAPI(stability="beta")
-def ingress(app: Union["FastAPI", "APIRouter", Callable]):
-    """Mark an ASGI application ingress for Serve.
+def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
+    """Wrap a deployment class with a FastAPI application for HTTP request parsing.
 
-    Args:
-        app (FastAPI,APIRouter,Starlette,etc): the app or router object serve
-            as ingress for this deployment. It can be any ASGI compatible
-            object.
+    Can be used to define a deployment that uses FastAPI for HTTP request
+    parsing/validation.
 
     Example:
-        >>> from fastapi import FastAPI
-        >>> from ray import serve
-        >>> app = FastAPI() # doctest: +SKIP
-        >>> app = FastAPI() # doctest: +SKIP
-        >>> @serve.deployment # doctest: +SKIP
-        ... @serve.ingress(app) # doctest: +SKIP
-        ... class App: # doctest: +SKIP
-        ...     pass # doctest: +SKIP
-        >>> App.deploy() # doctest: +SKIP
+        .. code-block:: python
+
+            from ray import serve
+            from fastapi import FastAPI
+
+            app = FastAPI()
+
+            @serve.deployment
+            @serve.ingress(app)
+            class MyFastAPIDeployment:
+                @app.get("/hi")
+                def say_hi(self) -> str:
+                    return "Hello world!"
+
+            app = MyFastAPIDeployment.bind()
+
+    Args:
+        app: the FastAPI app or router object to wrap this class with.
+            Can be any ASGI-compatible callable.
     """
 
     def decorator(cls):
@@ -296,17 +304,24 @@ def deployment(
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
-    """Define a Serve deployment.
+    """Decorator that converts a Python class to a Ray Serve deployment.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray import serve
+
+        @serve.deployment(num_replicas=2)
+        class MyDeployment:
+            pass
+
+        app = MyDeployment.bind()
 
     Args:
         name (Default[str]): Globally-unique name identifying this
             deployment. If not provided, the name of the class or function will
             be used.
-        version [DEPRECATED] (Default[str]): Version of the deployment.
-            This is used to indicate a code change for the deployment; when it
-            is re-deployed with a version change, a rolling update of the
-            replicas will be performed. If not provided, every deployment will
-            be treated as a new version.
         num_replicas (Default[Optional[int]]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
         init_args (Default[Tuple[Any]]): Positional args to be passed to the
@@ -340,18 +355,8 @@ def deployment(
         is_driver_deployment (Optional[bool]): [Experiment] when set it as True, serve
             will deploy exact one deployment to every node.
 
-    Example:
-    >>> from ray import serve
-    >>> @serve.deployment(name="deployment1") # doctest: +SKIP
-    ... class MyDeployment: # doctest: +SKIP
-    ...     pass # doctest: +SKIP
-
-    >>> MyDeployment.bind(*init_args) # doctest: +SKIP
-    >>> MyDeployment.options( # doctest: +SKIP
-    ...     num_replicas=2, init_args=init_args).bind()
-
     Returns:
-        Deployment
+        `serve.Deployment`
     """
 
     # NOTE: The user_configured_option_names should be the first thing that's
@@ -464,7 +469,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
 ) -> Optional[RayServeSyncHandle]:
-    """Run a Serve application and return a ServeHandle to the ingress deployment.
+    """Deploy an application and return a handle to its ingress deployment.
 
     The application is returned by `Deployment.bind()` or `serve.build`.
 
@@ -483,8 +488,7 @@ def run(
             nor in the ingress deployment, the route prefix will default to '/'.
 
     Returns:
-        RayServeSyncHandle: A regular ray serve handle that can be called by user
-            to execute the serve DAG.
+        RayServeSyncHandle: A handle that can be used to call the application.
     """
     client = _private_api.serve_start(
         detached=True,
@@ -581,12 +585,9 @@ def build(target: Application, name: str = SERVE_DEFAULT_APP_NAME) -> BuiltAppli
 
 @PublicAPI(stability="alpha")
 def delete(name: str, _blocking: bool = True):
-    """Delete an app by its name
+    """Delete an application by its name.
 
     Deletes the app with all corresponding deployments.
-
-    Args:
-        name: the name of app to delete.
     """
     client = get_global_client()
     client.delete_apps([name], blocking=_blocking)
