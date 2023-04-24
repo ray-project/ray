@@ -96,15 +96,11 @@ class CheckpointManager(CommonCheckpointManager):
             # Load checkpoint from path.
             return load_checkpoint_from_path(checkpoint_to_load)
 
-    def _process_checkpoint(
+    def _process_one_checkpoint(
         self,
-        checkpoint_results: List[TrainingResult],
+        checkpoint_result: TrainingResult,
         decode_checkpoint_fn: Callable,
     ) -> None:
-        """Ray Train entrypoint. Perform all processing for a checkpoint."""
-        # Get checkpoint from first worker.
-        checkpoint_result = checkpoint_results[0]
-
         checkpoint_data = checkpoint_result.data
         checkpoint_metadata = checkpoint_result.metadata or {}
 
@@ -131,13 +127,32 @@ class CheckpointManager(CommonCheckpointManager):
                 f"`session.report()`."
             )
 
-        tracked_checkpoint = _TrackedCheckpoint(
+        return _TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
             metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
         )
-        self.register_checkpoint(checkpoint=tracked_checkpoint)
+
+    def _process_checkpoint(
+        self,
+        checkpoint_results: List[TrainingResult],
+        decode_checkpoint_fn: Callable,
+    ) -> None:
+        """Ray Train entrypoint. Perform all processing for a checkpoint."""
+        if self._checkpoint_strategy.checkpoint_keep_all_ranks:
+            tracked_checkpoints = [
+                self._process_one_checkpoint(checkpoint_result, decode_checkpoint_fn)
+                for checkpoint_result in checkpoint_results
+            ]
+        else:
+            # Get checkpoint from first worker.
+            tracked_checkpoints = [
+                self._process_one_checkpoint(
+                    checkpoint_results[0], decode_checkpoint_fn
+                )
+            ]
+        self.register_checkpoints(checkpoints=tracked_checkpoints)
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
@@ -249,7 +264,13 @@ class TuneCheckpointManager(CheckpointManager):
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
         self.add_tune_checkpoint_id(checkpoint.dir_or_data)
-        # If inside a Tune Trainable, then checkpoint with Tune.
+
+        # Train may choose not to commit a checkpoint, but for the purpose of
+        # hyper-param tuning, if inside a Tune Trainable, make sure the checkpoint
+        # is committed for Tune.
+        # After this is committed, checkpoint.dir_or_path will become a string,
+        # which will prevent this checkpoint from being commtted again in the
+        # subsequent super()._process_persistent_checkpoint() call.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)
             checkpoint.commit(path)

@@ -559,13 +559,17 @@ class Checkpoint:
             if local_path:
                 local_path_pathlib = Path(local_path).resolve()
                 if local_path_pathlib != path_pathlib:
-                    if path_pathlib.exists():
-                        shutil.rmtree(str(path_pathlib.absolute()))
                     # If this exists on the local path, just copy over
                     if move_instead_of_copy:
                         os.makedirs(str(path_pathlib.absolute()), exist_ok=True)
                         self._local_path = str(path_pathlib.absolute())
                         for inner in local_path_pathlib.iterdir():
+                            dest = path_pathlib / inner.name
+                            if dest.exists():
+                                # Ignore files that already exist.
+                                # For example, checkpoints from every rank may all have
+                                # a same .is_checkpoint file.
+                                continue
                             shutil.move(
                                 str(inner.absolute()), str(path_pathlib.absolute())
                             )

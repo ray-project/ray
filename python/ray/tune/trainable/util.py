@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 import types
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Type, Tuple, Union, TYPE_CHECKING
 
 import pandas as pd
 
@@ -18,7 +18,7 @@ from ray.air._internal.uri_utils import URI
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import _detect_checkpoint_function
-from ray.util import placement_group
+from ray.util.placement_group import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -103,6 +103,14 @@ class TrainableUtil:
         return os.path.join(tokens[0])
 
     @staticmethod
+    def _make_checkpoint_dir_suffix(index: Union[int, str]):
+        """Get the name of the checkpoint directory suffix."""
+        suffix = "checkpoint"
+        if index is not None:
+            suffix += f"_{index:06d}" if isinstance(index, int) else f"_{index}"
+        return suffix
+
+    @staticmethod
     def make_checkpoint_dir(
         checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
@@ -115,9 +123,7 @@ class TrainableUtil:
             override: Deletes checkpoint_dir before creating
                 a new one.
         """
-        suffix = "checkpoint"
-        if index is not None:
-            suffix += f"_{index:06d}" if isinstance(index, int) else f"_{index}"
+        suffix = TrainableUtil._make_checkpoint_dir_suffix(index)
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
         if override and os.path.exists(checkpoint_dir):
@@ -227,7 +233,7 @@ class PlacementGroupUtil:
         num_gpus_per_worker: int,
         num_workers_per_host: Optional[int],
         timeout_s: Optional[int],
-    ) -> (Dict[str, Any], placement_group):
+    ) -> Tuple[Dict[str, Any], placement_group]:
         """Returns the option for remote workers.
 
         Args:

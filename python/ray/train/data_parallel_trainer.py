@@ -39,7 +39,8 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
     ):
         self.preprocessor = preprocessor
         super(_DataParallelCheckpointManager, self).__init__(
-            run_dir=run_dir, checkpoint_strategy=checkpoint_strategy
+            run_dir=run_dir,
+            checkpoint_strategy=checkpoint_strategy,
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -411,6 +412,7 @@ class DataParallelTrainer(BaseTrainer):
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
+            checkpoint_config=self.run_config.checkpoint_config,
         )
 
         checkpoint_manager = self._checkpoint_manager_cls(
@@ -427,7 +429,8 @@ class DataParallelTrainer(BaseTrainer):
             dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.resume_from_checkpoint,
-            checkpoint_strategy=None,
+            checkpoint_strategy=self.run_config.checkpoint_config,
+            storage_path=self.run_config.storage_path,
         )
 
         self._report(training_iterator)

@@ -8,23 +8,26 @@ import time
 from typing import List, Optional
 from unittest.mock import patch
 
+from freezegun import freeze_time
+import numpy as np
 import pyarrow.fs
 import pytest
-from freezegun import freeze_time
 
 import ray
 import ray.cloudpickle as pickle
 from ray import tune
 from ray.air import session, Checkpoint, RunConfig
-from ray.air._internal.uri_utils import URI
-from ray.tune import TuneError
-from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
-from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
+from ray.air.config import CheckpointConfig, ScalingConfig
 from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
 )
+from ray.air._internal.uri_utils import URI
+from ray.train.torch import TorchTrainer
+from ray.tune import TuneError
+from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
+from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
 @pytest.fixture
@@ -1004,6 +1007,121 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
         )
         assert result.metrics["training_iteration"] == 2
         assert num_checkpoints == 2  # 1 before restore + 1 after
+
+
+def test_distributed_checkpointing_to_s3(
+    ray_start_4_cpus, mock_s3_bucket_uri, tmp_path
+):
+    """Tests a Tune run with distributed checkpointing to a mock s3 bucket."""
+    exp_name = "test_dist_ckpt_to_s3"
+    local_dir = os.path.join(tmp_path, "local_dir")
+
+    def train_fn(config):
+        world_rank = session.get_world_rank()
+        for _ in range(config["num_steps"]):
+            time.sleep(1)
+            checkpoint_dir = tempfile.mkdtemp(dir=tmp_path)
+            path = os.path.join(checkpoint_dir, f"optim-{world_rank}.pt")
+            with open(path, "wb") as f:
+                f.write(
+                    pickle.dumps(
+                        {
+                            "optimizer": "adam",
+                            "lr": 0.001,
+                            "optimizer_state": np.random.random((100, 100)),
+                        }
+                    )
+                )
+            path = os.path.join(checkpoint_dir, f"model-{world_rank}.pt")
+            with open(path, "wb") as f:
+                f.write(
+                    pickle.dumps(
+                        {
+                            "model": "resnet",
+                            "weights": np.random.random((100, 100)),
+                        }
+                    )
+                )
+            session.report(
+                {"score": 1}, checkpoint=Checkpoint.from_directory(checkpoint_dir)
+            )
+
+    trainer = TorchTrainer(
+        train_fn,
+        train_loop_config={"num_steps": 2},
+        scaling_config=ScalingConfig(
+            num_workers=3,
+            use_gpu=False,
+        ),
+        # Note(jungong) : Trainers ignore the RunConfig specified via
+        # Tuner below. So to specify proper cloud paths and CheckpointConfig,
+        # we must pass another dummy RunConfig here.
+        # TODO(jungong) : this is extremely awkward. Refactor and clean up.
+        run_config=RunConfig(
+            storage_path=mock_s3_bucket_uri,
+            local_dir=local_dir,
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=10,
+                checkpoint_keep_all_ranks=True,
+                checkpoint_upload_from_workers=True,
+            ),
+        ),
+    )
+
+    tuner = tune.Tuner(
+        trainer,
+        run_config=RunConfig(
+            name=exp_name,
+            storage_path=mock_s3_bucket_uri,
+            local_dir=local_dir,
+        ),
+        tune_config=tune.TuneConfig(
+            # Only running 1 trial.
+            trial_dirname_creator=lambda t: "trial_0"
+        ),
+    )
+    result_grid = tuner.fit()
+    # Run was successful.
+    assert not result_grid.errors
+
+    # Double check local checkpoint dir.
+    local_trial_data = os.listdir(
+        os.path.join(local_dir, "test_dist_ckpt_to_s3", "trial_0")
+    )
+    # 2 checkpoints in local trial folder.
+    assert "checkpoint_000000" in local_trial_data
+    assert "checkpoint_000001" in local_trial_data
+    local_checkpoint_1_data = os.listdir(
+        os.path.join(local_dir, "test_dist_ckpt_to_s3", "trial_0", "checkpoint_000001")
+    )
+    # Local folder has 2 index files.
+    assert "_RANK_0.files" in local_checkpoint_1_data
+    assert "_RANK_1.files" in local_checkpoint_1_data
+    # But no data files.
+    assert "model-0.pt" not in local_checkpoint_1_data
+    assert "model-1.pt" not in local_checkpoint_1_data
+
+    # Download remote dir to do some sanity checks
+    download_dir = os.path.join(tmp_path, "download")
+    download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
+
+    cloud_trial_data = os.listdir(
+        os.path.join(download_dir, "test_dist_ckpt_to_s3", "trial_0")
+    )
+    # 2 checkpoints in cloud trial folder.
+    assert "checkpoint_000000" in cloud_trial_data
+    assert "checkpoint_000001" in cloud_trial_data
+    cloud_checkpoint_1_data = os.listdir(
+        os.path.join(
+            download_dir, "test_dist_ckpt_to_s3", "trial_0", "checkpoint_000001"
+        )
+    )
+    # Cloud folder has 2 index files.
+    assert "_RANK_0.files" in cloud_checkpoint_1_data
+    assert "_RANK_1.files" in cloud_checkpoint_1_data
+    # And all the data files.
+    assert "model-0.pt" in cloud_checkpoint_1_data
+    assert "model-1.pt" in cloud_checkpoint_1_data
 
 
 if __name__ == "__main__":

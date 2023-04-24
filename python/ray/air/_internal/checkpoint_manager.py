@@ -296,7 +296,7 @@ class _CheckpointManager:
         # always available).
         self._checkpoints_to_clean_up = set()
 
-        self._delete_fn = delete_fn
+        self.set_delete_fn(delete_fn)
 
     def set_delete_fn(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]]
@@ -309,7 +309,7 @@ class _CheckpointManager:
         """
         self._delete_fn = delete_fn
 
-    def register_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def register_checkpoints(self, checkpoints: List[_TrackedCheckpoint]):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -320,21 +320,22 @@ class _CheckpointManager:
         Args:
             checkpoint: Tracked checkpoint object to add to bookkeeping.
         """
-        checkpoint.id = checkpoint.id or self._latest_checkpoint_id
+        for checkpoint in checkpoints:
+            checkpoint.id = checkpoint.id or self._latest_checkpoint_id
 
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            self._replace_latest_memory_checkpoint(checkpoint)
+            if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+                self._replace_latest_memory_checkpoint(checkpoint)
 
-            if self._persist_memory_checkpoints:
-                persisted_checkpoint = copy.copy(checkpoint)
-                persisted_checkpoint.storage_mode = CheckpointStorage.PERSISTENT
+                if self._persist_memory_checkpoints:
+                    persisted_checkpoint = copy.copy(checkpoint)
+                    persisted_checkpoint.storage_mode = CheckpointStorage.PERSISTENT
+                else:
+                    persisted_checkpoint = None
             else:
-                persisted_checkpoint = None
-        else:
-            persisted_checkpoint = checkpoint
+                persisted_checkpoint = checkpoint
 
-        if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
-            self._process_persistent_checkpoint(persisted_checkpoint)
+            if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
+                self._process_persistent_checkpoint(persisted_checkpoint)
 
         self._latest_checkpoint_id += 1
 
@@ -405,8 +406,13 @@ class _CheckpointManager:
             checkpoint.id,
         )
 
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def _process_persistent_checkpoint(
+        self,
+        checkpoint: _TrackedCheckpoint,
+        next_checkpoint_path: Optional[str] = None,
+    ):
         assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
+        next_checkpoint_path = next_checkpoint_path or self._get_next_checkpoint_path()
 
         checkpoint_score = self._get_checkpoint_score(checkpoint)
         wrapped_checkpoint = _HeapCheckpointWrapper(
@@ -415,19 +421,19 @@ class _CheckpointManager:
 
         if self._checkpoint_strategy.num_to_keep is None:
             # Keep all checkpoints
-            checkpoint.commit(path=self._get_next_checkpoint_path())
+            checkpoint.commit(path=next_checkpoint_path)
             self._replace_latest_persisted_checkpoint(checkpoint)
             self._top_persisted_checkpoints.append(wrapped_checkpoint)
         elif (
             len(self._top_persisted_checkpoints) < self._checkpoint_strategy.num_to_keep
         ):
             # Heap is not full yet, so keep this checkpoint
-            checkpoint.commit(path=self._get_next_checkpoint_path())
+            checkpoint.commit(path=next_checkpoint_path)
             heapq.heappush(self._top_persisted_checkpoints, wrapped_checkpoint)
             self._replace_latest_persisted_checkpoint(checkpoint)
         elif wrapped_checkpoint.priority >= self._top_persisted_checkpoints[0].priority:
             # Priority is higher than current worst checkpoint, so replace worst
-            checkpoint.commit(path=self._get_next_checkpoint_path())
+            checkpoint.commit(path=next_checkpoint_path)
             worst_checkpoint = heapq.heappushpop(
                 self._top_persisted_checkpoints, wrapped_checkpoint
             ).tracked_checkpoint
