@@ -1,5 +1,6 @@
 from ray.includes.common cimport (
-    CGcsClientOptions
+    CGcsClientOptions,
+    CGcsNodeState
 )
 
 from ray.includes.unique_ids cimport (
@@ -51,10 +52,31 @@ cdef class GlobalStateAccessor:
         return cjob_id.ToInt()
 
     def get_node_table(self):
-        cdef c_vector[c_string] result
+        cdef:
+            c_vector[c_string] items
+            c_string item
+            CGcsNodeInfo c_node_info
         with nogil:
-            result = self.inner.get().GetAllNodeInfo()
-        return result
+            items = self.inner.get().GetAllNodeInfo()
+        results = []
+        for item in items:
+            c_node_info.ParseFromString(item)
+            node_info = {
+                "NodeID": ray._private.utils.binary_to_hex(c_node_info.node_id()),
+                "Alive": c_node_info.state() == CGcsNodeState.ALIVE,
+                "NodeManagerAddress": c_node_info.node_manager_address().decode(),
+                "NodeManagerHostname": c_node_info.node_manager_hostname().decode(),
+                "NodeManagerPort": c_node_info.node_manager_port(),
+                "ObjectManagerPort": c_node_info.object_manager_port(),
+                "ObjectStoreSocketName": c_node_info.object_store_socket_name().decode(),
+                "RayletSocketName": c_node_info.raylet_socket_name().decode(),
+                "MetricsExportPort": c_node_info.metrics_export_port(),
+                "NodeName": c_node_info.node_name().decode(),
+            }
+            node_info["alive"] = node_info["Alive"]
+            node_info["Resources"] = "TODO"
+            results.append(node_info)
+        return results
 
     def get_all_available_resources(self):
         cdef c_vector[c_string] result
