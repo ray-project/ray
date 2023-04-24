@@ -92,7 +92,11 @@ def test_strict_convert_map_output(ray_start_regular_shared):
         def __eq__(self, other):
             return isinstance(other, UserObj)
 
-    ds = ray.data.range(1).map_batches(lambda x: {"id": [0, 1, 2, UserObj()]}).materialize()
+    ds = (
+        ray.data.range(1)
+        .map_batches(lambda x: {"id": [0, 1, 2, UserObj()]})
+        .materialize()
+    )
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, UserObj()]
 
 

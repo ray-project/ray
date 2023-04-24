@@ -70,7 +70,8 @@ def generate_map_batches_fn(
                         except Exception:
                             raise ValueError(
                                 "Failed to convert column values to numpy array: "
-                                f"({_truncated_repr(value)}).")
+                                f"({_truncated_repr(value)})."
+                            )
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
             # Apply UDF.
