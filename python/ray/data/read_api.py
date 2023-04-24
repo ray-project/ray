@@ -653,7 +653,7 @@ def read_iceberg(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
     **arrow_parquet_args,
-) -> Datastream[ArrowRow]:
+) -> Datastream[TableRow]:
     """Create an Arrow datastream from an iceberg table.
 
     Examples:
