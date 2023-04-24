@@ -176,6 +176,8 @@ We cover resource allocation in more detail in other parts of this guide.
 TODO: quick note on just using map_batches on a function (dropdown)
 TODO: link to AIR batch prediction?
 
+TODO: link to more examples before leading over to the next one
+
 Advanced PyTorch Example
 ------------------------
 
@@ -255,8 +257,11 @@ operations as it can leverage the underlying vectorization capabilities of Panda
 Working with batch formats
 --------------------------
 
-The batches that your UDF accepts can be different formats depending on the `batch_format`
-that is passed to :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+The batches that your UDF accepts can be different formats depending on
+the `batch_format` that is passed to
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+
+TODO: explain "default" separately
 
 Here is an overview of the available batch formats:
 
@@ -324,6 +329,9 @@ Here is an overview of the available batch formats:
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
 
+
+.. tip:: "example://" is a convenient protocol to access the
+    ``python/ray/data/examples/data`` directory.
 
 Configuration & Troubleshooting
 -------------------------------
