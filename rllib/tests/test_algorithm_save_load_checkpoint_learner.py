@@ -53,10 +53,9 @@ def load_and_train(algo_cfg, env, tmpdir):
 
 
 class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
-
     def setUp(self) -> None:
         ray.init()
-    
+
     def tearDown(self) -> None:
         ray.shutdown()
 
@@ -72,11 +71,20 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
                         load_and_train.remote(config, "CartPole-v1", tmpdir)
                     )
 
-                    # check that the results are the same
-                    # check(results_algo_1, results_algo_2)
+                    results_algo_3 = ray.get(
+                        load_and_train.remote(config, "CartPole-v1", tmpdir)
+                    )
+
+                    print(results_algo_1)
+                    print(results_algo_2)
+                    print(results_algo_3)
+
+                    # check that the results are the same across loaded algorithms
+                    check(results_algo_3, results_algo_2)
 
 
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
