@@ -92,9 +92,6 @@ def create_torch_iterator(split, batch_size, rank=None):
 
 
 def create_dataset(filenames, repeat_times, cloud):
-    import pyarrow
-    print(pyarrow.__version__)
-
     if cloud == "gcp":
         filesystem = fs.GcsFileSystem()
     else:
