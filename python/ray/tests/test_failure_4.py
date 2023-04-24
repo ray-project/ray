@@ -716,9 +716,8 @@ def test_accessing_actor_after_cluster_crashed(shutdown_only):
     ray.init()
     with pytest.raises(Exception) as exc_info:
         ray.get(a.f.remote())
-
-    assert "It might be dead or it's from a different cluster" in exc_info.args[0]
-
+    assert "It might be dead or it's from a different cluster" in exc_info.value.args[0]
+    
 
 if __name__ == "__main__":
     import os
