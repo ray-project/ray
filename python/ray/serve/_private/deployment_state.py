@@ -510,7 +510,11 @@ class ActorReplicaWrapper:
                 if self._is_cross_language:
                     return ReplicaStartupStatus.SUCCEEDED
 
-                _, self._version = ray.get(self._ready_obj_ref)
+                # todo: The replica's userconfig whitch java client created
+                #  is different from the controller's userconfig
+                if not self._deployment_is_cross_language:
+                    _, self._version = ray.get(self._ready_obj_ref)
+
                 self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
                     self._allocated_obj_ref
                 )
@@ -520,12 +524,8 @@ class ActorReplicaWrapper:
                     "the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED
-        if self._deployment_is_cross_language:
-            # todo: The replica's userconfig whitch java client created
-            #  is different from the controller's userconfig
-            return ReplicaStartupStatus.SUCCEEDED
-        else:
-            return ReplicaStartupStatus.SUCCEEDED
+
+        return ReplicaStartupStatus.SUCCEEDED
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
