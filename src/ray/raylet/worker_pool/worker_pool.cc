@@ -169,7 +169,8 @@ void WorkerPool::Start() {
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    MaybeRefillIdlePool();
   }
 }
 
@@ -881,7 +882,9 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+      //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+      // TODO reconcile with java codepath.
+      MaybeRefillIdlePool();
     }
 
     // Invoke the `send_reply_callback` later to only finish driver
@@ -1435,6 +1438,8 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
+    // musing(cade): I should not use the MaybeRefillIdlePool function here as it's a scheduling hint (not desired state).
+    // We should modify this later, for example with forkserver.
     PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
   }
 }
