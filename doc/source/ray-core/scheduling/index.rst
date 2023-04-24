@@ -78,10 +78,13 @@ NodeAffinitySchedulingStrategy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :py:class:`~ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy` is a low-level strategy that allows a task or actor to be scheduled onto a particular node specified by its node id.
-The ``soft`` flag specifies whether the task or actor is allowed to run somewhere else. If ``soft`` is True, the task or actor will be scheduled onto the node if it is alive, feasible, and has
-sufficient resources at the time of scheduling. Otherwise, it will find a different node using the default scheduling strategy. If ``soft`` is False, the task or actor will be scheduled
-onto the node if it is alive and feasible. It may be queued and wait on the node until it has resources to execute. If the node is infeasible, the task or actor will fail with the
-:py:class:`~ray.exceptions.TaskUnschedulableError` or :py:class:`~ray.exceptions.ActorUnschedulableError`.
+The ``soft`` flag specifies whether the task or actor is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
+or is infeasible because it does not have the resources required to run the task or actor.
+In these cases, if ``soft`` is True, the task or actor will be scheduled onto a different feasible node.
+Otherwise, the task or actor will fail with :py:class:`~ray.exceptions.TaskUnschedulableError` or :py:class:`~ray.exceptions.ActorUnschedulableError`.
+As long as the specified node is alive and feasible, the task or actor will only run there
+regardless of the ``soft`` flag. This means if the node currently has no available resources, the task or actor will wait until resources
+become available.
 This strategy should *only* be used if other high level scheduling strategies (e.g. :ref:`placement group <ray-placement-group-doc-ref>`) cannot give the
 desired task or actor placements. It has the following known limitations:
 

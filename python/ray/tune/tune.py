@@ -4,7 +4,6 @@ import copy
 import datetime
 import logging
 import os
-from pathlib import Path
 import signal
 import sys
 import threading
@@ -23,6 +22,7 @@ from typing import (
 )
 
 import ray
+from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
@@ -618,6 +618,14 @@ def run(
         )
         local_path = local_dir
 
+    if not remote_path:
+        # If no remote path is set, try to get Ray Storage URI
+        remote_path = _get_storage_uri()
+        if remote_path:
+            logger.info(
+                "Using configured Ray storage URI as storage path: " f"{remote_path}"
+            )
+
     sync_config.validate_upload_dir(remote_path)
 
     if not local_path:
@@ -1006,7 +1014,7 @@ def run(
 
     if experiment_interrupted_event.is_set():
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
-            path=Path(experiment_checkpoint).parent,
+            path=runner.experiment_path,
         )
         logger.warning(
             "Experiment has been interrupted, but the most recent state was saved.\n"

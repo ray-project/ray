@@ -219,7 +219,7 @@ class Tuner:
             param_space: The same `param_space` that was passed to
                 the original Tuner. This can be optionally re-specified due
                 to the `param_space` potentially containing Ray object
-                references (tuning over Ray Datasets or tuning over
+                references (tuning over Datastreams or tuning over
                 several `ray.put` object references). **Tune expects the
                 `param_space` to be unmodified**, and the only part that
                 will be used during restore are the updated object references.

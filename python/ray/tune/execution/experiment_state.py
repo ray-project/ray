@@ -8,11 +8,13 @@ import os
 import time
 import warnings
 
-from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
-from ray.tune import TuneError
+from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.uri_utils import _join_path_or_uri
 
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.tune import TuneError
 from ray.tune.experiment import Trial
+from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 
 
 logger = logging.getLogger(__name__)
@@ -69,14 +71,23 @@ def _experiment_checkpoint_exists(experiment_dir: str) -> bool:
 
 
 def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
-    """Returns file name of most recently modified checkpoint."""
+    """Returns file name of most recently created experiment checkpoint.
+
+    Args:
+        experiment_dir: Local or remote path to the experiment directory
+            containing at least one experiment checkpoint file.
+
+    Returns:
+        str: The local or remote path to the latest experiment checkpoint file
+            based on timestamp. None if no experiment checkpoints were found.
+    """
 
     def construct(file: str) -> str:
-        return os.path.join(experiment_dir, file)
+        return _join_path_or_uri(experiment_dir, file)
 
     candidate_paths = [
         construct(file)
-        for file in os.listdir(experiment_dir)
+        for file in list_at_uri(experiment_dir)
         if file.startswith("experiment_state") and file.endswith(".json")
     ]
     if not candidate_paths:
@@ -206,7 +217,7 @@ class _ExperimentCheckpointManager:
         # Checkpoint
         checkpoint_time_start = time.monotonic()
 
-        # NOTE: This context manager is for Ray Datasets captured in a trial config.
+        # NOTE: This context manager is for Datastreams captured in a trial config.
         # This is the case when *tuning over datasets*.
         # If the datasets have already been full executed, then serializing
         # block refs means that this checkpoint is not usable in a new Ray cluster.
@@ -234,7 +245,7 @@ class _ExperimentCheckpointManager:
         if not self._syncer:  # or not self._remote_checkpoint_dir:
             return False
 
-        if bool(self._sync_config.upload_dir):
+        if bool(self._remote_checkpoint_dir):
             # If an upload dir is given, trainable actors upload checkpoints
             # themselves. Then the driver does not need to sync checkpoints.
             exclude = ["*/checkpoint_*"]
@@ -297,7 +308,7 @@ class _ExperimentCheckpointManager:
         if not self._syncer or not self._remote_checkpoint_dir:
             return False
 
-        if bool(self._sync_config.upload_dir):
+        if bool(self._remote_checkpoint_dir):
             # If an upload dir is given, trainable actors upload checkpoints
             # themselves. Then the driver does not need to sync checkpoints.
             exclude = ["*/checkpoint_*"]

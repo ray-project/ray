@@ -95,7 +95,7 @@ class MapOperator(PhysicalOperator, ABC):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the dataset is small.
+                The actual rows passed may be less if the datastream is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         if compute_strategy is None:
@@ -166,6 +166,7 @@ class MapOperator(PhysicalOperator, ABC):
                     args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                         self.locs[self.i],
                         soft=True,
+                        _spill_on_unavailable=True,
                     )
                     self.i += 1
                     self.i %= len(self.locs)
