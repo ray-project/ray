@@ -237,6 +237,17 @@ def submit(
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
 
+    def sig_handler(signum, frame):
+        _log_big_success_msg(f"The job {job_id} is stopped.")
+        client.stop_job(job_id)
+        exit()
+
+    if not no_wait:
+        import signal
+
+        signal.signal(signal.SIGINT, sig_handler)
+        signal.signal(signal.SIGTERM, sig_handler)
+
     with cli_logger.group("Next steps"):
         cli_logger.print("Query the logs of the job:")
         with cli_logger.indented():
