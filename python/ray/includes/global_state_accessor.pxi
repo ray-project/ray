@@ -70,7 +70,8 @@ cdef class GlobalStateAccessor:
                 "NodeManagerHostname": c_node_info.node_manager_hostname().decode(),
                 "NodeManagerPort": c_node_info.node_manager_port(),
                 "ObjectManagerPort": c_node_info.object_manager_port(),
-                "ObjectStoreSocketName": c_node_info.object_store_socket_name().decode(),
+                "ObjectStoreSocketName":
+                    c_node_info.object_store_socket_name().decode(),
                 "RayletSocketName": c_node_info.raylet_socket_name().decode(),
                 "MetricsExportPort": c_node_info.metrics_export_port(),
                 "NodeName": c_node_info.node_name().decode(),
