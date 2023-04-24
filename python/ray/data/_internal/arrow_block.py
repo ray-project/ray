@@ -23,6 +23,7 @@ from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
 )
+from ray.data._internal.util import _truncated_repr
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     Block,
@@ -167,7 +168,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         ):
             raise ValueError(
                 "Batch must be an ndarray or dictionary of ndarrays when converting "
-                f"a numpy batch to a block, got: {type(batch)}"
+                f"a numpy batch to a block, got: {type(batch)} "
+                f"({_truncated_repr(batch)})"
             )
         new_batch = {}
         for col_name, col in batch.items():

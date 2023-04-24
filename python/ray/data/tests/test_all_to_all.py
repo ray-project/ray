@@ -15,6 +15,9 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
+STRICT_MODE = ray.data.DatasetContext.get_current().strict_mode
+
+
 def column_udf(col, udf):
     def wraps(row):
         return {col: udf(row[col])}
@@ -22,10 +25,16 @@ def column_udf(col, udf):
     return wraps
 
 
+# Ex: named_values("id", [1, 2, 3])
+# Ex: named_values(["id", "id2"], [(1, 1), (2, 2), (3, 3)])
 def named_values(col_names, tuples):
     output = []
-    for t in tuples:
-        output.append({name: value for (name, value) in zip(col_names, t)})
+    if isinstance(col_names, list):
+        for t in tuples:
+            output.append({name: value for (name, value) in zip(col_names, t)})
+    else:
+        for t in tuples:
+            output.append({name: value for (name, value) in zip((col_names,), (t,))})
     return output
 
 
@@ -243,16 +252,11 @@ def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
 
 def test_groupby_errors(ray_start_regular_shared):
     ds = ray.data.range(100)
-
-    ds.groupby(None).count().show()  # OK
-    ds.groupby(lambda x: x % 2).count().show()  # OK
-    with pytest.raises(ValueError):
-        ds.groupby("foo").count().show()
-
-    ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
     with pytest.raises(ValueError):
         ds.groupby(lambda x: x % 2).count().show()
+    with pytest.raises(ValueError):
+        ds.groupby("foo").count().show()
 
 
 def test_agg_errors(ray_start_regular_shared):
@@ -922,6 +926,7 @@ def test_groupby_arrow_multi_agg_alias(ray_start_regular_shared, num_parts):
             assert result == expected
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 def test_groupby_simple(ray_start_regular_shared):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple with: {seed}")
@@ -989,6 +994,7 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
@@ -1004,6 +1010,7 @@ def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2, 33)]
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
@@ -1063,6 +1070,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 def test_groupby_map_groups_for_empty_datastream(ray_start_regular_shared):
     ds = ray.data.from_items([])
     mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
@@ -1070,6 +1078,7 @@ def test_groupby_map_groups_for_empty_datastream(ray_start_regular_shared):
     assert mapped.take_all() == []
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 def test_groupby_map_groups_merging_empty_result(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3])
     # This needs to merge empty and non-empty results from different groups.
@@ -1078,6 +1087,7 @@ def test_groupby_map_groups_merging_empty_result(ray_start_regular_shared):
     assert mapped.take_all() == [2, 3]
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3])
     grouped = ds.groupby(lambda x: x)
@@ -1091,12 +1101,15 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
     ds = ray.data.from_items(list(range(100)))
     mapped = (
-        ds.repartition(num_parts).groupby(None).map_groups(lambda x: [min(x) + max(x)])
+        ds.repartition(num_parts)
+        .groupby(None)
+        .map_groups(lambda x: {"out": np.array([min(x["item"]) + max(x["item"])])})
     )
     assert mapped.count() == 1
-    assert mapped.take_all() == [99]
+    assert mapped.take_all() == named_values("out", [99])
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num_parts):
     xs = list(range(100))
@@ -1121,6 +1134,7 @@ def test_groupby_map_groups_perf(ray_start_regular_shared):
     assert end - start < 60
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
 def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
     seed = int(time.time())
@@ -1217,12 +1231,14 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
 
     def func(group):
         # Test output type is Python list, different from input type.
-        return [group["value"][0]]
+        value = int(group["value"][0])
+        return {"out": np.array([value])}
 
     ds = ds.groupby("group").map_groups(func)
-    assert sorted(ds.take()) == [1, 3]
+    assert sorted([x["out"] for x in ds.take()]) == [1, 3]
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
@@ -1274,6 +1290,7 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     assert nan_ds.min() is None
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
@@ -1325,6 +1342,7 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     assert nan_ds.max() is None
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
@@ -1385,6 +1403,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     assert nan_ds.mean() is None
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
@@ -1486,6 +1505,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     assert nan_ds.std() is None
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
@@ -1515,6 +1535,7 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     ).mean([lambda x: x[0], lambda x: x[1]]) == (None, None)
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
@@ -1598,7 +1619,7 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
     ds = ds.randomize_block_order(seed=0)
 
     results = ds.take()
-    expected = [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+    expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
     assert results == expected
 
     # Test LazyBlockList.randomize_block_order.
@@ -1610,7 +1631,9 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
         lazy_blocklist_ds = ray.data.range(12, parallelism=4)
         lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
         lazy_blocklist_results = lazy_blocklist_ds.take()
-        lazy_blocklist_expected = [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+        lazy_blocklist_expected = named_values(
+            "id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+        )
         assert lazy_blocklist_results == lazy_blocklist_expected
     finally:
         context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
@@ -1692,6 +1715,7 @@ def test_random_shuffle_check_random(shutdown_only):
         num_contiguous = 1
         prev = -1
         for x in part:
+            x = x["item"]
             if prev != x:
                 prev = x
                 num_contiguous = 1
@@ -1717,6 +1741,7 @@ def test_random_shuffle_check_random(shutdown_only):
         num_increasing = 0
         prev = -1
         for x in part:
+            x = x["item"]
             if x >= prev:
                 num_increasing += 1
             else:
