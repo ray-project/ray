@@ -6,7 +6,6 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
 )
 from ray.data._internal.split import _split_at_indices
-from ray.data._internal.progress_bar import ProgressBar
 
 
 class LimitOperator(PhysicalOperator):
