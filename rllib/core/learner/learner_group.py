@@ -273,9 +273,10 @@ class LearnerGroup:
                     if len(self._in_queue) == self._in_queue.maxlen:
                         self._in_queue_ts_dropped += len(self._in_queue[0])
 
+                    # NOT RECOMMENDED (completely destroys learning performance):
                     # Shuffle batch when not using sequence information.
-                    if batch.get(SampleBatch.SEQ_LENS) is None:
-                        batch.shuffle()
+                    #if batch.get(SampleBatch.SEQ_LENS) is None:
+                    #    batch.shuffle()
                     self._in_queue.append(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).

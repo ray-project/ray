@@ -314,6 +314,8 @@ class Catalog:
         activation = model_config_dict["fcnet_activation"]
         output_activation = model_config_dict["fcnet_activation"]
         fcnet_hiddens = model_config_dict["fcnet_hiddens"]
+        # TODO (sven): We should only use fcnet_hiddens[-1] for MLP encoders.
+        #  Never for LSTM/CNN-based encoders.
         encoder_latent_dim = (
             model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
         )
@@ -360,6 +362,11 @@ class Catalog:
                     model_config_dict["conv_filters"] = get_filter_config(
                         observation_space.shape
                     )
+                # Either we only flatten after the last Conv2D OR we flatten +
+                # final Dense.
+                output_dims = [
+                    model_config_dict.get("conv_flattened_dim") or encoder_latent_dim
+                ]
 
                 encoder_config = CNNEncoderConfig(
                     input_dims=observation_space.shape,
@@ -368,7 +375,8 @@ class Catalog:
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
-                    output_dims=[encoder_latent_dim],
+                    cnn_add_final_dense=model_config_dict.get("conv_add_final_dense"),
+                    output_dims=output_dims,
                     output_activation=output_activation,
                 )
             # input_space is a 2D Box

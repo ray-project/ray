@@ -867,6 +867,8 @@ class Impala(Algorithm):
                 sum(b.count for b in self.batch_being_built)
                 >= self.config.train_batch_size
             ):
+                #TODO: Test sequence shuffle before concating to one train batch
+                #np.random.shuffle(self.batch_being_built)
                 batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []

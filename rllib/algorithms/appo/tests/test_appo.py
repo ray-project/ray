@@ -24,15 +24,21 @@ class TestAPPO(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .framework("tf2", eager_tracing=True)
-            .rollouts(num_rollout_workers=1, rollout_fragment_length=100)
-            .resources(num_learner_workers=4, num_cpus_per_learner_worker=1, num_gpus_per_learner_worker=0, num_gpus=0)
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
+            .resources(num_learner_workers=2, num_cpus_per_learner_worker=1, num_gpus_per_learner_worker=0, num_gpus=0)
             .exploration(exploration_config={})
-            .training(train_batch_size=1600, minibatch_size="auto", vtrace=True, num_sgd_iter=2, _enable_learner_api=True)
+            .training(train_batch_size=1600, minibatch_size="auto", vtrace=True, num_sgd_iter=2, model={
+                "dim": 42,
+                "conv_filters": [[16, 4, 2, "same"], [32, 4, 2, "same"], [256, 11, 1, "valid"]],
+                "conv_add_final_dense": False,
+                "conv_flattened_dim": 256,
+            })
             .rl_module(_enable_rl_module_api=True)
         )
+        config._enable_learner_api = True
         num_iterations = 100
 
-        algo = config.build(env="CartPole-v1")
+        algo = config.build(env="ALE/Pong-v5")
         for i in range(num_iterations):
             results = algo.train()
             print(results)

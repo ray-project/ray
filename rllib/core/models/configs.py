@@ -440,8 +440,10 @@ class CNNEncoderConfig(ModelConfig):
     The stack of layers is composed of a sequence of convolutional layers.
     `input_dims` describes the shape of the input tensor. Beyond that, each layer
     specified by `filter_specifiers` is followed by an activation function according
-    to `filter_activation`. `output_dims` is reached by flattening a final
-    convolutional layer and applying a linear layer with `output_activation`.
+    to `filter_activation`.
+    `output_dims` is reached by flattening a final convolutional layer and applying
+    a linear layer with `output_activation`. If `output_dims` is None, only flattening
+    is performed after the Conv2D stack (no final dense layer).
     See ModelConfig for usage details.
 
     Example:
@@ -485,13 +487,29 @@ class CNNEncoderConfig(ModelConfig):
             form of `(width, height, channels)`.
         cnn_filter_specifiers: A list of lists, where each element of an inner list
             contains elements of the form
-            `[number of channels/filters, [kernel width, kernel height], stride]` to
-            specify a convolutional layer stacked in order of the outer list.
+            `[number of channels/filters, kernel, stride, [padding=same]?]` to specify a
+            convolutional layer stacked in order of the outer list.
+            Note that `padding` is "same" by default and that `kernel` and `stride`
+            may be privided as single ints (square) or as a tuple/list of two ints
+            (width and height dimensions) for non-squared kernel/stride shapes.
+            A good rule of thumb for constructing CNN stacks is:
+            When using padding="same", the input "image" will be reduced in size by
+            stride, e.g. input=(84, 84, 3) stride=2 kernel=x padding="same" filters=16
+            -> output=(42, 42, 16).
         cnn_activation: The activation function to use after each layer (
             except for the output).
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
             the output layer
+        cnn_add_final_dense: Whether to add an extra dense layer after the last
+            Conv2D layer. If False, we will only flatten the output of the last
+            Conv2D layer and interpret this flattened output as the encoder latent dim.
+            If True (default), the final dense layer will have `output_dims[0]` nodes. 
+        #cnn_flattened_dim: Use only if `cnn_add_final_dense=False` (otherwise, set to
+        #    None). This provides the output dimension of the flatten operation at the
+        #    end of the Conv2D stack. Without this information (and if
+        #    `cnn_add_final_dense` is False), we wouldn't be able to provide input
+        #    dimensions for possibly subsequent heads connecting to this encoder.
         output_activation: The activation function to use for the dense output layer.
         use_bias: Whether to use bias on all Conv2D layers.
     """
@@ -502,7 +520,9 @@ class CNNEncoderConfig(ModelConfig):
     )
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
-    output_dims: Union[List[int], Tuple[int]] = None
+    cnn_add_final_dense: bool = True
+    #cnn_flattened_dim: Optional[int] = None
+    output_dims: Optional[Union[List[int], Tuple[int]]] = None
     output_activation: str = "linear"
     use_bias: bool = True
 
