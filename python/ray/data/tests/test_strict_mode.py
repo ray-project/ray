@@ -7,12 +7,8 @@ from ray.data.block import StrictModeError
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# Force strict mode.
-ctx = ray.data.DataContext.get_current()
-ctx.strict_mode = True
 
-
-def test_strict_read_schemas(ray_start_regular_shared):
+def test_strict_read_schemas(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.range(1)
     assert ds.take()[0] == {"id": 0}
 
@@ -47,7 +43,7 @@ def test_strict_read_schemas(ray_start_regular_shared):
     assert "text" in ds.take()[0]
 
 
-def test_strict_map_output(ray_start_regular_shared):
+def test_strict_map_output(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.range(1)
 
     with pytest.raises(StrictModeError):
@@ -84,7 +80,7 @@ def test_strict_map_output(ray_start_regular_shared):
     ds.map(lambda x: UserDict({"x": object()})).materialize()
 
 
-def test_strict_default_batch_format(ray_start_regular_shared):
+def test_strict_default_batch_format(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.range(1)
 
     @ray.remote
@@ -111,7 +107,7 @@ def test_strict_default_batch_format(ray_start_regular_shared):
     assert isinstance(batch["id"], np.ndarray), batch
 
 
-def test_strict_tensor_support(ray_start_regular_shared):
+def test_strict_tensor_support(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.from_items([np.ones(10), np.ones(10)])
     assert np.array_equal(ds.take()[0]["item"], np.ones(10))
 
@@ -122,7 +118,7 @@ def test_strict_tensor_support(ray_start_regular_shared):
     assert np.array_equal(ds.take()[0]["item"], 4 * np.ones(10))
 
 
-def test_strict_value_repr(ray_start_regular_shared):
+def test_strict_value_repr(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.from_items([{"__value__": np.ones(10)}])
 
     ds = ds.map_batches(lambda x: {"__value__": x["__value__"] * 2})
@@ -131,12 +127,12 @@ def test_strict_value_repr(ray_start_regular_shared):
     assert np.array_equal(ds.take_batch()["x"][0], 4 * np.ones(10))
 
 
-def test_strict_object_support(ray_start_regular_shared):
+def test_strict_object_support(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.from_items([{"x": 2}, {"x": object()}])
     ds.map_batches(lambda x: x, batch_format="numpy").materialize()
 
 
-def test_strict_compute(ray_start_regular_shared):
+def test_strict_compute(ray_start_regular_shared, enable_strict_mode):
     with pytest.raises(StrictModeError):
         ray.data.range(10).map(lambda x: x, compute="actors").show()
     with pytest.raises(StrictModeError):
@@ -147,7 +143,7 @@ def test_strict_compute(ray_start_regular_shared):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
-def test_strict_schema(ray_start_regular_shared):
+def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
     import pyarrow
     from ray.data._internal.pandas_block import PandasBlockSchema
 
@@ -182,7 +178,7 @@ def test_strict_schema(ray_start_regular_shared):
     assert isinstance(schema.base_schema, PandasBlockSchema)
 
 
-def test_use_raw_dicts(ray_start_regular_shared):
+def test_use_raw_dicts(ray_start_regular_shared, enable_strict_mode):
     assert type(ray.data.range(10).take(1)[0]) is dict
     assert type(ray.data.from_items([1]).take(1)[0]) is dict
 
@@ -191,6 +187,14 @@ def test_use_raw_dicts(ray_start_regular_shared):
         return x
 
     ray.data.range(10).map(checker).show()
+
+
+def test_strict_require_batch_size_for_gpu(enable_strict_mode):
+    ray.shutdown()
+    ray.init(num_cpus=4, num_gpus=1)
+    ds = ray.data.range(1)
+    with pytest.raises(StrictModeError):
+        ds.map_batches(lambda x: x, num_gpus=1)
 
 
 if __name__ == "__main__":
