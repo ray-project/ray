@@ -300,7 +300,7 @@ class LearnerGroup:
             return results
 
     def _worker_manager_ready(self):
-        #TODO: TOTEST: Allow for some number of in-flight requests.
+        # TODO: TOTEST: Allow for some number of in-flight requests.
         return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors() * 2
 
     def _get_results(self, results):
