@@ -22,33 +22,35 @@ However, running Ray tasks and actors remain alive and any existing objects will
 Setting up Redis
 ----------------
 
-.. tabbed:: KubeRay (officially supported)
+.. tab-set::
 
-    If you are using :ref:`KubeRay <kuberay-index>`, please refer to `KubeRay docs on GCS Fault Tolerance <https://ray-project.github.io/kuberay/guidance/gcs-ft/>`_.
+    .. tab-item:: KubeRay (officially supported)
 
-.. tabbed:: ray start
+        If you are using :ref:`KubeRay <kuberay-index>`, please refer to `KubeRay docs on GCS Fault Tolerance <https://ray-project.github.io/kuberay/guidance/gcs-ft/>`_.
 
-    If you are using :ref:`ray start <ray-start-doc>` to start the Ray head node,
-    set the OS environment ``RAY_REDIS_ADDRESS`` to
-    the Redis address, and supply the ``--redis-password`` flag with the password when calling ``ray start``:
+    .. tab-item:: ray start
 
-    .. code-block:: shell
+        If you are using :ref:`ray start <ray-start-doc>` to start the Ray head node,
+        set the OS environment ``RAY_REDIS_ADDRESS`` to
+        the Redis address, and supply the ``--redis-password`` flag with the password when calling ``ray start``:
 
-      RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD
+        .. code-block:: shell
 
-.. tabbed:: ray up
+          RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD
 
-    If you are using :ref:`ray up <ray-up-doc>` to start the Ray cluster, change :ref:`head_start_ray_commands <cluster-configuration-head-start-ray-commands>` field to add ``RAY_REDIS_ADDRESS`` and ``--redis-password`` to the ``ray start`` command:
+    .. tab-item:: ray up
 
-    .. code-block:: yaml
+        If you are using :ref:`ray up <ray-up-doc>` to start the Ray cluster, change :ref:`head_start_ray_commands <cluster-configuration-head-start-ray-commands>` field to add ``RAY_REDIS_ADDRESS`` and ``--redis-password`` to the ``ray start`` command:
 
-      head_start_ray_commands:
-        - ray stop
-        - ulimit -n 65536; RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
+        .. code-block:: yaml
 
-.. tabbed:: Kubernetes
+          head_start_ray_commands:
+            - ray stop
+            - ulimit -n 65536; RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
 
-    If you are using Kubernetes but not :ref:`KubeRay <kuberay-index>`, please refer to :ref:`this doc <deploy-a-static-ray-cluster-without-kuberay>`.
+    .. tab-item:: Kubernetes
+
+        If you are using Kubernetes but not :ref:`KubeRay <kuberay-index>`, please refer to :ref:`this doc <deploy-a-static-ray-cluster-without-kuberay>`.
 
 
 Once the GCS is backed by Redis, when it restarts, it'll recover the
