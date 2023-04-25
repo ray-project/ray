@@ -33,9 +33,9 @@ except ImportError:
     resource = None
 
 if sys.version_info >= (3, 8):
-    from typing import Protocol
+    from typing import Literal, Protocol
 else:
-    from typing_extensions import Protocol
+    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas
@@ -171,6 +171,31 @@ def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
                 f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
             )
     return given_batch_format
+
+
+def _apply_strict_mode_batch_size(
+    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+) -> Optional[int]:
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        if use_gpu and (not given_batch_size or given_batch_size == "default"):
+            raise StrictModeError(
+                "`batch_size` must be provided to `map_batches` when requesting GPUs. "
+                "The optimal batch size depends on the model, data, and GPU used. "
+                "It is recommended to use the largest batch size that doesn't result "
+                "in your GPU device running out of memory. You can view the GPU memory "
+                "usage via the Ray dashboard."
+            )
+        elif given_batch_size == "default":
+            return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
+
+    else:
+        if given_batch_size == "default":
+            return ray.data.context.DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
 
 
 @DeveloperAPI
