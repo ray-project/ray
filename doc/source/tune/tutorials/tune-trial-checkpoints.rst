@@ -27,19 +27,21 @@ To create an AIR checkpoint, one can either use :meth:`~ray.air.checkpoint.Check
     checkpoint is synced to driver node or the cloud. We are planning to work on it to address the
     issue.
 
-.. tabbed:: Checkpoint a dictionary
+.. tab-set::
 
-    .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-        :language: python
-        :start-after: __function_api_checkpointing_start__
-        :end-before: __function_api_checkpointing_end__
+    .. tab-item:: Checkpoint a dictionary
 
-.. tabbed:: Checkpoint a directory
+        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
+            :language: python
+            :start-after: __function_api_checkpointing_start__
+            :end-before: __function_api_checkpointing_end__
 
-    .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-        :language: python
-        :start-after: __function_api_checkpointing_from_dir_start__
-        :end-before: __function_api_checkpointing_from_dir_end__
+    .. tab-item:: Checkpoint a directory
+
+        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
+            :language: python
+            :start-after: __function_api_checkpointing_from_dir_start__
+            :end-before: __function_api_checkpointing_from_dir_end__
 
 In the above code snippet:
 
