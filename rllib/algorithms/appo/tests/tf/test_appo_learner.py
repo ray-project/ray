@@ -49,6 +49,72 @@ class TestAPPOTfLearner(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_appo_model(self):
+        """Tests that the new AppoCatalog models are the same as the old ModelV2s."""
+        # Base config.
+        config = (
+            appo.APPOConfig()
+            .environment("ALE/Pong-v5")
+            .framework("tf2", eager_tracing=True)
+            .rollouts(num_rollout_workers=1, rollout_fragment_length=50)
+            .resources(
+                num_learner_workers=2,
+                num_cpus_per_learner_worker=1,
+                num_gpus_per_learner_worker=0,
+                num_gpus=0,
+            )
+            .exploration(exploration_config={})
+            .training(
+                _enable_learner_api=True,
+                train_batch_size=1600,
+                minibatch_size="auto",
+                vtrace=True,
+                num_sgd_iter=2,
+                model={
+                    "dim": 42,
+                    "conv_filters": [[16, 4, 2], [32, 4, 2], [256, 11, 1, "valid"]],
+                    #conv_activation": "relu",
+                    "conv_add_final_dense": False,
+                    "conv_flattened_dim": 256,
+                    "use_cnn_heads": True,
+                })
+                .rl_module(_enable_rl_module_api=True)
+        )
+        algo_new = config.build()
+        algo_new.train()
+        model_new = algo_new.get_policy().model
+
+        # Old stack config.
+        (
+            config
+            .training(
+                _enable_learner_api=False,
+                model={"conv_filters": None},
+            )
+            .rl_module(_enable_rl_module_api=False)
+            .exploration(exploration_config={"type": "StochasticSampling"})
+        )
+        algo_old = config.build()
+        algo_old.train()
+        model_old = algo_old.get_policy().model.base_model
+
+        # Set the weights of both models to the exact same values.
+        model_new.encoder._set_to_dummy_weights(value_sequence=(0.1,))
+        model_new.pi._set_to_dummy_weights(value_sequence=(0.1,))
+        model_new.vf._set_to_dummy_weights(value_sequence=(0.1,))
+        for v in model_old.trainable_variables:
+            v.assign(tf.fill(v.shape, 0.1))
+        # Check actual values/shapes of all trainable variables.
+        for i in range(len(model_new.trainable_variables)):
+            check(model_old.trainable_variables[i], model_new.trainable_variables[i])
+        # Try sending a test batch through the model.
+        obs = np.random.random((10, 42, 42, 4))
+        model_new.forward_inference({"obs": obs})
+        model_old({"observations": obs})
+
+        algo_new.stop()
+        algo_old.stop()
+
     def test_appo_loss(self):
         """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (

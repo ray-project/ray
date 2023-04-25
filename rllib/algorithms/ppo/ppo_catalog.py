@@ -3,6 +3,7 @@ import gymnasium as gym
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
+    CNNHeadConfig,
     MLPHeadConfig,
     FreeLogStdMLPHeadConfig,
 )
@@ -79,20 +80,27 @@ class PPOCatalog(Catalog):
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
-        pi_head_config_class = (
-            FreeLogStdMLPHeadConfig
-            if self.model_config_dict["free_log_std"]
-            else MLPHeadConfig
-        )
-        self.pi_head_config = pi_head_config_class(
-            input_dims=self.latent_dims,
-            hidden_layer_dims=post_fcnet_hiddens,
-            hidden_layer_activation=post_fcnet_activation,
-            output_activation="linear",
-            output_dims=None,  # We don't know the output dimension yet, because it
-            # depends on the action distribution input dimension
-        )
-
+        if self.model_config_dict["use_cnn_heads"]:
+            self.pi_head_config = CNNHeadConfig(
+                input_dims=self.latent_dims,
+                # We don't know the output dimension yet, because it depends on the
+                # action distribution input dimension.
+                output_dims=None,
+            )
+        else:
+            pi_head_config_class = (
+                FreeLogStdMLPHeadConfig if self.model_config_dict["free_log_std"]
+                else MLPHeadConfig
+            )
+            self.pi_head_config = pi_head_config_class(
+                input_dims=self.latent_dims,
+                hidden_layer_dims=post_fcnet_hiddens,
+                hidden_layer_activation=post_fcnet_activation,
+                output_activation="linear",
+                # We don't know the output dimension yet, because it depends on the
+                # action distribution input dimension.
+                output_dims=None,
+            )
         self.vf_head_config = MLPHeadConfig(
             input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,

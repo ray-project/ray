@@ -4,6 +4,7 @@ import numpy as np
 
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
+    CNNHeadConfig,
     CNNTransposeHeadConfig,
     FreeLogStdMLPHeadConfig,
     MLPHeadConfig,
@@ -11,11 +12,40 @@ from ray.rllib.core.models.configs import (
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
 from ray.rllib.core.models.tf.base import TfModel
-from ray.rllib.core.models.tf.primitives import TfCNNTranspose, TfMLP
+from ray.rllib.core.models.tf.primitives import TfCNN, TfCNNTranspose, TfMLP
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
 
 tf1, tf, tfv = try_import_tf()
+
+
+class TfCNNHead(TfModel):
+    """Alternative head that uses 1x1 kernel CNN with num_filters as the output dims.
+    """
+    def __init__(self, config: CNNHeadConfig) -> None:
+        TfModel.__init__(self, config)
+
+        self.net = TfCNN(
+            input_dims=[1, 1, config.input_dims[0]],
+            cnn_filter_specifiers=[[config.output_dims[0], 1, 1, "same"]],
+            cnn_activation=None,
+            cnn_use_layernorm=False,
+            #TODO: make configurable.
+            use_bias=True,
+        )
+
+    @override(Model)
+    def get_input_specs(self) -> Optional[Spec]:
+        return TfTensorSpec("b, d", d=self.config.input_dims[0])
+
+    @override(Model)
+    def get_output_specs(self) -> Optional[Spec]:
+        return TfTensorSpec("b, d", d=self.config.output_dims[0])
+
+    @override(Model)
+    def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
+        # Squeeze out 1x1 axes.
+        return tf.squeeze(self.net(tf.expand_dims(tf.expand_dims(inputs, axis=1), axis=1)), axis=[1, 2])
 
 
 class TfMLPHead(TfModel):

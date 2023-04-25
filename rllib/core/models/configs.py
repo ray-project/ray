@@ -48,6 +48,23 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
 
 @ExperimentalAPI
 @dataclass
+class CNNHeadConfig(ModelConfig):
+    """TODO
+    """
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        #self._validate(framework=framework)
+
+        if framework == "torch":
+            raise NotImplementedError
+        else:
+            from ray.rllib.core.models.tf.heads import TfCNNHead
+
+            return TfCNNHead(self)
+
+
+@ExperimentalAPI
+@dataclass
 class _MLPConfig(ModelConfig):
     """Generic configuration class for multi-layer-perceptron based Model classes.
 

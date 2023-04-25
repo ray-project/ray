@@ -288,7 +288,7 @@ class LearnerGroup:
                 while len(self._in_queue) > 0 and count < 2:
                     #TODO: TOTEST Pull a single batch from the queue (from the right side, meaning:
                     # use the newest ones first!).
-                    batch = self._in_queue.pop()
+                    batch = self._in_queue.popleft()
                     self._worker_manager.foreach_actor_async([
                         partial(_learner_update, minibatch=minibatch)
                         for minibatch in ShardBatchIterator(batch, len(self._workers))

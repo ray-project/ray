@@ -88,6 +88,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # New keys for RLModule API (not used by old ModelV2 API).
     "conv_add_final_dense": True,
     "conv_flattened_dim": None,
+    "use_cnn_heads": None,
     # END: new keys.
 
     # Some default models support a final FC stack of n Dense layers with given
