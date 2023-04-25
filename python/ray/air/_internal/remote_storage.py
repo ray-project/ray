@@ -174,7 +174,9 @@ def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
         if opt in options:
             client_kwargs[target] = options[opt][0]
 
-    return {"client_kwargs": client_kwargs}
+    # s3fs directory cache does not work correctly, so we pass
+    # `use_listings_cache` to disable it. See https://github.com/fsspec/s3fs/issues/657
+    return {"client_kwargs": client_kwargs, "use_listings_cache": False}
 
 
 def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
