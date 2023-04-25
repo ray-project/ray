@@ -1,3 +1,4 @@
+from collections import defaultdict
 import itertools
 import random
 import pytest
@@ -13,6 +14,9 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     RefBundle,
+)
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
 )
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
@@ -484,29 +488,45 @@ def test_e2e_with_unbounded_max_actors(restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
 
-    class Actor:
-        def __call__(self, batch):
-            time.sleep(0.1)
-            return batch
+    class CustomActorPoolMapOperator(ActorPoolMapOperator):
+        def get_metrics(self):
+            parent = super().get_metrics()
+            parent[
+                "max_tasks_run_for_each_actor"
+            ] = self._actor_pool._max_tasks_in_flight_per_actor
+            return parent
 
-    ds = ray.data.range(20, parallelism=20).map_batches(
-        Actor,
-        compute=ray.data.ActorPoolStrategy(min_size=3, max_tasks_in_flight_per_actor=2),
-        num_gpus=1,
-    )
+    with mock.patch.object(
+        ray.data._internal.execution.operators.actor_pool_map_operator,
+        "ActorPoolMapOperator",
+        CustomActorPoolMapOperator,
+    ):
 
-    ds.fully_executed()
+        class Actor:
+            def __call__(self, batch):
+                time.sleep(0.1)
+                return batch
 
-    max_tasks_run_for_each_actor = ds._plan.stats().extra_metrics[
-        "max_tasks_run_for_each_actor"
-    ]
+        ds = ray.data.range(20, parallelism=20).map_batches(
+            Actor,
+            compute=ray.data.ActorPoolStrategy(
+                min_size=3, max_tasks_in_flight_per_actor=2
+            ),
+            num_gpus=1,
+        )
 
-    assert len(max_tasks_run_for_each_actor) == 3
-    for max_tasks in max_tasks_run_for_each_actor.values():
-        # Make sure all actors in the pool are being used.
-        assert max_tasks == 2
+        ds.fully_executed()
 
-    ray.shutdown()
+        max_tasks_run_for_each_actor = ds._plan.stats().extra_metrics[
+            "max_tasks_run_for_each_actor"
+        ]
+
+        assert len(max_tasks_run_for_each_actor) == 3
+        for max_tasks in max_tasks_run_for_each_actor.values():
+            # Make sure all actors in the pool are being used.
+            assert max_tasks == 2
+
+        ray.shutdown()
 
 
 if __name__ == "__main__":

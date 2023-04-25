@@ -1,4 +1,5 @@
 import collections
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
@@ -343,9 +344,6 @@ class ActorPoolMapOperator(MapOperator):
         if self._actor_locality_enabled:
             parent["locality_hits"] = self._actor_pool._locality_hits
             parent["locality_misses"] = self._actor_pool._locality_misses
-        parent[
-            "max_tasks_run_for_each_actor"
-        ] = self._actor_pool._max_tasks_in_flight_per_actor
         return parent
 
     @staticmethod
@@ -529,8 +527,11 @@ class _ActorPool:
         self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
-        # The maximum number of tasks in flight each actor has run at any point in time.
-        self._max_tasks_in_flight_per_actor: Dict[ray.actor.ActorHandle, int] = {}
+        # The maximum number of tasks in flight each actor has run at any point in
+        # time.
+        self._max_tasks_in_flight_per_actor: dict[
+            ray.actor.ActorHandle, int
+        ] = defaultdict(int)
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
         # Actors that are not yet ready (still pending creation).
@@ -575,7 +576,6 @@ class _ActorPool:
             return False
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
-        self._max_tasks_in_flight_per_actor[actor] = 0
         self._actor_locations[actor] = ray.get(ready_ref)
         return True
 
