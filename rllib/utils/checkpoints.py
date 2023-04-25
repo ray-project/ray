@@ -226,7 +226,10 @@ def convert_to_msgpack_checkpoint(
     state["worker"]["is_policy_to_train"] = NOT_SERIALIZABLE
 
     # Add RLlib checkpoint version (as string).
-    state["checkpoint_version"] = str(state["checkpoint_version"])
+    if state["config"]["_enable_learner_api"]:
+        state["checkpoint_version"] = str(CHECKPOINT_VERSION_LEARNER)
+    else:
+        state["checkpoint_version"] = str(CHECKPOINT_VERSION)
 
     # Write state (w/o policies) to disk.
     state_file = os.path.join(msgpack_checkpoint_dir, "algorithm_state.msgpck")
