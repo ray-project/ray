@@ -246,7 +246,7 @@ def test_validation(ray_start_4_cpus):
 
 
 def test_distributed_data_loading(ray_start_4_cpus):
-    """Checks that XGBoostTrainer does distributed data loading for Ray Datasets."""
+    """Checks that XGBoostTrainer does distributed data loading for Datastreams."""
 
     class DummyXGBoostTrainer(XGBoostTrainer):
         def _train(self, params, dtrain, **kwargs):

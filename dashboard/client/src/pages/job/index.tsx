@@ -68,6 +68,7 @@ const JobList = () => {
   const classes = useStyles();
   const {
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     jobList,
@@ -78,7 +79,7 @@ const JobList = () => {
 
   return (
     <div className={classes.root}>
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
         <Switch

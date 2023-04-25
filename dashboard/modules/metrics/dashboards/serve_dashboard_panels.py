@@ -56,7 +56,7 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_requests{{route=~"$Route",{global_filters}}}[5m])) by (route)',
+                expr='sum(rate(ray_serve_num_http_requests{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (route)',
                 legend="{{route}}",
             ),
         ],
@@ -69,7 +69,7 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_error_requests{{route=~"$Route",{global_filters}}}[5m])) by (route)',
+                expr='sum(rate(ray_serve_num_http_error_requests{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (route)',
                 legend="{{route}}",
             ),
         ],
@@ -82,11 +82,11 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (route, le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (route, le))',
                 legend="{{route}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -101,11 +101,11 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (route, le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (route, le))',
                 legend="{{route}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -120,11 +120,11 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (route, le))',
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (route, le))',
                 legend="{{route}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -152,7 +152,7 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter{{route=~"$Route",{global_filters}}}[5m])) by (deployment)',
+                expr='sum(rate(ray_serve_deployment_request_counter{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment)',
                 legend="{{deployment}}",
             ),
         ],
@@ -165,7 +165,7 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_error_counter{{route=~"$Route",{global_filters}}}[5m])) by (deployment)',
+                expr='sum(rate(ray_serve_deployment_error_counter{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment)',
                 legend="{{deployment}}",
             ),
         ],
@@ -178,11 +178,11 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, le))',
                 legend="{{deployment}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -197,11 +197,11 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, le))',
                 legend="{{deployment}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -216,11 +216,11 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, le))',
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, le))',
                 legend="{{deployment}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],

@@ -65,7 +65,6 @@ def test_parse_test_definition():
             - __suffix__: aws
             - __suffix__: gce
               cluster:
-                cluster_env: env_gce.yaml
                 cluster_compute: compute_gce.yaml
     """
     )
@@ -79,6 +78,7 @@ def test_parse_test_definition():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    assert gce_test["cluster"]["cluster_env"] == "env.yaml"
     invalid_test_definition = test_definitions[0]
     # Intentionally make the test definition invalid by create an empty 'variations'
     # field. Check that the parser throws exception at runtime

@@ -31,37 +31,41 @@ Setup
 
 Before we start, you will need to install some Python dependencies as follows:
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. code-block:: shell
+    .. tab-item:: AWS
 
-        $ pip install -U "ray[default]" boto3
+        .. code-block:: shell
 
-.. tabbed:: Azure
+            $ pip install -U "ray[default]" boto3
 
-    .. code-block:: shell
+    .. tab-item:: Azure
 
-        $ pip install -U "ray[default]" azure-cli azure-core
+        .. code-block:: shell
 
-.. tabbed:: GCP
+            $ pip install -U "ray[default]" azure-cli azure-core
 
-    .. code-block:: shell
+    .. tab-item:: GCP
 
-        $ pip install -U "ray[default]" google-api-python-client
+        .. code-block:: shell
+
+            $ pip install -U "ray[default]" google-api-python-client
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
 
-.. tabbed:: AWS
+.. tab-set::
 
-    Configure your credentials in ``~/.aws/credentials`` as described in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html>`_.
+    .. tab-item:: AWS
 
-.. tabbed:: Azure
+        Configure your credentials in ``~/.aws/credentials`` as described in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html>`_.
 
-    Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
+    .. tab-item:: Azure
 
-.. tabbed:: GCP
+        Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
 
-    Set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable as described in `the GCP docs <https://cloud.google.com/docs/authentication/getting-started>`_.
+    .. tab-item:: GCP
+
+        Set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable as described in `the GCP docs <https://cloud.google.com/docs/authentication/getting-started>`_.
 
 Create a (basic) Python application
 -----------------------------------
@@ -154,45 +158,47 @@ To start a Ray Cluster, first we need to define the cluster configuration. The c
 
 A minimal sample cluster configuration file looks as follows:
 
-.. tabbed:: AWS
+.. tab-set::
 
-    .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
-        :language: yaml
+    .. tab-item:: AWS
+
+        .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
+            :language: yaml
 
 
-.. tabbed:: Azure
+    .. tab-item:: Azure
 
-    .. code-block:: yaml
+        .. code-block:: yaml
 
-        # An unique identifier for the head node and workers of this cluster.
-        cluster_name: minimal
+            # An unique identifier for the head node and workers of this cluster.
+            cluster_name: minimal
 
-        # Cloud-provider specific configuration.
-        provider:
-            type: azure
-            location: westus2
-            resource_group: ray-cluster
+            # Cloud-provider specific configuration.
+            provider:
+                type: azure
+                location: westus2
+                resource_group: ray-cluster
 
-        # How Ray will authenticate with newly launched nodes.
-        auth:
-            ssh_user: ubuntu
-            # you must specify paths to matching private and public key pair files
-            # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
-            ssh_private_key: ~/.ssh/id_rsa
-            # changes to this should match what is specified in file_mounts
-            ssh_public_key: ~/.ssh/id_rsa.pub
+            # How Ray will authenticate with newly launched nodes.
+            auth:
+                ssh_user: ubuntu
+                # you must specify paths to matching private and public key pair files
+                # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+                ssh_private_key: ~/.ssh/id_rsa
+                # changes to this should match what is specified in file_mounts
+                ssh_public_key: ~/.ssh/id_rsa.pub
 
-.. tabbed:: GCP
+    .. tab-item:: GCP
 
-    .. code-block:: yaml
+        .. code-block:: yaml
 
-        # A unique identifier for the head node and workers of this cluster.
-        cluster_name: minimal
+            # A unique identifier for the head node and workers of this cluster.
+            cluster_name: minimal
 
-        # Cloud-provider specific configuration.
-        provider:
-            type: gcp
-            region: us-west1
+            # Cloud-provider specific configuration.
+            provider:
+                type: gcp
+                region: us-west1
 
 Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`cluster YAML configuration options reference <cluster-config>`.
 

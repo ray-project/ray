@@ -1,10 +1,7 @@
-import { Backdrop, CircularProgress } from "@material-ui/core";
+import { CircularProgress } from "@material-ui/core";
 import React from "react";
 
-const Loading = ({ loading }: { loading: boolean }) => (
-  <Backdrop open={loading} style={{ zIndex: 100 }}>
-    <CircularProgress color="primary" />
-  </Backdrop>
-);
+const Loading = ({ loading }: { loading: boolean }) =>
+  loading ? <CircularProgress color="primary" /> : null;
 
 export default Loading;
