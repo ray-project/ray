@@ -1,5 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+region: us-west1
+allowed_azs:
+    - us-west1-b
 
 max_workers: 3
 
@@ -13,10 +15,3 @@ worker_node_types:
       min_workers: 2
       max_workers: 2
       use_spot: false
-
-aws:
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            DeleteOnTermination: true
-            VolumeSize: 150
