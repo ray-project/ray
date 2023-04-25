@@ -18,12 +18,11 @@ from ray.tune.registry import register_env
 
 
 class SimpleServing(ExternalEnv):
-    def __init__(self, env, max_concurrent=100):
+    def __init__(self, env):
         ExternalEnv.__init__(
             self,
             env.action_space,
             env.observation_space,
-            max_concurrent=max_concurrent,
         )
         self.env = env
 
@@ -122,21 +121,6 @@ class TestExternalEnv(unittest.TestCase):
     def test_external_env_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                rollout_fragment_length=40,
-                batch_mode="complete_episodes",
-                num_rollout_workers=0,
-                enable_connectors=False,
-            ),
-        )
-        for _ in range(3):
-            batch = ev.sample()
-            self.assertEqual(batch.count, 50)
-
-    def test_external_env_max_concurrent(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: SimpleServing(MockEnv(25), max_concurrent=1),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
                 rollout_fragment_length=40,

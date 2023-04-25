@@ -13,7 +13,6 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -54,7 +53,6 @@ class ExternalEnv(threading.Thread):
         self,
         action_space: gym.Space,
         observation_space: gym.Space,
-        max_concurrent: int = None,
     ):
         """Initializes an ExternalEnv instance.
 
@@ -71,7 +69,6 @@ class ExternalEnv(threading.Thread):
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
-        self._max_concurrent_episodes = max_concurrent
 
     @PublicAPI
     def run(self):
@@ -376,11 +373,6 @@ class ExternalEnvWrapper(BaseEnv):
                 results = self._poll()
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, (
-            "Too many concurrent episodes, were some leaked? This "
-            "ExternalEnv was created with max_concurrent={}".format(limit)
-        )
         return results
 
     @override(BaseEnv)
