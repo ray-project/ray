@@ -186,12 +186,12 @@ def test_single_app_shutdown_actors(ray_shutdown):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:f",
+        "ServeReplica:app_f",
     }
 
     def check_alive():
@@ -710,7 +710,7 @@ def test_snapshot_always_written_to_internal_kv(
             return False
 
     serve.start(detached=True)
-    serve.run(hello.bind())
+    serve.run(hello.bind(), name="app")
     check()
 
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -731,7 +731,7 @@ def test_snapshot_always_written_to_internal_kv(
     snapshot = get_deployment_snapshot()
     assert len(snapshot) == 1
     hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["name"] == "app_hello"
     assert hello_deployment["status"] == "RUNNING"
 
 

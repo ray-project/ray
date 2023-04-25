@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 
-from ray.rllib.core.models.specs.specs_np import NPTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.checker import (
     check_input_specs,
@@ -24,8 +24,8 @@ class TestSpecDict(unittest.TestCase):
         h1, h2 = 3, 4
         spec_1 = SpecDict(
             {
-                "out_tensor_1": NPTensorSpec("b, h", h=h1),
-                "out_tensor_2": NPTensorSpec("b, h", h=h2),
+                "out_tensor_1": TensorSpec("b, h", h=h1, framework="np"),
+                "out_tensor_2": TensorSpec("b, h", h=h2, framework="np"),
                 "out_class_1": TypeClass1,
             }
         )
@@ -76,12 +76,12 @@ class TestSpecDict(unittest.TestCase):
         spec_2 = SpecDict(
             {
                 "encoder": {
-                    "input": NPTensorSpec("b, h", h=h1),
-                    "output": NPTensorSpec("b, h", h=h2),
+                    "input": TensorSpec("b, h", h=h1, framework="np"),
+                    "output": TensorSpec("b, h", h=h2, framework="np"),
                 },
                 "decoder": {
-                    "input": NPTensorSpec("b, h", h=h2),
-                    "output": NPTensorSpec("b, h", h=h1),
+                    "input": TensorSpec("b, h", h=h2, framework="np"),
+                    "output": TensorSpec("b, h", h=h1, framework="np"),
                 },
             }
         )
@@ -160,7 +160,7 @@ class TestSpecDict(unittest.TestCase):
 
             @property
             def spec_with_type_and_tensor_leaves(self):
-                return {"a": TypeClass1, "b": NPTensorSpec("b, h", h=3)}
+                return {"a": TypeClass1, "b": TensorSpec("b, h", h=3, framework="np")}
 
             @check_input_specs("nested_key_spec")
             def forward_nested_key(self, input_dict):

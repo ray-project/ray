@@ -2,10 +2,10 @@
 
 # Getting Started
 
-This tutorial will walk you through the process of deploying models with Ray Serve. It will show you how to
+This tutorial will walk you through the process of writing and testing a Ray Serve application. It will show you how to
 
-* expose your models over HTTP using deployments
-* test your deployments over HTTP
+* convert a machine learning model to a Ray Serve deployment
+* test a Ray Serve application locally over HTTP
 * compose multiple-model machine learning models together into a single application
 
 We'll use two models in this tutorial:
@@ -29,7 +29,7 @@ pip install "ray[serve]" transformers requests torch
 ```
 
 
-## Model Example: Before Ray Serve
+## Text Translation Model (before Ray Serve)
 
 First, let's take a look at our text-translation model. Here's its code:
 
@@ -64,14 +64,14 @@ PyTorch, and Tensorflow for more info and examples:
 
 - {ref}`serve-ml-models-tutorial`
 
-(converting-to-ray-serve-deployment)=
-## Converting to a Ray Serve Deployment
+(converting-to-ray-serve-application)=
+## Converting to a Ray Serve Application
 
 In this section, we'll deploy the text translation model using Ray Serve, so
 it can be scaled up and queried over HTTP. We'll start by converting
-`Translator` into a Ray Serve deployment that runs locally on your computer.
+`Translator` into a Ray Serve deployment.
 
-First, we open a new Python file and import `ray` and `ray serve`:
+First, we open a new Python file and import `ray` and `ray.serve`:
 
 ```{literalinclude} ../serve/doc_code/getting_started/model_deployment.py
 :start-after: __import_start__
@@ -91,8 +91,7 @@ The `Translator` class has two modifications:
 1. It has a decorator, `@serve.deployment`.
 2. It has a new method, `__call__`.
 
-The decorator converts `Translator` from a Python class into a Ray Serve
-`Deployment` object.
+The decorator converts `Translator` from a Python class into a Ray Serve `Deployment` object.
 
 Each deployment stores a single Python function or class that you write and uses
 it to serve requests. You can scale and configure each of your deployments independently using
@@ -112,11 +111,11 @@ class Translator:
   ...
 ```
 
-Deployments receive Starlette HTTP `request` objects [^f1]. If your deployment stores a Python function, the function is called on this `request` object. If your deployment stores a class, the class's `__call__` method is called on this `request` object. The return value is sent back in the HTTP response body.
+Deployments receive Starlette HTTP `request` objects [^f1]. By default, the deployment class's `__call__` method is called on this `request` object. The return value is sent back in the HTTP response body.
 
 This is why `Translator` needs a new `__call__` method. The method processes the incoming HTTP request by reading its JSON data and forwarding it to the `translate` method. The translated text is returned and sent back through the HTTP response. You can also use Ray Serve's FastAPI integration to avoid working with raw HTTP requests. Check out {ref}`serve-fastapi-http` for more info about FastAPI with Serve.
 
-Next, we need to `bind` our `Translator` deployment to arguments that Ray Serve can pass into its constructor. This will let Ray Serve initialize a `Translator` object that can serve requests. Since `Translator`'s constructor doesn't take in any arguments, we can call the deployment's `bind` method without passing anything in:
+Next, we need to `bind` our `Translator` deployment to arguments that will be passed into its constructor. This defines a Ray Serve application that we can run locally or deploy to production (you'll see later that applications can consist of multiple deployments). Since `Translator`'s constructor doesn't take in any arguments, we can call the deployment's `bind` method without passing anything in:
 
 ```{literalinclude} ../serve/doc_code/getting_started/model_deployment.py
 :start-after: __model_deploy_start__
@@ -124,8 +123,11 @@ Next, we need to `bind` our `Translator` deployment to arguments that Ray Serve 
 :language: python
 ```
 
-With that, we can run our model on Ray Serve!
-Here's the full Ray Serve script that we built:
+With that, we are ready to test the application locally.
+
+## Running a Ray Serve Application
+
+Here's the full Ray Serve script that we built above:
 
 ```{literalinclude} ../serve/doc_code/getting_started/model_deployment_full.py
 :start-after: __deployment_full_start__
@@ -133,26 +135,20 @@ Here's the full Ray Serve script that we built:
 :language: python
 ```
 
-We can run our script with the `serve run` CLI command. This command takes in an import path
-to our deployment formatted as `module:bound_deployment`. Make sure to run the command from a directory containing a local copy of this script, so it can find the bound deployment:
+To test locally, we run the script with the `serve run` CLI command. This command takes in an import path
+to our deployment formatted as `module:application`. Make sure to run the command from a directory containing a local copy of this script saved as `serve_quickstart.py`, so it can import the application:
 
 ```console
-$ serve run serve_deployment:translator
+$ serve run serve_quickstart:translator_app
 ```
 
-This command will start running `Translator` and then block. It can be killed with `ctrl-C` in the terminal.
+This command will run the `translator_app` application and then block, streaming logs to the console. It can be killed with `Ctrl-C`, which will tear down the application.
 
-## Testing Ray Serve Deployments
-
-We can now test our model over HTTP. It can be reached at the following URL:
+We can now test our model over HTTP. It can be reached at the following URL by default:
 
 ```
 http://127.0.0.1:8000/
 ```
-
-Since the cluster is deployed locally in this tutorial, the `127.0.0.1:8000`
-refers to a localhost with port 8000 (the default port where you can reach
-Serve deployments).
 
 We'll send a POST request with JSON data containing our English text.
 `Translator`'s `__call__` method will unpack this text and forward it to the
@@ -167,7 +163,7 @@ We'll send a POST request with JSON data containing our English text.
 To test our deployment, first make sure `Translator` is running:
 
 ```
-$ serve run serve_deployment:translator
+$ serve run serve_deployment:translator_app
 ```
 
 While `Translator` is running, we can open a separate terminal window and run the client script. This will get a response over HTTP:
@@ -178,9 +174,10 @@ $ python model_client.py
 Bonjour monde!
 ```
 
-## Composing Machine Learning Models with Deployment Graphs
+## Composing Multiple Models
 
-Ray Serve's Deployment Graph API allows us to compose multiple machine learning models together into a single Ray Serve application. We can use parameters like `num_replicas`, `num_cpus`, and `num_gpus` to independently configure and scale each deployment in the graph.
+Ray Serve allows you to compose multiple deployments into a single Ray Serve application. This makes it easy to combine multiple machine learning models along with business logic to serve a single request.
+We can use parameters like `autoscaling_config`, `num_replicas`, `num_cpus`, and `num_gpus` to independently configure and scale each deployment in the application.
 
 For example, let's deploy a machine learning pipeline with two steps:
 
@@ -203,7 +200,7 @@ $ python summary_model.py
 it was the best of times, it was worst of times .
 ```
 
-Here's a Ray Serve deployment graph that chains the two models together. The graph takes English text, summarizes it, and then translates it:
+Here's an application that chains the two models together. The graph takes English text, summarizes it, and then translates it:
 
 ```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
 :start-after: __start_graph__
@@ -218,18 +215,18 @@ translation_ref = await self.translator.translate.remote(summary)
 translation = await translation_ref
 ```
 
-`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. Essentially, this line tells Ray to schedule a request to the `Translator` deployment's `translate` method, which can be fulfilled asynchronously. The line immediately returns a reference to the method's output. The next line `await translation_ref` waits for `translate` to execute and returns the value of that execution.
+`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. The line immediately returns a reference to the method's output, then the next line `await translation_ref` waits for `translate` to execute and returns the value of that execution.
 
-We compose our graph in line 52:
+We define the full application as follows:
 
 ```python
 deployment_graph = Summarizer.bind(Translator.bind())
 ```
 
-Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `graph.py` code:
+Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `serve_quickstart_composed.py` code:
 
 ```console
-$ serve run graph:deployment_graph
+$ serve run serve_quickstart_composed:app
 ```
 
 We can use this client script to make requests to the graph:
@@ -240,15 +237,15 @@ We can use this client script to make requests to the graph:
 :language: python
 ```
 
-While the graph is running, we can open a separate terminal window and run the client script:
+While the application is running, we can open a separate terminal window and query it:
 
 ```console
-$ python graph_client.py
+$ python composed_client.py
 
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
-Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition) to learn more.
+Composed Ray Serve applications let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition) to learn more.
 
 ## Next Steps
 
@@ -260,6 +257,4 @@ Deployment graphs are useful since they let you deploy each part of your machine
 ```{rubric} Footnotes
 ```
 
-[^f1]: [Starlette](https://www.starlette.io/) is a web server framework
-    used by Ray Serve. Its [Request](https://www.starlette.io/requests/) class
-    provides a nice interface for incoming HTTP requests.
+[^f1]: [Starlette](https://www.starlette.io/) is a web server framework used by Ray Serve.
