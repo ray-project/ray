@@ -6,24 +6,51 @@
 (core-apis)=
 
 ```{eval-rst}
-.. module:: ray.serve
+.. module:: ray
 ```
 
 ### Writing Applications
 
-```{eval-rst}
-.. autoclass:: Deployment
+<!---
+NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity.
+This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map").
+--->
 
+#### Deployment Decorators
+
+```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   deployment
-   Deployment
-   Application
-   ingress
-   handle.RayServeHandle
-   batch
+   serve.deployment
+      :noindex:
+   serve.ingress
+   serve.batch
+```
+
+#### Object Types
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.Deployment
+   serve.Application
+   serve.handle.RayServeHandle
+   serve.handle.RayServeSyncHandle
+```
+
+#### Advanced APIs
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.get_replica_context
 ```
 
 ### Running Applications
@@ -33,12 +60,10 @@
    :nosignatures:
    :toctree: doc/
 
-   run
-   delete
-   start
-   shutdown
-   build
-   BuiltApplication
+   serve.run
+   serve.delete
+   serve.start
+   serve.shutdown
 ```
 
 (serve-cli)=
@@ -48,7 +73,7 @@
 ```{eval-rst}
 .. click:: ray.serve.scripts:cli
    :prog: serve
-   :show-nested:
+   :nested: full
 ```
 
 (serve-rest-api)=

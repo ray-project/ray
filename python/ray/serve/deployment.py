@@ -115,10 +115,10 @@ class Deployment:
             def say_hi(self):
                 return "Hello from " + self.name
 
-                app = MyDeployment.bind("Mr. Magoo")
+            app = MyDeployment.bind("Mr. Magoo")
 
-                # Run via `serve.run` or the `serve run` CLI command.
-                serve.run(app)
+            # Run via `serve.run` or the `serve run` CLI command.
+            serve.run(app)
 
     """
 
@@ -422,14 +422,8 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
 
-        Args:
-            Refer to @serve.deployment decorator docstring for all non-private
-            arguments.
-
-            _internal: If True, this function won't log deprecation warnings
-                and won't update this deployment's config's
-                user_configured_option_names. It should only be True when used
-                internally by Serve. It should be False when called by users.
+        Refer to the @serve.deployment decorator docstring for all non-private
+        arguments.
         """
 
         # NOTE: The user_configured_option_names should be the first thing that's
@@ -549,10 +543,13 @@ class Deployment:
         is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
-        """Overwrite this deployment's options. Mutates the deployment.
+        """Overwrite this deployment's options in-place.
 
         Only those options passed in will be updated, all others will remain
         unchanged.
+
+        Refer to the @serve.deployment decorator docstring for all non-private
+        arguments.
         """
 
         validated = self.options(

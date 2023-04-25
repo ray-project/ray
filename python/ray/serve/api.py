@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -60,7 +60,7 @@ def start(
     dedicated_cpu: bool = False,
     **kwargs,
 ) -> ServeControllerClient:
-    """Initialize a serve instance.
+    """Start Serve on the cluster.
 
     By default, the instance will be scoped to the lifetime of the returned
     Client object (or when the script exits). If detached is set to True, the
@@ -108,10 +108,9 @@ def start(
 
 @PublicAPI(stability="stable")
 def shutdown() -> None:
-    """Completely shut down the connected Serve instance.
+    """Completely shut down Serve on the cluster.
 
-    Shuts down all processes and deletes all state associated with the
-    instance.
+    Deletes all applications and shuts down Serve system processes.
     """
 
     try:
@@ -129,21 +128,28 @@ def shutdown() -> None:
 
 @PublicAPI(stability="beta")
 def get_replica_context() -> ReplicaContext:
-    """If called from a deployment, returns the deployment and replica tag.
+    """Returns the deployment and replica tag from within a replica at runtime.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    deployment at runtime.  Replica tags are of the form
-    `<deployment_name>#<random letters>`.
+    deployment.
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
 
     Example:
-        >>> from ray import serve
-        >>> # deployment_name
-        >>> serve.get_replica_context().deployment # doctest: +SKIP
-        >>> # deployment_name#krcwoa
-        >>> serve.get_replica_context().replica_tag # doctest: +SKIP
+
+        .. code-block:: python
+
+            from ray import serve
+            @serve.deployment
+            class MyDeployment:
+                def __init__(self):
+                    # Prints "MyDeployment"
+                    print(serve.get_replica_context().deployment)
+
+                    # Prints "MyDeployment#<replica_tag>"
+                    print(serve.get_replica_context().replica_tag)
+
     """
     internal_replica_context = get_internal_replica_context()
     if internal_replica_context is None:
@@ -163,6 +169,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
     parsing/validation.
 
     Example:
+
         .. code-block:: python
 
             from ray import serve
@@ -259,32 +266,6 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
     return decorator
 
 
-@overload
-def deployment(func_or_class: Callable) -> Deployment:
-    pass
-
-
-@overload
-def deployment(
-    name: Default[str] = DEFAULT.VALUE,
-    version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[int] = DEFAULT.VALUE,
-    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
-    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    user_config: Default[Any] = DEFAULT.VALUE,
-    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
-    autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
-    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
-    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
-    health_check_period_s: Default[float] = DEFAULT.VALUE,
-    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
-) -> Callable[[Callable], Deployment]:
-    pass
-
-
 @PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -356,7 +337,7 @@ def deployment(
             will deploy exact one deployment to every node.
 
     Returns:
-        `serve.Deployment`
+        `Deployment`
     """
 
     # NOTE: The user_configured_option_names should be the first thing that's
@@ -462,7 +443,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
 @PublicAPI(stability="beta")
 def run(
-    target: Union[Application, BuiltApplication],
+    target: Application,
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
@@ -471,12 +452,16 @@ def run(
 ) -> Optional[RayServeSyncHandle]:
     """Run an application and return a handle to its ingress deployment.
 
-    The application is returned by `Deployment.bind()` or `serve.build`.
+    The application is returned by `Deployment.bind()`. Example:
+
+    .. code-block:: python
+
+        handle = serve.run(MyDeployment.bind())
+        ray.get(handle.remote())
 
     Args:
-        target (Union[Application, BuiltApplication]):
-            A Serve application returned from `Deployment.bind()` or a built application
-            returned from `serve.build()`.
+        target:
+            A Serve application returned from `Deployment.bind()`.
         host: Host for HTTP servers to listen on. Defaults to
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".

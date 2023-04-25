@@ -78,8 +78,9 @@ class HandleOptions:
 class RayServeHandle:
     """A handle used to make requests from one deployment to another.
 
-    This is used to compose multiple deployments in a single application by binding
-    them together when building the application. For example:
+    This is used to compose multiple deployments in a single application. When building
+    the application, deployments passed as arguments to others via `.bind()` will be
+    subsitututed for this handle at runtime. For example:
 
     .. code-block:: python
 
@@ -248,7 +249,9 @@ class RayServeHandle:
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
         points to the final result of the request.
 
-        The final result can be retrieved by `await`ing the ObjectRef. Example:
+        The final result can be retrieved by awaiting the ObjectRef.
+
+        Example:
 
         .. code-block:: python
 
