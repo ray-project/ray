@@ -36,14 +36,13 @@ REMOTE_SCALING_CONFIGS = {
 
 LOCAL_SCALING_CONFIGS = {
     "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    # "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=1),
 }
 
 
 # TODO(avnishn) Make this a ray task later. Currently thats not possible because the
 # task is not dying after the test is done. This is a bug with ray core.
-# @ray.remote(num_gpus=1)
-# @ray.remote
+@ray.remote(num_gpus=1)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
         if fw == "torch":
@@ -53,6 +52,9 @@ class RemoteTrainingHelper:
         elif fw == "tf":
             import tensorflow as tf
 
+            # this is done by rllib already inside of the policy class, but we need to
+            # do it here for testing purposes
+            tf.compat.v1.enable_eager_execution()
             tf.random.set_seed(0)
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
@@ -108,8 +110,7 @@ class TestLearnerGroup(unittest.TestCase):
         ray.shutdown()
 
     def test_learner_group_local(self):
-        # fws = ["tf", "torch"]
-        fws = ["tf"]
+        fws = ["tf", "torch"]
 
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
 
@@ -118,10 +119,10 @@ class TestLearnerGroup(unittest.TestCase):
         # otherwise between test cases, causing a gpu oom error.
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
-            # training_helper = RemoteTrainingHelper.remote()
-            # ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
-            training_helper = RemoteTrainingHelper()
-            training_helper.local_training_helper(fw, scaling_mode)
+            training_helper = RemoteTrainingHelper.remote()
+            ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
+            # training_helper = RemoteTrainingHelper()
+            # training_helper.local_training_helper(fw, scaling_mode)
 
     def test_update_multigpu(self):
         fws = ["tf", "torch"]
