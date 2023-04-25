@@ -398,6 +398,13 @@ class HTTPProxy:
                     "method": scope["method"].upper(),
                 }
             )
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await self._not_found(scope, receive, send)
         self.request_counter.inc(
             tags={
