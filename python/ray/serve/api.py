@@ -304,7 +304,7 @@ def deployment(
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
-    """Decorator that converts a Python class to a Ray Serve deployment.
+    """Decorator that converts a Python class to a `Deployment`.
 
     Example:
 

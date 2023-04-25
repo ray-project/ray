@@ -6,22 +6,24 @@
 (core-apis)=
 
 ```{eval-rst}
-.. currentmodule:: ray
+.. module:: ray.serve
 ```
 
 ### Writing Applications
 
 ```{eval-rst}
+.. autoclass:: Deployment
+
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   serve.deployment
-   serve.Deployment
-   serve.Application
-   serve.ingress
-   serve.handle.RayServeHandle
-   serve.batch
+   deployment
+   Deployment
+   Application
+   ingress
+   handle.RayServeHandle
+   batch
 ```
 
 ### Running Applications
@@ -31,12 +33,12 @@
    :nosignatures:
    :toctree: doc/
 
-   serve.run
-   serve.delete
-   serve.start
-   serve.shutdown
-   serve.build
-   serve.BuiltApplication
+   run
+   delete
+   start
+   shutdown
+   build
+   BuiltApplication
 ```
 
 (serve-cli)=
