@@ -1654,7 +1654,12 @@ class DeploymentState:
                     f"{self._name} failed health check, stopping it."
                 )
                 self.health_check_gauge.set(
-                    0, tags={"deployment": self._name, "replica": replica.replica_tag}
+                    0,
+                    tags={
+                        "deployment": self._name,
+                        "replica": replica.replica_tag,
+                        "application": self.app_name,
+                    },
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)

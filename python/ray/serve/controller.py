@@ -408,15 +408,18 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
-        # For V1 API, application name is empty string.
-        # For V2 API, it is supposed to be SERVE_DEFAULT_APP_NAME
-        app_name: str = "",
+        app_name: str = None,
     ) -> bool:
         """Deploys a deployment."""
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
+
+        # For V1 API, application name is empty string.
+        # For V2 API, it is supposed to be SERVE_DEFAULT_APP_NAME by default
+        if app_name is None:
+            app_name = ""
 
         deployment_info = deploy_args_to_deployment_info(
             deployment_name=name,
