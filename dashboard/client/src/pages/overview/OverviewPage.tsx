@@ -1,10 +1,17 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import { createStyles, Grid, makeStyles } from "@material-ui/core";
+import classNames from "classnames";
 import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import EventTable from "../../components/EventTable";
+import {
+  NodeStatusCard,
+  ResourceStatusCard,
+} from "../../components/JobStatusCards";
+import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
+import { OverviewCard } from "./cards/OverviewCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
 
 const useStyles = makeStyles((theme) =>
@@ -40,7 +47,8 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
-  //begin here
+  const { cluster_status } = useRayStatus();
+
   return (
     <div className={classes.root}>
       <MainNavPageInfo
@@ -65,7 +73,15 @@ export const OverviewPage = () => {
         title="Autoscaler"
         startExpanded
       >
-        <NodeCountCard className={classes.overviewCard} />
+        <div className={classes.overviewCardsContainer}>
+          <NodeCountCard className={classes.overviewCard} />
+          <OverviewCard className={classes.root}>
+            <NodeStatusCard cluster_status={cluster_status} />
+          </OverviewCard>
+          <OverviewCard className={classes.root}>
+            <ResourceStatusCard cluster_status={cluster_status} />
+          </OverviewCard>
+        </div>
       </CollapsibleSection>
     </div>
   );
