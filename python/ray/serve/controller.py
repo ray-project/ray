@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
+    RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
@@ -120,6 +121,7 @@ class ServeController:
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
         self.long_poll_host = LongPollHost()
+        self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
             self.http_state = None
@@ -197,6 +199,9 @@ class ServeController:
               determine whether or not the host should immediately return the
               data or wait for the value to be changed.
         """
+        if not self.done_recovering_event.is_set():
+            await self.done_recovering_event.wait()
+
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
     async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
@@ -206,6 +211,9 @@ class ServeController:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
         """
+        if not self.done_recovering_event.is_set():
+            await self.done_recovering_event.wait()
+
         return await (
             self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
         )
@@ -250,16 +258,35 @@ class ServeController:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
+        recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        start_time = time.time()
         while True:
-            if self.http_state:
+            if (
+                not self.done_recovering_event.is_set()
+                and time.time() - start_time > recovering_timeout
+            ):
+                logger.warning(
+                    f"Replicas still recovering after {recovering_timeout}s, "
+                    "setting done recovering event to broadcast long poll updates."
+                )
+                self.done_recovering_event.set()
+
+            # Don't update http_state until after the done recovering event is set,
+            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # info about available deployments & their replicas.
+            if self.http_state and self.done_recovering_event.is_set():
                 try:
                     self.http_state.update()
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
+
             try:
-                self.deployment_state_manager.update()
+                any_recovering = self.deployment_state_manager.update()
+                if not self.done_recovering_event.is_set() and not any_recovering:
+                    self.done_recovering_event.set()
             except Exception:
                 logger.exception("Exception updating deployment state.")
+
             try:
                 self.application_state_manager.update()
             except Exception:
