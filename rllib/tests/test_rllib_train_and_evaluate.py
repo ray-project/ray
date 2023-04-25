@@ -194,6 +194,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             )
             .resources(num_gpus=0)
             .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
+            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={
@@ -203,15 +204,6 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                 ),
             )
         )
-
-        # This is only supported without RLModule API. See AlgorithmConfig for
-        # more info.
-        if not config._enable_rl_module_api:
-            config.evaluation(
-                evaluation_config=AlgorithmConfig.overrides(explore=False)
-            )
-        else:
-            config.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
 
         stop = {"episode_reward_mean": 100.0}
 
