@@ -46,32 +46,10 @@ class TFRecordDatasource(FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
-        import platform
-
-        try:
-            from tfx_bsl.cc.tfx_bsl_extension.coders import (  # noqa: F401
-                ExamplesToRecordBatchDecoder,
-            )
-        except ModuleNotFoundError:
-            if platform.processor() == "arm":
-                logger.get_logger().warning(
-                    "This function depends on tfx-bsl which is currently not supported"
-                    " on devices with Apple silicon (e.g. M1) and requires an"
-                    " environment with x86 CPU architecture."
-                )
-            else:
-                logger.get_logger().warning(
-                    "To use TFRecordDatasource with large datasets, please install"
-                    " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
-                )
-            logger.get_logger().info(
-                "Falling back to slower strategy for reading tf.records. This"
-                "reading strategy should be avoided when reading large datasets."
-            )
-
+        if reader_args.get("fast_read", False):
+            yield from self._fast_read(f, path, **reader_args)
+        else:
             yield from self._slow_read(f, path, **reader_args)
-
-        yield from self._fast_read(f, path, **reader_args)
 
     def _fast_read(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
