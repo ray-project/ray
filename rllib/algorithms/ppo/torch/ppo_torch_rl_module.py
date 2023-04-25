@@ -5,9 +5,6 @@ from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -37,14 +34,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         PPORLModuleBase.__init__(self, *args, **kwargs)
 
     @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return self.input_specs_exploration()
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return SpecDict({SampleBatch.ACTION_DIST: Distribution})
-
-    @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
@@ -68,18 +57,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
 
         return output
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        return []
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return [
-            SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST,
-            SampleBatch.ACTION_DIST_INPUTS,
-        ]
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -117,26 +94,6 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
             logits=action_logits
         )
         return output
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        specs = self.input_specs_exploration()
-        specs.append(SampleBatch.ACTIONS)
-        if SampleBatch.OBS in specs:
-            specs.append(SampleBatch.NEXT_OBS)
-        return specs
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        spec = SpecDict(
-            {
-                SampleBatch.ACTION_DIST: Distribution,
-                SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
-                SampleBatch.VF_PREDS: TorchTensorSpec("b", dtype=torch.float32),
-                "entropy": TorchTensorSpec("b", dtype=torch.float32),
-            }
-        )
-        return spec
 
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}

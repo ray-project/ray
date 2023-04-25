@@ -33,8 +33,34 @@ training parameters are passed as the ``params`` dictionary.
 
 Ray-specific params are passed in through the trainer constructors.
 
+Saving and Loading XGBoost and LightGBM Checkpoints
+---------------------------------------------------
+
+When a new tree is trained on every boosting round,
+it's possible to save a checkpoint to snapshot the training progress so far.
+:class:`~ray.train.xgboost.XGBoostTrainer` and :class:`~ray.train.lightgbm.LightGBMTrainer`
+both implement checkpointing out of the box.
+
+The only required change is to configure :class:`~ray.air.CheckpointConfig` to set
+the checkpointing frequency. For example, the following configuration will
+save a checkpoint on every boosting round and will only keep the latest checkpoint:
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __checkpoint_config_ckpt_freq_start__
+    :end-before: __checkpoint_config_ckpt_freq_end__
+
+.. tip::
+
+    Once checkpointing is enabled, you can follow :ref:`this guide <train-fault-tolerance>`
+    to enable fault tolerance.
+
+    See the :ref:`Trainer restore API reference <trainer-restore>` for more details.
+
+
 How to scale out training?
 --------------------------
+
 The benefit of using Ray AIR is that you can seamlessly scale up your training by
 adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
 
