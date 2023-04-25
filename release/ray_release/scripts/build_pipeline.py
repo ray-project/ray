@@ -50,11 +50,13 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     is_flag=True,
     show_default=True,
     default=False,
-    help=(
-        "Will run jailed tests."
-    ),
+    help=("Will run jailed tests."),
 )
-def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False, run_jailed_tests: bool = False):
+def main(
+    test_collection_file: Optional[str] = None,
+    no_clone_repo: bool = False,
+    run_jailed_tests: bool = False,
+):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -76,7 +78,7 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
         logger.info(f"Cloning test repository: {clone_cmd}")
         try:
             subprocess.check_output(clone_cmd, shell=True)
-        except Exception as e
+        except Exception as e:
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e

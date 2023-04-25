@@ -36,7 +36,7 @@ def filter_tests(
                 break
         if attr_mismatch:
             continue
-        if not run_jailed_tests and test.get('jailed', False):
+        if not run_jailed_tests and test.get("jailed", False):
             continue
 
         test_frequency = get_frequency(test["frequency"])
