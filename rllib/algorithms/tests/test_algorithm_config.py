@@ -17,7 +17,7 @@ from ray.rllib.core.rl_module.marl_module import (
 class TestAlgorithmConfig(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init(num_cpus=6, local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
