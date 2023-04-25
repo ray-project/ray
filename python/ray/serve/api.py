@@ -34,7 +34,7 @@ from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import RayServeSyncHandle
 from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
@@ -463,8 +463,8 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeHandle]:
-    """Run a Serve application and return a ServeHandle to the ingress deployment.
+) -> Optional[RayServeSyncHandle]:
+    """Run an application and return a handle to its ingress deployment.
 
     The application is returned by `Deployment.bind()` or `serve.build`.
 
@@ -481,10 +481,6 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
-
-    Returns:
-        RayServeHandle: A regular ray serve handle that can be called by user
-            to execute the serve DAG.
     """
     client = _private_api.serve_start(
         detached=True,
