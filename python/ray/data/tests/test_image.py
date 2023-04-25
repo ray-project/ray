@@ -162,7 +162,7 @@ class TestReadImages:
         transform = transforms.ToTensor()
 
         def preprocess(batch: Dict[str, np.ndarray]):
-            return np.stack([transform(image) for image in batch["image"]])
+            return {"out": np.stack([transform(image) for image in batch["image"]])}
 
         dataset = dataset.map_batches(preprocess, batch_format="numpy")
 
