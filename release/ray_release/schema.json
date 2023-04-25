@@ -21,6 +21,9 @@
 				"stable": {
 					"type": "boolean"
 				},
+				"jailed": {
+					"type": "boolean"
+				},
 				"python": {
 					"type": "string",
 					"enum": [
