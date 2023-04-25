@@ -1635,15 +1635,13 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_values(*values, time_major=None):
+def _concat_values(*values, time_major=None) -> TensorType:
     """Concatenates a list of values.
 
-    Depending on time_major, the values are either concatenated along the first
-    axis (time_major=False) or the second axis (time_major=True).
-
-    More specifically, this method is used to concatenate and align floating point
-    numpy values to 64 bit precision. Other values are concatenated as is.
-    This makes sure that values
+    Args:
+        values: The values to concatenate.
+        time_major (bool): Whether to concatenate along the first axis
+            (time_major=False) or the second axis (time_major=True).
     """
     if torch and any([torch.is_tensor(t) for t in values]):
         # Incase the elements are torch values, they might be on GPU, so we have to
