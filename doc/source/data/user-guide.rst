@@ -12,9 +12,9 @@ show you how achieve several tasks.
 .. toctree::
     :maxdepth: 2
 
-    creating-datasets
-    transforming-datasets
-    consuming-datasets
+    creating-datastreams
+    transforming-datastreams
+    consuming-datastreams
     batch_inference
     dataset-tensor-support
     custom-datasource
