@@ -408,7 +408,9 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
-        app_name: str = None,
+        # For V1 API, application name is empty string.
+        # For V2 API, it is supposed to be SERVE_DEFAULT_APP_NAME
+        app_name: str = "",
     ) -> bool:
         """Deploys a deployment."""
         if route_prefix is not None:
@@ -432,7 +434,7 @@ class ServeController:
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix)
+            endpoint_info = EndpointInfo(route=route_prefix, app_name=app_name)
             self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
             self.endpoint_state.delete_endpoint(name)

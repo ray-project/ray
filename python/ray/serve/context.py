@@ -148,6 +148,7 @@ def _connect() -> ServeControllerClient:
 class RequestContext:
     route: str = ""
     request_id: str = ""
+    app_name: str = ""
 
 
 _serve_request_context = contextvars.ContextVar(

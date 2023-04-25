@@ -40,6 +40,9 @@ class RequestMetadata:
     # HTTP route path of the request.
     route: str = ""
 
+    # Application Name
+    app_name: str = ""
+
 
 @dataclass
 class Query:
@@ -98,7 +101,7 @@ class ReplicaSet:
                 "The current number of queries to this deployment waiting"
                 " to be assigned to a replica."
             ),
-            tag_keys=("deployment", "route"),
+            tag_keys=("deployment", "route", "application"),
         )
         self.num_queued_queries_gauge.set_default_tags(
             {"deployment": self.deployment_name}
@@ -229,7 +232,11 @@ class ReplicaSet:
         """
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"route": query.metadata.route}
+            self.num_queued_queries,
+            tags={
+                "route": query.metadata.route,
+                "application": query.metadata.app_name,
+            },
         )
         await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
@@ -255,7 +262,11 @@ class ReplicaSet:
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"route": query.metadata.route}
+            self.num_queued_queries,
+            tags={
+                "route": query.metadata.route,
+                "application": query.metadata.app_name,
+            },
         )
         return assigned_ref
 

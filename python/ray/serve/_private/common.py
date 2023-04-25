@@ -21,11 +21,13 @@ EndpointTag = str
 ReplicaTag = str
 NodeId = str
 Duration = float
+ApplicationName = str
 
 
 @dataclass
 class EndpointInfo:
     route: str
+    app_name: str
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
