@@ -11,7 +11,6 @@ from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     PolicyID,
@@ -1549,12 +1548,12 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     for k in concated_samples[0].keys():
         try:
             if k == "infos":
-                concatd_data[k] = concat_aligned(
+                concatd_data[k] = _concat_values(
                     [s[k] for s in concated_samples], time_major=time_major
                 )
             else:
                 concatd_data[k] = tree.map_structure(
-                    _concat_key, *[c[k] for c in concated_samples]
+                    _concat_values, *[c[k] for c in concated_samples]
                 )
         except Exception:
             raise ValueError(
@@ -1636,8 +1635,22 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_key(*values, time_major=None):
-    return concat_aligned(list(values), time_major)
+def _concat_values(*values, time_major=None):
+    """Concatenates a list of values.
+
+    Depending on time_major, the values are either concatenated along the first
+    axis (time_major=False) or the second axis (time_major=True).
+
+    More specifically, this method is used to concatenate and align floating point
+    numpy values to 64 bit precision. Other values are concatenated as is.
+    This makes sure that values
+    """
+    if torch and any([torch.is_tensor(t) for t in values]):
+        # Incase the elements are torch values, they might be on GPU, so we have to
+        # use torch.cat here.
+        return torch.cat(list(values), dim=1 if time_major else 0)
+    else:
+        return np.concatenate(list(values), axis=1 if time_major else 0)
 
 
 @DeveloperAPI

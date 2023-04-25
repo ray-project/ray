@@ -7,7 +7,11 @@ from typing import List, Optional
 
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+    Deprecated,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
 
@@ -25,6 +29,10 @@ MAX_LOG_NN_OUTPUT = 2
 
 
 @PublicAPI
+@Deprecated(
+    help="RLlib itself has no use for this anymore.",
+    error=False,
+)
 def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
     """Returns an array of a given size that is 64-byte aligned.
 
@@ -55,6 +63,10 @@ def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
 
 
 @PublicAPI
+@Deprecated(
+    help="RLlib itself has no use for this anymore.",
+    error=False,
+)
 def concat_aligned(
     items: List[np.ndarray], time_major: Optional[bool] = None
 ) -> np.ndarray:
