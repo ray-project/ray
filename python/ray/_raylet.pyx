@@ -2406,7 +2406,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            optional[c_vector[CObjectReference]] return_refs
+            c_vector[CObjectReference] return_refs
             c_vector[CObjectID] incremented_put_arg_ids
 
         with self.profile_event(b"submit_task"):
@@ -2438,20 +2438,20 @@ cdef class CoreWorker:
             if status.ok():
                 # The initial local reference is already acquired internally
                 # when adding the pending task.
-                return VectorToObjectRefs(return_refs.value(),
+                return VectorToObjectRefs(return_refs,
                                           skip_adding_local_ref=True)
             else:
                 actor = self.get_actor_handle(actor_id)
                 actor_handle = (CCoreWorkerProcess.GetCoreWorker()
                                 .GetActorHandle(c_actor_id))
                 if status.IsOutOfResource():
-                                raise PendingCallsLimitExceeded("The task {} could not be "
-                                                "submitted to {} because more "
-                                                "than {} tasks are queued on "
-                                                "the actor. This limit "
-                                                "can be adjusted with the "
-                                                "`max_pending_calls` actor "
-                                                "option.".format(
+                    raise PendingCallsLimitExceeded("The task {} could not be "
+                        "submitted to {} because more "
+                        "than {} tasks are queued on "
+                        "the actor. This limit "
+                        "can be adjusted with the "
+                        "`max_pending_calls` actor "
+                        "option.".format(
                                                     function_descriptor
                                                     .function_name,
                                                     repr(actor),
