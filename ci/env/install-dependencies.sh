@@ -399,7 +399,11 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt")
     if [ -n "${ARROW_VERSION-}" ]; then
       if [ "${ARROW_VERSION-}" = nightly ]; then
-        delayed_packages+=("--extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow")
+        delayed_packages+=("--extra-index-url")
+        delayed_packages+=("https://pypi.fury.io/arrow-nightlies/")
+        delayed_packages+=("--prefer-binary")
+        delayed_packages+=("--pre")
+        delayed_packages+=("pyarrow")
       else
         delayed_packages+=("pyarrow==${ARROW_VERSION}")
       fi
