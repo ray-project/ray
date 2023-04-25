@@ -30,7 +30,7 @@ export const useJobList = () => {
   };
   refreshRef.current = isRefreshing;
 
-  const { data } = useSWR(
+  const { data, isLoading } = useSWR(
     "useJobList",
     async () => {
       const rsp = await getJobList();
@@ -52,6 +52,7 @@ export const useJobList = () => {
       filter.every((f) => node[f.key] && (node[f.key] ?? "").includes(f.val)),
     ),
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     changeFilter,

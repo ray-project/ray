@@ -50,10 +50,11 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TypeSpec(str)})}
         # )
 
-        spec = {"foo": int, "bar": {"baz": TorchTensorSpec("b,h")}}
+        spec = {"foo": int, "bar": {"baz": TensorSpec("b,h", framework="torch")}}
         output = convert_to_canonical_format(spec)
         # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TorchTensorSpec("b,h")})}
+        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TensorSpec("b,h",
+        framework="torch")})}
         # )
 
 
@@ -68,9 +69,9 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         output = convert_to_canonical_format(spec)
         # output = None
 
-        spec = TorchTensorSpec("b,h")
+        spec = TensorSpec("b,h", framework="torch")
         output = convert_to_canonical_format(spec)
-        # output = TorchTensorSpec("b,h")
+        # output = TensorSpec("b,h", framework="torch")
 
     Args:
         spec: The spec to convert to canonical format.

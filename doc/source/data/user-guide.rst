@@ -1,4 +1,4 @@
-.. _data_user_guide :
+.. _data_user_guide:
 
 ===========
 User Guides
@@ -9,8 +9,6 @@ If you’re new to Ray Datasets, we recommend starting with the
 This user guide will help you navigate the Ray Datasets project and
 show you how achieve several tasks.
 
-TODO make this a gallery
-
 .. toctree::
     :maxdepth: 2
 
@@ -20,6 +18,6 @@ TODO make this a gallery
     batch_inference
     dataset-tensor-support
     custom-datasource
-    pipelining-compute
-    dataset-internals
+    data-internals
     performance-tips
+    pipelining-compute
