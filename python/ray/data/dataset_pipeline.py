@@ -650,7 +650,11 @@ class DatasetPipeline(Generic[T]):
         if self._length == float("inf"):
             raise ValueError("Cannot count a pipeline of infinite length.")
 
-        pipe = self.map_batches(lambda batch: {"len": np.array([len(batch)])})
+        def batch_len(batch):
+            key0 = list(batch.keys())[0]
+            return len(batch[key0])
+
+        pipe = self.map_batches(lambda batch: {"len": np.array([batch_len(batch)])})
         total = 0
         for elem in pipe.iter_rows():
             total += elem["len"]

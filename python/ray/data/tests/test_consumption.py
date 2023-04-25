@@ -23,7 +23,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import column_udf, named_values, extract_values
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -125,8 +125,8 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
 
     serialized_ds = ds2.serialize_lineage()
     ds3 = Dataset.deserialize_lineage(serialized_ds)
-    assert set(ds3.take(30)) == named_values(
-        "id", set(list(range(10)) + list(range(20)))
+    assert set(extract_values("id", ds3.take(30))) == set(
+        list(range(10)) + list(range(20))
     )
 
     # Zips not supported.
@@ -142,13 +142,13 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
 def test_basic(ray_start_regular_shared, pipelined):
     ds0 = ray.data.range(5)
     ds = maybe_pipeline(ds0, pipelined)
-    assert sorted(ds.map(column_udf("id", lambda x: x + 1)).take()) == named_values(
-        "id", [1, 2, 3, 4, 5]
-    )
+    assert sorted(
+        extract_values("id", ds.map(column_udf("id", lambda x: x + 1)).take())
+    ) == [1, 2, 3, 4, 5]
     ds = maybe_pipeline(ds0, pipelined)
     assert ds.count() == 5
     ds = maybe_pipeline(ds0, pipelined)
-    assert sorted(ds.iter_rows()) == named_values("id", [0, 1, 2, 3, 4])
+    assert sorted(extract_values("id", ds.iter_rows())) == [0, 1, 2, 3, 4]
 
 
 def test_range_table(ray_start_regular_shared):
@@ -223,17 +223,15 @@ def test_cache_dataset(ray_start_regular_shared):
 
 
 def test_schema(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=10)
-    ds2 = ray.data.range_table(10, parallelism=10)
+    ds2 = ray.data.range(10, parallelism=10)
     ds3 = ds2.repartition(5)
     ds3 = ds3.materialize()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4 = ds4.materialize()
-    assert str(ds) == "Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
-    assert str(ds2) == "Datastream(num_blocks=10, num_rows=10, schema={value: int64})"
+    assert str(ds2) == "Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
     assert (
         str(ds3)
-        == "MaterializedDatastream(num_blocks=5, num_rows=10, schema={value: int64})"
+        == "MaterializedDatastream(num_blocks=5, num_rows=10, schema={id: int64})"
     )
     assert (
         str(ds4) == "MaterializedDatastream(num_blocks=1, num_rows=5, "
@@ -246,7 +244,7 @@ def test_schema_lazy(ray_start_regular_shared):
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
-    assert schema == int
+    assert schema.names == ["id"]
     # Fetching the schema does not trigger execution, since
     # the schema is known beforehand for RangeDatasource.
     assert ds._plan._in_blocks._num_computed() == 0
@@ -276,63 +274,63 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
             assert ds._plan.execute()._num_computed() == expected
 
     check_num_computed(0)
-    assert ds.take(10) == list(range(10))
+    assert extract_values("id", ds.take(10)) == list(range(10))
     check_num_computed(2)
-    assert ds.take(20) == list(range(20))
+    assert extract_values("id", ds.take(20)) == list(range(20))
     check_num_computed(4)
-    assert ds.take(30) == list(range(30))
+    assert extract_values("id", ds.take(30)) == list(range(30))
     check_num_computed(8)
-    assert ds.take(50) == list(range(50))
+    assert extract_values("id", ds.take(50)) == list(range(50))
     check_num_computed(16)
-    assert ds.take(100) == list(range(100))
+    assert extract_values("id", ds.take(100)) == list(range(100))
     check_num_computed(20)
 
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    assert repr(ds) == "Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "+- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
     )
-    ds = ds.filter(lambda x: x > 0)
+    ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
         "Filter\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "   +- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "      +- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
     )
     ds = ds.materialize()
     assert (
         repr(ds)
-        == "MaterializedDatastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        == "MaterializedDatastream(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Datastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "+- Datastream(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
         repr(ds1) == f"MaterializedDatastream(num_blocks=5, num_rows={ds1.count()}, "
-        "schema=<class 'int'>)"
+        "schema={id: int64})"
     )
     assert (
         repr(ds2) == f"MaterializedDatastream(num_blocks=5, num_rows={ds2.count()}, "
-        "schema=<class 'int'>)"
+        "schema={id: int64})"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Datastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    assert repr(ds3) == "Datastream(num_blocks=10, num_rows=9, schema={id: int64})"
     ds = ds.zip(ds3)
     assert repr(ds) == (
-        "Zip\n" "+- Datastream(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "Zip\n" "+- Datastream(num_blocks=10, num_rows=9, schema={id: int64})"
     )
 
     def my_dummy_fn(x):
@@ -342,7 +340,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
         "MapBatches(my_dummy_fn)\n"
-        "+- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "+- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
     )
 
 
@@ -352,7 +350,7 @@ def test_limit(ray_start_regular_shared, lazy):
     if not lazy:
         ds = ds.materialize()
     for i in range(100):
-        assert ds.limit(i).take(200) == list(range(i))
+        assert extract_values("id", ds.limit(i).take(200)) == list(range(i))
 
 
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
@@ -381,7 +379,9 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
         def prepare_read(self, parallelism, n):
             def range_(i):
                 ray.get(self.counter.increment.remote())
-                return [list(range(parallelism * i, parallelism * i + n))]
+                return [
+                    pd.DataFrame({"id": range(parallelism * i, parallelism * i + n)})
+                ]
 
             return [
                 ReadTask(
@@ -406,7 +406,7 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
     )
     ds2 = ds.limit(limit)
     # Check content.
-    assert ds2.take(limit) == list(range(limit))
+    assert extract_values("id", ds2.take(limit)) == list(range(limit))
     # Check number of read tasks launched.
     assert ray.get(source.counter.get.remote()) == expected
 
@@ -418,7 +418,7 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
         def prepare_read(self, parallelism, n):
             return parallelism * [
                 ReadTask(
-                    lambda: [[1] * n],
+                    lambda: [pd.DataFrame({"id": [1] * n})],
                     BlockMetadata(
                         num_rows=None,
                         size_bytes=None,
@@ -431,18 +431,20 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
 
     ds = ray.data.read_datasource(DumbOnesDatasource(), parallelism=10, n=10)
     for i in range(1, 100):
-        assert ds.limit(i).take(100) == [1] * i
+        assert extract_values("id", ds.limit(i).take(100)) == [1] * i
 
 
 def test_convert_types(ray_start_regular_shared):
     plain_ds = ray.data.range(1)
-    arrow_ds = plain_ds.map(lambda x: {"a": x})
+    arrow_ds = plain_ds.map(lambda x: {"a": x["id"]})
     assert arrow_ds.take() == [{"a": 0}]
-    assert "ArrowRow" in arrow_ds.map(lambda x: str(type(x))).take()[0]
+    assert "dict" in str(arrow_ds.map(lambda x: {"out": str(type(x))}).take()[0])
 
-    arrow_ds = ray.data.range_table(1)
-    assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
+    arrow_ds = ray.data.range(1)
+    assert arrow_ds.map(lambda x: {"out": "plain_{}".format(x["id"])}).take() == [
+        {"out": "plain_0"}
+    ]
+    assert arrow_ds.map(lambda x: {"a": (x["id"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):
@@ -483,9 +485,9 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
 
 def test_take_batch(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=2)
-    assert ds.take_batch(3) == [0, 1, 2]
-    assert ds.take_batch(6) == [0, 1, 2, 3, 4, 5]
-    assert ds.take_batch(100) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert ds.take_batch(3) == {"id": np.array([0, 1, 2])}
+    assert ds.take_batch(6) == {"id": np.array([0, 1, 2, 3, 4, 5])}
+    assert ds.take_batch(100) == {"id": np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])}
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
     assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
 
@@ -1589,7 +1591,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         else:
             return ray.get(count)
 
-    assert sorted(ds1.map(flaky_mapper).take()) == [2, 3, 4]
+    assert sorted(extract_values("id", ds1.map(flaky_mapper).take())) == [2, 3, 4]
 
     with pytest.raises(ValueError):
         ray.data.read_datasource(
