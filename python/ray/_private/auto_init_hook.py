@@ -11,7 +11,7 @@ def wrap_auto_init(fn):
             and not ray.is_initialized()
         ):
             ray.init()
-            return fn(*args, **kwargs)
+        return fn(*args, **kwargs)
 
     return auto_init_wrapper
 
