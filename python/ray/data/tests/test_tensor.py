@@ -68,7 +68,8 @@ def test_tensors_basic(ray_start_regular_shared):
 
     res = ray.data.range_tensor(2, shape=(2, 2)).map(np_mapper).take()
     np.testing.assert_equal(
-        extract_values("data", res), [np.ones((2, 2)), 2 * np.ones((2, 2))])
+        extract_values("data", res), [np.ones((2, 2)), 2 * np.ones((2, 2))]
+    )
 
     # Explicit NumPy format.
     res = (
@@ -77,7 +78,8 @@ def test_tensors_basic(ray_start_regular_shared):
         .take()
     )
     np.testing.assert_equal(
-        extract_values("data", res), [np.ones((2, 2)), 2 * np.ones((2, 2))])
+        extract_values("data", res), [np.ones((2, 2)), 2 * np.ones((2, 2))]
+    )
 
     # Pandas conversion.
     def pd_mapper(df):
@@ -212,9 +214,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = (
-        "MaterializedDatastream(num_blocks=40, num_rows=40, schema={item: object})"
-    )
+    res = "MaterializedDatastream(num_blocks=40, num_rows=40, schema={item: object})"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -765,7 +765,9 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
 
     ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
 
-    assert isinstance(ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType)
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+    )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -799,7 +801,9 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         _block_udf=_block_udf,
     )
 
-    assert isinstance(ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType)
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+    )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr + 1))
