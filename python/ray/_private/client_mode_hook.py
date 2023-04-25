@@ -1,7 +1,8 @@
 import os
 import threading
 from contextlib import contextmanager
-from functools import partial, wraps
+from functools import wraps
+from ray._private.auto_init_hook import auto_init_ray
 
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
@@ -125,7 +126,7 @@ def client_mode_wrap(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         from ray.util.client import ray
-
+        auto_init_ray()
         # Directly pass this through since `client_mode_wrap` is for
         # Placement Group APIs
         if client_mode_should_convert():
