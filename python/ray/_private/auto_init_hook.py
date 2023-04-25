@@ -18,7 +18,7 @@ def wrap_auto_init(fn):
 
 def wrap_auto_init_for_all_apis(api_names):
     """Wrap public APIs with automatic ray.init."""
-    for api_name in AUTO_INIT_APIS:
+    for api_name in api_names:
         api = getattr(ray, api_name, None)
         assert api is not None, api_name
         setattr(ray, api_name, wrap_auto_init(api))
