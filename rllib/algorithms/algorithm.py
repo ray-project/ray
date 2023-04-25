@@ -2128,37 +2128,25 @@ class Algorithm(Trainable):
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
-        # if we are using the learner API, save the learner state
+        # if we are using the learner API, save the learner group state
         if self.config._enable_learner_api:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
+            state["learner_state_dir"] = "learner/"
 
         return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+    def load_checkpoint(self, checkpoint: str) -> None:
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
-        if isinstance(checkpoint, str):
-            checkpoint_info = get_checkpoint_info(checkpoint)
-            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info
-            )
-        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
-        else:
-            checkpoint_data = checkpoint
+
+        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
-        if isinstance(checkpoint, str) and self.config._enable_learner_api:
+        if self.config._enable_learner_api:
             learner_state_dir = os.path.join(checkpoint, "learner")
             self.learner_group.load_state(learner_state_dir)
-            # weights = self.learner_group.get_weights()
-            # self.workers.local_worker().set_weights(weights)
-            # remote_weights = ray.put(weights)
-            # self.workers.foreach_worker(
-            #     lambda w: w.set_weights(ray.get(remote_weights)),
-            #     local_worker=False,
-            #     healthy_only=False,
-            # )
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
