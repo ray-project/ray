@@ -619,7 +619,8 @@ class JobManager:
                             err_msg += (
                                 " This may be because the job entrypoint's specified "
                                 "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources, entrypoint_memory) aren't available on the cluster."
+                                "entrypoint_resources, entrypoint_memory)"
+                                "aren't available on the cluster."
                                 " Try checking the cluster's available resources with "
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
