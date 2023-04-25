@@ -1271,10 +1271,11 @@ class DeploymentState:
             max_replicas=max_to_stop,
             ranking_function=rank_replicas_for_stopping,
         )
-        replicas_stopped = False
+        replicas_changed = False
         code_version_changes = 0
         reconfigure_changes = 0
         for replica in replicas_to_update:
+            replicas_changed = True
             # If the new version requires the actors to be restarted, stop the replica.
             # A new one with the correct version will be started later as part of the
             # normal scale-up process.
@@ -1282,7 +1283,6 @@ class DeploymentState:
                 code_version_changes += 1
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
-                replicas_stopped = True
             # Otherwise, only lightweight options in deployment config is a mismatch, so
             # we update it dynamically without restarting the replica.
             else:
@@ -1311,7 +1311,7 @@ class DeploymentState:
             # Record user config lightweight update
             record_extra_usage_tag(TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED, "True")
 
-        return replicas_stopped
+        return replicas_changed
 
     def _check_and_stop_wrong_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
@@ -1373,7 +1373,7 @@ class DeploymentState:
             self._target_state.num_replicas >= 0
         ), "Number of replicas must be greater than or equal to 0."
 
-        replicas_stopped = self._check_and_stop_wrong_version_replicas()
+        replicas_changed = self._check_and_stop_wrong_version_replicas()
 
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
@@ -1384,7 +1384,7 @@ class DeploymentState:
             self._target_state.num_replicas - current_replicas - recovering_replicas
         )
         if delta_replicas == 0:
-            return False
+            return replicas_changed
 
         elif delta_replicas > 0:
             # Don't ever exceed self._target_state.num_replicas.
@@ -1407,7 +1407,7 @@ class DeploymentState:
                         time.time() - self._last_retry
                         < self._backoff_time_s + random.uniform(0, 3)
                     ):
-                        return replicas_stopped
+                        return replicas_changed
 
                 self._last_retry = time.time()
                 logger.info(
@@ -1434,7 +1434,7 @@ class DeploymentState:
                     )
 
         elif delta_replicas < 0:
-            replicas_stopped = True
+            replicas_changed = True
             to_remove = -delta_replicas
             logger.info(
                 f"Removing {to_remove} replica{'s' if to_remove > 1 else ''} "
@@ -1459,7 +1459,7 @@ class DeploymentState:
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
-        return replicas_stopped
+        return replicas_changed
 
     def _check_curr_status(self) -> bool:
         """Check the current deployment status.
