@@ -4,11 +4,7 @@ from pathlib import Path
 import yaml
 
 
-def rel_path_to_doc(rel_path_to_ray) -> Path:
-    return Path(rel_path_to_ray).relative_to("doc")
-
-
-if __name__ == "__main__":
+def get_doc_path() -> Path:
     # For CI, Bazel will set this environment variable as the "data" directory.
     test_data_dir = os.environ.get("TEST_SRCDIR")
 
@@ -20,26 +16,34 @@ if __name__ == "__main__":
         # ray/doc/source/examples/ -> ray/doc
         doc_path = (Path(__file__).parent / ".." / "..").resolve()
 
-    templates_catalog_path = doc_path / "source/templates/templates.yaml"
+    return doc_path
 
-    with open(templates_catalog_path, "r") as f:
-        templates = yaml.safe_load(f)
 
-    all_missing_providers = {}
+def rel_path_to_doc(rel_path_to_ray) -> Path:
+    return Path(rel_path_to_ray).relative_to("doc")
+
+
+def validate_templates_yaml_schema(templates) -> dict:
     all_missing_fields = {}
-    invalid_paths = collections.defaultdict(list)
-
     required_fields = {"title", "description", "path", "cluster_env", "compute_config"}
-    required_cloud_providers = {"AWS", "GCP"}
 
-    for i, (template_name, template_config) in enumerate(templates.items()):
+    for template_name, template_config in templates.items():
         # ======= Schema check for templates.yaml ========
         missing_fields = required_fields - set(template_config)
         if missing_fields:
             all_missing_fields[template_name] = missing_fields
             continue
 
-        # ======= Check template `path` ========
+    return all_missing_fields
+
+
+def validate_template_paths(templates, invalid_paths) -> None:
+    doc_path = get_doc_path()
+
+    for template_name, template_config in templates.items():
+        if "path" not in template_config:
+            continue
+
         # The yaml specifies relative paths to the ray root directory: doc/a/b/c
         rel_path_to_ray = template_config["path"]
         # Relative path to the ray/doc directory: -> a/b/c
@@ -47,12 +51,37 @@ if __name__ == "__main__":
         if not (doc_path / rel_path).exists():
             invalid_paths[template_name].append(rel_path)
 
-        # ======= Check template `cluster_env` ========
-        cluster_env_rel_path = rel_path_to_doc(template_config["cluster_env"])
-        if not (doc_path / cluster_env_rel_path).exists():
-            invalid_paths[template_name].append(cluster_env_rel_path)
 
-        # ======= Check template `compute_config` ========
+def validate_cluster_envs(templates, invalid_paths, invalid_yamls) -> None:
+    doc_path = get_doc_path()
+
+    for template_name, template_config in templates.items():
+        if "cluster_env" not in template_config:
+            continue
+
+        cluster_env_rel_path = rel_path_to_doc(template_config["cluster_env"])
+        cluster_env_path = doc_path / cluster_env_rel_path
+        if not cluster_env_path.exists():
+            invalid_paths[template_name].append(cluster_env_rel_path)
+        else:
+            try:
+                # Assert that the yaml file is properly formatted.
+                with open(cluster_env_path, "r") as f:
+                    yaml.safe_load(f)
+            except yaml.parser.ParserError as e:
+                invalid_yamls[template_name].append(str(e))
+
+
+def validate_compute_configs(templates, invalid_paths, invalid_yamls) -> dict:
+    doc_path = get_doc_path()
+    required_cloud_providers = {"AWS", "GCP"}
+
+    all_missing_providers = {}
+
+    for template_name, template_config in templates.items():
+        if "compute_config" not in template_config:
+            continue
+
         compute_config_per_provider = template_config["compute_config"]
 
         missing_providers = required_cloud_providers - set(compute_config_per_provider)
@@ -64,11 +93,39 @@ if __name__ == "__main__":
             rel_path_to_doc(path) for path in compute_config_per_provider.values()
         ]
         for rel_path in rel_paths:
-            if not (doc_path / rel_path).exists():
+            compute_config_path = doc_path / rel_path
+            if not compute_config_path.exists():
                 invalid_paths[template_name].append(rel_path)
+            else:
+                try:
+                    # Assert that the yaml file is properly formatted.
+                    with open(compute_config_path, "r") as f:
+                        yaml.safe_load(f)
+                except yaml.parser.ParserError as e:
+                    invalid_yamls[template_name].append(str(e))
+
+    return all_missing_providers
+
+
+if __name__ == "__main__":
+    doc_path = get_doc_path()
+    templates_catalog_path = doc_path / "source/templates/templates.yaml"
+
+    with open(templates_catalog_path, "r") as f:
+        templates = yaml.safe_load(f)
+
+    invalid_paths = collections.defaultdict(list)
+    invalid_yamls = collections.defaultdict(list)
+
+    all_missing_fields = validate_templates_yaml_schema(templates)
+    validate_template_paths(templates, invalid_paths)
+    validate_cluster_envs(templates, invalid_paths, invalid_yamls)
+    all_missing_providers = validate_compute_configs(
+        templates, invalid_paths, invalid_yamls
+    )
 
     # ======= Print an informative error message. ========
-    if all_missing_fields or all_missing_providers or invalid_paths:
+    if any([all_missing_fields, all_missing_providers, invalid_paths, invalid_yamls]):
         msg = "TEMPLATES VALIDATION FAILED!! Please fix the issues listed below:\n\n"
 
         if all_missing_fields:
@@ -90,6 +147,16 @@ if __name__ == "__main__":
                 msg += f"- {template_name}:\n"
                 msg += "\n".join([f"\t- {path}" for path in invalid_paths_for_template])
                 msg += "\n"
+
+        if invalid_yamls:
+            msg += "\nPlease fix invalid configuration yamls:\n"
+            for template_name, invalid_yamls_per_template in invalid_yamls.items():
+                msg += f"- {template_name}:\n\n"
+                msg += "\n\n".join(
+                    f"{i + 1}. {invalid_yaml}"
+                    for i, invalid_yaml in enumerate(invalid_yamls_per_template)
+                )
+                msg += "\n\n"
 
         raise ValueError(msg)
     else:
