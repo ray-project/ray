@@ -132,7 +132,7 @@ You can specify a namespace for a named actor while creating it. The created act
 the specified namespace, no matter what namespace of the current job is.
 
 .. tab-set::
-    `
+
     .. tab-item:: Python
 
         .. literalinclude:: ./doc_code/namespaces.py
