@@ -71,6 +71,7 @@ def _validate_key_fn(
     if schema is None:
         # Datastream is empty/cleared, validation not possible.
         return
+    ctx = ray.data.DataContext.get_current()
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
@@ -83,6 +84,8 @@ def _validate_key_fn(
                 "The column '{}' does not exist in the "
                 "schema '{}'.".format(key, schema)
             )
+    elif ctx.strict_mode:
+        raise StrictModeError(f"In strict mode, the key must be a string, was: {key}")
     elif key is None:
         if not is_simple_format:
             raise ValueError(

@@ -229,7 +229,14 @@ def test_flat_map_generator(ray_start_regular_shared):
         for _ in range(2):
             yield {"id": item["id"] + 1}
 
-    assert sorted(extract_values("id", ds.flat_map(map_generator).take())) == [1, 1, 2, 2, 3, 3]
+    assert sorted(extract_values("id", ds.flat_map(map_generator).take())) == [
+        1,
+        1,
+        2,
+        2,
+        3,
+        3,
+    ]
 
 
 def test_add_column(ray_start_regular_shared):
@@ -293,11 +300,6 @@ def test_select_columns(ray_start_regular_shared):
         with pytest.raises(KeyError):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
-    # Test simple
-    ds3 = ray.data.range(10)
-    with pytest.raises(ValueError):
-        ds3.select_columns(cols=[]).materialize()
-
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):
     ctx = DataContext.get_current()
@@ -306,7 +308,9 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
     # Test input validation
     ds = ray.data.range(5)
     with pytest.raises(ValueError):
-        ds.map_batches(column_udf("id", lambda x: x + 1), batch_format="pyarrow", batch_size=-1).take()
+        ds.map_batches(
+            column_udf("id", lambda x: x + 1), batch_format="pyarrow", batch_size=-1
+        ).take()
 
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -353,7 +357,9 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
 
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: {"id": np.array([1])}, batch_size=1, batch_format="pyarrow")
+    ds2 = ds.map_batches(
+        lambda df: {"id": np.array([1])}, batch_size=1, batch_format="pyarrow"
+    )
     ds_list = extract_values("id", ds2.take())
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
@@ -640,9 +646,9 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ray.init(num_cpus=2)
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
-    assert extract_values("id", ds.map_batches(
-        lambda x: x, compute=ray.data.ActorPoolStrategy()
-    ).take()) == list(range(10))
+    assert extract_values(
+        "id", ds.map_batches(lambda x: x, compute=ray.data.ActorPoolStrategy()).take()
+    ) == list(range(10))
 
 
 @pytest.mark.parametrize(
@@ -662,7 +668,7 @@ def test_map_batches_batch_mutation(
     # Test that batch mutation works without encountering a read-only error (e.g. if the
     # batch is a zero-copy view on data in the object store).
     def mutate(df):
-        df["value"] += 1
+        df["id"] += 1
         return df
 
     ds = ray.data.range(num_rows, parallelism=num_blocks).repartition(num_blocks)
@@ -795,13 +801,13 @@ def test_map_batches_block_bundling_skewed_auto(
 
 def test_map_with_mismatched_columns(ray_start_regular_shared):
     def bad_fn(row):
-        if row > 5:
+        if row["id"] > 5:
             return {"a": "hello1"}
         else:
             return {"b": "hello1"}
 
     def good_fn(row):
-        if row > 5:
+        if row["id"] > 5:
             return {"a": "hello1", "b": "hello2"}
         else:
             return {"b": "hello2", "a": "hello1"}
@@ -826,14 +832,14 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     xs = [x % 3 for x in list(range(100))]
 
     # ds1 has 1 block which contains 100 rows.
-    ds1 = ray.data.from_items(xs).repartition(1).sort().map_batches(lambda x: x)
+    ds1 = ray.data.from_items(xs).repartition(1).sort("item").map_batches(lambda x: x)
     assert ds1._block_num_rows() == [100]
 
     # ds2 has 30 blocks, but only 3 of them are non-empty
     ds2 = (
         ray.data.from_items(xs)
         .repartition(30)
-        .sort()
+        .sort("item")
         .map_batches(lambda x: x, batch_size=1)
     )
     assert len(ds2._block_num_rows()) == 3

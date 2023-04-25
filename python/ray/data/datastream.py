@@ -823,6 +823,7 @@ class Datastream(Generic[T]):
         """  # noqa: E501
         return self.map_batches(
             lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
             **ray_remote_args,
@@ -1137,7 +1138,7 @@ class Datastream(Generic[T]):
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        return self.map_batches(process_batch)
+        return self.map_batches(process_batch, batch_format=None)
 
     @ConsumptionAPI
     def streaming_split(
