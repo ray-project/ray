@@ -702,6 +702,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -728,6 +729,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -754,6 +756,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
