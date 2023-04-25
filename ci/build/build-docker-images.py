@@ -390,7 +390,6 @@ def prep_ray_ml():
 
     requirements_files = [
         "python/requirements.txt",
-        "python/requirements_pinned.txt",
     ]
     ml_requirements_files = [
         "python/requirements/ml/requirements_ml_docker.txt",
