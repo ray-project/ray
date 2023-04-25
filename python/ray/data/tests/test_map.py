@@ -695,7 +695,7 @@ def test_map_batches_batch_zero_copy(
     def mutate(df):
         # Check that batch is read-only.
         assert not df.values.flags.writeable
-        df["value"] += 1
+        df["id"] += 1
         return df
 
     ds = ray.data.range(num_rows, parallelism=num_blocks).repartition(num_blocks)
@@ -706,7 +706,9 @@ def test_map_batches_batch_zero_copy(
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
     with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
-        ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=True)
+        ds = ds.map_batches(
+            mutate, batch_format="pandas", batch_size=batch_size, zero_copy_batch=True
+        )
         ds.materialize()
 
 
