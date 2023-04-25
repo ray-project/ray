@@ -1275,7 +1275,7 @@ def test_new_version_deploy_throttling(mock_get_all_node_ids, mock_deployment_st
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True], indirect=True)
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 @patch.object(DriverDeploymentState, "_get_all_node_ids")
 def test_reconfigure_throttling(mock_get_all_node_ids, mock_deployment_state):
     # All replicas should be started at once for a new deployment.
