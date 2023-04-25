@@ -240,6 +240,17 @@ filegroup(
     visibility = ["//doc:__subpackages__"]
 )
 
+# Validate that all the paths and yamls within the templates.yaml file are valid.
+
+py_test(
+    name = "templates_directory_validation",
+    size = "small",
+    main = "source/templates/validate.py",
+    srcs = ["source/templates/validate.py"],
+    data = glob(["source/templates/**/*"]),
+    tags = ["exclusive", "team:ml"]
+)
+
 # Templates that require GPU
 
 py_test_run_all_notebooks(
