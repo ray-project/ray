@@ -75,8 +75,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             train_batch = SampleBatch(FAKE_BATCH)
             train_batch = compute_gae_for_sample_batch(policy, train_batch)
@@ -110,8 +110,8 @@ class TestPPO(unittest.TestCase):
             )
             learner_group = learner_group_config.build()
 
-            # load the trainer weights onto the learner_group
-            learner_group.set_weights(trainer.get_weights())
+            # load the algo weights onto the learner_group
+            learner_group.set_weights(algo.get_weights())
             results = learner_group.update(train_batch.as_multi_agent())
 
             learner_group_loss = results[ALL_MODULES]["total_loss"]
@@ -119,6 +119,7 @@ class TestPPO(unittest.TestCase):
             check(learner_group_loss, policy_loss)
 
     def test_save_load_state(self):
+        """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -138,10 +139,10 @@ class TestPPO(unittest.TestCase):
                 _enable_rl_module_api=True,
             )
         )
-        trainer = config.build()
-        policy = trainer.get_policy()
+        algo = config.build()
+        policy = algo.get_policy()
 
-        for fw in framework_iterator(config, ("torch"), with_eager_tracing=True):
+        for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()
@@ -156,13 +157,10 @@ class TestPPO(unittest.TestCase):
             )
             learner_group1 = learner_group_config.build()
             learner_group2 = learner_group_config.build()
-            check(
-                learner_group1.get_weights(), learner_group2.get_weights(), false=True
-            )
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner_group1.save_state(tmpdir)
                 learner_group2.load_state(tmpdir)
-                check(learner_group1.get_weights(), learner_group2.get_weights())
+                check(learner_group1.get_state(), learner_group2.get_state())
 
 
 if __name__ == "__main__":
