@@ -1,5 +1,17 @@
 # flake8: noqa
 # isort: skip_file
+
+# __simple_map_function_start__
+import ray
+
+ds = ray.data.read_csv("example://iris.csv")
+
+def map_function(data):
+    return data[data["sepal.length"] < 5]
+
+transformed = ds.map_batches(map_function, batch_size=10)
+# __simple_map_function_end__
+
 import ray
 import pandas as pd
 

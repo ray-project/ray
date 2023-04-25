@@ -3,32 +3,25 @@
 
 # __pt_load_start__
 import ray
-from torchvision.models import ResNet18_Weights
-from torchvision import transforms
 
-
-# 1G of ImageNet images.
-data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
-dataset = ray.data.read_images(data_url).limit(100)
-# __pt_load_start__
+data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"  # <1>
+dataset = ray.data.read_images(data_url).limit(1000)  # <2>
+# __pt_load_end__
 
 # __pt_preprocess_start__
 from typing import Dict
 import numpy as np
+from torchvision import transforms
+from torchvision.models import ResNet18_Weights
 
-
-# Preprocess the images using the saved transforms.
 resnet_transforms = ResNet18_Weights.DEFAULT.transforms
+transform = transforms.Compose([transforms.ToTensor(), resnet_transforms()])  # <1>
 
-transform = transforms.Compose([transforms.ToTensor(), resnet_transforms()])
-
-
-def preprocess_images(batch: Dict[str, np.ndarray]):
+def preprocess_images(batch: Dict[str, np.ndarray]):  # <2>
     transformed_images = [transform(image) for image in batch["image"]]
     return transformed_images
 
-
-dataset = dataset.map_batches(preprocess_images, batch_format="numpy")
+dataset = dataset.map_batches(preprocess_images)  # <3>
 # __pt_preprocess_end__
 
 
@@ -39,26 +32,25 @@ from torchvision.models import resnet18
 
 
 class TorchPredictor:
-    def __init__(self):
+    def __init__(self):  # <1>
         self.model = resnet18(pretrained=True).cuda()
         self.model.eval()
 
-    def __call__(self, batch: List[torch.Tensor]):
-        torch_batch = torch.stack(batch).cuda()
+    def __call__(self, batch: List[torch.Tensor]):  # <2>
+        torch_batch = torch.stack(batch).cuda()  # <3>
         with torch.inference_mode():
             prediction = self.model(torch_batch)
-            return {"class": prediction.argmax(dim=1).detach().cpu().numpy()}
+            return {"class": prediction.argmax(dim=1).detach().cpu().numpy()}  # <4>
 # __pt_model_end__
 
 
 # __pt_prediction_start__
 predictions = dataset.map_batches(
     TorchPredictor,
-    compute=ray.data.ActorPoolStrategy(size=2),
-    num_gpus=1,  # Specify 1 GPU per worker.
+    compute=ray.data.ActorPoolStrategy(4),  # <1>
+    num_gpus=1,  # <2>
 )
 
-# Call show on the output probabilities to trigger execution
 predictions.show(limit=1)
 # {'class': 258}
 # __pt_prediction_end__
