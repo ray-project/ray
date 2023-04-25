@@ -114,10 +114,10 @@ def test_num_outputs_total():
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    compute_strategy = (
-        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
     )
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -159,7 +159,9 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check we return transformed bundles in order.
     assert not op.completed()
-    assert _take_outputs(op) == [[i * 2] for i in range(100)]
+    assert np.array_equal(
+        _take_outputs(op), [[np.ones(1024) * i * 2] for i in range(100)]
+    )
     assert op.completed()
 
     # Check dataset stats.
@@ -169,15 +171,17 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Check memory stats.
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -201,11 +205,11 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
             _get_blocks(ref, output)
 
     # Check equivalent to bulk execution in order.
-    assert output == [[i * 2] for i in range(100)]
+    assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(8320, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:
         assert "locality_hits" in metrics, metrics
         assert "locality_misses" in metrics, metrics
@@ -311,12 +315,14 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
             total += 1
 
     assert total == 10, total
-    assert "10 locality hits, 0 misses" in op.progress_str()
+    assert "all objects local" in op.progress_str()
 
 
 def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     # Create with inputs.
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        make_ref_bundles([[np.ones(100) * i] for i in range(100)])
+    )
     compute_strategy = ActorPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
@@ -343,11 +349,11 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
             _get_blocks(ref, output)
 
     # Check equivalent to bulk execution in order.
-    assert output == [[i * 2] for i in range(100)]
+    assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
     metrics = op.get_metrics()
-    assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
-    assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
-    assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
+    assert metrics["obj_store_mem_peak"] == pytest.approx(929, 0.5), metrics
+    assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
     # Check e2e locality manager working.
     assert metrics["locality_hits"] == 100, metrics
     assert metrics["locality_misses"] == 0, metrics
@@ -445,9 +451,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    compute_strategy = (
-        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
-    )
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -500,6 +504,64 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
+
+
+def test_actor_pool_map_operator_init(ray_start_regular_shared):
+    """Tests that ActorPoolMapOperator runs init_fn on start."""
+
+    from ray.exceptions import RayActorError
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    def _fail():
+        raise ValueError("init_failed")
+
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    compute_strategy = ActorPoolStrategy(min_size=1)
+
+    op = MapOperator.create(
+        _sleep,
+        input_op=input_op,
+        init_fn=_fail,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    with pytest.raises(RayActorError, match=r"init_failed"):
+        op.start(ExecutionOptions())
+
+
+def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
+    """Tests that ActorPoolMapOperator refuses input when actors are pending."""
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    compute_strategy = ActorPoolStrategy(size=1)
+
+    op = MapOperator.create(
+        _sleep,
+        input_op=input_op,
+        init_fn=lambda: 0,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    op.start(ExecutionOptions())
+
+    # Cannot add input until actor has started.
+    assert not op.should_add_input()
+    for ref in op.get_work_refs():
+        op.notify_work_completed(ref)
+    assert op.should_add_input()
+
+    # Can accept up to four inputs per actor by default.
+    for _ in range(4):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    assert not op.should_add_input()
 
 
 @pytest.mark.parametrize(

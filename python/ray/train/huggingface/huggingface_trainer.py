@@ -76,8 +76,10 @@ class HuggingFaceTrainer(TorchTrainer):
     DDP. These actors already have the necessary torch process group already
     configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
     installed, you can also run FSDP training by specifying the ``fsdp`` argument
-    in ``TrainingArguments``. For more information on configuring FSDP,
-    refer to `Hugging Face documentation <https://huggingface.co/docs/transformers/\
+    in ``TrainingArguments``. DeepSpeed is
+    also supported - see :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`.
+    For more information on configuring FSDP or DeepSpeed, refer to `Hugging Face
+    documentation <https://huggingface.co/docs/transformers/\
 main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
     The training function ran on every Actor will first run the
@@ -95,6 +97,14 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     sharding by ``transformers.IterableDatasetShard``, as the dataset will
     already be sharded on the Ray AIR side.
 
+    You can also provide ``datasets.Dataset`` object or other dataset objects
+    allowed by ``transformers.Trainer`` directly in the ``trainer_init_per_worker``
+    function, without specifying the ``datasets`` dict. It is recommended to initialize
+    those objects inside the function, as otherwise they will be serialized and passed
+    to the function, which may lead to long runtime and memory issues with large
+    amounts of data. In this case, the training dataset will be split
+    automatically by Transformers.
+
     HuggingFace loggers will be automatically disabled, and the ``local_rank``
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
@@ -102,6 +112,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
+    It is tested with ``transformers==4.19.1``.
 
     Example:
         .. code-block:: python
@@ -199,16 +210,8 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             ``transformers.Trainer`` object and takes in the following arguments:
             train ``Torch.Dataset``, optional evaluation ``Torch.Dataset``
             and config as kwargs. The Torch Datasets are automatically
-            created by converting the Ray Datasets internally before
+            created by converting the Datastreams internally before
             they are passed into the function.
-        datasets: Any Ray Datasets to use for training. Use
-            the key "train" to denote which dataset is the training
-            dataset and (optionally) key "evaluation" to denote the evaluation
-            dataset. Can only contain a training dataset
-            and up to one extra dataset to be used for evaluation.
-            If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
         trainer_init_config: Configurations to pass into
             ``trainer_init_per_worker`` as kwargs.
         torch_config: Configuration for setting up the PyTorch backend. If set to
@@ -217,6 +220,14 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
+        datasets: Any datasets to use for training. Use
+            the key "train" to denote which dataset is the training
+            dataset and key "evaluation" to denote the evaluation
+            dataset. Can only contain a training dataset
+            and up to one extra dataset to be used for evaluation.
+            If a ``preprocessor`` is provided and has not already been fit,
+            it will be fit on the training dataset. All datasets will be
+            transformed by the ``preprocessor`` if one is provided.
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -224,7 +235,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
     _dataset_config = {
         # training dataset should be split by us
-        "train": DatasetConfig(fit=True, split=True, required=True),
+        "train": DatasetConfig(fit=True, split=True),
         # do not split eval dataset, as HF has a system to parallelize
         # evaluation across workers, and it requires each worker
         # to have the full eval dataset
@@ -234,15 +245,16 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     def __init__(
         self,
         trainer_init_per_worker: Callable[
-            [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
+            [Optional[TorchDataset], Optional[TorchDataset], Any],
+            transformers.trainer.Trainer,
         ],
         *,
-        datasets: Dict[str, GenDataset],
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):

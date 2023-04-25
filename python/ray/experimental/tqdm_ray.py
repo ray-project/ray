@@ -1,7 +1,9 @@
+import builtins
 import copy
 import json
 import logging
 import os
+import sys
 import threading
 import uuid
 from typing import Any, Dict, Iterable, Optional
@@ -9,10 +11,11 @@ from typing import Any, Dict, Iterable, Optional
 import colorama
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.util.debug import log_once
 
 try:
-    import tqdm as real_tqdm
+    import tqdm.auto as real_tqdm
 except ImportError:
     real_tqdm = None
 
@@ -26,13 +29,23 @@ RAY_TQDM_MAGIC = "__ray_tqdm_magic_token__"
 
 # Global manager singleton.
 _manager: Optional["_BarManager"] = None
+_print = builtins.print
 
 
 def safe_print(*args, **kwargs):
-    """Use this as an alternative to `print` that will not corrupt tqdm output."""
+    """Use this as an alternative to `print` that will not corrupt tqdm output.
+
+    By default, the builtin print will be patched to this function when tqdm_ray is
+    used. To disable this, set RAY_TQDM_PATCH_PRINT=0.
+    """
+
+    # Ignore prints to StringIO objects, etc.
+    if kwargs.get("file") not in [sys.stdout, sys.stderr, None]:
+        return _print(*args, **kwargs)
+
     try:
         instance().hide_bars()
-        print(*args, **kwargs)
+        _print(*args, **kwargs)
     finally:
         instance().unhide_bars()
 
@@ -146,7 +159,7 @@ class _Bar:
     def update(self, state: ProgressBarState) -> None:
         """Apply the updated worker progress bar state."""
         if state["desc"] != self.state["desc"]:
-            self.bar.set_description(state["desc"] + " " + str(state["pos"]))
+            self.bar.set_description(state["desc"])
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
@@ -238,6 +251,9 @@ class _BarManager:
         self.in_hidden_state = False
         self.num_hides = 0
         self.lock = threading.RLock()
+        # Avoid colorizing Jupyter output, since the tqdm bar is rendered in
+        # ipywidgets instead of in the console.
+        self.should_colorize = not ray.widgets.util.in_notebook()
 
     def process_state_update(self, state: ProgressBarState) -> None:
         """Apply the remote progress bar state update.
@@ -258,20 +274,26 @@ class _BarManager:
             if state["pid"] == self.pid:
                 prefix = ""
             else:
-                prefix = "{}{}(pid={}){} ".format(
-                    colorama.Style.DIM,
-                    colorama.Fore.CYAN,
-                    state.get("pid"),
-                    colorama.Style.RESET_ALL,
-                )
+                prefix = "(pid={}) ".format(state.get("pid"))
+                if self.should_colorize:
+                    prefix = "{}{}{}{}".format(
+                        colorama.Style.DIM,
+                        colorama.Fore.CYAN,
+                        prefix,
+                        colorama.Style.RESET_ALL,
+                    )
         else:
-            prefix = "{}{}(pid={}, ip={}){} ".format(
-                colorama.Style.DIM,
-                colorama.Fore.CYAN,
+            prefix = "(pid={}, ip={}) ".format(
                 state.get("pid"),
                 state.get("ip"),
-                colorama.Style.RESET_ALL,
             )
+            if self.should_colorize:
+                prefix = "{}{}{}{}".format(
+                    colorama.Style.DIM,
+                    colorama.Fore.CYAN,
+                    prefix,
+                    colorama.Style.RESET_ALL,
+                )
         state["desc"] = prefix + state["desc"]
         process = self._get_or_allocate_bar_group(state)
         if process.has_bar(state["uuid"]):
@@ -320,6 +342,10 @@ def instance() -> _BarManager:
     global _manager
     if _manager is None:
         _manager = _BarManager()
+        if env_bool("RAY_TQDM_PATCH_PRINT", True):
+            import builtins
+
+            builtins.print = safe_print
     return _manager
 
 
@@ -334,7 +360,7 @@ if __name__ == "__main__":
             return x
 
         ray.data.range(1000, parallelism=100).map(
-            sleep, compute=ray.data.ActorPoolStrategy(1, 1)
+            sleep, compute=ray.data.ActorPoolStrategy(size=1)
         ).count()
 
     ray.get(

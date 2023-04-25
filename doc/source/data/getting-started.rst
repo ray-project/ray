@@ -1,11 +1,18 @@
-.. _datasets_getting_started:
+.. _data_getting_started:
 
 Getting Started
 ===============
 
-A Ray :class:`Dataset <ray.data.Dataset>` is a distributed data collection. It holds
-references to distributed data *blocks*, and exposes APIs for loading and processing
-data.
+Ray Data's main abstraction is a :class:`Datastream <ray.data.Datastream>`, which
+is a distributed data transformation pipeline. Datastream provides APIs for loading
+external data into Ray in *blocks*, and it exposes APIs for streaming
+processing of these data blocks in the cluster.
+
+.. tip::
+
+    Ray Data is for processing of *finite* datasets for ML training and
+    batch inference. This is in contrast to frameworks such as Apache Flink that
+    process infinite data streams.
 
 Install Ray Data
 ----------------
@@ -19,10 +26,10 @@ To install Ray Data, run:
 To learn more about installing Ray and its libraries, read
 :ref:`Installing Ray <installation>`.
 
-Create a dataset
-----------------
+Create a datastream
+-------------------
 
-Create datasets from on-disk files, Python objects, and cloud storage services like S3.
+Create datastreams from on-disk files, Python objects, and cloud storage services like S3.
 Ray reads from any `filesystem supported by Arrow
 <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
@@ -30,40 +37,40 @@ Ray reads from any `filesystem supported by Arrow
 
     import ray
 
-    dataset = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+    datastream = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
-    dataset.show(limit=1)
+    datastream.show(limit=1)
 
 .. testoutput::
 
     {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
 
-To learn more about creating datasets, read
-:ref:`Creating datasets <creating_datasets>`.
+To learn more about creating datastreams, read
+:ref:`Creating datastreams <creating_datastreams>`.
 
-Transform the dataset
----------------------
+Transform the datastream
+------------------------
 
-Apply :ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) to
-transform datasets. Ray executes transformations in parallel for performance at scale.
+Apply :ref:`user-defined functions <transform_datastreams_writing_udfs>` (UDFs) to
+transform datastreams. Ray executes transformations in parallel for performance.
 
 .. testcode::
 
     import pandas as pd
 
-    # Find rows with spepal length < 5.5 and petal length > 3.5.
+    # Find rows with sepal length < 5.5 and petal length > 3.5.
     def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
         return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
 
-    transformed_dataset = dataset.map_batches(transform_batch)
-    print(transformed_dataset)
+    transformed_ds = datastream.map_batches(transform_batch)
+    print(transformed_ds)
 
 .. testoutput::
 
     MapBatches(transform_batch)
-    +- Dataset(
-          num_blocks=...,
+    +- Datastream(
+          num_blocks=1,
           num_rows=150,
           schema={
              sepal length (cm): double,
@@ -74,76 +81,78 @@ transform datasets. Ray executes transformations in parallel for performance at 
           }
        )
 
-To learn more about transforming datasets, read
-:ref:`Transforming datasets <transforming_datasets>`.
 
-Consume the dataset
+To learn more about transforming datastreams, read
+:ref:`Transforming datastreams <transforming_datastreams>`.
+
+Consume the datastream
+----------------------
+
+Pass datastreams to Ray tasks or actors, and access records with methods like
+:meth:`~ray.data.Datastream.iter_batches`.
+
+.. tab-set::
+
+    .. tab-item:: Local
+
+        .. testcode::
+
+            batches = transformed_ds.iter_batches(batch_size=8)
+            print(next(iter(batches)))
+
+        .. testoutput::
+            :options: +NORMALIZE_WHITESPACE
+
+               sepal length (cm)  ...  target
+            0                5.2  ...       1
+            1                5.4  ...       1
+            2                4.9  ...       2
+
+            [3 rows x 5 columns]
+
+    .. tab-item:: Tasks
+
+       .. testcode::
+
+            @ray.remote
+            def consume(ds: ray.data.Datastream) -> int:
+                num_batches = 0
+                for batch in ds.iter_batches(batch_size=8):
+                    num_batches += 1
+                return num_batches
+
+            ray.get(consume.remote(transformed_ds))
+
+    .. tab-item:: Actors
+
+        .. testcode::
+
+            @ray.remote
+            class Worker:
+
+                def train(self, data_iterator):
+                    for batch in data_iterator.iter_batches(batch_size=8):
+                        pass
+
+            workers = [Worker.remote() for _ in range(4)]
+            shards = transformed_ds.streaming_split(n=4, equal=True)
+            ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+
+
+To learn more about consuming datastreams, read
+:ref:`Consuming datastreams <consuming_datastreams>`.
+
+Save the datastream
 -------------------
 
-Pass datasets to Ray tasks or actors, and access records with methods like
-:meth:`~ray.data.Dataset.iter_batches`.
-
-.. tabbed:: Local
-
-    .. testcode::
-
-        batches = transformed_dataset.iter_batches(batch_size=8)
-        print(next(iter(batches)))
-
-    .. testoutput::
-        :options: +NORMALIZE_WHITESPACE
-
-           sepal length (cm)  ...  target
-        0                5.2  ...       1
-        1                5.4  ...       1
-        2                4.9  ...       2
-
-        [3 rows x 5 columns]
-
-.. tabbed:: Tasks
-
-   .. testcode::
-
-        @ray.remote
-        def consume(dataset: ray.data.Dataset) -> int:
-            num_batches = 0
-            for batch in dataset.iter_batches(batch_size=8):
-                num_batches += 1
-            return num_batches
-
-        ray.get(consume.remote(transformed_dataset))
-
-.. tabbed:: Actors
-
-    .. testcode::
-
-        @ray.remote
-        class Worker:
-
-            def train(self, shard) -> int:
-                for batch in shard.iter_batches(batch_size=8):
-                    pass
-                return shard.count()
-
-        workers = [Worker.remote() for _ in range(4)]
-        shards = transformed_dataset.split(n=4, locality_hints=workers)
-        ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
-
-
-To learn more about consuming datasets, read
-:ref:`Consuming datasets <consuming_datasets>`.
-
-Save the dataset
-----------------
-
-Call methods like :meth:`~ray.data.Dataset.write_parquet` to save datasets to local
+Call methods like :meth:`~ray.data.Datastream.write_parquet` to save datastream contents to local
 or remote filesystems.
 
 .. testcode::
 
     import os
 
-    transformed_dataset.write_parquet("iris")
+    transformed_ds.write_parquet("iris")
 
     print(os.listdir("iris"))
 
@@ -153,7 +162,7 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving datasets, read :ref:`Saving datasets <saving_datasets>`.
+To learn more about saving datastream contents, read :ref:`Saving datastreams <saving_datastreams>`.
 
 Next Steps
 ----------

@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -48,8 +48,7 @@ class BlockFormat(str, Enum):
     SIMPLE = "simple"
 
 
-@DeveloperAPI
-def convert_batch_type_to_pandas(
+def _convert_batch_type_to_pandas(
     data: DataBatchType,
     cast_tensor_columns: bool = False,
 ) -> "pd.DataFrame":
@@ -90,8 +89,7 @@ def convert_batch_type_to_pandas(
     return data
 
 
-@DeveloperAPI
-def convert_pandas_to_batch_type(
+def _convert_pandas_to_batch_type(
     data: "pd.DataFrame",
     type: BatchFormat,
     cast_tensor_columns: bool = False,
@@ -136,6 +134,62 @@ def convert_pandas_to_batch_type(
         raise ValueError(
             f"Received type {type}, but expected it to be one of {DataBatchType}"
         )
+
+
+@Deprecated
+def convert_batch_type_to_pandas(
+    data: DataBatchType,
+    cast_tensor_columns: bool = False,
+):
+    """Convert the provided data to a Pandas DataFrame.
+
+    This API is deprecated from Ray 2.4.
+
+    Args:
+        data: Data of type DataBatchType
+        cast_tensor_columns: Whether tensor columns should be cast to NumPy ndarrays.
+
+    Returns:
+        A pandas Dataframe representation of the input data.
+
+    """
+    warnings.warn(
+        "`convert_batch_type_to_pandas` is deprecated as a developer API "
+        "starting from Ray 2.4. All batch format conversions should be "
+        "done manually instead of relying on this API.",
+        PendingDeprecationWarning,
+    )
+    return _convert_batch_type_to_pandas(
+        data=data, cast_tensor_columns=cast_tensor_columns
+    )
+
+
+@Deprecated
+def convert_pandas_to_batch_type(
+    data: "pd.DataFrame",
+    type: BatchFormat,
+    cast_tensor_columns: bool = False,
+):
+    """Convert the provided Pandas dataframe to the provided ``type``.
+
+    Args:
+        data: A Pandas DataFrame
+        type: The specific ``BatchFormat`` to convert to.
+        cast_tensor_columns: Whether tensor columns should be cast to our tensor
+            extension type.
+
+    Returns:
+        The input data represented with the provided type.
+    """
+    warnings.warn(
+        "`convert_pandas_to_batch_type` is deprecated as a developer API "
+        "starting from Ray 2.4. All batch format conversions should be "
+        "done manually instead of relying on this API.",
+        PendingDeprecationWarning,
+    )
+    return _convert_pandas_to_batch_type(
+        data=data, type=type, cast_tensor_columns=cast_tensor_columns
+    )
 
 
 def _convert_batch_type_to_numpy(
@@ -194,7 +248,7 @@ def _convert_batch_type_to_numpy(
                 output_dict[col_name] = col.to_numpy(zero_copy_only=False)
             return output_dict
     elif isinstance(data, pd.DataFrame):
-        return convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
+        return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
@@ -271,7 +325,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                     f"Tried to cast column {col_name} to the TensorArray tensor "
                     "extension type but the conversion failed. To disable "
                     "automatic casting to this tensor extension, set "
-                    "ctx = DatasetContext.get_current(); "
+                    "ctx = DataContext.get_current(); "
                     "ctx.enable_tensor_extension_casting = False."
                 ) from e
     return df

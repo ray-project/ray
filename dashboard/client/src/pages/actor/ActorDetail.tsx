@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { generateNodeLink } from "../../common/links";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -36,12 +37,12 @@ const useStyle = makeStyles((theme) => ({
 const ActorDetailPage = () => {
   const classes = useStyle();
   const { ipLogMap } = useContext(GlobalContext);
-  const { params, actorDetail, msg } = useActorDetail();
+  const { params, actorDetail, msg, isLoading } = useActorDetail();
 
   if (!actorDetail) {
     return (
       <div className={classes.root}>
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
@@ -55,7 +56,8 @@ const ActorDetailPage = () => {
     <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={{
-          title: `Actor: ${params.id}`,
+          title: `${params.id}`,
+          pageTitle: `${params.id} | Actor`,
           id: "actor-detail",
           path: `/actors/${params.id}`,
         }}
@@ -93,6 +95,14 @@ const ActorDetailPage = () => {
                 : { value: "-" },
             },
             {
+              label: "Repr",
+              content: actorDetail.reprName
+                ? {
+                    value: actorDetail.reprName,
+                  }
+                : { value: "-" },
+            },
+            {
               label: "Job ID",
               content: actorDetail.jobId
                 ? {
@@ -107,6 +117,9 @@ const ActorDetailPage = () => {
                 ? {
                     value: actorDetail.address?.rayletId,
                     copyableValue: actorDetail.address?.rayletId,
+                    link: actorDetail.address.rayletId
+                      ? generateNodeLink(actorDetail.address.rayletId)
+                      : undefined,
                   }
                 : { value: "-" },
             },
@@ -164,7 +177,7 @@ const ActorDetailPage = () => {
                 <div>
                   <Link
                     target="_blank"
-                    to={`/log/${encodeURIComponent(
+                    to={`/logs/${encodeURIComponent(
                       ipLogMap[actorDetail.address?.ipAddress],
                     )}?fileName=${actorDetail.jobId}-${actorDetail.pid}`}
                   >

@@ -1,8 +1,9 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+from typing import Dict, Iterator, List, Union, Any, TypeVar, Mapping, TYPE_CHECKING
 
 import numpy as np
 
+import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
@@ -49,7 +50,7 @@ class TableBlockBuilder(BlockBuilder[T]):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
             item = {TENSOR_COLUMN_NAME: item}
-        if not isinstance(item, dict):
+        if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))
@@ -148,11 +149,10 @@ class TableBlockAccessor(BlockAccessor):
         self._table = table
 
     def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
-        row = self.slice(index, index + 1, copy=copy)
+        base_row = self.slice(index, index + 1, copy=copy)
+        row = self.ROW_TYPE(base_row)
         if self.is_tensor_wrapper():
-            row = self._build_tensor_row(row)
-        else:
-            row = self.ROW_TYPE(row)
+            row = row[TENSOR_COLUMN_NAME]
         return row
 
     @staticmethod
@@ -175,9 +175,13 @@ class TableBlockAccessor(BlockAccessor):
         return self._table
 
     def is_tensor_wrapper(self) -> bool:
+        ctx = ray.data.DataContext.get_current()
+        if ctx.strict_mode:
+            return False
         return _is_tensor_schema(self.column_names())
 
-    def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
+    def iter_rows(self) -> Iterator[Union[Mapping, np.ndarray]]:
+        ctx = ray.data.DataContext.get_current()
         outer = self
 
         class Iter:
@@ -190,7 +194,11 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    return outer._get_row(self._cur)
+                    row = outer._get_row(self._cur)
+                    if ctx.strict_mode and isinstance(row, TableRow):
+                        return row.as_pydict()
+                    else:
+                        return row
                 raise StopIteration
 
         return Iter()

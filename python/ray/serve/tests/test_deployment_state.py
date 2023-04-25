@@ -508,7 +508,7 @@ def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_sta
     # Once it's done stopping, replica should be removed.
     replica = deployment_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    deleted = deployment_state.update()
+    deleted, _ = deployment_state.update()
     assert deleted
     check_counts(deployment_state, total=0)
 
@@ -557,7 +557,7 @@ def test_force_kill(mock_get_all_node_ids, mock_deployment_state):
     # Once the replica is done stopping, it should be removed.
     replica = deployment_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    deleted = deployment_state.update()
+    deleted, _ = deployment_state.update()
     assert deleted
     check_counts(deployment_state, total=0)
 
@@ -689,7 +689,7 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
-    deleted = deployment_state.update()
+    deleted, _ = deployment_state.update()
     assert not deleted
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
@@ -793,7 +793,7 @@ def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
 
-    deleted = deployment_state.update()
+    deleted, _ = deployment_state.update()
     assert not deleted
     check_counts(
         deployment_state,
@@ -2067,7 +2067,15 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             mock_long_poll,
             all_current_actor_names,
         )
-        yield deployment_state_manager, timer
+        deployment_state = DeploymentState(
+            "test",
+            "name",
+            True,
+            mock_long_poll,
+            deployment_state_manager._save_checkpoint_func,
+        )
+
+        yield deployment_state_manager, deployment_state, timer
     ray.shutdown()
 
 
@@ -2077,7 +2085,7 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
     """
-    deployment_state_manager, timer = mock_deployment_state_manager
+    deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
 
     tag = "test"
 
@@ -2086,10 +2094,10 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
         graceful_shutdown_timeout_s=grace_period_s,
         is_driver_deployment=is_driver_deployment,
     )
-    updating = deployment_state_manager.deploy(tag, b_info_1)
+    updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state = deployment_state_manager._deployment_states[tag]
+    deployment_state_manager._deployment_states[tag] = deployment_state
 
     # Single replica should be created.
     deployment_state_manager.update()
@@ -2125,7 +2133,7 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
 def test_resume_deployment_state_from_replica_tags(
     mock_get_all_node_ids, is_driver_deployment, mock_deployment_state_manager
 ):
-    deployment_state_manager, timer = mock_deployment_state_manager
+    deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
     mock_get_all_node_ids.return_value = [("node-id", "node-id")]
 
     tag = "test"
@@ -2134,13 +2142,14 @@ def test_resume_deployment_state_from_replica_tags(
     b_info_1, b_version_1 = deployment_info(
         version="1", is_driver_deployment=is_driver_deployment
     )
-    updating = deployment_state_manager.deploy(tag, b_info_1)
+    updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state = deployment_state_manager._deployment_states[tag]
+    deployment_state_manager._deployment_states[tag] = deployment_state
 
     # Single replica should be created.
-    deployment_state_manager.update()
+    any_recovering = deployment_state_manager.update()
+    assert not any_recovering
     check_counts(
         deployment_state,
         total=1,
@@ -2150,7 +2159,8 @@ def test_resume_deployment_state_from_replica_tags(
     deployment_state._replicas.get()[0]._actor.set_ready()
 
     # Now the replica should be marked running.
-    deployment_state_manager.update()
+    any_recovering = deployment_state_manager.update()
+    assert not any_recovering
     check_counts(
         deployment_state,
         total=1,
@@ -2162,8 +2172,8 @@ def test_resume_deployment_state_from_replica_tags(
 
     # Step 2: Delete _replicas from deployment_state
     deployment_state._replicas = ReplicaStateContainer()
-    # Step 3: Create new deployment_state by resuming from passed in replicas
 
+    # Step 3: Create new deployment_state by resuming from passed in replicas
     deployment_state_manager._recover_from_checkpoint(
         [ReplicaName.prefix + mocked_replica.replica_tag]
     )
@@ -2175,11 +2185,12 @@ def test_resume_deployment_state_from_replica_tags(
     check_counts(
         deployment_state, total=1, version=None, by_state=[(ReplicaState.RECOVERING, 1)]
     )
-    deployment_state._replicas.get()[0]._actor.set_ready()
-    deployment_state._replicas.get()[0]._actor.set_starting_version(b_version_1)
 
     # Now the replica should be marked running.
-    deployment_state_manager.update()
+    deployment_state._replicas.get()[0]._actor.set_ready()
+    deployment_state._replicas.get()[0]._actor.set_starting_version(b_version_1)
+    any_recovering = deployment_state_manager.update()
+    assert not any_recovering
     check_counts(
         deployment_state,
         total=1,
@@ -2188,6 +2199,9 @@ def test_resume_deployment_state_from_replica_tags(
     )
     # Ensure same replica name is used
     assert deployment_state._replicas.get()[0].replica_tag == mocked_replica.replica_tag
+
+    any_recovering = deployment_state_manager.update()
+    assert not any_recovering
 
 
 def test_stopping_replicas_ranking():

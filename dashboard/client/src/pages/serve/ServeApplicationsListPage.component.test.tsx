@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { getServeApplications } from "../../service/serve";
-import { ServeApplicationStatus } from "../../type/serve";
+import { ServeApplicationStatus, ServeDeploymentMode } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
 
@@ -12,12 +12,12 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(10);
+    expect.assertions(11);
 
     mockGetServeApplications.mockResolvedValue({
       data: {
-        host: "1.2.3.4",
-        port: 8000,
+        http_options: { host: "1.2.3.4", port: 8000 },
+        proxy_location: ServeDeploymentMode.EveryNode,
         applications: {
           home: {
             name: "home",
@@ -73,5 +73,7 @@ describe("ServeApplicationsListPage", () => {
     await user.click(screen.getAllByText("View")[0]);
     await screen.findByText(/import_path: home:graph/);
     expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
+
+    expect(screen.getByText("Metrics")).toBeVisible();
   });
 });

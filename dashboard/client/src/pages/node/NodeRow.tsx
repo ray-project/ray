@@ -5,13 +5,13 @@ import {
   TableRow,
   Tooltip,
 } from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
 import React, { useState } from "react";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
+import { NodeLink } from "../../common/links";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -19,7 +19,7 @@ import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import { NodeGPUView, WorkerGPU } from "./GPUColumn";
+import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
@@ -60,14 +60,19 @@ export const NodeRow = ({
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
 
+  /**
+   * Why do we use raylet.state instead of node.state in the following code?
+   * Because in ray, raylet == node
+   */
+
   return (
     <TableRow>
       <TableCell>
         <IconButton size="small" onClick={onExpandButtonClick}>
           {!expanded ? (
-            <AddIcon className={classes.expandCollapseIcon} />
+            <RiArrowRightSLine className={classes.expandCollapseIcon} />
           ) : (
-            <RemoveIcon className={classes.expandCollapseIcon} />
+            <RiArrowDownSLine className={classes.expandCollapseIcon} />
           )}
         </IconButton>
       </TableCell>
@@ -79,9 +84,13 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow interactive>
-          <Link to={`nodes/${raylet.nodeId}`} className={classes.idCol}>
-            {raylet.nodeId}
-          </Link>
+          <div>
+            <NodeLink
+              nodeId={raylet.nodeId}
+              to={`nodes/${raylet.nodeId}`}
+              className={classes.idCol}
+            />
+          </div>
         </Tooltip>
       </TableCell>
       <TableCell align="center">
@@ -90,7 +99,9 @@ export const NodeRow = ({
         </Box>
       </TableCell>
       <TableCell>
-        <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+        {raylet.state !== "DEAD" && (
+          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+        )}
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -229,7 +240,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGPU worker={worker} />
+        <WorkerGpuRow worker={worker} node={node} />
       </TableCell>
       <TableCell>
         <WorkerGRAM worker={worker} node={node} />
@@ -269,7 +280,7 @@ export const NodeRows = ({
 
   const { data } = useSWR(
     ["getNodeDetail", node.raylet.nodeId],
-    async (_, nodeId) => {
+    async ([_, nodeId]) => {
       const { data } = await getNodeDetail(nodeId);
       const { data: rspData, result } = data;
 

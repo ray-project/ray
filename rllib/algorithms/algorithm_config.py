@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import logging
 import math
 import os
@@ -7,6 +8,7 @@ from typing import (
     Callable,
     Container,
     Dict,
+    Mapping,
     Optional,
     Tuple,
     Type,
@@ -50,6 +52,11 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    NOT_SERIALIZABLE,
+    serialize_type,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -98,24 +105,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO (Kourosh): Move this to rllib.utils.importlib
-def _resolve_class_path(module) -> Type:
-    """Resolves a class path to a class.
-
-    If the given module is already a class, it is returned as is.
-    If the given module is a string, it is imported and the class is returned
-    """
-    if isinstance(module, Type):
-        return module
-
-    if isinstance(module, str):
-        import importlib
-
-        module_path, class_name = module.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)
-
-
 def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
     if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
         raise ValueError(
@@ -153,6 +142,12 @@ class AlgorithmConfig(_Config):
         ...     "[registered trainer class]", param_space=config.to_dict()
         ...     ).fit()
     """
+
+    @staticmethod
+    def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
+        # The default policy mapping function to use if None provided.
+        # Map any agent ID to "default_policy".
+        return DEFAULT_POLICY_ID
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
@@ -261,7 +256,7 @@ class AlgorithmConfig(_Config):
         self.placement_strategy = "PACK"
 
         # `self.framework()`
-        self.framework_str = "tf"
+        self.framework_str = "torch"
         self.eager_tracing = False
         self.eager_max_retraces = 20
         self.tf_session_args = {
@@ -337,22 +332,14 @@ class AlgorithmConfig(_Config):
 
         # `self.explore()`
         self.explore = True
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
+        # This is not compatible with RLModules, which have a method
+        # `forward_exploration` to specify custom exploration behavior.
+        self.exploration_config = {}
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_mapping_fn = (
-            lambda aid, episode, worker, **kwargs: DEFAULT_POLICY_ID
-        )
+        self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
@@ -432,12 +419,17 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self.rl_module_spec = None
         self._enable_rl_module_api = False
+        # Helper to keep track of the original exploration config when dis-/enabling
+        # rl modules.
+        self.__prior_exploration_config = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
+        self._disable_initialize_loss_from_dummy_batch = False
+        self._load_only_minibatch_onto_device = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -504,10 +496,11 @@ class AlgorithmConfig(_Config):
         # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in self.multiagent.keys():
-            # convert policies dict to something human-readable
+            # Convert policies dict such that each policy ID maps to a old-style
+            # 4-tuple: class, obs-, and action space, config.
             if k == "policies" and isinstance(self.multiagent[k], dict):
                 policies_dict = {}
-                for policy_id, policy_spec in self.multiagent[k].items():
+                for policy_id, policy_spec in config.pop(k).items():
                     if isinstance(policy_spec, PolicySpec):
                         policies_dict[policy_id] = (
                             policy_spec.policy_class,
@@ -529,6 +522,8 @@ class AlgorithmConfig(_Config):
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
         config["num_workers"] = config.pop("num_rollout_workers", 0)
 
+        # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
+        # These would be useless in the returned dict anyways.
         for dep_k in [
             "monitor",
             "evaluation_num_episodes",
@@ -575,6 +570,13 @@ class AlgorithmConfig(_Config):
         """
         eval_call = {}
 
+        # We deal with this special key before all others because it may influence
+        # stuff like "exploration_config".
+        # Namely, we want to re-instantiate the exploration config this config had
+        # inside `self.rl_module()` before potentially overwriting it in the following.
+        if "_enable_rl_module_api" in config_dict:
+            self.rl_module(_enable_rl_module_api=config_dict["_enable_rl_module_api"])
+
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
@@ -584,8 +586,11 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
+            if key == "_enable_rl_module_api":
+                # We've dealt with this above.
+                continue
             # Set our multi-agent settings.
-            if key == "multiagent":
+            elif key == "multiagent":
                 kwargs = {
                     k: value[k]
                     for k in [
@@ -603,16 +608,38 @@ class AlgorithmConfig(_Config):
             # Some keys specify config sub-dicts and therefore should go through the
             # correct methods to properly `.update()` those from given config dict
             # (to not lose any sub-keys).
-            elif key == "callbacks_class":
+            elif key == "callbacks_class" and value != NOT_SERIALIZABLE:
+                # For backward compatibility reasons, only resolve possible
+                # classpath if value is a str type.
+                if isinstance(value, str):
+                    value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
             elif key == "env_config":
                 self.environment(env_config=value)
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
+                if config_dict.get("_enable_rl_module_api", False):
+                    self.exploration_config = value
+                    continue
+                if isinstance(value, dict) and "type" in value:
+                    value["type"] = deserialize_type(value["type"])
                 self.exploration(exploration_config=value)
-            elif key in ["model", "optimizer", "replay_buffer_config"]:
+            elif key == "model":
+                # Resolve possible classpath.
+                if isinstance(value, dict) and value.get("custom_model"):
+                    value["custom_model"] = deserialize_type(value["custom_model"])
                 self.training(**{key: value})
+            elif key == "optimizer":
+                self.training(**{key: value})
+            elif key == "replay_buffer_config":
+                if isinstance(value, dict) and "type" in value:
+                    value["type"] = deserialize_type(value["type"])
+                self.training(**{key: value})
+            elif key == "sample_collector":
+                # Resolve possible classpath.
+                value = deserialize_type(value)
+                self.rollouts(sample_collector=value)
             # If config key matches a property, just set it, otherwise, warn and set.
             else:
                 if not hasattr(self, key) and log_once(
@@ -627,6 +654,28 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
+
+    # TODO(sven): We might want to have a `deserialize` method as well. Right now,
+    #  simply using the from_dict() API works in this same (deserializing) manner,
+    #  whether the dict used is actually code-free (already serialized) or not
+    #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
+    #  a class).
+    def serialize(self) -> Mapping[str, Any]:
+        """Returns a mapping from str to JSON'able values representing this config.
+
+        The resulting values will not have any code in them.
+        Classes (such as `callbacks_class`) will be converted to their full
+        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+        Actual code such as lambda functions will be written as their source
+        code (str) plus any closure information for properly restoring the
+        code inside the AlgorithmConfig object made from the returned dict data.
+        Dataclass objects get converted to dicts.
+
+        Returns:
+            A mapping from str to JSON'able values.
+        """
+        config = self.to_dict()
+        return self._serialize_dict(config)
 
     def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
         """Creates a deep copy of this config and (un)freezes if necessary.
@@ -792,6 +841,16 @@ class AlgorithmConfig(_Config):
         # not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
+        if self.model.get("custom_preprocessor"):
+            deprecation_warning(
+                old="model_config['custom_preprocessor']",
+                help="Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead.",
+                error=True,
+            )
 
         # RLModule API only works with connectors.
         if not self.enable_connectors and self._enable_rl_module_api:
@@ -812,17 +871,17 @@ class AlgorithmConfig(_Config):
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
-            self._enable_rl_module_api = True
+            self.rl_module(_enable_rl_module_api=True)
             self.enable_connectors = True
 
         # Explore parameter cannot be False with RLModule API enabled.
-        # The reason is that the explore is not just a parameter that will get passed
+        # The reason is that `explore` is not just a parameter that will get passed
         # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
-        # forward_exploration() will get called during smapling. If user needs to
+        # forward_exploration() will get called during sampling. If user needs to
         # really disable the stochasticity during this phase, they need to override the
         # RLModule.forward_exploration() method or setup model parameters such that it
-        # will disable the stocalisticity of this method (e.g. by setting the std to 0
-        # or setting temprature to 0 for the Categorical distribution).
+        # will disable the stochasticity of this method (e.g. by setting the std to 0
+        # or setting temperature to 0 for the Categorical distribution).
 
         if self._enable_rl_module_api and not self.explore:
             raise ValueError(
@@ -906,6 +965,14 @@ class AlgorithmConfig(_Config):
                     f"config.framework({self.framework_str})!"
                 )
 
+        if (
+            self.simple_optimizer or self.framework_str != "torch"
+        ) and self._load_only_minibatch_onto_device:
+            raise ValueError(
+                "`load_only_minibatch_onto_device` is only supported for "
+                f"config.framework({self.framework_str}) and without simple_optimizer."
+            )
+
         # Detect if specified env is an Atari env.
         if self.is_atari is None:
             self.is_atari = self._detect_atari_env()
@@ -954,6 +1021,18 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
+            if self.exploration_config:
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API are enabled, exploration_config can not be "
+                    "set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the "
+                    "RLModule at hand. On configs that have a default exploration "
+                    "config, this must be done with "
+                    "`config.exploration_config={}`."
+                )
+
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
             raise ValueError(
@@ -964,7 +1043,7 @@ class AlgorithmConfig(_Config):
         # resolve learner class
         if self._enable_learner_api and self.learner_class is None:
             learner_class_path = self.get_default_learner_class()
-            self.learner_class = _resolve_class_path(learner_class_path)
+            self.learner_class = deserialize_type(learner_class_path)
 
     def build(
         self,
@@ -1555,6 +1634,10 @@ class AlgorithmConfig(_Config):
             _enable_learner_api: Whether to enable the LearnerGroup and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
+            _load_only_minibatch_onto_device: Whether to load only the minibatch onto
+                the given device. This is useful for larger training batches that
+                don't fit on the given device while the mini-batches and their
+                gradients do. This experimental setting is only supported for torch
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2035,8 +2118,9 @@ class AlgorithmConfig(_Config):
             self.policy_map_capacity = policy_map_capacity
 
         if policy_mapping_fn is not NotProvided:
-            # Attempt to create a `policy_mapping_fn` from config dict. Helpful
-            # is users would like to specify custom callable classes in yaml files.
+            # Create `policy_mapping_fn` from a config dict.
+            # Helpful is users would like to specify custom callable classes in
+            # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
             self.policy_mapping_fn = policy_mapping_fn
@@ -2074,7 +2158,8 @@ class AlgorithmConfig(_Config):
             ), (
                 "ERROR: `policies_to_train` must be a [list|set|tuple] or a "
                 "callable taking PolicyID and SampleBatch and returning "
-                "True|False (trainable or not?)."
+                "True|False (trainable or not?) or None (for always training all "
+                "policies)."
             )
             # Check `policies_to_train` for invalid entries.
             if isinstance(policies_to_train, (list, set, tuple)):
@@ -2086,7 +2171,7 @@ class AlgorithmConfig(_Config):
                     )
             self.policies_to_train = policies_to_train
 
-        if policy_states_are_swappable is not None:
+        if policy_states_are_swappable is not NotProvided:
             self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
@@ -2339,6 +2424,37 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
+            if _enable_rl_module_api is True and self.exploration_config:
+                logger.warning(
+                    "Setting `exploration_config={}` because you set "
+                    "`_enable_rl_modules=True`. When RLModule API are "
+                    "enabled, exploration_config can not be "
+                    "set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the "
+                    "RLModule at hand. On configs that have a default exploration "
+                    "config, this must be done with "
+                    "`config.exploration_config={}`."
+                )
+                self.__prior_exploration_config = self.exploration_config
+                self.exploration_config = {}
+            elif _enable_rl_module_api is False and not self.exploration_config:
+                if self.__prior_exploration_config is not None:
+                    logger.warning(
+                        f"Setting `exploration_config="
+                        f"{self.__prior_exploration_config}` because you set "
+                        f"`_enable_rl_modules=False`. This exploration config was "
+                        f"restored from a prior exploration config that was overriden "
+                        f"when setting `_enable_rl_modules=True`. This occurs because "
+                        f"when RLModule API are enabled, exploration_config can not "
+                        f"be set."
+                    )
+                    self.exploration_config = self.__prior_exploration_config
+                    self.__prior_exploration_config = None
+                else:
+                    logger.warning(
+                        "config._enable_rl_module_api was set to False, but no prior "
+                        "exploration config was found to be restored."
+                    )
         else:
             # throw a warning if the user has used this API but not enabled it.
             logger.warning(
@@ -2356,6 +2472,8 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_execution_plan_api: Optional[bool] = NotProvided,
+        _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
+        _load_only_minibatch_onto_device: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2395,6 +2513,12 @@ class AlgorithmConfig(_Config):
             self._disable_action_flattening = _disable_action_flattening
         if _disable_execution_plan_api is not NotProvided:
             self._disable_execution_plan_api = _disable_execution_plan_api
+        if _disable_initialize_loss_from_dummy_batch is not NotProvided:
+            self._disable_initialize_loss_from_dummy_batch = (
+                _disable_initialize_loss_from_dummy_batch
+            )
+        if _load_only_minibatch_onto_device is not NotProvided:
+            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 
@@ -2506,35 +2630,20 @@ class AlgorithmConfig(_Config):
         maps PolicyIDs to complete PolicySpec objects (with all their fields not-None).
 
         Examples:
-            >>> import numpy as np
-            >>> from ray.rllib.algorithms.ppo import PPOConfig
-            >>> config = (
-            ...   PPOConfig()
-            ...   .environment("CartPole-v1")
-            ...   .framework("torch")
-            ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
-            ... )
-            >>> policy_dict, is_policy_to_train = \  # doctest: +SKIP
-            ...     config.get_multi_agent_setup()
-            >>> is_policy_to_train("pol1") # doctest: +SKIP
-            True
-            >>> is_policy_to_train("pol2") # doctest: +SKIP
-            False
-            >>> print(policy_dict) # doctest: +SKIP
-            {
-              "pol1": PolicySpec(
-                PPOTorchPolicyV2,  # infered from Algo's default policy class
-                Box(-2.0, 2.0, (4,), np.float),  # infered from env
-                Discrete(2),  # infered from env
-                {},  # not provided -> empty dict
-              ),
-              "pol2": PolicySpec(
-                PPOTorchPolicyV2,  # infered from Algo's default policy class
-                Box(-2.0, 2.0, (4,), np.float),  # infered from env
-                Discrete(2),  # infered from env
-                {},  # not provided -> empty dict
-              ),
-            }
+        .. testcode::
+
+            import gymnasium as gym
+            from ray.rllib.algorithms.ppo import PPOConfig
+            config = (
+              PPOConfig()
+              .environment("CartPole-v1")
+              .framework("torch")
+              .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
+            )
+            policy_dict, is_policy_to_train = config.get_multi_agent_setup(
+                env=gym.make("CartPole-v1"))
+            is_policy_to_train("pol1")
+            is_policy_to_train("pol2")
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs
@@ -3091,6 +3200,44 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
+
+    @staticmethod
+    def _serialize_dict(config):
+        # Serialize classes to classpaths:
+        config["callbacks"] = serialize_type(config["callbacks"])
+        config["sample_collector"] = serialize_type(config["sample_collector"])
+        if isinstance(config["env"], type):
+            config["env"] = serialize_type(config["env"])
+        if "replay_buffer_config" in config and (
+            isinstance(config["replay_buffer_config"].get("type"), type)
+        ):
+            config["replay_buffer_config"]["type"] = serialize_type(
+                config["replay_buffer_config"]["type"]
+            )
+        if isinstance(config["exploration_config"].get("type"), type):
+            config["exploration_config"]["type"] = serialize_type(
+                config["exploration_config"]["type"]
+            )
+        if isinstance(config["model"].get("custom_model"), type):
+            config["model"]["custom_model"] = serialize_type(
+                config["model"]["custom_model"]
+            )
+
+        # Serialize dataclasses.
+        if isinstance(config.get("_learner_hps"), LearnerHPs):
+            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
+
+        # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
+        ma_config = config.get("multiagent")
+        if ma_config is not None:
+            if isinstance(ma_config.get("policies"), (set, tuple)):
+                ma_config["policies"] = list(ma_config["policies"])
+            # Do NOT serialize functions/lambdas.
+            if ma_config.get("policy_mapping_fn"):
+                ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
+            if ma_config.get("policies_to_train"):
+                ma_config["policies_to_train"] = NOT_SERIALIZABLE
+        return config
 
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:

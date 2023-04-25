@@ -225,6 +225,14 @@ py_test(
 )
 
 py_test(
+    name = "test_accelerate_trainer_gpu",
+    size = "large",
+    srcs = ["tests/test_accelerate_trainer_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib",  ":conftest"]
+)
+
+py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
@@ -425,6 +433,14 @@ py_test(
 )
 
 py_test(
+    name = "test_lightning_predictor",
+    size = "medium",
+    srcs = ["tests/test_lightning_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -522,7 +538,7 @@ py_test(
 
 py_test(
     name = "test_torch_detection_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_detection_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib", ":conftest"]

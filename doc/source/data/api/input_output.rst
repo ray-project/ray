@@ -31,7 +31,7 @@ Parquet
 
    read_parquet
    read_parquet_bulk
-   Dataset.write_parquet
+   Datastream.write_parquet
 
 CSV
 ---
@@ -40,7 +40,7 @@ CSV
    :toctree: doc/
 
    read_csv
-   Dataset.write_csv
+   Datastream.write_csv
 
 JSON
 ----
@@ -49,7 +49,7 @@ JSON
    :toctree: doc/
 
    read_json
-   Dataset.write_json
+   Datastream.write_json
 
 Text
 ----
@@ -82,7 +82,7 @@ TFRecords
    :toctree: doc/
 
    read_tfrecords
-   Dataset.write_tfrecords
+   Datastream.write_tfrecords
 
 
 Pandas
@@ -93,8 +93,8 @@ Pandas
 
    from_pandas
    from_pandas_refs
-   Dataset.to_pandas
-   Dataset.to_pandas_refs
+   Datastream.to_pandas
+   Datastream.to_pandas_refs
 
 NumPy
 -----
@@ -105,8 +105,8 @@ NumPy
    read_numpy
    from_numpy
    from_numpy_refs
-   Dataset.write_numpy
-   Dataset.to_numpy_refs
+   Datastream.write_numpy
+   Datastream.to_numpy_refs
 
 Arrow
 -----
@@ -116,7 +116,7 @@ Arrow
 
    from_arrow
    from_arrow_refs
-   Dataset.to_arrow_refs
+   Datastream.to_arrow_refs
 
 MongoDB
 -------
@@ -125,8 +125,16 @@ MongoDB
    :toctree: doc/
 
    read_mongo
-   Dataset.write_mongo
+   Datastream.write_mongo
 
+SQL Databases
+-------------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_sql
+   
 Dask
 ----
 
@@ -134,7 +142,7 @@ Dask
    :toctree: doc/
 
    from_dask
-   Dataset.to_dask
+   Datastream.to_dask
 
 Spark
 -----
@@ -143,7 +151,7 @@ Spark
    :toctree: doc/
 
    from_spark
-   Dataset.to_spark
+   Datastream.to_spark
 
 Modin
 -----
@@ -152,7 +160,7 @@ Modin
    :toctree: doc/
 
    from_modin
-   Dataset.to_modin
+   Datastream.to_modin
 
 Mars
 ----
@@ -161,7 +169,7 @@ Mars
    :toctree: doc/
 
    from_mars
-   Dataset.to_mars
+   Datastream.to_mars
 
 Torch
 -----
@@ -171,8 +179,8 @@ Torch
 
    from_torch
 
-HuggingFace
------------
+Hugging Face
+------------
 
 .. autosummary::
    :toctree: doc/
@@ -187,6 +195,14 @@ TensorFlow
 
    from_tf
 
+WebDataset
+----------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_webdataset
+
 .. _data_source_api:
 
 Datasource API
@@ -196,7 +212,7 @@ Datasource API
    :toctree: doc/
 
    read_datasource
-   Dataset.write_datasource
+   Datastream.write_datasource
    Datasource
    ReadTask
    datasource.Reader
@@ -218,6 +234,7 @@ Built-in Datasources
    datasource.RangeDatasource
    datasource.TFRecordDatasource
    datasource.MongoDatasource
+   datasource.WebDatasetDatasource
 
 Partitioning API
 ----------------

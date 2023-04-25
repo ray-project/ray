@@ -347,3 +347,18 @@ cc_proto_library(
     name = "usage_cc_proto",
     deps = [":usage_proto"],
 )
+
+proto_library(
+    name = "autoscaler_proto",
+    srcs = ["experimental/autoscaler.proto"],
+)
+
+python_grpc_compile(
+    name = "autoscaler_py_proto",
+    deps = [":autoscaler_proto"],
+)
+
+cc_proto_library(
+    name = "autoscaler_cc_proto",
+    deps = [":autoscaler_proto"],
+)

@@ -15,13 +15,14 @@ import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
+import { ActorLink } from "../common/links";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { Actor } from "../type/actor";
+import { Actor, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -36,6 +37,45 @@ export type ActorTableProps = {
   filterToActorId?: string;
   onFilterChange?: () => void;
   detailPathPrefix?: string;
+};
+
+type StateOrder = {
+  [key in ActorEnum]: number;
+};
+const stateOrder: StateOrder = {
+  [ActorEnum.ALIVE]: 0,
+  [ActorEnum.PENDING]: 1,
+  [ActorEnum.RECONSTRUCTING]: 2,
+  [ActorEnum.DEAD]: 3,
+};
+//type predicate for ActorEnum
+const isActorEnum = (state: unknown): state is ActorEnum => {
+  return Object.values(ActorEnum).includes(state as ActorEnum);
+};
+
+// We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
+export const sortActors = (actorList: Actor[]) => {
+  const sortedActors = [...actorList];
+  sortedActors.sort((actor1, actor2) => {
+    const actorOrder1 = isActorEnum(actor1.state)
+      ? stateOrder[actor1.state]
+      : 0;
+    const actorOrder2 = isActorEnum(actor2.state)
+      ? stateOrder[actor2.state]
+      : 0;
+
+    const actorTime1 = actor1.startTime || 0;
+    const actorTime2 = actor2.startTime || 0;
+
+    if (actorOrder1 !== actorOrder2) {
+      return actorOrder1 - actorOrder2;
+    } else {
+      // When the state is equal, we sort by startTime
+      // in order to provide a determined order for users no matter the backend API changes
+      return actorTime1 - actorTime2;
+    }
+  });
+  return sortedActors;
 };
 
 const ActorTable = ({
@@ -57,8 +97,15 @@ const ActorTable = ({
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
-  const actorList = Object.values(actors || {}).filter(filterFunc);
-  const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+
+  //We get a filtered and sorted actor list to render from prop actors
+  const sortedActors = useMemo(() => {
+    const actorList = Object.values(actors || {}).filter(filterFunc);
+    return sortActors(actorList);
+  }, [actors, filterFunc]);
+
+  const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+
   const classes = rowStyles();
 
   const columns = [
@@ -90,6 +137,25 @@ const ActorTable = ({
           <br />
           <br />
           Actor.options(name="unique_name").remote()
+        </Typography>
+      ),
+    },
+    {
+      label: "Repr",
+      helpInfo: (
+        <Typography>
+          The repr name of the actor instance defined by __repr__. For example,
+          this actor will have repr "Actor1"
+          <br />
+          <br />
+          @ray.remote
+          <br />
+          class Actor:
+          <br />
+          &emsp;def __repr__(self):
+          <br />
+          &emsp;&emsp;return "Actor1"
+          <br />
         </Typography>
       ),
     },
@@ -272,11 +338,11 @@ const ActorTable = ({
           <Pagination
             page={pageNo}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(actorList.length / pageSize)}
+            count={Math.ceil(sortedActors.length / pageSize)}
           />
         </div>
         <div>
-          <StateCounter type="actor" list={actorList} />
+          <StateCounter type="actor" list={sortedActors} />
         </div>
       </div>
       <div className={classes.tableContainer}>
@@ -306,6 +372,7 @@ const ActorTable = ({
               ({
                 actorId,
                 actorClass,
+                reprName,
                 jobId,
                 placementGroupId,
                 pid,
@@ -346,19 +413,23 @@ const ActorTable = ({
                       arrow
                       interactive
                     >
-                      <Link
-                        to={
-                          detailPathPrefix
-                            ? `${detailPathPrefix}/${actorId}`
-                            : actorId
-                        }
-                      >
-                        {actorId}
-                      </Link>
+                      <div>
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
+                        />
+                      </div>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
+                  <TableCell align="center">
+                    {reprName ? reprName : "-"}
+                  </TableCell>
                   <TableCell align="center">
                     <StatusChip type="actor" status={state} />
                   </TableCell>

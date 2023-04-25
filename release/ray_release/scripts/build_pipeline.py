@@ -22,6 +22,7 @@ from ray_release.wheels import (
     find_and_wait_for_ray_wheels_url,
     find_ray_wheels_url,
     get_buildkite_repo_branch,
+    parse_commit_from_wheel_url,
 )
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
@@ -185,6 +186,9 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             else:
                 this_ray_wheels_url = ray_wheels_url
 
+            ray_commit = parse_commit_from_wheel_url(this_ray_wheels_url)
+            if ray_commit:
+                env.update({"RAY_COMMIT_OF_WHEEL": ray_commit})
             step = get_step(
                 test,
                 report=report,

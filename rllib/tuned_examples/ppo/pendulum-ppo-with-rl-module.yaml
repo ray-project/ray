@@ -23,4 +23,5 @@ pendulum-ppo:
         model:
             fcnet_activation: relu
         _enable_rl_module_api: true
+        exploration_config: {}
         eager_tracing: false

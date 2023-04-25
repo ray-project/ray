@@ -85,6 +85,9 @@ class TaskStatusEvent : public TaskEvent {
     TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
         : node_id_(node_id), worker_id_(worker_id) {}
 
+    TaskStateUpdate(const rpc::TaskLogInfo &task_log_info)
+        : task_log_info_(task_log_info) {}
+
    private:
     friend class TaskStatusEvent;
 
@@ -94,6 +97,8 @@ class TaskStatusEvent : public TaskEvent {
     const absl::optional<WorkerID> worker_id_ = absl::nullopt;
     /// Task error info.
     const absl::optional<rpc::RayErrorInfo> error_info_ = absl::nullopt;
+    /// Task log info.
+    const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -116,8 +121,8 @@ class TaskStatusEvent : public TaskEvent {
   const int64_t timestamp_ = -1;
   /// Pointer to the task spec.
   const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
-  /// Pointer to the task state update
-  absl::optional<const TaskStateUpdate> state_update_ = absl::nullopt;
+  /// Optional task state update
+  const absl::optional<const TaskStateUpdate> state_update_ = absl::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.

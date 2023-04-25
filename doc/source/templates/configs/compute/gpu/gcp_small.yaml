@@ -1,5 +1,9 @@
 cloud_id: {{ env["ANYSCALE_CLOUD_ID"] }}
+
 region: us-west1
+allowed_azs:
+    - us-west1-b
+
 
 # 1 n1-standard-16-nvidia-tesla-t4-1 node --> 16 CPUs, 1 GPU
 head_node_type:

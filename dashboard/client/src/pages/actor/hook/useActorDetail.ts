@@ -10,9 +10,9 @@ export const useActorDetail = () => {
   const [msg, setMsg] = useState("Loading the actor infos...");
   const { namespaceMap } = useContext(GlobalContext);
 
-  const { data: actorDetail } = useSWR(
+  const { data: actorDetail, isLoading } = useSWR(
     ["useActorDetail", params.id],
-    async (_, actorId) => {
+    async ([_, actorId]) => {
       const actor_resp = await getActor(actorId);
       const data: ActorResp = actor_resp?.data;
       const { data: rspData, msg, result } = data;
@@ -35,6 +35,7 @@ export const useActorDetail = () => {
     params,
     actorDetail,
     msg,
+    isLoading,
     namespaceMap,
   };
 };

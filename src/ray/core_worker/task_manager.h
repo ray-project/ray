@@ -315,7 +315,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param attempt_number Attempt number for the task attempt.
   /// \param spec corresponding TaskSpecification of the task
   /// \param status the changed status.
-  /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
+  /// \param state_update optional task state updates.
   void RecordTaskStatusEvent(
       int32_t attempt_number,
       const TaskSpecification &spec,

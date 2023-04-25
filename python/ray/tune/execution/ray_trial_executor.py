@@ -7,7 +7,6 @@ import time
 import traceback
 from collections import deque
 from enum import Enum
-from functools import partial
 from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
@@ -840,6 +839,16 @@ class RayTrialExecutor:
             # (if the search ended).
             return
 
+        if (
+            search_ended
+            and not self._staged_trials
+            and self._actor_cache.total_max_objects == 0
+        ):
+            # If there are no more trials coming in, no trials are pending execution,
+            # and we don't explicitly want to cache objects, we can evict the full
+            # cache.
+            force_all = True
+
         for actor, acquired_resources in self._actor_cache.flush_cached_objects(
             force_all=force_all
         ):
@@ -936,13 +945,6 @@ class RayTrialExecutor:
                     dir_or_data=value,
                     storage_mode=storage,
                     metrics=result,
-                    local_to_remote_path_fn=partial(
-                        TrainableUtil.get_remote_storage_path,
-                        logdir=trial.local_path,
-                        remote_checkpoint_dir=trial.remote_path,
-                    )
-                    if trial.uses_cloud_checkpointing
-                    else None,
                 )
                 trial.saving_to = checkpoint
                 self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)

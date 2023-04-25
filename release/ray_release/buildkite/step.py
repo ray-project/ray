@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
-from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
+from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
@@ -13,7 +13,6 @@ from ray_release.config import (
     parse_python_version,
 )
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
-from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import get_test_env_var
 from ray_release.util import python_version_str, DeferredEnvVar
 
@@ -51,6 +50,14 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     ],
     "artifact_paths": [f"{DEFAULT_ARTIFACTS_DIR_HOST}/**/*"],
     "priority": 0,
+    "retry": {
+        "automatic": [
+            {
+                "exit_status": os.environ.get("BUILDKITE_RETRY_CODE", 79),
+                "limit": os.environ.get("BUILDKITE_MAX_RETRIES", 1),
+            }
+        ]
+    },
 }
 
 
@@ -98,19 +105,11 @@ def get_step(
     branch = get_test_env_var("RAY_BRANCH")
     label = commit[:7] if commit else branch
 
-    concurrency_group = test.get("concurrency_group", None)
-    if concurrency_group:
-        if concurrency_group not in CONCURRENY_GROUPS:
-            raise ReleaseTestConfigError(
-                f"Unknown concurrency group: {concurrency_group}"
-            )
-        concurrency_limit = CONCURRENY_GROUPS[concurrency_group]
+    if smoke_test:
+        concurrency_test = as_smoke_test(test)
     else:
-        if smoke_test:
-            concurrency_test = as_smoke_test(test)
-        else:
-            concurrency_test = test
-        concurrency_group, concurrency_limit = get_concurrency_group(concurrency_test)
+        concurrency_test = test
+    concurrency_group, concurrency_limit = get_concurrency_group(concurrency_test)
 
     step["concurrency_group"] = concurrency_group
     step["concurrency"] = concurrency_limit
