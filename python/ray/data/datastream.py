@@ -4728,6 +4728,9 @@ class Schema:
                     arrow_types.append(None)
         return arrow_types
 
+    def __eq__(self, other):
+        return isinstance(other, Schema) and other.base_schema == self.base_schema
+
     def __str__(self):
         return f"Schema({dict(zip(self.names, self.types))})"
 

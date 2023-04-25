@@ -20,7 +20,7 @@ from ray.data.datastream import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import column_udf, extract_values
+from ray.data.tests.util import column_udf, extract_values, STRICT_MODE
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -1079,19 +1079,12 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared, pipelined):
     for _ in range(num_epochs):
         iterations = []
         for batch in ds.iter_tf_batches(batch_size=2):
-            iterations.append(batch)
+            iterations.append(batch["data"])
         combined_iterations = np.concatenate(iterations)
         np.testing.assert_array_equal(arr, combined_iterations)
 
 
 def test_block_builder_for_block(ray_start_regular_shared):
-    # list
-    builder = BlockBuilder.for_block(list())
-    builder.add_block([1, 2])
-    assert builder.build() == [1, 2]
-    builder.add_block([3, 4])
-    assert builder.build() == [1, 2, 3, 4]
-
     # pandas dataframe
     builder = BlockBuilder.for_block(pd.DataFrame())
     b1 = pd.DataFrame({"A": [1], "B": ["a"]})
@@ -1136,10 +1129,10 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     assert ds.min("A") == 0
 
     # Test empty dataset
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
-    assert ds.filter(lambda r: r["value"] > 10).min("value") is None
+    assert ds.filter(lambda r: r["id"] > 10).min("id") is None
 
     # Test built-in global min aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
@@ -1177,10 +1170,10 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     assert ds.max("A") == 99
 
     # Test empty dataset
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
-    assert ds.filter(lambda r: r["value"] > 10).max("value") is None
+    assert ds.filter(lambda r: r["id"] > 10).max("id") is None
 
     # Test built-in global max aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
@@ -1218,10 +1211,10 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     assert ds.mean("A") == 49.5
 
     # Test empty dataset
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
-    assert ds.filter(lambda r: r["value"] > 10).mean("value") is None
+    assert ds.filter(lambda r: r["id"] > 10).mean("id") is None
 
     # Test built-in global mean aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
@@ -1312,6 +1305,7 @@ def test_len(ray_start_regular_shared):
         len(ds)
 
 
+@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
 def test_simple_block_select():
     xs = list(range(100))
     block_accessor = BlockAccessor.for_block(xs)
@@ -1354,7 +1348,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
     # Test Arrow-native creation APIs.
     # Test range_table.
     with pytest.raises(ImportError):
-        ray.data.range_table(10).take_all()
+        ray.data.range(10).take_all()
 
     # Test from_arrow.
     with pytest.raises(ImportError):
@@ -1561,7 +1555,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         if ray.get(count) == 1:
             raise ValueError("oops")
         else:
-            return ray.get(count)
+            return {"id": ray.get(count)}
 
     assert sorted(extract_values("id", ds1.map(flaky_mapper).take())) == [2, 3, 4]
 
@@ -1578,7 +1572,9 @@ def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource()
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
     source = ray.data.datasource.RangeDatasource()
-    assert ray.data.read_datasource(source, n=10).take() == list(range(10))
+    assert extract_values("id", ray.data.read_datasource(source, n=10).take()) == list(
+        range(10)
+    )
 
 
 def test_polars_lazy_import(shutdown_only):
@@ -1627,26 +1623,23 @@ def test_polars_lazy_import(shutdown_only):
 
 def test_batch_formats(shutdown_only):
     ds = ray.data.range(100)
-    assert ds.default_batch_format() == list
-    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
-    assert isinstance(next(ds.iter_batches(batch_format="default")), list)
+    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), dict)
     assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
     assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
 
     ds = ray.data.range_tensor(100)
-    assert ds.default_batch_format() == np.ndarray
     assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="default")), np.ndarray)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), dict)
     assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
     assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="numpy")), np.ndarray)
+    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
 
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
-    assert ds.default_batch_format() == pd.DataFrame
     assert isinstance(next(ds.iter_batches(batch_format=None)), pd.DataFrame)
-    assert isinstance(next(ds.iter_batches(batch_format="default")), pd.DataFrame)
+    assert isinstance(next(ds.iter_batches(batch_format="default")), dict)
     assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
     assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
     assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
