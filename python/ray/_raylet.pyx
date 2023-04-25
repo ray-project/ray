@@ -2426,9 +2426,6 @@ cdef class CoreWorker:
                     CTaskOptions(
                         name, num_returns, c_resources, concurrency_group_name),
                     return_refs)
-            if not status.ok():
-                raise Exception(f"Failed to submit task to actor {actor_id} "
-                                f"due to {status.message()}")
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -2438,7 +2435,7 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                     put_arg_id)
 
-            if return_refs.has_value():
+            if status.ok():
                 # The initial local reference is already acquired internally
                 # when adding the pending task.
                 return VectorToObjectRefs(return_refs.value(),
@@ -2447,7 +2444,8 @@ cdef class CoreWorker:
                 actor = self.get_actor_handle(actor_id)
                 actor_handle = (CCoreWorkerProcess.GetCoreWorker()
                                 .GetActorHandle(c_actor_id))
-                raise PendingCallsLimitExceeded("The task {} could not be "
+                if status.IsOutOfResource():
+                                raise PendingCallsLimitExceeded("The task {} could not be "
                                                 "submitted to {} because more "
                                                 "than {} tasks are queued on "
                                                 "the actor. This limit "
@@ -2460,6 +2458,10 @@ cdef class CoreWorker:
                                                     (dereference(actor_handle)
                                                         .MaxPendingCalls())
                                                 ))
+                else:
+                    raise Exception(f"Failed to submit task to actor {actor_id} "
+                                    f"due to {status.message()}")
+
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:

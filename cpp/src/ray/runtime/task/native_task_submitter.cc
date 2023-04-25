@@ -66,14 +66,14 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   options.name = call_options.name;
   options.resources = call_options.resources;
   options.serialized_runtime_env_info = call_options.serialized_runtime_env_info;
-  std::optional<std::vector<rpc::ObjectReference>> return_refs;
+  std::vector<rpc::ObjectReference> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     auto status = core_worker.SubmitActorTask(invocation.actor_id,
                                               BuildRayFunction(invocation),
                                               invocation.args,
                                               options,
                                               return_refs);
-    if (!status.ok() || !return_refs.has_value()) {
+    if (!status.ok()) {
       return ObjectID::Nil();
     }
   } else {

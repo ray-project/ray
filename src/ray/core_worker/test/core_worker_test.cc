@@ -202,7 +202,8 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   TaskOptions options{"", 1, resources};
   RayFunction func{Language::PYTHON,
                    FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
-  std::optional<std::vector<rpc::ObjectReference>> task_returns;
+  std::vector<rpc::ObjectReference> task_returns;
+  ;
   auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, func, args, options, task_returns);
   auto return_ids = ObjectRefsToIds(task_returns.value());
@@ -298,7 +299,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
           Language::PYTHON,
           FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-      std::optional<std::vector<rpc::ObjectReference>> task_returns;
+      std::vector<rpc::ObjectReference> task_returns;
+      ;
       auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
           actor_id, func, args, options, task_returns);
       auto return_ids = ObjectRefsToIds(task_returns.value());
@@ -346,7 +348,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     RayFunction func(
         Language::PYTHON,
         FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
-    std::optional<std::vector<rpc::ObjectReference>> task_returns;
+    std::vector<rpc::ObjectReference> task_returns;
+    ;
     auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
         actor_id, func, args, options, task_returns);
     auto return_ids = ObjectRefsToIds(task_returns.value());
@@ -413,7 +416,7 @@ void CoreWorkerTest::TestActorRestart(
           Language::PYTHON,
           FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-      std::optional<std::vector<rpc::ObjectReference>> task_returns;
+      std::vector<rpc::ObjectReference> task_returns;
       auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
           actor_id, func, args, options, task_returns);
       auto return_ids = ObjectRefsToIds(task_returns.value());
@@ -459,7 +462,8 @@ void CoreWorkerTest::TestActorFailure(
           Language::PYTHON,
           FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-      std::optional<std::vector<rpc::ObjectReference>> task_returns;
+      std::vector<rpc::ObjectReference> task_returns;
+      ;
       auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
           actor_id, func, args, options, task_returns);
       auto return_ids = ObjectRefsToIds(task_returns.value());
@@ -619,7 +623,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
         Language::PYTHON,
         FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-    std::optional<std::vector<rpc::ObjectReference>> task_returns;
+    std::vector<rpc::ObjectReference> task_returns;
     auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
         actor_id, func, args, options, task_returns);
     auto return_ids = ObjectRefsToIds(task_returns.value());

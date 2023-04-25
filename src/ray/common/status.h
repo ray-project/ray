@@ -292,6 +292,8 @@ class RAY_EXPORT Status {
 
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 
+  bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
+
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
   std::string ToString() const;

@@ -39,7 +39,7 @@
 namespace ray {
 namespace core {
 
-/// In direct actor call  submitter and receiver, a task is directly submitted
+/// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
 // Interface for testing.

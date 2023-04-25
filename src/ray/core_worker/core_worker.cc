@@ -2176,14 +2176,13 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   }
 }
 
-Status CoreWorker::SubmitActorTask(
-    const ActorID &actor_id,
-    const RayFunction &function,
-    const std::vector<std::unique_ptr<TaskArg>> &args,
-    const TaskOptions &task_options,
-    std::optional<std::vector<rpc::ObjectReference>> &task_returns) {
+Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
+                                   const RayFunction &function,
+                                   const std::vector<std::unique_ptr<TaskArg>> &args,
+                                   const TaskOptions &task_options,
+                                   std::vector<rpc::ObjectReference> &task_returns) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
-  task_returns = std::nullopt;
+  task_returns.clear();
   if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
     std::string err_msg = absl::StrFormat(
         "Can't find actor %s. It might be dead or it's from a different cluster",
@@ -2260,7 +2259,7 @@ Status CoreWorker::SubmitActorTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  task_returns = {std::move(returned_refs)};
+  task_returns = std::move(returned_refs);
   return Status::OK();
 }
 

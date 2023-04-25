@@ -438,10 +438,10 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_args = ToTaskArgs(env, args);
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
-  std::optional<std::vector<rpc::ObjectReference>> return_refs;
+  std::vector<rpc::ObjectReference> return_refs;
   auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options, return_refs);
-  if (!status.ok() || !return_refs.has_value()) {
+  if (!status.ok()) {
     std::stringstream ss;
     ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()
        << " could not be submitted to " << actor_id;
@@ -455,7 +455,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   }
 
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs.value()) {
+  for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
 
