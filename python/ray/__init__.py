@@ -253,8 +253,21 @@ __all__ += [
 ]
 
 
+# Public APIs that should automatically trigger ray.init().
+AUTO_INIT_APIS = [
+    "cancel",
+    "get",
+    "get_actor",
+    "get_gpu_ids",
+    "get_runtime_context",
+    "kill",
+    "put",
+    "wait",
+]
+
 from ray._private.auto_init_hook import wrap_auto_init_for_all_apis
-wrap_auto_init_for_all_apis()
+
+wrap_auto_init_for_all_apis(AUTO_INIT_APIS)
 
 
 # Delay importing of expensive, isolated subpackages.

@@ -85,6 +85,7 @@ def client_mode_hook(func: callable):
         func: This function. This is set when this function is used
             as a decorator.
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         from ray.util.client import ray
@@ -100,8 +101,7 @@ def client_mode_hook(func: callable):
 
 
 def client_mode_should_convert():
-    """Determines if functions should be converted to client mode.
-    """
+    """Determines if functions should be converted to client mode."""
 
     # `is_client_mode_enabled_by_default` is used for testing with
     # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
