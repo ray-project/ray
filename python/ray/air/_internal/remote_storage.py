@@ -1,5 +1,7 @@
 import fnmatch
 import os
+import pathlib
+import sys
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
@@ -10,9 +12,11 @@ from ray.air._internal.filelock import TempFileLock
 
 try:
     import fsspec
+    from fsspec.implementations.local import LocalFileSystem
 
 except ImportError:
     fsspec = None
+    LocalFileSystem = object
 
 try:
     import pyarrow
@@ -36,6 +40,52 @@ except (ImportError, ModuleNotFoundError):
     _CustomGCSHandler = None
 
 from ray import logger
+
+
+class _ExcludingLocalFilesystem(LocalFileSystem):
+    """LocalFileSystem wrapper to exclude files according to patterns.
+
+    Args:
+        exclude: List of patterns that are applied to files returned by
+            ``self.find()``. If a file path matches this pattern, it will
+            be excluded.
+
+    """
+
+    def __init__(self, exclude: List[str], **kwargs):
+        super().__init__(**kwargs)
+        self._exclude = exclude
+
+    @property
+    def fsid(self):
+        return "_excluding_local"
+
+    def _should_exclude(self, name: str) -> bool:
+        """Return True if `name` matches any of the `self._exclude` patterns."""
+        alt = None
+        if os.path.isdir(name):
+            # If this is a directory, also test it with trailing slash
+            alt = os.path.join(name, "")
+        for excl in self._exclude:
+            if fnmatch.fnmatch(name, excl):
+                return True
+            if alt and fnmatch.fnmatch(alt, excl):
+                return True
+        return False
+
+    def find(self, path, maxdepth=None, withdirs=False, detail=False, **kwargs):
+        """Call parent find() and exclude from result."""
+        names = super().find(
+            path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs
+        )
+        if detail:
+            return {
+                name: out
+                for name, out in names.items()
+                if not self._should_exclude(name)
+            }
+        else:
+            return [name for name in names if not self._should_exclude(name)]
 
 
 def _pyarrow_fs_copy_files(
@@ -100,11 +150,40 @@ def is_non_local_path_uri(uri: str) -> bool:
 _cached_fs = {}
 
 
+def is_local_path(path: str) -> bool:
+    """Check if a given path is a local path or a remote URI."""
+    if sys.platform == "win32":
+        return _is_local_windows_path(path)
+
+    scheme = urllib.parse.urlparse(path).scheme
+    return scheme in ("", "file")
+
+
+def _is_local_windows_path(path: str) -> bool:
+    """Determines if path is a Windows file-system location."""
+    if len(path) >= 1 and path[0] == "\\":
+        return True
+    if (
+        len(path) >= 3
+        and path[1] == ":"
+        and (path[2] == "/" or path[2] == "\\")
+        and path[0].isalpha()
+    ):
+        return True
+    return False
+
+
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
     if not pyarrow:
         return None, None
+
+    scheme = urllib.parse.urlparse(uri).scheme
+    if is_local_path(uri) and not scheme:
+        # Append local filesys scheme such that the downstream operations work
+        # properly on Linux and Windows.
+        uri = "file://" + pathlib.Path(uri).as_posix()
 
     parsed = urllib.parse.urlparse(uri)
     # for uri="hdfs://48bb8ca83706:8020/test":
@@ -253,10 +332,13 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
             f"Hint: {fs_hint(uri)}"
         )
 
-    _local_path = Path(local_path)
+    _local_path = Path(local_path).resolve()
     exists_before = _local_path.exists()
     if is_directory(uri):
         _local_path.mkdir(parents=True, exist_ok=True)
+    else:
+        _local_path.parent.mkdir(parents=True, exist_ok=True)
+
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
@@ -300,14 +382,33 @@ def upload_to_uri(
     if not exclude:
         _ensure_directory(bucket_path, fs=fs)
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
+    elif fsspec:
+        # If fsspec is available, prefer it because it's more efficient than
+        # calling pyarrow.fs.copy_files multiple times
+        _upload_to_uri_with_exclude_fsspec(
+            local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
+        )
     else:
         # Walk the filetree and upload
-        _upload_to_uri_with_exclude(
+        _upload_to_uri_with_exclude_pyarrow(
             local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
         )
 
 
-def _upload_to_uri_with_exclude(
+def _upload_to_uri_with_exclude_fsspec(
+    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+) -> None:
+    local_fs = _ExcludingLocalFilesystem(exclude=exclude)
+    handler = pyarrow.fs.FSSpecHandler(local_fs)
+    source_fs = pyarrow.fs.PyFileSystem(handler)
+
+    _ensure_directory(bucket_path, fs=fs)
+    _pyarrow_fs_copy_files(
+        local_path, bucket_path, source_filesystem=source_fs, destination_filesystem=fs
+    )
+
+
+def _upload_to_uri_with_exclude_pyarrow(
     local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
 ) -> None:
     def _should_exclude(candidate: str) -> bool:

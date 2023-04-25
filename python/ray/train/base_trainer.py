@@ -27,16 +27,16 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.data import Datastream
     from ray.data.preprocessor import Preprocessor
 
     from ray.tune import Trainable
 
 _TRAINER_PKL = "trainer.pkl"
 
-# A type representing either a ray.data.Dataset or a function that returns a
-# ray.data.Dataset and accepts no arguments.
-GenDataset = Union["Dataset", Callable[[], "Dataset"]]
+# A type representing either a ray.data.Datastream or a function that returns a
+# ray.data.Datastream and accepts no arguments.
+GenDataset = Union["Datastream", Callable[[], "Datastream"]]
 
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class BaseTrainer(abc.ABC):
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
     - ``trainer.preprocess_datasets()``: The provided
-      ray.data.Dataset are preprocessed with the provided
+      ray.data.Datastream are preprocessed with the provided
       ray.data.Preprocessor.
     - ``trainer.train_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
@@ -157,7 +157,7 @@ class BaseTrainer(abc.ABC):
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use the key "train"
+        datasets: Any Datastreams to use for training. Use the key "train"
             to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -293,19 +293,16 @@ class BaseTrainer(abc.ABC):
         assert trainer_state_path.exists()
 
         with open(trainer_state_path, "rb") as fp:
-            original_trainer = pickle.load(fp)
-        if type(original_trainer) is not cls:
+            trainer_cls, param_dict = pickle.load(fp)
+        if trainer_cls is not cls:
             warnings.warn(
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
-                f" {type(original_trainer)} with `{cls.__name__}.restore`, "
+                f" {trainer_cls} with `{cls.__name__}.restore`, "
                 "which will most likely fail. "
-                f"Use `{type(original_trainer).__name__}.restore` instead."
+                f"Use `{trainer_cls.__name__}.restore` instead."
             )
 
-        # Get the param dict used to initialize the original trainer
-        param_dict = original_trainer._param_dict
-
-        original_datasets = original_trainer.datasets or {}
+        original_datasets = param_dict.pop("datasets", {})
         if original_datasets and not datasets:
             raise ValueError(
                 "The following datasets need to be provided again on restore: "
@@ -410,7 +407,7 @@ class BaseTrainer(abc.ABC):
         if not isinstance(self.datasets, dict):
             raise ValueError(
                 f"`datasets` should be a dict mapping from a string to "
-                f"`ray.data.Dataset` objects, "
+                f"`ray.data.Datastream` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
         else:
@@ -418,17 +415,18 @@ class BaseTrainer(abc.ABC):
                 if isinstance(dataset, ray.data.DatasetPipeline):
                     raise ValueError(
                         f"The Dataset under '{key}' key is a "
-                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
+                        f"`ray.data.DatasetPipeline`. Only `ray.data.Datastream` are "
                         f"allowed to be passed in.  Pipelined/streaming ingest can be "
                         f"configured via the `dataset_config` arg. See "
                         "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
                         "for an example."
                     )
-                elif not isinstance(dataset, ray.data.Dataset) and not callable(
+                elif not isinstance(dataset, ray.data.Datastream) and not callable(
                     dataset
                 ):
                     raise ValueError(
-                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
+                        f"The Datastream under '{key}' key is not a "
+                        "`ray.data.Datastream`. "
                         f"Received {dataset} instead."
                     )
 
@@ -617,16 +615,37 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
-        """Saves the trainer to a directory.
+        """Saves the current trainer's class along with the `param_dict` of
+        parameters passed to this trainer's constructor.
 
-        This is used to populate a newly constructed trainer on restore.
-        Unless a parameter is re-specified during restoration (only a limited
-        set of parameters can be passed in again), the argument will be loaded
-        from this saved one.
+        This is used to recreate the trainer on restore.
+        Unless a parameter is re-specified during restoration (only a subset
+        of parameters can be passed in again), that parameter will be loaded
+        from the saved copy.
+
+        Datastreams should not be saved as part of the state. Instead, we save the
+        keys and replace the dataset values with dummy functions that will
+        raise an error if invoked. The error only serves as a guardrail for
+        misuse (e.g., manually unpickling and constructing the Trainer again)
+        and is not typically surfaced, since datasets must be re-specified
+        upon restoration.
         """
+        param_dict = self._param_dict.copy()
+        datasets = param_dict.pop("datasets", {})
+
+        def raise_fn():
+            raise RuntimeError
+
+        if datasets:
+            param_dict["datasets"] = {
+                dataset_name: raise_fn for dataset_name in datasets
+            }
+
+        cls_and_param_dict = (self.__class__, param_dict)
+
         experiment_path = Path(experiment_path)
         with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-            pickle.dump(self, fp)
+            pickle.dump(cls_and_param_dict, fp)
 
     def _extract_fields_for_tuner_param_space(self) -> Dict:
         """Extracts fields to be included in `Tuner.param_space`.
@@ -689,9 +708,9 @@ class BaseTrainer(abc.ABC):
         trainable_cls = wrap_function(train_func, warn=False)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
-            from ray.data.context import DatasetContext
+            from ray.data.context import DataContext
 
-            dataset_context = DatasetContext.get_current()
+            dataset_context = DataContext.get_current()
         else:
             dataset_context = None
 
@@ -728,9 +747,9 @@ class BaseTrainer(abc.ABC):
                     merged_scaling_config
                 )
                 if self.has_base_dataset():
-                    # Set the DatasetContext on the Trainer actor to the DatasetContext
+                    # Set the DataContext on the Trainer actor to the DataContext
                     # specified on the driver.
-                    DatasetContext._set_current(dataset_context)
+                    DataContext._set_current(dataset_context)
                 super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(

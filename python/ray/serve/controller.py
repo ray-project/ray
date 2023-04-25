@@ -14,8 +14,7 @@ from ray._private.utils import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray._private.gcs_utils import GcsClient
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray._raylet import GcsClient
 from ray.serve._private.common import (
     DeploymentInfo,
     EndpointInfo,
@@ -25,7 +24,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ServeDeployMode,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
@@ -33,10 +32,12 @@ from ray.serve._private.constants import (
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
+    RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
 )
+from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
@@ -119,11 +120,8 @@ class ServeController:
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
-        # Used to ensure that only a single state-changing operation happens
-        # at any given time.
-        self.write_lock = asyncio.Lock()
-
         self.long_poll_host = LongPollHost()
+        self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
             self.http_state = None
@@ -201,6 +199,9 @@ class ServeController:
               determine whether or not the host should immediately return the
               data or wait for the value to be changed.
         """
+        if not self.done_recovering_event.is_set():
+            await self.done_recovering_event.wait()
+
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
     async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
@@ -210,6 +211,9 @@ class ServeController:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
         """
+        if not self.done_recovering_event.is_set():
+            await self.done_recovering_event.wait()
+
         return await (
             self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
         )
@@ -254,22 +258,39 @@ class ServeController:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
+        recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        start_time = time.time()
         while True:
+            if (
+                not self.done_recovering_event.is_set()
+                and time.time() - start_time > recovering_timeout
+            ):
+                logger.warning(
+                    f"Replicas still recovering after {recovering_timeout}s, "
+                    "setting done recovering event to broadcast long poll updates."
+                )
+                self.done_recovering_event.set()
 
-            async with self.write_lock:
-                if self.http_state:
-                    try:
-                        self.http_state.update()
-                    except Exception:
-                        logger.exception("Exception updating HTTP state.")
+            # Don't update http_state until after the done recovering event is set,
+            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # info about available deployments & their replicas.
+            if self.http_state and self.done_recovering_event.is_set():
                 try:
-                    self.deployment_state_manager.update()
+                    self.http_state.update()
                 except Exception:
-                    logger.exception("Exception updating deployment state.")
-                try:
-                    self.application_state_manager.update()
-                except Exception:
-                    logger.exception("Exception updating application state.")
+                    logger.exception("Exception updating HTTP state.")
+
+            try:
+                any_recovering = self.deployment_state_manager.update()
+                if not self.done_recovering_event.is_set() and not any_recovering:
+                    self.done_recovering_event.set()
+            except Exception:
+                logger.exception("Exception updating deployment state.")
+
+            try:
+                self.application_state_manager.update()
+            except Exception:
+                logger.exception("Exception updating application state.")
 
             try:
                 self._put_serve_snapshot()
@@ -372,14 +393,13 @@ class ServeController:
                 )
         return http_config.root_url
 
-    async def shutdown(self):
+    def shutdown(self):
         """Shuts down the serve instance completely."""
-        async with self.write_lock:
-            self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
-            self.deployment_state_manager.shutdown()
-            self.endpoint_state.shutdown()
-            if self.http_state:
-                self.http_state.shutdown()
+        self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.deployment_state_manager.shutdown()
+        self.endpoint_state.shutdown()
+        if self.http_state:
+            self.http_state.shutdown()
 
     def deploy(
         self,
@@ -391,52 +411,22 @@ class ServeController:
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
+        """Deploys a deployment."""
+
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
 
-        deployment_config = DeploymentConfig.from_proto_bytes(
-            deployment_config_proto_bytes
-        )
-        version = deployment_config.version
-        replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.needs_pickle()
-        )
-
-        autoscaling_config = deployment_config.autoscaling_config
-        if autoscaling_config is not None:
-            if autoscaling_config.initial_replicas is not None:
-                deployment_config.num_replicas = autoscaling_config.initial_replicas
-            else:
-                previous_deployment = self.deployment_state_manager.get_deployment(name)
-                if previous_deployment is None:
-                    deployment_config.num_replicas = autoscaling_config.min_replicas
-                else:
-                    deployment_config.num_replicas = (
-                        previous_deployment.deployment_config.num_replicas
-                    )
-
-            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
-        else:
-            autoscaling_policy = None
-
-        # Java API passes in JobID as bytes
-        if isinstance(deployer_job_id, bytes):
-            deployer_job_id = ray.JobID.from_int(
-                int.from_bytes(deployer_job_id, "little")
-            ).hex()
-
-        deployment_info = DeploymentInfo(
-            actor_name=name,
-            version=version,
-            deployment_config=deployment_config,
-            replica_config=replica_config,
+        deployment_info = deploy_args_to_deployment_info(
+            deployment_name=name,
+            deployment_config_proto_bytes=deployment_config_proto_bytes,
+            replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
-            start_time_ms=int(time.time() * 1000),
-            autoscaling_policy=autoscaling_policy,
+            previous_deployment=self.deployment_state_manager.get_deployment(name),
             is_driver_deployment=is_driver_deployment,
         )
+
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
@@ -450,7 +440,9 @@ class ServeController:
 
         return updating
 
-    def deploy_group(self, name: str, deployment_args_list: List[Dict]) -> List[bool]:
+    def deploy_application(
+        self, name: str, deployment_args_list: List[Dict]
+    ) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
@@ -593,6 +585,7 @@ class ServeController:
                 updated_versions,
                 app_config_dict.get("route_prefix", DEFAULT.VALUE),
                 app_config.name,
+                app_config.args,
             )
 
             self.application_state_manager.create_application_state(
@@ -916,6 +909,7 @@ def deploy_serve_application(
     deployment_versions: Dict,
     route_prefix: str,
     name: str,
+    args: Dict,
 ):
     """Deploy Serve application from a user-provided config.
 
@@ -934,9 +928,11 @@ def deploy_serve_application(
     try:
         from ray import serve
         from ray.serve.api import build
+        from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
-        app = build(import_attr(import_path), name)
+        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
+        app = build(app, name)
 
         # Override options for each deployment.
         for options in deployment_override_options:

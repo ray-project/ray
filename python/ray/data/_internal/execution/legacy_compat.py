@@ -9,11 +9,11 @@ from typing import Iterator, Tuple, Any
 import ray
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
-from ray.data._internal.stats import StatsDict, DatasetStats
+from ray.data._internal.stats import StatsDict, DatastreamStats
 from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -34,17 +34,18 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.util import make_callable_class_concurrent
 
 
 def execute_to_legacy_block_iterator(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    dataset_uuid: str,
+    datastream_uuid: str,
 ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
     bundle_iter = execute_to_legacy_bundle_iterator(
-        executor, plan, allow_clear_input_blocks, dataset_uuid
+        executor, plan, allow_clear_input_blocks, datastream_uuid
     )
     for bundle in bundle_iter:
         for block, metadata in bundle.blocks:
@@ -55,7 +56,7 @@ def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    dataset_uuid: str,
+    datastream_uuid: str,
     dag_rewrite=None,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
@@ -64,10 +65,10 @@ def execute_to_legacy_bundle_iterator(
         executor: The executor to use.
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        dataset_uuid: UUID of the dataset for this execution.
+        datastream_uuid: UUID of the datastream for this execution.
         dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
             This is currently used as a legacy hack to inject the OutputSplit operator
-            for `Dataset.streaming_split()`.
+            for `Datastream.streaming_split()`.
 
     Returns:
         The output as a bundle iterator.
@@ -89,7 +90,7 @@ def execute_to_legacy_block_list(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    dataset_uuid: str,
+    datastream_uuid: str,
     preserve_order: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
@@ -98,7 +99,7 @@ def execute_to_legacy_block_list(
         executor: The executor to use.
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        dataset_uuid: UUID of the dataset for this execution.
+        datastream_uuid: UUID of the datastream for this execution.
         preserve_order: Whether to preserve order in execution.
 
     Returns:
@@ -113,7 +114,7 @@ def execute_to_legacy_block_list(
     bundles = executor.execute(dag, initial_stats=stats)
     block_list = _bundles_to_block_list(bundles)
     # Set the stats UUID after execution finishes.
-    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
+    _set_stats_uuid_recursive(executor.get_stats(), datastream_uuid)
     return block_list
 
 
@@ -122,14 +123,14 @@ def _get_execution_dag(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     preserve_order: bool,
-) -> Tuple[PhysicalOperator, DatasetStats]:
+) -> Tuple[PhysicalOperator, DatastreamStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
     if hasattr(plan, "_logical_plan") and plan._logical_plan is not None:
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if DatasetContext.get_current().optimizer_enabled:
+    if DataContext.get_current().optimizer_enabled:
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
@@ -144,8 +145,8 @@ def _get_execution_dag(
     return dag, stats
 
 
-def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    assert DatasetContext.get_current().optimizer_enabled
+def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatastreamStats:
+    assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
     return plan._in_stats
@@ -153,7 +154,7 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
 
 def _to_operator_dag(
     plan: ExecutionPlan, allow_clear_input_blocks: bool
-) -> Tuple[PhysicalOperator, DatasetStats]:
+) -> Tuple[PhysicalOperator, DatastreamStats]:
     """Translate a plan into an operator DAG for the new execution backend."""
 
     blocks, stats, stages = plan._optimize()
@@ -218,8 +219,13 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
+        # If the BlockList's read stage name is available, we assign it
+        # as the operator's name, which is used as the task name.
+        task_name = "DoRead"
+        if isinstance(blocks, LazyBlockList):
+            task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            do_read, inputs, name="DoRead", ray_remote_args=remote_args
+            do_read, inputs, name=task_name, ray_remote_args=remote_args
         )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
@@ -250,35 +256,34 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                     raise ValueError(
                         "``compute`` must be specified when using a callable class, "
                         "and must specify the actor compute strategy. "
-                        'For example, use ``compute="actors"`` or '
-                        "``compute=ActorPoolStrategy(min, max)``."
+                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
                     )
                 assert isinstance(compute, ActorPoolStrategy)
 
                 fn_constructor_args = stage.fn_constructor_args or ()
                 fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
-                fn_ = stage.fn
+
+                fn_ = make_callable_class_concurrent(stage.fn)
 
                 def fn(item: Any) -> Any:
-                    # Wrapper providing cached instantiation of stateful callable class
-                    # UDFs.
+                    assert ray.data._cached_fn is not None
+                    assert ray.data._cached_cls == fn_
+                    return ray.data._cached_fn(item)
+
+                def init_fn():
                     if ray.data._cached_fn is None:
                         ray.data._cached_cls = fn_
                         ray.data._cached_fn = fn_(
                             *fn_constructor_args, **fn_constructor_kwargs
                         )
-                    else:
-                        # A worker is destroyed when its actor is killed, so we
-                        # shouldn't have any worker reuse across different UDF
-                        # applications (i.e. different map operators).
-                        assert ray.data._cached_cls == fn_
-                    return ray.data._cached_fn(item)
 
             else:
                 fn = stage.fn
+                init_fn = None
             fn_args = (fn,)
         else:
             fn_args = ()
+            init_fn = None
         if stage.fn_args:
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
@@ -289,6 +294,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         return MapOperator.create(
             do_map,
             input_op,
+            init_fn=init_fn,
             name=stage.name,
             compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,
@@ -357,8 +363,8 @@ def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBund
     return output
 
 
-def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:
-    if not stats.dataset_uuid:
-        stats.dataset_uuid = dataset_uuid
+def _set_stats_uuid_recursive(stats: DatastreamStats, datastream_uuid: str) -> None:
+    if not stats.datastream_uuid:
+        stats.datastream_uuid = datastream_uuid
     for parent in stats.parents or []:
-        _set_stats_uuid_recursive(parent, dataset_uuid)
+        _set_stats_uuid_recursive(parent, datastream_uuid)

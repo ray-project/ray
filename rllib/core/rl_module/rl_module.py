@@ -153,6 +153,17 @@ class SingleAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
+    """A utility config class to make it constructing RLModules easier.
+
+    Args:
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
+        action_space: The action space of the RLModule.
+        model_config_dict: The model config dict to use.
+        catalog_class: The Catalog class to use.
+    """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
@@ -204,6 +215,7 @@ class RLModuleConfig:
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
+    Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
     During Training (acting in env from each rollout worker):
@@ -244,8 +256,7 @@ class RLModule(abc.ABC):
             obs, reward, terminated, truncated, info = env.step(action)
 
     Args:
-        *args: Arguments for constructing the RLModule.
-        **kwargs: Keyword args for constructing the RLModule.
+        config: The config for the RLModule.
 
     Abstract Methods:
         :py:meth:`~forward_train`: Forward pass during training.
@@ -264,8 +275,11 @@ class RLModule(abc.ABC):
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
+    framework: str = None
+
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        self.setup()
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -306,6 +320,14 @@ class RLModule(abc.ABC):
         self._output_specs_inference = convert_to_canonical_format(
             self.output_specs_inference()
         )
+
+    def setup(self):
+        """Sets up the components of the module.
+
+        This is called automatically during the __init__ method of this class,
+        therefore, the subclass should call super.__init__() in its constructor. This
+        abstraction can be used to create any component that your RLModule needs.
+        """
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -429,19 +451,17 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        """Saves the weights of this RLmodule to path.
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to path.
 
         Args:
             path: The file path to save the checkpoint to.
 
-        Returns:
-            The path to the saved checkpoint.
         """
         raise NotImplementedError
 
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLmodule from path.
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLModule from path.
 
         Args:
             path: The directory to load the checkpoint from.
@@ -554,7 +574,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_file(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir / self._module_state_file_name())
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -579,7 +599,7 @@ class RLModule(abc.ABC):
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         state_path = module_state_dir / module._module_state_file_name()
-        module.load_state_from_file(state_path)
+        module.load_state(state_path)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
@@ -589,3 +609,14 @@ class RLModule(abc.ABC):
         marl_module = MultiAgentRLModule()
         marl_module.add_module(DEFAULT_POLICY_ID, self)
         return marl_module
+
+    def unwrapped(self) -> "RLModule":
+        """Returns the underlying module if this module is a wrapper.
+
+        An example of a wrapped is the TorchDDPRLModule class, which wraps
+        a TorchRLModule.
+
+        Returns:
+            The underlying module.
+        """
+        return self

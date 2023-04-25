@@ -1,5 +1,5 @@
 import ray
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 
 from benchmark import Benchmark
 from parquet_data_generator import generate_data
@@ -21,7 +21,7 @@ def read_parquet(
         use_threads=use_threads,
         filter=filter,
         columns=columns,
-    ).cache()
+    ).materialize()
 
 
 def run_read_parquet_benchmark(benchmark: Benchmark):

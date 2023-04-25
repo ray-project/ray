@@ -12,6 +12,8 @@ _, tf, _ = try_import_tf()
 class TfRLModule(RLModule, tf.keras.Model):
     """Base class for RLlib TF RLModules."""
 
+    framework = "tf2"
+
     def __init__(self, *args, **kwargs) -> None:
         tf.keras.Model.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
@@ -50,7 +52,7 @@ class TfRLModule(RLModule, tf.keras.Model):
         return pathlib.Path("module_state")
 
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this RLmodule to path.
 
         Args:
@@ -63,11 +65,9 @@ class TfRLModule(RLModule, tf.keras.Model):
             passing a file path relative to a directory, e.g.
             "my_checkpoint/module_state".
 
-        Returns:
-            The path to the saved checkpoint.
         """
         self.save_weights(path, save_format="tf")
 
     @override(RLModule)
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
         self.load_weights(str(path))

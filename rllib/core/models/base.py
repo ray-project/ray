@@ -2,13 +2,13 @@ import abc
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-from ray.rllib import SampleBatch
+from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.
@@ -20,18 +20,29 @@ ACTOR: str = "actor"
 CRITIC: str = "critic"
 
 
+def _raise_not_decorated_exception(class_and_method, input_or_output):
+    raise ValueError(
+        f"`{class_and_method}()` not decorated with {input_or_output} specification. "
+        f"Decorate it with @check_{input_or_output}_specs() to define a specification."
+    )
+
+
 @ExperimentalAPI
 @dataclass
 class ModelConfig(abc.ABC):
-    """Base class for model configurations.
+    """Base class for configuring a `Model` instance.
 
-    ModelConfigs are framework-agnostic.
-    A ModelConfig is usually built by RLModules after getting it from a Catalog object.
-    It is therefore a means of configuration for RLModules. However, ModelConfigs are
-    not restricted to be used only with Catalog or RLModules.
-    A usage Example together with a Model can be found in the Model.
+    ModelConfigs are DL framework-agnostic.
+    A `Model` (as a sub-component of an `RLModule`) is built via calling the
+    respective ModelConfig's `build()` method.
+    RLModules build their sub-components this way after receiving one or more
+    `ModelConfig` instances from a Catalog object.
 
-    Args:
+    However, `ModelConfig` is not restricted to be used only with Catalog or RLModules.
+    Usage examples can be found in the individual Model classes', e.g.
+    see `ray.rllib.core.models.configs::MLPHeadConfig`.
+
+    Attributes:
         input_dims: The input dimensions of the network
         output_dims: The output dimensions of the network.
     """
@@ -191,19 +202,42 @@ class Model(abc.ABC):
         Returns:
             NestedDict: The output tensors.
         """
-        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_num_parameters(self) -> Tuple[int, int]:
+        """Returns a tuple of (num trainable params, num non-trainable params)."""
+
+    @abc.abstractmethod
+    def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)) -> None:
+        """Helper method to set all weights to deterministic dummy values.
+
+        Calling this method on two `Models` that have the same architecture using
+        the exact same `value_sequence` arg should make both models output the exact
+        same values on arbitrary inputs. This will work, even if the two `Models`
+        are of different DL frameworks.
+
+        Args:
+            value_sequence: Looping through the list of all parameters (weight matrices,
+                bias tensors, etc..) of this model, in each iteration i, we set all
+                values in this parameter to `value_sequence[i % len(value_sequence)]`
+                (round robin).
+
+        Example:
+            TODO:
+        """
 
 
 class Encoder(Model, abc.ABC):
-    """The framework-agnostic base class for all encoders RLlib produces.
+    """The framework-agnostic base class for all RLlib encoders.
 
-    Encoders are used to encode observations into a latent space in RLModules.
+    Encoders are used to transform observations to a latent space.
     Therefore, their `input_specs` contains the observation space dimensions.
     Similarly, their `output_specs` contains the latent space dimensions.
     Encoders can be recurrent, in which case the state should be part of input- and
-    output_specs. The latents that are produced by an encoder are fed into subsequent
-    heads. Any implementation of Encoder should also be callable. This should be done
-    by also inheriting from a framework-specific model base-class, s.a. TorchModel.
+    output_specs. The latent vectors produced by an encoder are fed into subsequent
+    "heads". Any implementation of Encoder should also be callable. This should be done
+    by also inheriting from a framework-specific model base-class, s.a. TorchModel or
+    TfModel.
 
     Abstract illustration of typical flow of tensors:
 
@@ -219,15 +253,16 @@ class Encoder(Model, abc.ABC):
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the `output_specs`.
 
-    Usage Example together with a ModelConfig:
+    Usage example together with a ModelConfig:
 
     .. testcode::
 
-        from ray.rllib.core.models.base import ModelConfig
-        from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT, Encoder
-        from ray.rllib.policy.sample_batch import SampleBatch
         from dataclasses import dataclass
         import numpy as np
+
+        from ray.rllib.core.models.base import ModelConfig
+        from ray.rllib.core.models.base import Encoder, ENCODER_OUT, STATE_IN, STATE_OUT
+        from ray.rllib.policy.sample_batch import SampleBatch
 
         class NumpyEncoder(Encoder):
             def __init__(self, config):
@@ -265,11 +300,11 @@ class Encoder(Model, abc.ABC):
     """
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
+    def get_input_specs(self) -> Optional[Spec]:
         return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
 
     @abc.abstractmethod
@@ -279,18 +314,23 @@ class Encoder(Model, abc.ABC):
         This method is called by the forwarding method of the respective framework
         that is itself wrapped by RLlib in order to check model inputs and outputs.
 
-        The input dict contains at minimum the observation and the state of the encoder.
-        The output dict contains at minimum the latent and the state of the encoder.
-        These values have the keys `SampleBatch.OBS` and `STATE_IN` in the inputs, and
-        `STATE_OUT` and `ENCODER_OUT` and outputs to establish an agreement
-        between the encoder and RLModules. For stateless encoders, states can be None.
+        The input dict contains at minimum the observation and the state of the encoder
+        (None for stateless encoders).
+        The output dict contains at minimum the latent and the state of the encoder
+        (None for stateless encoders).
+        To establish an agreement between the encoder and RLModules, these values
+        have the fixed keys `SampleBatch.OBS` and `STATE_IN` for the `input_dict`,
+        and `STATE_OUT` and `ENCODER_OUT` for the returned NestedDict.
 
         Args:
-            input_dict: The input tensors.
+            input_dict: The input tensors. Must contain at a minimum the keys
+                SampleBatch.OBS and STATE_IN (which might be None for stateless
+                encoders).
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            NestedDict: The output tensors.
+            NestedDict: The output tensors. Must contain at a minimum the keys
+                ENCODER_OUT and STATE_OUT (which might be None for stateless encoders).
         """
         raise NotImplementedError
 
@@ -322,25 +362,25 @@ class ActorCriticEncoder(Encoder):
         super().__init__(config)
 
     @override(Model)
-    def get_input_specs(self) -> Union[Spec, None]:
-        if self.config.shared:
-            state_in_spec = self.encoder.input_specs[STATE_IN]
-        else:
-            state_in_spec = {
-                ACTOR: self.actor_encoder.input_specs[STATE_IN],
-                CRITIC: self.critic_encoder.input_specs[STATE_IN],
-            }
+    def get_input_specs(self) -> Optional[Spec]:
+        # if self.config.shared:
+        #     state_in_spec = self.encoder.input_specs[STATE_IN]
+        # else:
+        #     state_in_spec = {
+        #         ACTOR: self.actor_encoder.input_specs[STATE_IN],
+        #         CRITIC: self.critic_encoder.input_specs[STATE_IN],
+        #     }
 
         return SpecDict(
             {
                 SampleBatch.OBS: None,
-                STATE_IN: state_in_spec,
-                SampleBatch.SEQ_LENS: None,
+                # STATE_IN: state_in_spec,
+                # SampleBatch.SEQ_LENS: None,
             }
         )
 
     @override(Model)
-    def get_output_specs(self) -> Union[Spec, None]:
+    def get_output_specs(self) -> Optional[Spec]:
         if self.config.shared:
             state_out_spec = self.encoder.output_specs[STATE_OUT]
         else:
@@ -380,9 +420,10 @@ class ActorCriticEncoder(Encoder):
                 }
             )
         else:
-            actor_inputs = NestedDict({**inputs, **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            actor_inputs = NestedDict({**inputs})
+            # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
             critic_inputs = NestedDict(
-                {**inputs, **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+                {**inputs}  # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
             )
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)

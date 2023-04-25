@@ -14,7 +14,7 @@ from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import BatchMapper
 from ray.tune.impl import tuner_internal
@@ -98,7 +98,7 @@ def test_trainer_fit(ray_start_4_cpus):
 
 
 def test_preprocess_datasets(ray_start_4_cpus):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     def training_loop(self):
@@ -118,7 +118,7 @@ def test_validate_datasets(ray_start_4_cpus):
 
     with pytest.raises(ValueError) as e:
         DummyTrainer(train_loop=None, datasets={"train": 1})
-    assert "The Dataset under train key is not a `ray.data.Dataset`"
+    assert "The Dataset under train key is not a `ray.data.Datastream`"
 
     with pytest.raises(ValueError) as e:
         DummyTrainer(
@@ -409,7 +409,7 @@ def test_large_params(ray_start_4_cpus):
 
 
 def test_preprocess_datasets_context(ray_start_4_cpus):
-    """Tests if DatasetContext is propagated to preprocessors."""
+    """Tests if DataContext is propagated to preprocessors."""
 
     def training_loop(self):
         assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
@@ -418,13 +418,13 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
     target_max_block_size = 100
 
     def map_fn(batch):
-        ctx = ray.data.context.DatasetContext.get_current()
+        ctx = ray.data.context.DataContext.get_current()
         assert ctx.target_max_block_size == target_max_block_size
         return batch + 1
 
     preprocessor = BatchMapper(map_fn, batch_format="pandas")
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = target_max_block_size
 
     datasets = {"my_dataset": ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))}

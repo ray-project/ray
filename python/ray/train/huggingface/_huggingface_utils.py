@@ -7,7 +7,7 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
-from ray.data import DatasetIterator
+from ray.data import DataIterator
 from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def wrap_transformers_trainer(
             data_loader = super().get_train_dataloader()
             if isinstance(
                 data_loader.dataset, transformers.trainer.IterableDatasetShard
-            ):
+            ) and getattr(data_loader.dataset.dataset, "_do_not_split", False):
                 # Default Trainer.get_train_dataloader will wrap the dataset in
                 # IterableDatasetShard, which will perform additional sharding on top
                 # of the already sharded dataset. By setting those two attributes,
@@ -59,11 +59,11 @@ def wrap_transformers_trainer(
     return trainer
 
 
-# TODO(ml-team): Replace with a Ray Datasets-HuggingFace integration when available.
+# TODO(ml-team): Replace with a Datastreams-HuggingFace integration when available.
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Ray Dataset."""
+    """HF ExamplesIterable backed by a Datastream."""
 
-    def __init__(self, dataset: DatasetIterator) -> None:
+    def __init__(self, dataset: DataIterator) -> None:
         self.dataset = dataset
         self.generate_examples_fn = self.dataset.iter_rows
 
@@ -75,7 +75,9 @@ class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
             yield (0, {k: v for k, v in row.as_pydict().items()})
 
 
-def process_dataset_for_hf(dataset: DatasetIterator) -> "IterableDataset":
+def process_dataset_for_hf(
+    dataset: DataIterator, disable_transformers_splitting: bool = False
+) -> "IterableDataset":
     """Converts a Ray Dataset into a HF IterableDataset."""
     hf_iterable = RayDatasetHFIterable(dataset)
 
@@ -84,21 +86,29 @@ def process_dataset_for_hf(dataset: DatasetIterator) -> "IterableDataset":
     ).with_format("torch")
 
     try:
-        dataset_length = dataset._base_dataset.count()
+        dataset_length = dataset._base_datastream.count()
     except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None
 
     iterable_dataset = maybe_add_length(iterable_dataset, dataset_length)
+    # Trigger logic in `wrap_transformers_trainer` to disable built-in
+    # HuggingFace splitting, as we have already split the dataset ourselves.
+    iterable_dataset._do_not_split = disable_transformers_splitting
     return iterable_dataset
 
 
 def process_datasets(
-    train_dataset: DatasetIterator,
-    eval_dataset: DatasetIterator,
+    train_dataset: DataIterator,
+    eval_dataset: DataIterator,
 ) -> Tuple["IterableDataset", "IterableDataset"]:
     """Convert Ray train and validation to HF IterableDatasets."""
-    train_torch_dataset = process_dataset_for_hf(train_dataset)
+    if train_dataset:
+        train_torch_dataset = process_dataset_for_hf(
+            train_dataset, disable_transformers_splitting=True
+        )
+    else:
+        train_torch_dataset = None
 
     if eval_dataset:
         eval_torch_dataset = process_dataset_for_hf(eval_dataset)
