@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict
 import numpy as np
 
 import ray
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from typing import Optional
@@ -55,7 +54,6 @@ class NumpyDatasource(FileBasedDatasource):
             column_name = self._COLUMN_NAME
 
         column_names = block.column_names
-        assert column_names[0] == TENSOR_COLUMN_NAME
         column_names[0] = column_name
         return block.rename_columns(column_names)
 

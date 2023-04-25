@@ -2784,7 +2784,7 @@ class Datastream(Generic[T]):
         self,
         path: str,
         *,
-        column: str = TENSOR_COLUMN_NAME,
+        column: Optional[str] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2823,6 +2823,12 @@ class Datastream(Generic[T]):
                 write each datastream block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        context = DataContext.get_current()
+        if context.strict_mode and not column:
+            raise StrictModeError(
+                "The column must be explicitly specified in strict mode."
+            )
+        column = column or TENSOR_COLUMN_NAME
         self.write_datasource(
             NumpyDatasource(),
             ray_remote_args=ray_remote_args,
