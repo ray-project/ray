@@ -16,6 +16,7 @@ from ray.serve.drivers import DAGDriver
 
 
 class TestGetDeployment:
+    # Test V1 API get_deployment()
     def get_deployment(self, name, use_list_api):
         if use_list_api:
             return serve.list_deployments()[name]
@@ -33,8 +34,8 @@ class TestGetDeployment:
         with pytest.raises(KeyError):
             self.get_deployment(name, use_list_api)
 
-        handle = serve.run(d.bind())
-        val1, pid1 = ray.get(handle.remote())
+        d.deploy()
+        val1, pid1 = ray.get(d.get_handle().remote())
         assert val1 == "1"
 
         del d
@@ -52,7 +53,7 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        serve.run(d.bind())
+        d.deploy()
         del d
 
         d2 = self.get_deployment(name, use_list_api)
@@ -70,15 +71,15 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        handle = serve.run(d.bind())
-        val1, pid1 = ray.get(handle.remote())
+        d.deploy()
+        val1, pid1 = ray.get(d.get_handle().remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        handle = serve.run(d2.options(version="2").bind())
-        val2, pid2 = ray.get(handle.remote())
+        d2.options(version="2").deploy()
+        val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
@@ -90,15 +91,15 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        handle = serve.run(d.bind())
-        val1, pid1 = ray.get(handle.remote())
+        d.deploy()
+        val1, pid1 = ray.get(d.get_handle().remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        handle = serve.run(d2.bind())
-        val2, pid2 = ray.get(handle.remote())
+        d2.deploy()
+        val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
@@ -144,12 +145,12 @@ class TestGetDeployment:
             handle = self.get_deployment(name, use_list_api).get_handle()
             assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
 
-        serve.run(d.bind())
+        d.deploy()
         check_num_replicas(1)
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        serve.run(d2.options(num_replicas=2).bind())
+        d2.options(num_replicas=2).deploy()
         check_num_replicas(2)
 
 
