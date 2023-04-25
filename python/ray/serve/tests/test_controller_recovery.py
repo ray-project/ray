@@ -33,7 +33,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         def __call__(self, *args):
             return "hii"
 
-    serve.run(TransientConstructorFailureDeployment.bind())
+    serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
         response = request_with_retries(
             "/recover_start_from_replica_actor_names/", timeout=30
@@ -42,10 +42,10 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    assert len(deployment_dict["recover_start_from_replica_actor_names"]) == 2
+    assert len(deployment_dict["app_recover_start_from_replica_actor_names"]) == 2
 
     replica_version_hash = None
-    for replica in deployment_dict["recover_start_from_replica_actor_names"]:
+    for replica in deployment_dict["app_recover_start_from_replica_actor_names"]:
         ref = replica.actor_handle.get_metadata.remote()
         _, version = ray.get(ref)
         if replica_version_hash is None:
@@ -116,7 +116,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     @ray.remote(num_cpus=0)
     def call(block=False):
-        handle = serve.get_deployment(name).get_handle()
+        handle = serve.get_deployment(f"app_{name}").get_handle()
         ret = ray.get(handle.handler.remote(block))
 
         return ret.split("|")[0], ret.split("|")[1]
@@ -167,7 +167,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
         return responses, blocking
 
-    serve.run(V1.bind())
+    serve.run(V1.bind(), name="app")
     responses1, _ = make_nonblocking_calls({"1": 2}, num_returns=2)
     pids1 = responses1["1"]
 
@@ -182,9 +182,9 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False)
+    serve.run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
+        client._wait_for_deployment_healthy(f"app_{V2.name}", timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     ray.kill(serve.context._global_client._controller, no_restart=False)
@@ -197,7 +197,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_deployment_healthy(V2.name)
+    client._wait_for_deployment_healthy(f"app_{V2.name}")
     make_nonblocking_calls({"2": 2}, num_returns=2)
 
 
@@ -222,7 +222,7 @@ def test_controller_recover_initializing_actor(serve_instance):
         def __call__(self, request):
             return f"1|{os.getpid()}"
 
-    serve.run(V1.bind(), _blocking=False)
+    serve.run(V1.bind(), _blocking=False, name="app")
     ray.get(pending_init_indicator.remote())
 
     def get_actor_info(name: str):
@@ -234,7 +234,7 @@ def test_controller_recover_initializing_actor(serve_instance):
                 print(actor)
                 return actor["name"], actor["pid"]
 
-    actor_tag, _ = get_actor_info(V1.name)
+    actor_tag, _ = get_actor_info(f"app_{V1.name}")
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
     # wait for controller is alive again
@@ -243,9 +243,9 @@ def test_controller_recover_initializing_actor(serve_instance):
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())
-    client._wait_for_deployment_healthy(V1.name)
+    client._wait_for_deployment_healthy(f"app_{V1.name}")
     # Make sure the actor before controller dead is staying alive.
-    assert actor_tag == get_actor_info(V1.name)[0]
+    assert actor_tag == get_actor_info(f"app_{V1.name}")[0]
 
 
 if __name__ == "__main__":
