@@ -15,14 +15,14 @@ class TorchPredictor:
     import torch
     import torch.nn as nn
 
-    def __init__(self):
+    def __init__(self):  # <1>
         self.model = nn.Sequential(
             nn.Linear(in_features=100, out_features=1),
             nn.Sigmoid(),
         )
         self.model.eval()
 
-    def __call__(self, batch):
+    def __call__(self, batch):  # <2>
         tensor = torch.as_tensor(batch, dtype=torch.float32)
         with torch.inference_mode():
             return self.model(tensor).detach().numpy()

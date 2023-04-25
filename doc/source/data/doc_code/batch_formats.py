@@ -12,9 +12,9 @@ def map_function(data):
 transformed = ds.map_batches(map_function, batch_size=10)
 # __simple_map_function_end__
 
+# __simple_pandas_start__
 import ray
 import pandas as pd
-
 
 ds = ray.data.read_csv("example://iris.csv")
 ds.show(1)
@@ -22,7 +22,6 @@ ds.show(1)
 
 ds.default_batch_format()
 # pandas.core.frame.DataFrame
-
 
 def transform_pandas(df_batch: pd.DataFrame) -> pd.DataFrame:
     df_batch = df_batch[df_batch["variety"] == "Versicolor"]
@@ -32,8 +31,9 @@ def transform_pandas(df_batch: pd.DataFrame) -> pd.DataFrame:
 
 ds.map_batches(transform_pandas).show(1)
 # -> {..., 'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
+# __simple_pandas_end__
 
-
+# __simple_numpy_start__
 import ray
 import numpy as np
 
@@ -45,3 +45,20 @@ def transform_numpy(arr: np.ndarray) -> np.ndarray:
     return arr * 2
 
 ds.map_batches(transform_numpy)
+# __simple_numpy_end__
+
+
+# __simple_pyarrow_start__
+import ray
+import pyarrow as pa
+import pyarrow.compute as pac
+
+ds = ray.data.read_csv("example://iris.csv")
+
+def transform_pyarrow(batch: pa.Table) -> pa.Table:
+    batch = batch.filter(pac.equal(batch["variety"], "Versicolor"))
+    return batch.drop(["sepal.length"])
+
+ds.map_batches(transform_pyarrow, batch_format="pyarrow").show(1)
+# -> {'sepal.width': 3.2, ..., 'variety': 'Versicolor'}
+# __simple_pyarrow_end__

@@ -12,14 +12,14 @@ dataset = ray.data.from_numpy(np.ones((1, 100)))
 
 # __tf_quickstart_model_start__
 class TFPredictor:
-    def __init__(self):
+    def __init__(self):  # <1>
         from tensorflow import keras
 
         input_layer = keras.Input(shape=(100,))
         output_layer = keras.layers.Dense(1, activation="sigmoid")
         self.model = keras.Sequential([input_layer, output_layer])
 
-    def __call__(self, batch: np.ndarray):
+    def __call__(self, batch: np.ndarray):  # <2>
         return self.model(batch).numpy()
 # __tf_quickstart_model_end__
 

@@ -21,6 +21,43 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
 
 .. figure:: batch_inference/images/batch_inference.png
 
+
+.. panels::
+    :container: container pb-3
+    :column: col-md-3 px-1 py-1
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /data/batch-inference
+        :type: ref
+        :text: [User Guide] Batch Inference with Ray Data
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
+        :type: url
+        :text: [Tutorial] Architectures for Scalable Batch Inference with Ray
+        :classes: btn-link btn-block stretched-link scalableBatchInference
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /data/examples/nyc_taxi_basic_processing
+        :type: ref
+        :text: [Example] Batch Inference on NYC taxi data using Ray Data
+        :classes: btn-link btn-block stretched-link nycTaxiData
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /data/examples/ocr_example
+        :type: ref
+        :text: [Example] Batch OCR processing using Ray Data
+        :classes: btn-link btn-block stretched-link batchOcr
+
+
 .. _ref-use-cases-mmt:
 
 Many Model Training
