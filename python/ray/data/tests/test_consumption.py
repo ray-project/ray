@@ -11,17 +11,14 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.pandas_block import PandasRow
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datastream import Dataset, MaterializedDatastream, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
@@ -449,11 +446,7 @@ def test_convert_types(ray_start_regular_shared):
 
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
-    assert ds.take() == ["hello", "world"]
-    assert isinstance(next(ds.iter_batches(batch_format=None)), list)
-
-    with pytest.raises(ValueError):
-        ds = ray.data.from_items(["hello", "world"], output_arrow_format=True)
+    assert extract_values("item", ds.take()) == ["hello", "world"]
 
     ds = ray.data.from_items([{"hello": "world"}], output_arrow_format=True)
     assert ds.take() == [{"hello": "world"}]
@@ -485,23 +478,23 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
 
 def test_take_batch(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=2)
-    assert ds.take_batch(3) == {"id": np.array([0, 1, 2])}
-    assert ds.take_batch(6) == {"id": np.array([0, 1, 2, 3, 4, 5])}
-    assert ds.take_batch(100) == {"id": np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])}
+    assert ds.take_batch(3)["id"].tolist() == [0, 1, 2]
+    assert ds.take_batch(6)["id"].tolist() == [0, 1, 2, 3, 4, 5]
+    assert ds.take_batch(100)["id"].tolist() == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
-    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), dict)
 
     ds = ray.data.range_tensor(10, parallelism=2)
-    assert np.all(ds.take_batch(3) == np.array([[0], [1], [2]]))
+    assert np.all(ds.take_batch(3)["data"] == np.array([[0], [1], [2]]))
     assert isinstance(ds.take_batch(3, batch_format="pandas"), pd.DataFrame)
-    assert isinstance(ds.take_batch(3, batch_format="numpy"), np.ndarray)
+    assert isinstance(ds.take_batch(3, batch_format="numpy"), dict)
 
     with pytest.raises(ValueError):
         ray.data.range(0).take_batch()
 
 
 def test_take_all(ray_start_regular_shared):
-    assert ray.data.range(5).take_all() == [0, 1, 2, 3, 4]
+    assert extract_values("id", ray.data.range(5).take_all()) == [0, 1, 2, 3, 4]
 
     with pytest.raises(ValueError):
         assert ray.data.range(5).take_all(4)
@@ -531,7 +524,7 @@ def test_iter_rows(ray_start_regular_shared):
     n = 10
     ds = ray.data.range(n)
     for row, k in zip(ds.iter_rows(), range(n)):
-        assert row == k
+        assert row == {"id": k}
 
     # Test tabular rows.
     t1 = pa.Table.from_pydict({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -553,22 +546,19 @@ def test_iter_rows(ray_start_regular_shared):
 
     # Default ArrowRows.
     for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
-        assert isinstance(row, TableRow)
-        assert isinstance(row, ArrowRow)
+        assert isinstance(row, dict)
         assert row == t_row
 
     # PandasRows after conversion.
     pandas_ds = ds.map_batches(lambda x: x, batch_format="pandas")
     df = t.to_pandas()
     for row, (index, df_row) in zip(pandas_ds.iter_rows(), df.iterrows()):
-        assert isinstance(row, TableRow)
-        assert isinstance(row, PandasRow)
+        assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
     # Prefetch.
     for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
-        assert isinstance(row, TableRow)
-        assert isinstance(row, ArrowRow)
+        assert isinstance(row, dict)
         assert row == t_row
 
 
@@ -597,14 +587,6 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
-    # Numpy format (single column).
-    ds2 = ds.select_columns(["one"])
-    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
-        assert isinstance(batch, dict)
-        assert list(batch.keys()) == ["one"]
-        assert all(isinstance(col, np.ndarray) for col in batch.values())
-        pd.testing.assert_frame_equal(pd.DataFrame(batch), df[["one"]])
-
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
     for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
@@ -613,21 +595,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
-    # Test NumPy format on Arrow blocks (single column).
-    ds3 = ds2.select_columns(["one"])
-    for batch, df in zip(ds3.iter_batches(batch_size=None, batch_format="numpy"), dfs):
-        assert isinstance(batch, dict)
-        assert list(batch.keys()) == ["one"]
-        assert all(isinstance(col, np.ndarray) for col in batch.values())
-        pd.testing.assert_frame_equal(pd.DataFrame(batch), df[["one"]])
-
-    # Native format (deprecated).
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
-        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
-
-    # Default format.
+    # Default format -> numpy.
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="default"), dfs):
-        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one", "two"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
     # Batch size.
     batch_size = 2
@@ -737,12 +710,15 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
 def test_iter_batches_empty_block(ray_start_regular_shared):
     ds = ray.data.range(1).repartition(10)
-    assert list(ds.iter_batches(batch_size=None)) == [[0]]
-    assert list(ds.iter_batches(batch_size=1, local_shuffle_buffer_size=1)) == [[0]]
+    assert str(list(ds.iter_batches(batch_size=None))) == "[{'id': array([0])}]"
+    assert (
+        str(list(ds.iter_batches(batch_size=1, local_shuffle_buffer_size=1)))
+        == "[{'id': array([0])}]"
+    )
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-@pytest.mark.parametrize("ds_format", ["arrow", "pandas", "simple"])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     # Input validation.
     # Batch size must be given for local shuffle.
@@ -754,12 +730,10 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
         )
 
     def range(n, parallelism=200):
-        if ds_format == "simple":
+        if ds_format == "arrow":
             ds = ray.data.range(n, parallelism=parallelism)
-        elif ds_format == "arrow":
-            ds = ray.data.range_table(n, parallelism=parallelism)
         elif ds_format == "pandas":
-            ds = ray.data.range_table(n, parallelism=parallelism).map_batches(
+            ds = ray.data.range(n, parallelism=parallelism).map_batches(
                 lambda df: df, batch_size=None, batch_format="pandas"
             )
         if pipelined:
@@ -770,16 +744,14 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
 
     def to_row_dicts(batch):
         if isinstance(batch, pd.DataFrame):
-            batch = batch.to_dict(orient="records")
-        return batch
+            return batch.to_dict(orient="records")
+        return [{"id": v} for v in batch["id"]]
 
     def unbatch(batches):
         return [r for batch in batches for r in to_row_dicts(batch)]
 
     def sort(r):
-        if ds_format == "simple":
-            return sorted(r)
-        return sorted(r, key=lambda v: v["value"])
+        return sorted(r, key=lambda v: v["id"])
 
     base = range(100).take_all()
 
