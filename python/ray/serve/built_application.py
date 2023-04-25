@@ -8,6 +8,7 @@ from ray.serve.deployment import Deployment
 from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class ImmutableDeploymentDict(dict):
     def __init__(self, deployments: Dict[str, Deployment]):
         super().__init__()
