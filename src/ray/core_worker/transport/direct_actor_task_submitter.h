@@ -39,7 +39,7 @@
 namespace ray {
 namespace core {
 
-/// In direct actor call task submitter and receiver, a task is directly submitted
+/// In direct actor call  submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
 // Interface for testing.
@@ -90,6 +90,7 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
+  /// \param[in] execute_out_of_order Whether to execute tasks out of order.
   /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
   /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
@@ -150,6 +151,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] actor_id Actor id.
   /// \return Whether the corresponding client queue is full or not.
   bool PendingTasksFull(const ActorID &actor_id) const;
+
+  /// Get the number of pending tasks in the queue.
+  ///
+  /// \param[in] actor_id Actor id.
+  /// \return The number of pending tasks in the queue.
+  size_t NumPendingTasks(const ActorID &actor_id) const;
 
   /// Check whether the actor exists
   ///
