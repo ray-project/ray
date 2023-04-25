@@ -20,14 +20,12 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.metrics import ALL_MODULES
 
 
-def get_learner(learning_rate=1e-3) -> Learner:
-    env = gym.make("CartPole-v1")
-
+def get_learner(obs_space, action_space, learning_rate=1e-3) -> Learner:
     learner = BCTfLearner(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTFModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
+            observation_space=obs_space,
+            action_space=action_space,
             model_config_dict={"fcnet_hiddens": [32]},
         ),
         # made this a configurable hparam to avoid information leakage in tests where we
@@ -43,6 +41,9 @@ def get_learner(learning_rate=1e-3) -> Learner:
 
 
 class TestLearner(unittest.TestCase):
+
+    ENV = gym.make("CartPole-v1")
+
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -53,7 +54,7 @@ class TestLearner(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        learner = get_learner()
+        learner = get_learner(self.ENV.observation_space, self.ENV.action_space)
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
@@ -79,13 +80,13 @@ class TestLearner(unittest.TestCase):
         learner = BCTfLearner(
             module_spec=SingleAgentRLModuleSpec(
                 module_class=DiscreteBCTFModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=self.ENV.observation_space,
+                action_space=self.ENV.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
             ),
-            # made this a configurable hparam to avoid information leakage in tests where we
-            # need to know what the learning rate is.
-            optimizer_config={"lr": learning_rate},
+            # made this a configurable hparam to avoid information leakage in tests
+            # where we need to know what the learning rate is.
+            optimizer_config={"lr": 1e-3},
             learner_scaling_config=LearnerGroupScalingConfig(),
             framework_hyperparameters=FrameworkHPs(eager_tracing=True),
         )
@@ -94,7 +95,7 @@ class TestLearner(unittest.TestCase):
 
         with tf.GradientTape() as tape:
             params = learner.module[DEFAULT_POLICY_ID].trainable_variables
-            loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+            loss = {"total_loss": sum(tf.reduce_sum(param) for param in params)}
             gradients = learner.compute_gradients(loss, tape)
 
         # type should be a mapping from ParamRefs to gradients
@@ -105,13 +106,11 @@ class TestLearner(unittest.TestCase):
 
     def test_postprocess_gradients(self):
         """Tests the postprocess_gradients correctness."""
-        env = gym.make("CartPole-v1")
-
         config = (
             APPOConfig()
-                .environment("CartPole-v1")
-                .framework(eager_tracing=True)
-                .rollouts(rollout_fragment_length=50)
+            .environment("CartPole-v1")
+            .framework(eager_tracing=True)
+            .rollouts(rollout_fragment_length=50)
         )
 
         # TODO (sven): Enable torch once available for APPO.
@@ -128,26 +127,29 @@ class TestLearner(unittest.TestCase):
             config.freeze()
             module_spec = config.get_default_rl_module_spec()
             module_spec.model_config_dict = {"fcnet_hiddens": [10]}
-            module_spec.observation_space = env.observation_space
-            module_spec.action_space = env.action_space
+            module_spec.observation_space = self.ENV.observation_space
+            module_spec.action_space = self.ENV.action_space
             learner_group = (
-                config
-                .get_learner_group_config(module_spec=module_spec)
+                config.get_learner_group_config(module_spec=module_spec)
                 .learner(learner_class=config.get_default_learner_class())
                 .build()
             )
             learner = learner_group._learner
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
-                v.ref(): v + 1.0 for v in learner.module[DEFAULT_POLICY_ID].trainable_variables
+                v.ref(): v + 1.0
+                for v in learner.module[DEFAULT_POLICY_ID].trainable_variables
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
             # Check clipped gradients.
             # No single gradient must be larger than 0.1 or smaller than -0.1:
-            self.assertTrue(all(
-                np.max(grad) <= 0.75 and np.min(grad) >= -0.75 for grad in processed_grads
-            ))
+            self.assertTrue(
+                all(
+                    np.max(grad) <= 0.75 and np.min(grad) >= -0.75
+                    for grad in processed_grads
+                )
+            )
 
             # Clip by norm.
             config = config.copy(copy_frozen=False).training(
@@ -160,8 +162,7 @@ class TestLearner(unittest.TestCase):
             config.validate()
             config.freeze()
             learner_group = (
-                config
-                .get_learner_group_config(module_spec=module_spec)
+                config.get_learner_group_config(module_spec=module_spec)
                 .learner(learner_class=config.get_default_learner_class())
                 .build()
             )
@@ -170,7 +171,7 @@ class TestLearner(unittest.TestCase):
             processed_grads = list(learner.postprocess_gradients(grads).values())
             # Check clipped gradients.
             for proc_grad, grad in zip(processed_grads, grads.values()):
-                l2_norm = np.sqrt(np.sum(grad ** 2.0))
+                l2_norm = np.sqrt(np.sum(grad**2.0))
                 if l2_norm > 1.0:
                     check(proc_grad, grad * (1.0 / l2_norm))
 
@@ -180,12 +181,12 @@ class TestLearner(unittest.TestCase):
                 grad_clip_by_norm=None,
                 grad_clip_by_global_norm=5.0,
             )
-            # TODO: remove this once validation does NOT cause HPs to be generated anymore
+            # TODO: remove this once validation does NOT cause HPs to be generated
+            #  anymore
             config.validate()
             config.freeze()
             learner_group = (
-                config
-                .get_learner_group_config(module_spec=module_spec)
+                config.get_learner_group_config(module_spec=module_spec)
                 .learner(learner_class=config.get_default_learner_class())
                 .build()
             )
@@ -193,7 +194,9 @@ class TestLearner(unittest.TestCase):
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
             # Check clipped gradients.
-            global_norm = np.sqrt(np.sum([np.sum(grad ** 2.0) for grad in grads.values()]))
+            global_norm = np.sqrt(
+                np.sum(np.sum(grad**2.0) for grad in grads.values())
+            )
             if global_norm > 5.0:
                 for proc_grad, grad in zip(processed_grads, grads.values()):
                     check(proc_grad, grad * (5.0 / global_norm))
@@ -205,7 +208,7 @@ class TestLearner(unittest.TestCase):
         standard SGD/Adam update rule.
         """
 
-        learner = get_learner()
+        learner = get_learner(self.ENV.observation_space, self.ENV.action_space)
 
         # calculated the expected new params based on gradients of all ones.
         params = learner.module[DEFAULT_POLICY_ID].trainable_variables
@@ -227,16 +230,15 @@ class TestLearner(unittest.TestCase):
         from default), and remove the default module, with a loss that is the sum of
         all variables the updated parameters follow the SGD update rule.
         """
-        env = gym.make("CartPole-v1")
         lr = 1e-3
-        learner = get_learner(lr)
+        learner = get_learner(self.ENV.observation_space, self.ENV.action_space, lr)
 
         learner.add_module(
             module_id="test",
             module_spec=SingleAgentRLModuleSpec(
                 module_class=DiscreteBCTFModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=self.ENV.observation_space,
+                action_space=self.ENV.action_space,
                 model_config_dict={"fcnet_hiddens": [16]},
             ),
         )
@@ -252,20 +254,18 @@ class TestLearner(unittest.TestCase):
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:
-                loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+                loss = {"total_loss": sum(tf.reduce_sum(param) for param in params)}
                 gradients = learner.compute_gradients(loss, tape)
                 learner.apply_gradients(gradients)
 
         check(params, expected)
 
     def test_save_load_state(self):
-        env = gym.make("CartPole-v1")
-
         learner1 = BCTfLearner(
             module_spec=SingleAgentRLModuleSpec(
                 module_class=DiscreteBCTFModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
+                observation_space=self.ENV.observation_space,
+                action_space=self.ENV.action_space,
                 model_config_dict={"fcnet_hiddens": [64]},
             ),
             optimizer_config={"lr": 2e-3},
@@ -280,8 +280,8 @@ class TestLearner(unittest.TestCase):
             learner2 = BCTfLearner(
                 module_spec=SingleAgentRLModuleSpec(
                     module_class=DiscreteBCTFModule,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=self.ENV.observation_space,
+                    action_space=self.ENV.action_space,
                     model_config_dict={"fcnet_hiddens": [32]},
                 ),
                 optimizer_config={"lr": 1e-3},
@@ -298,8 +298,8 @@ class TestLearner(unittest.TestCase):
                 module_id="test",
                 module_spec=SingleAgentRLModuleSpec(
                     module_class=DiscreteBCTFModule,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
+                    observation_space=self.ENV.observation_space,
+                    action_space=self.ENV.action_space,
                     model_config_dict={"fcnet_hiddens": [32]},
                 ),
             )

@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 import logging
 import platform
 import queue
@@ -15,10 +16,6 @@ from ray.rllib.algorithms.impala.impala_base_learner import (
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.learner.learner_group_config import (
-    LearnerGroupConfig,
-    ModuleSpec,
-)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -1045,6 +1042,10 @@ class Impala(Algorithm):
             workers.
 
         """
+
+        def _process_episodes(actor, batch):
+            return actor.process_episodes(ray.get(batch))
+
         for _, batch in worker_to_sample_batches_refs:
             assert isinstance(batch, ObjectRef), (
                 "For efficiency, process_experiences_tree_aggregation should "
@@ -1055,7 +1056,7 @@ class Impala(Algorithm):
                 self._aggregator_actor_manager.healthy_actor_ids()
             )
             calls_placed = self._aggregator_actor_manager.foreach_actor_async(
-                lambda actor: actor.process_episodes(ray.get(batch)),
+                partial(_process_episodes, batch=batch),
                 remote_actor_ids=[aggregator_id],
             )
             if calls_placed <= 0:

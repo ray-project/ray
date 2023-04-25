@@ -16,7 +16,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
-from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -239,6 +238,14 @@ class APPOConfig(ImpalaConfig):
         self._learner_hps.kl_target = self.kl_target
         self._learner_hps.kl_coeff = self.kl_coeff
         self._learner_hps.clip_param = self.clip_param
+
+
+# Still used by one of the old checkpoints in tests.
+# Keep a shim version of this around.
+class UpdateTargetAndKL:
+    def __init__(self, workers, config):
+        self.workers = workers
+        self.config = config
 
 
 class APPO(Impala):

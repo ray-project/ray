@@ -9,8 +9,6 @@ from typing import (
     Union,
 )
 
-import tree  # pip install dm_tree
-
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -92,18 +90,16 @@ class TorchLearner(Learner):
         grad_clip_by_value = self._optimizer_config.get("grad_clip_by_value", None)
         if grad_clip_by_value is not None:
             gradients_dict = {
-                k: torch.clip(
-                    v, -grad_clip_by_value, grad_clip_by_value
-                ) for k, v in gradients_dict.items()
+                k: torch.clip(v, -grad_clip_by_value, grad_clip_by_value)
+                for k, v in gradients_dict.items()
             }
 
         # Clip by L2-norm (per gradient tensor).
         grad_clip_by_norm = self._optimizer_config.get("grad_clip_by_norm", None)
         if grad_clip_by_norm is not None:
             gradients_dict = {
-                k: nn.utils.clip_grad_norm_(
-                    v, grad_clip_by_norm
-                ) for k, v in gradients_dict.items()
+                k: nn.utils.clip_grad_norm_(v, grad_clip_by_norm)
+                for k, v in gradients_dict.items()
             }
 
         # Clip by global L2-norm (across all gradient tensors).
