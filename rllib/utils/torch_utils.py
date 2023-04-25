@@ -173,6 +173,21 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
 
 @PublicAPI
+def copy_and_move_to_device(x: TensorStructType, device: Optional[str] = None):
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return (
+                torch.clone(item.detach())
+                if device is None
+                else item.detach().to(device)
+            )
+        else:
+            return item
+
+    return tree.map_structure(mapping, x)
+
+
+@PublicAPI
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 

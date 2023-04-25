@@ -852,7 +852,12 @@ class Learner:
         # having both can become confusing. Can we simplify this API requirement?
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        self._module.set_state(state.get("module_state", {}))
+        module_state = state["module_state"]
+        optimizer_state = state["optimizer_state"]
+        if module_state:
+            self.set_weights(module_state)
+        if optimizer_state:
+            self.set_optimizer_weights(optimizer_state)
 
     def get_state(self) -> Mapping[str, Any]:
         """Get the state of the learner.
@@ -863,7 +868,29 @@ class Learner:
         """
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        return {"module_state": self._module.get_state()}
+        return {
+            "module_state": self.get_weights(),
+            "optimizer_state": self.get_optimizer_weights(),
+        }
+        # return {"module_state": self.get_weights(), "optimizer_state": {}}
+
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        """Set the weights of the optimizer.
+
+        Args:
+            weights: The weights of the optimizer.
+
+        """
+        raise NotImplementedError
+
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        """Get the weights of the optimizer.
+
+        Returns:
+            The weights of the optimizer.
+
+        """
+        raise NotImplementedError
 
     def _get_metadata(self) -> Dict[str, Any]:
         metadata = {

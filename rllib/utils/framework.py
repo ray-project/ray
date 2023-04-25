@@ -72,10 +72,11 @@ def try_import_tf(error: bool = False):
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
     # (switching off v2 behavior twice breaks all-framework tests for eager).
-    was_imported = False
+
+    # was_imported = False
     if "tensorflow" in sys.modules:
         tf_module = sys.modules["tensorflow"]
-        was_imported = True
+        # was_imported = True
 
     else:
         try:
@@ -93,9 +94,10 @@ def try_import_tf(error: bool = False):
     try:
         tf1_module = tf_module.compat.v1
         tf1_module.logging.set_verbosity(tf1_module.logging.ERROR)
-        if not was_imported:
-            tf1_module.disable_v2_behavior()
-            tf1_module.enable_resource_variables()
+        # if not was_imported:
+        #     import ipdb; ipdb.set_trace()
+        #     tf1_module.disable_v2_behavior()
+        #     tf1_module.enable_resource_variables()
         tf1_module.logging.set_verbosity(tf1_module.logging.WARN)
     # No compat.v1 -> return tf as is.
     except AttributeError:

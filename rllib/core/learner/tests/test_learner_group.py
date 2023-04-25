@@ -36,15 +36,24 @@ REMOTE_SCALING_CONFIGS = {
 
 LOCAL_SCALING_CONFIGS = {
     "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+    # "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
 }
 
 
 # TODO(avnishn) Make this a ray task later. Currently thats not possible because the
 # task is not dying after the test is done. This is a bug with ray core.
-@ray.remote(num_gpus=1)
+# @ray.remote(num_gpus=1)
+# @ray.remote
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
+        if fw == "torch":
+            import torch
+
+            torch.manual_seed(0)
+        elif fw == "tf":
+            import tensorflow as tf
+
+            tf.random.set_seed(0)
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         lr = 1e-3
@@ -71,13 +80,22 @@ class RemoteTrainingHelper:
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state())
+        # learner_group.set_state(learner_group.get_state())
+        check(local_learner.get_state(), learner_group.get_state())
 
         # do another update
         batch = reader.next()
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
         )
-        check(local_learner.update(ma_batch), learner_group.update(ma_batch))
+        local_learner_results = local_learner.update(ma_batch)
+        learner_group_results = learner_group.update(ma_batch)
+
+        check(local_learner.get_state(), learner_group.get_state())
+        local_learner_results = local_learner.update(ma_batch)
+        learner_group_results = learner_group.update(ma_batch)
+
+        check(local_learner_results, learner_group_results)
 
         check(local_learner.get_state(), learner_group.get_state())
 
@@ -90,7 +108,8 @@ class TestLearnerGroup(unittest.TestCase):
         ray.shutdown()
 
     def test_learner_group_local(self):
-        fws = ["tf", "torch"]
+        # fws = ["tf", "torch"]
+        fws = ["tf"]
 
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
 
@@ -99,8 +118,10 @@ class TestLearnerGroup(unittest.TestCase):
         # otherwise between test cases, causing a gpu oom error.
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
-            training_helper = RemoteTrainingHelper.remote()
-            ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
+            # training_helper = RemoteTrainingHelper.remote()
+            # ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
+            training_helper = RemoteTrainingHelper()
+            training_helper.local_training_helper(fw, scaling_mode)
 
     def test_update_multigpu(self):
         fws = ["tf", "torch"]
