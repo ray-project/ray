@@ -1,5 +1,6 @@
 # flake8: noqa
 # isort: skip_file
+# fmt: off
 
 # __pt_load_start__
 import ray
@@ -54,3 +55,4 @@ predictions = dataset.map_batches(
 predictions.show(limit=1)
 # {'class': 258}
 # __pt_prediction_end__
+# fmt: on

@@ -1,5 +1,6 @@
 # flake8: noqa
 # isort: skip_file
+# fmt: off
 
 # __hf_quickstart_load_start__
 import ray
@@ -47,3 +48,4 @@ predictor = HuggingFacePredictor(pipeline=pipeline)
 prompts = pd.DataFrame(["Complete these sentences", "for me"], columns=["sentences"])
 predictions = predictor.predict(prompts)
 # __hf_quickstart_air_end__
+# fmt: on

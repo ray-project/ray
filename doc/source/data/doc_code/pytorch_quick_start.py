@@ -1,5 +1,6 @@
 # flake8: noqa
 # isort: skip_file
+# fmt: off
 
 # __pt_quickstart_load_start__
 import ray
@@ -35,3 +36,4 @@ predictions = dataset.map_batches(TorchPredictor, compute=scale)
 predictions.show(limit=1)
 # [0.45092654]
 # __pt_quickstart_prediction_end__
+# fmt: on

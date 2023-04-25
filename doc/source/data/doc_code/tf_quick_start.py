@@ -1,5 +1,6 @@
 # flake8: noqa
 # isort: skip_file
+# fmt: off
 
 # __tf_quickstart_load_start__
 import ray
@@ -31,3 +32,4 @@ predicted_probabilities = dataset.map_batches(TFPredictor, compute=scale)
 predicted_probabilities.show(limit=1)
 # [0.45119727]
 # __tf_quickstart_prediction_end__
+# fmt: on

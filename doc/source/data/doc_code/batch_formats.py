@@ -1,5 +1,6 @@
 # flake8: noqa
 # isort: skip_file
+# fmt: off
 
 # __simple_map_function_start__
 import ray
@@ -62,3 +63,4 @@ def transform_pyarrow(batch: pa.Table) -> pa.Table:
 ds.map_batches(transform_pyarrow, batch_format="pyarrow").show(1)
 # -> {'sepal.width': 3.2, ..., 'variety': 'Versicolor'}
 # __simple_pyarrow_end__
+# fmt: on
