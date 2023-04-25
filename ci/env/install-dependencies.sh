@@ -457,6 +457,7 @@ install_pip_packages() {
       "$TORCH_CIFAR"
   fi
 
+  pip_add=""
   for package in "${requirements_packages[@]}"; do
     pip_add+="${package}\n"
   done
