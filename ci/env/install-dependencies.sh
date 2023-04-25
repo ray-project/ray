@@ -321,7 +321,13 @@ install_pip_packages() {
 
   # Array to hold all requirements files to install later
   requirements_files=()
+  # Single packages to install in sync with files
   requirements_packages=()
+  # Packages to install _after_ previous files have been installed
+  # (e.g. to install a custom pyarrow or torch version). This
+  # would otherwise conflict with pinned dependencies in our requirements
+  # files.
+  delayed_packages=()
 
   requirements_files+=("${WORKSPACE_DIR}/python/requirements_test.txt")
 
@@ -393,13 +399,13 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt")
     if [ -n "${ARROW_VERSION-}" ]; then
       if [ "${ARROW_VERSION-}" = nightly ]; then
-        pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
+        delayed_packages+=("--extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow")
       else
-        requirements_packages+=("pyarrow==${ARROW_VERSION}")
+        delayed_packages+=("pyarrow==${ARROW_VERSION}")
       fi
     fi
     if [ -n "${ARROW_MONGO_VERSION-}" ]; then
-      requirements_packages+=("pymongoarrow==${ARROW_MONGO_VERSION}")
+      delayed_packages+=("pymongoarrow==${ARROW_MONGO_VERSION}")
     fi
   fi
 
@@ -409,40 +415,32 @@ install_pip_packages() {
 
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [ -z "${TORCH_VERSION-}" ] && { [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; }; then
-      # E.g. torch-spline-conv needs to import torch in their setup.py
-      # so it has to be installed first
-      # (see https://github.com/ray-project/ray/pull/33928)
-      # Keep in sync with requirements_dl.txt
-      pip install torch==1.13.0 torchvision==0.14.0
-      requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+  # Install deeplearning libraries (Torch + TensorFlow)
+  if [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
+      # If we require a custom torch version, use that
+      if [ -n "${TORCH_VERSION-}" ]; then
+        case "${TORCH_VERSION-1.9.0}" in
+          1.9.0) TORCHVISION_VERSION=0.10.0;;
+          1.8.1) TORCHVISION_VERSION=0.9.1;;
+          1.6) TORCHVISION_VERSION=0.7.0;;
+          1.5) TORCHVISION_VERSION=0.6.0;;
+          *) TORCHVISION_VERSION=0.5.0;;
+        esac
+        # Install right away, as some dependencies (e.g. torch-spline-conv) need
+        # torch to be installed for their own install.
+        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
+        # We won't add requirements_dl.txt as it would otherwise overwrite our custom
+        # torch. Thus we have also have to install tensorflow manually.
+        # Keep it sync with requirements_dl.txt
+        pip install -U "tensorflow==2.11.0" "tensorflow-probability==0.19.0"
+      else
+        # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
+        # torch to be installed for their own install.
+        # Keep it sync with requirements_dl.txt
+        pip install torch==1.13.0 torchvision==0.14.0
+        requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+      fi
   fi
-
-  # If CI has deemed that a different version of Torch
-  # should be installed, then upgrade/downgrade to that specific version.
-  # Todo: We should find a better way to install these dependencies. Maybe in the
-  # build job?
-  if [ -n "${TORCH_VERSION-}" ]; then
-    case "${TORCH_VERSION-1.9.0}" in
-      1.9.0) TORCHVISION_VERSION=0.10.0;;
-      1.8.1) TORCHVISION_VERSION=0.9.1;;
-      1.6) TORCHVISION_VERSION=0.7.0;;
-      1.5) TORCHVISION_VERSION=0.6.0;;
-      *) TORCHVISION_VERSION=0.5.0;;
-    esac
-    requirements_packages+=("torch==${TORCH_VERSION-1.9.0}")
-    requirements_packages+=("torchvision==${TORCHVISION_VERSION}")
-    # Install right away - some torch dependencies (e.g. torch-spline-conv)
-    # need an existing torch for dependency resolution
-    pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
-
-    # The previous block was excluded because of TORCH_VERSION, so install tf here
-    if [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
-      # Keep it sync with requirements_dl.txt
-      pip install -U "tensorflow==2.11.0" "tensorflow-probability==0.19.0"
-    fi
-  fi
-
 
   # Inject our own mirror for the CIFAR10 dataset
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
@@ -457,22 +455,24 @@ install_pip_packages() {
       "$TORCH_CIFAR"
   fi
 
-  pip_add=""
-  for package in "${requirements_packages[@]}"; do
-    pip_add+="${package}\n"
-  done
-
-  if [ -n "${pip_add}" ]; then
-    echo "${pip_add}" > "${WORKSPACE_DIR}/python/requirements/_temp_requirements.txt"
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/_temp_requirements.txt")
-  fi
-
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
+
+  # Expand single requirements
+  if [ "${#requirements_packages[@]}" -gt 0 ]; then
+    pip_cmd+=" ${requirements_packages[*]}"
+  fi
+
+  # Install
   eval "${pip_cmd}"
+
+  # Install delayed packages
+  if [ "${#delayed_packages[@]}" -gt 0 ]; then
+    pip install -U -c "${WORKSPACE_DIR}/python/requirements.txt" "${delayed_packages[@]}"
+  fi
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
