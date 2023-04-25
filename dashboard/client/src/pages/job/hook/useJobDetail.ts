@@ -11,10 +11,10 @@ export const useJobDetail = () => {
   const [refreshing, setRefresh] = useState(true);
   const { ipLogMap } = useContext(GlobalContext);
   const { data: job, isLoading } = useSWR(
-    "useJobDetail",
-    async () => {
+    ["useJobDetail", params.id],
+    async ([_, jobId]) => {
       try {
-        const rsp = await getJobDetail(params.id);
+        const rsp = await getJobDetail(jobId);
         return rsp.data;
       } catch (e) {
         setMsg("Job Query Error Please Check JobId");

@@ -3,9 +3,10 @@
 Getting Started
 ===============
 
-A :class:`Datastream <ray.data.Datastream>` is a distributed data transformation
-pipeline. It provides APIs for loading external data into the Ray object store in *blocks*,
-and exposes APIs for streaming processing of these data blocks in the cluster.
+Ray Data's main abstraction is a :class:`Datastream <ray.data.Datastream>`, which
+is a distributed data transformation pipeline. Datastream provides APIs for loading
+external data into Ray in *blocks*, and it exposes APIs for streaming
+processing of these data blocks in the cluster.
 
 .. tip::
 
@@ -90,50 +91,52 @@ Consume the datastream
 Pass datastreams to Ray tasks or actors, and access records with methods like
 :meth:`~ray.data.Datastream.iter_batches`.
 
-.. tabbed:: Local
+.. tab-set::
 
-    .. testcode::
+    .. tab-item:: Local
 
-        batches = transformed_ds.iter_batches(batch_size=8)
-        print(next(iter(batches)))
+        .. testcode::
 
-    .. testoutput::
-        :options: +NORMALIZE_WHITESPACE
+            batches = transformed_ds.iter_batches(batch_size=8)
+            print(next(iter(batches)))
 
-           sepal length (cm)  ...  target
-        0                5.2  ...       1
-        1                5.4  ...       1
-        2                4.9  ...       2
+        .. testoutput::
+            :options: +NORMALIZE_WHITESPACE
 
-        [3 rows x 5 columns]
+               sepal length (cm)  ...  target
+            0                5.2  ...       1
+            1                5.4  ...       1
+            2                4.9  ...       2
 
-.. tabbed:: Tasks
+            [3 rows x 5 columns]
 
-   .. testcode::
+    .. tab-item:: Tasks
 
-        @ray.remote
-        def consume(ds: ray.data.Datastream) -> int:
-            num_batches = 0
-            for batch in ds.iter_batches(batch_size=8):
-                num_batches += 1
-            return num_batches
+       .. testcode::
 
-        ray.get(consume.remote(transformed_ds))
+            @ray.remote
+            def consume(ds: ray.data.Datastream) -> int:
+                num_batches = 0
+                for batch in ds.iter_batches(batch_size=8):
+                    num_batches += 1
+                return num_batches
 
-.. tabbed:: Actors
+            ray.get(consume.remote(transformed_ds))
 
-    .. testcode::
+    .. tab-item:: Actors
 
-        @ray.remote
-        class Worker:
+        .. testcode::
 
-            def train(self, data_iterator):
-                for batch in data_iterator.iter_batches(batch_size=8):
-                    pass
+            @ray.remote
+            class Worker:
 
-        workers = [Worker.remote() for _ in range(4)]
-        shards = transformed_ds.streaming_split(n=4, equal=True)
-        ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+                def train(self, data_iterator):
+                    for batch in data_iterator.iter_batches(batch_size=8):
+                        pass
+
+            workers = [Worker.remote() for _ in range(4)]
+            shards = transformed_ds.streaming_split(n=4, equal=True)
+            ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
 
 To learn more about consuming datastreams, read

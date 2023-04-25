@@ -71,7 +71,6 @@ def run_storage_cp(source: str, target: str):
     storage_service = urlparse(target).scheme
     cp_cmd_args = []
     if storage_service == "s3":
-        install_pip("awscli")
         cp_cmd_args = [
             "aws",
             "s3",

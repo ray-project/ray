@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    Mapping,
 )
 from uuid import uuid4
 
@@ -90,6 +91,7 @@ from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     _apply_strict_mode_batch_format,
+    _apply_strict_mode_batch_size,
     BatchUDF,
     Block,
     BlockAccessor,
@@ -109,7 +111,6 @@ from ray.data.context import (
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
-    DEFAULT_BATCH_SIZE,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -128,7 +129,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -597,13 +597,15 @@ class Datastream(Generic[T]):
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
         target_block_size = None
-        if batch_size == "default":
-            batch_size = DEFAULT_BATCH_SIZE
-        elif batch_size is not None:
+        if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
             target_block_size = batch_size
+
+        batch_size = _apply_strict_mode_batch_size(
+            batch_size, use_gpu="num_gpus" in ray_remote_args
+        )
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
@@ -2939,7 +2941,7 @@ class Datastream(Generic[T]):
                 OneToOneStage(
                     "Write",
                     write_fn_wrapper,
-                    "tasks",
+                    TaskPoolStrategy(),
                     ray_remote_args,
                     fn=lambda x: x,
                 )
@@ -3027,12 +3029,12 @@ class Datastream(Generic[T]):
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, Mapping]]:
         """Return a local row iterator over the datastream.
 
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
-        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
-        iterator.  If the datastream is not tabular, the raw row is yielded.
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dicts
+        are yielded for each row by the iterator. If the datastream is not tabular,
+        the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -4488,7 +4490,7 @@ class Datastream(Generic[T]):
             on = [on]
         return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
 
-    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+    def _aggregate_result(self, result: Union[Tuple, Mapping]) -> U:
         if result is not None and len(result) == 1:
             if isinstance(result, tuple):
                 return result[0]

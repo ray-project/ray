@@ -2525,7 +2525,16 @@ py_test(
     name = "tests/test_gpus",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_gpus.py"]
+    srcs = ["tests/test_gpus.py"],
+    args = ["TestGPUs"]
+)
+
+py_test(
+    name = "tests/test_gpus_large_batch",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["tests/test_gpus.py"],
+    args = ["TestGPUsLargeBatch"]
 )
 
 py_test(

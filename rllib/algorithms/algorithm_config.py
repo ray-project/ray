@@ -430,6 +430,7 @@ class AlgorithmConfig(_Config):
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
         self._disable_initialize_loss_from_dummy_batch = False
+        self._load_only_minibatch_onto_device = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -965,6 +966,14 @@ class AlgorithmConfig(_Config):
                     f"config.framework({self.framework_str})!"
                 )
 
+        if (
+            self.simple_optimizer or self.framework_str != "torch"
+        ) and self._load_only_minibatch_onto_device:
+            raise ValueError(
+                "`load_only_minibatch_onto_device` is only supported for "
+                f"config.framework({self.framework_str}) and without simple_optimizer."
+            )
+
         # Detect if specified env is an Atari env.
         if self.is_atari is None:
             self.is_atari = self._detect_atari_env()
@@ -1014,25 +1023,16 @@ class AlgorithmConfig(_Config):
                 self.rl_module_spec = default_rl_module_spec
 
             if self.exploration_config:
-                if self._validate_exploration_conf_and_rl_modules:
-                    # This is not compatible with RLModules, which have a method
-                    # `forward_exploration` to specify custom exploration behavior.
-                    raise ValueError(
-                        "When RLModule API are enabled, exploration_config can not be "
-                        "set. If you want to implement custom exploration behaviour, "
-                        "please modify the `forward_exploration` method of the "
-                        "RLModule at hand. On configs that have a default exploration "
-                        "config, this must be done with "
-                        "`config.exploration_config={}`."
-                    )
-                else:
-                    # RLModules don't support exploration_configs anymore.
-                    logger.warning(
-                        "When RLModule API are enabled, exploration_config "
-                        "will be ignored. Disable RLModule API make use of an "
-                        "exploration_config."
-                    )
-                    self.exploration_config = None
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API are enabled, exploration_config can not be "
+                    "set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the "
+                    "RLModule at hand. On configs that have a default exploration "
+                    "config, this must be done with "
+                    "`config.exploration_config={}`."
+                )
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
@@ -1635,6 +1635,10 @@ class AlgorithmConfig(_Config):
             _enable_learner_api: Whether to enable the LearnerGroup and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
+            _load_only_minibatch_onto_device: Whether to load only the minibatch onto
+                the given device. This is useful for larger training batches that
+                don't fit on the given device while the mini-batches and their
+                gradients do. This experimental setting is only supported for torch
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2470,6 +2474,7 @@ class AlgorithmConfig(_Config):
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_execution_plan_api: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
+        _load_only_minibatch_onto_device: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2513,6 +2518,8 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _load_only_minibatch_onto_device is not NotProvided:
+            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 

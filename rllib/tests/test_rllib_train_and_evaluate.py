@@ -193,6 +193,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                 policy_mapping_fn=policy_fn,
             )
             .resources(num_gpus=0)
+            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={

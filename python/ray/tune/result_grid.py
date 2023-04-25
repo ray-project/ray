@@ -1,7 +1,7 @@
+from functools import partial
 import os
-from typing import Optional, Union
-
 import pandas as pd
+from typing import Optional, Union
 
 from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
@@ -9,6 +9,7 @@ from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
+from ray.tune.trainable.util import TrainableUtil
 from ray.util import PublicAPI
 
 
@@ -243,9 +244,23 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        checkpoint = trial.checkpoint.to_air_checkpoint()
+        local_to_remote_path_fn = (
+            partial(
+                TrainableUtil.get_remote_storage_path,
+                local_path_prefix=trial.local_path,
+                remote_path_prefix=trial.remote_path,
+            )
+            if trial.uses_cloud_checkpointing
+            else None
+        )
+        checkpoint = trial.checkpoint.to_air_checkpoint(
+            local_to_remote_path_fn,
+        )
         best_checkpoints = [
-            (checkpoint.to_air_checkpoint(), checkpoint.metrics)
+            (
+                checkpoint.to_air_checkpoint(local_to_remote_path_fn),
+                checkpoint.metrics,
+            )
             for checkpoint in trial.get_trial_checkpoints()
         ]
 

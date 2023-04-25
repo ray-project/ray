@@ -73,7 +73,7 @@ class Test:
     def __call__(self, *args):
         return open("hello").read()
 
-handle = serve.run(Test.bind())
+handle = serve.run(Test.bind(), name="app")
 assert ray.get(handle.remote()) == "world"
 """
 
@@ -87,8 +87,8 @@ job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-Test = serve.get_deployment("Test")
-handle = serve.run(Test.bind())
+Test = serve.get_deployment("app_Test")
+handle = serve.run(Test.bind(), name="app")
 assert ray.get(handle.remote()) == "world"
 Test.delete()
 """
