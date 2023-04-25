@@ -135,16 +135,16 @@ def test_sort_arrow_with_empty_blocks(
         ]
 
         # Test empty dataset.
-        ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+        ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
         assert (
             len(
                 ray.data._internal.sort.sample_boundaries(
-                    ds._plan.execute().get_blocks(), "value", 3
+                    ds._plan.execute().get_blocks(), "id", 3
                 )
             )
             == 2
         )
-        assert ds.sort("value").count() == 0
+        assert ds.sort("id").count() == 0
     finally:
         ctx.use_polars = original_use_polars
 
@@ -203,16 +203,16 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert [row for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
 
     # Test empty dataset.
-    ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+    ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
     assert (
         len(
             ray.data._internal.sort.sample_boundaries(
-                ds._plan.execute().get_blocks(), "value", 3
+                ds._plan.execute().get_blocks(), "id", 3
             )
         )
         == 2
     )
-    assert ds.sort("value").count() == 0
+    assert ds.sort("id").count() == 0
 
 
 def test_push_based_shuffle_schedule():
@@ -343,7 +343,7 @@ def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
     parallelism = 100
     ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort("id")
     for i, row in enumerate(ds.iter_rows()):
-        assert row == i
+        assert row["id"] == i
 
 
 def patch_ray_remote(condition, callback):
