@@ -2445,23 +2445,15 @@ cdef class CoreWorker:
                 actor_handle = (CCoreWorkerProcess.GetCoreWorker()
                                 .GetActorHandle(c_actor_id))
                 if status.IsOutOfResource():
-                    raise PendingCallsLimitExceeded("The task {} could not be "
-                        "submitted to {} because more "
-                        "than {} tasks are queued on "
-                        "the actor. This limit "
-                        "can be adjusted with the "
-                        "`max_pending_calls` actor "
-                        "option.".format(
-                                                    function_descriptor
-                                                    .function_name,
-                                                    repr(actor),
-                                                    (dereference(actor_handle)
-                                                        .MaxPendingCalls())
-                                                ))
+                    raise PendingCallsLimitExceeded(
+                        f"The task {function_descriptor..function_name} could not be "
+                        f"submitted to {repr(actor)} because more than"
+                        f" {(dereference(actor_handle).MaxPendingCalls())}"
+                        " tasks are queued on the actor. This limit can be adjusted"
+                        " with the `max_pending_calls` actor option.")
                 else:
                     raise Exception(f"Failed to submit task to actor {actor_id} "
                                     f"due to {status.message()}")
-
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
