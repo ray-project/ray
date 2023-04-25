@@ -1,10 +1,5 @@
 import ray
 import copy
-from typing import (
-    Deque,
-    List,
-    Optional,
-)
 from collections import deque
 from ray.data.block import (
     Block,
@@ -18,6 +13,12 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
+from typing import (
+    Deque,
+    List,
+    Optional,
+    Tuple,
+)
 
 
 class LimitOperator(PhysicalOperator):
@@ -31,7 +32,7 @@ class LimitOperator(PhysicalOperator):
         self._limit = limit
         self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
-        self._name = f"LimitOperator[limit={limit}]"
+        self._name = f"Limit[limit={limit}]"
         self._output_metadata: List[BlockMetadata] = []
         self._num_outputs_total = input_op.num_outputs_total()
         if self._num_outputs_total is not None:
@@ -58,15 +59,20 @@ class LimitOperator(PhysicalOperator):
                 self._output_metadata.append(metadata)
             else:
                 # Slice the last block.
-                num_rows_to_take = self._limit - self._consumed_rows
-                self._consumed_rows = self._limit
-                block = BlockAccessor.for_block(ray.get(block)).slice(
-                    0, num_rows_to_take, copy=True
+                def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
+                    block = BlockAccessor.for_block(block).slice(0, num_rows, copy=True)
+                    metadata = copy.deepcopy(metadata)
+                    metadata.num_rows = num_rows
+                    metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
+                    return block, metadata
+
+                block, metadata_ref = cached_remote_fn(slice_fn, num_returns=2).remote(
+                    block,
+                    metadata,
+                    self._limit - self._consumed_rows,
                 )
-                metadata = copy.deepcopy(metadata)
-                metadata.num_rows = num_rows_to_take
-                metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
-                out_blocks.append(ray.put(block))
+                out_blocks.append(block)
+                metadata = ray.get(metadata_ref)
                 out_metadata.append(metadata)
                 self._output_metadata.append(metadata)
                 break
