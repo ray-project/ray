@@ -6,7 +6,7 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
-import { RecentServeCard } from "./cards/RecentServeCard";
+
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
@@ -40,6 +40,7 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
+  //begin here
   return (
     <div className={classes.root}>
       <MainNavPageInfo
@@ -50,7 +51,6 @@ export const OverviewPage = () => {
         <NodeCountCard className={classes.overviewCard} />
         <RecentJobsCard className={classes.overviewCard} />
       </div>
-      <RecentServeCard className={classes.overviewCard} />
 
       <CollapsibleSection
         className={classes.section}
@@ -58,6 +58,14 @@ export const OverviewPage = () => {
         startExpanded
       >
         <EventTable />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        className={classes.section}
+        title="Autoscaler"
+        startExpanded
+      >
+        <NodeCountCard className={classes.overviewCard} />
       </CollapsibleSection>
     </div>
   );
