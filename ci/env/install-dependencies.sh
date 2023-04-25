@@ -416,7 +416,7 @@ install_pip_packages() {
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
-  if [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
+  if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
       # If we require a custom torch version, use that
       if [ -n "${TORCH_VERSION-}" ]; then
         case "${TORCH_VERSION-1.9.0}" in
@@ -434,6 +434,7 @@ install_pip_packages() {
         # Keep it sync with requirements_dl.txt
         pip install -U "tensorflow==2.11.0" "tensorflow-probability==0.19.0"
       else
+        # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
         # Keep it sync with requirements_dl.txt
