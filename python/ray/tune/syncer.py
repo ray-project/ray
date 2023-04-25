@@ -213,7 +213,12 @@ class SyncConfig:
         parsed = urllib.parse.urlparse(upload_dir)
         # Todo: Only warn for pyarrow versions that are affected by
         # https://github.com/apache/arrow/issues/32372#issuecomment-1421097792
-        if not s3fs and parsed.scheme.startswith("s3") and log_once("fsspec_missing"):
+        if (
+            parsed.scheme
+            and not s3fs
+            and parsed.scheme.startswith("s3")
+            and log_once("fsspec_missing")
+        ):
             logger.warning(
                 "You are using S3 for remote storage, but you don't have `s3fs` "
                 "installed. Due to a bug in PyArrow, this can lead to significant "
