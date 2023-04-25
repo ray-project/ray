@@ -2,12 +2,18 @@ import ray
 import os
 from functools import wraps
 
-# List of APIs that should not be wrapped.
-SKIP_LIST = [
-    "init",
-    "is_initialized",
-    "shutdown",
+# Public APIs that should automatically trigger ray.init().
+AUTO_INIT_APIS = [
+    "cancel",
+    "get",
+    "get_actor",
+    "get_gpu_ids",
+    "get_runtime_context",
+    "kill",
+    "put",
+    "wait",
 ]
+
 
 def wrap_auto_init(fn):
     @wraps(fn)
@@ -18,18 +24,13 @@ def wrap_auto_init(fn):
         ):
             ray.init()
             return fn(*args, **kwargs)
+
     return auto_init_wrapper
 
 
-def wrap_auto_init_for_all_apis(api_names):
+def wrap_auto_init_for_all_apis():
     """Wrap public APIs with automatic ray.init."""
-    function_type = type(lambda: None)
-    for api_name in api_names:
-        if api_name in SKIP_LIST:
-            continue
+    for api_name in AUTO_INIT_APIS:
         api = getattr(ray, api_name, None)
-        if api is None or type(api) != function_type:
-            # Only wrap functions.
-            continue
-
+        assert api is not None, api_name
         setattr(ray, api_name, wrap_auto_init(api))
