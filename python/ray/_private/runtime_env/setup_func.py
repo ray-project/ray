@@ -2,18 +2,15 @@ import logging
 import hashlib
 import base64
 
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, Any, Callable
 
 import ray
-from ray._private.runtime_env.context import RuntimeEnvContext
 import ray.cloudpickle as pickle
 import ray._private.ray_constants as ray_constants
 from ray._private.function_manager import make_function_table_key
 from ray._private.utils import check_oversized_function
 from ray._raylet import GcsClient
 from ray._raylet import JobID
-from ray.runtime_env.runtime_env import RuntimeEnv
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 default_logger = logging.getLogger(__name__)
 
@@ -33,7 +30,7 @@ def upload_setup_function_if_needed(
     gcs_client: GcsClient,
 ) -> Dict[str, Any]:
     """Uploads the setup_func.
-    
+
     When worker_setup_func is passed to the runtime env,
     instead of implementing the full Plugin, it simply
     updates the env_vars field of the runtime environment
@@ -61,9 +58,7 @@ def upload_setup_function_if_needed(
         function_to_run_id = hashlib.shake_128(pickled_function).digest(
             ray_constants.ID_SIZE
         )
-        key = make_function_table_key(
-            b"FunctionsToRun", job_id, function_to_run_id
-        )
+        key = make_function_table_key(b"FunctionsToRun", job_id, function_to_run_id)
 
         check_oversized_function(
             pickled_function, setup_func.__name__, "function", worker
