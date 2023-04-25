@@ -135,7 +135,7 @@ class LearnerGroup:
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
                 #TEST: Test allowing 2 in-flight update requests per actor
-                max_remote_requests_in_flight_per_actor=2,
+                max_remote_requests_in_flight_per_actor=3,
             )
             self._in_queue = deque(maxlen=max_queue_len)
 
@@ -285,7 +285,7 @@ class LearnerGroup:
             # we can send in one new batch for sharding and parallel learning.
             if self._worker_manager_ready():
                 count = 0
-                while len(self._in_queue) > 0 and count < 2:
+                while len(self._in_queue) > 0 and count < 3:
                     #TODO: TOTEST Pull a single batch from the queue (from the right side, meaning:
                     # use the newest ones first!).
                     batch = self._in_queue.popleft()
@@ -301,7 +301,7 @@ class LearnerGroup:
 
     def _worker_manager_ready(self):
         #TODO: TOTEST: Allow for some number of in-flight requests.
-        return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors()
+        return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors() * 2
 
     def _get_results(self, results):
         processed_results = []
