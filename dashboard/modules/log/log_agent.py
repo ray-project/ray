@@ -24,9 +24,21 @@ BLOCK_SIZE = 1 << 16
 # Keep-alive interval for reading the file
 DEFAULT_KEEP_ALIVE_INTERVAL_SEC = 1
 
+def _find_end_offsets_next_n_lines_from_offset(file: io.BufferedIOBase, start_offset: int, block_size: int = BLOCK_SIZE) -> int:
+    """
+    Find the offsets of next n lines from a start offset.
+    """
+
+
+def _find_end_offsets_next_n_lines_from_lines(file: io.BufferedIOBase, start_line: int, block_size: int = BLOCK_SIZE) -> int:
+
+
 
 def _find_tail_start_from_last_lines(
-    file: io.BufferedIOBase, lines_to_tail: int, block_size: int = BLOCK_SIZE
+    file: io.BufferedIOBase,
+    lines_to_tail: int,
+    block_size: int = BLOCK_SIZE,
+    end_offset: Optional[int] = None,
 ) -> Tuple[int, int]:
     """
     Find the start offset of last `lines_to_tail` lines in a file.
@@ -57,7 +69,7 @@ def _find_tail_start_from_last_lines(
         lines_to_tail >= 0
     ), "Non negative input required for number of lines to tail "
 
-    file.seek(0, 2)
+    file.seek(0, os.SEEK_END)
     # The end offset of the last block currently being read
     offset_file_end = file.tell()
     # Number of bytes that should be tailed from the end of the file
@@ -70,7 +82,7 @@ def _find_tail_start_from_last_lines(
 
     # Non new line terminating file, adjust the line count and treat the last
     # line as a new line
-    file.seek(-1, 2)
+    file.seek(-1, os.SEEK_END)
     if file.read(1) != b"\n":
         lines_to_tail -= 1
 
@@ -118,7 +130,6 @@ def _find_tail_start_from_last_lines(
             #                           where tail should start.
             lines = block_data.split(b"\n", num_lines - lines_more)
 
-            # len(lines[0]) + 1 for the new line character split
             nbytes_from_end += len(lines[-1])
             logger.debug(
                 f"Found {lines_to_tail} lines from last {nbytes_from_end} bytes"
