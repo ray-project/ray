@@ -225,11 +225,11 @@ def test_transform_failure(shutdown_only):
 def test_flat_map_generator(ray_start_regular_shared):
     ds = ray.data.range(3)
 
-    def map_generator(item: int) -> Iterator[int]:
+    def map_generator(item: dict) -> Iterator[int]:
         for _ in range(2):
-            yield item + 1
+            yield {"id": item["id"] + 1}
 
-    assert sorted(ds.flat_map(map_generator).take()) == [1, 1, 2, 2, 3, 3]
+    assert sorted(extract_values("id", ds.flat_map(map_generator).take())) == [1, 1, 2, 2, 3, 3]
 
 
 def test_add_column(ray_start_regular_shared):
@@ -306,7 +306,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
     # Test input validation
     ds = ray.data.range(5)
     with pytest.raises(ValueError):
-        ds.map_batches(lambda x: x + 1, batch_format="pyarrow", batch_size=-1).take()
+        ds.map_batches(column_udf("id", lambda x: x + 1), batch_format="pyarrow", batch_size=-1).take()
 
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -340,21 +340,21 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
         # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["value"] == i + 1
+        assert row["id"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: [1], batch_size=1)
-    ds_list = ds2.take()
+    ds2 = ds.map_batches(lambda df: {"id": np.array([1])}, batch_size=1)
+    ds_list = extract_values("id", ds2.take())
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
-    ds_list = ds2.take()
+    ds2 = ds.map_batches(lambda df: {"id": np.array([1])}, batch_size=1, batch_format="pyarrow")
+    ds_list = extract_values("id", ds2.take())
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
@@ -640,9 +640,9 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ray.init(num_cpus=2)
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
-    assert ds.map_batches(
+    assert extract_values("id", ds.map_batches(
         lambda x: x, compute=ray.data.ActorPoolStrategy()
-    ).take() == list(range(10))
+    ).take()) == list(range(10))
 
 
 @pytest.mark.parametrize(
