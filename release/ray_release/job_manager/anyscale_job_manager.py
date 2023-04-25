@@ -1,10 +1,9 @@
-import io
 import os
 import time
 import subprocess
 import tempfile
 from collections import deque
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -12,7 +11,7 @@ from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     HaJobStates,
 )
-from anyscale.controllers.job_controller import JobController, terminal_state
+from anyscale.controllers.job_controller import terminal_state
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -262,7 +261,7 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
-    def _get_ray_logs(self) -> Optional[str]:
+    def _get_ray_logs(self) -> Tuple[Optional[str], Optional[str]]:
         """
         Obtain any ray logs that contain keywords that indicate a crash, such as
         ERROR or Traceback
@@ -288,7 +287,9 @@ class AnyscaleJobManager:
         return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
 
     @staticmethod
-    def _find_job_driver_and_ray_error_logs(tmpdir: str) -> Tuple[Optional[str], Optional[str]]:
+    def _find_job_driver_and_ray_error_logs(
+        tmpdir: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
         # Ignored some ray files that do not crash ray despite having exceptions
         ignored_ray_files = [
             "monitor.log",
@@ -305,10 +306,10 @@ class AnyscaleJobManager:
                 with open(os.path.join(root, file)) as lines:
                     output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
                     # job-driver logs
-                    if file.startswith('job-driver-'):
+                    if file.startswith("job-driver-"):
                         job_driver_output = output
                         continue
-                    # ray error logs, favor those that match with the most number of 
+                    # ray error logs, favor those that match with the most number of
                     # error patterns
                     if (
                         len([error for error in ERROR_LOG_PATTERNS if error in output])
