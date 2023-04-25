@@ -98,7 +98,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                          "");
   }
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs.value()) {
+  for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
   return return_ids[0];

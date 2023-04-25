@@ -2446,7 +2446,7 @@ cdef class CoreWorker:
                                 .GetActorHandle(c_actor_id))
                 if status.IsOutOfResource():
                     raise PendingCallsLimitExceeded(
-                        f"The task {function_descriptor..function_name} could not be "
+                        f"The task {function_descriptor.function_name} could not be "
                         f"submitted to {repr(actor)} because more than"
                         f" {(dereference(actor_handle).MaxPendingCalls())}"
                         " tasks are queued on the actor. This limit can be adjusted"
