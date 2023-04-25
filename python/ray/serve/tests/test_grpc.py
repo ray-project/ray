@@ -10,11 +10,6 @@ from ray.serve._private.constants import SERVE_NAMESPACE
 from ray._private.test_utils import wait_for_condition
 from ray.serve.exceptions import RayServeException
 
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
-
 from unittest.mock import patch
 
 
@@ -89,10 +84,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
-    deployment_name = (
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DefaultgRPCDriver"
-    )
-    assert len(replicas[deployment_name]) == 1
+    assert len(replicas["DefaultgRPCDriver"]) == 1
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -100,7 +92,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         lambda: len(
             ray.get(
                 serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_name]
+            )["DefaultgRPCDriver"]
         )
         == 2
     )
@@ -112,7 +104,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         lambda: len(
             ray.get(
                 serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_name]
+            )["DefaultgRPCDriver"]
         )
         == 1
     )

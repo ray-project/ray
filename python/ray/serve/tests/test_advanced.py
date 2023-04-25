@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def test_serve_forceful_shutdown(serve_instance):
@@ -17,7 +16,7 @@ def test_serve_forceful_shutdown(serve_instance):
 
     handle = serve.run(sleeper.bind())
     ref = handle.remote()
-    serve.delete(SERVE_DEFAULT_APP_NAME)
+    sleeper.delete()
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(ref)

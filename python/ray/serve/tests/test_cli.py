@@ -23,10 +23,6 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -111,11 +107,11 @@ def test_deploy(ray_start_stop):
         print("Deployments are reachable over HTTP.")
 
         deployment_names = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
+            "DAGDriver",
+            "create_order",
+            "Router",
+            "Multiplier",
+            "Adder",
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -139,12 +135,7 @@ def test_deploy(ray_start_stop):
         )
         print("Deployments are reachable over HTTP.")
 
-        deployment_names = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Add",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Subtract",
-        ]
+        deployment_names = ["DAGDriver", "Router", "Add", "Subtract"]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
 
@@ -488,11 +479,11 @@ def test_status(ray_start_stop):
     serve_status = yaml.safe_load(status_response)
 
     expected_deployments = {
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
+        "DAGDriver",
+        "Multiplier",
+        "Adder",
+        "Router",
+        "create_order",
     }
     for status in serve_status["deployment_statuses"]:
         expected_deployments.remove(status["name"])

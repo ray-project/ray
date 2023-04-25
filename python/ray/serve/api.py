@@ -544,7 +544,7 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: Application, name: str = None) -> BuiltApplication:
+def build(target: Application, name: str = SERVE_DEFAULT_APP_NAME) -> BuiltApplication:
     """Builds a Serve application into a static, built application.
 
     Resolves the provided Application object into a list of deployments.
@@ -558,8 +558,7 @@ def build(target: Application, name: str = None) -> BuiltApplication:
     Args:
         target: The Serve application to run consisting of one or more
             deployments.
-        name: The name of the Serve application. When name is not provided, the
-        deployment name won't be updated. (SINGLE_APP use case.)
+        name: The name of the Serve application.
 
     Returns:
         The static built Serve application.

@@ -12,7 +12,6 @@ from ray._private.test_utils import SignalActor
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.utils import get_random_letters
-from ray.serve.context import get_global_client
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -211,7 +210,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     @ray.remote
     def call(block=False):
         if use_handle:
-            handle = serve.get_deployment(f"app_{name}").get_handle()
+            handle = serve.get_deployment(name).get_handle()
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
@@ -242,7 +241,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
         async def __call__(self, request):
             return await self.handler()
 
-    serve.run(V1.bind(), name="app")
+    serve.run(V1.bind())
     ref1 = call.remote(block=False)
     val1, pid1 = ray.get(ref1)
     assert val1 == "1"
@@ -254,9 +253,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
     V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
+    serve.run(V2.bind(), _blocking=False)
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(f"app_{V2.name}", timeout_s=0.1)
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
 
     # It may take some time for the handle change to propagate and requests
     # to get sent to the new version. Repeatedly send requests until they
@@ -284,7 +283,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     assert pid2 == pid1
 
     # Now the goal and request to the new version should complete.
-    client._wait_for_deployment_healthy(f"app_{V2.name}")
+    client._wait_for_deployment_healthy(V2.name)
     new_version_val, new_version_pid = ray.get(new_version_ref)
     assert new_version_val == "2"
     assert new_version_pid != pid2
@@ -302,7 +301,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call(block=False):
         if use_handle:
-            handle = serve.get_deployment(f"app_{name}").get_handle()
+            handle = serve.get_deployment(name).get_handle()
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
@@ -356,7 +355,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    serve.run(V1.bind(), name="app")
+    serve.run(V1.bind())
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -369,9 +368,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    serve.run(V2.bind(), _blocking=False, name="app")
+    serve.run(V2.bind(), _blocking=False)
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(f"app_{V2.name}", timeout_s=0.1)
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     # Signal the original call to exit.
@@ -382,7 +381,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_deployment_healthy(f"app_{V2.name}")
+    client._wait_for_deployment_healthy(V2.name)
     make_nonblocking_calls({"2": 2})
 
 
@@ -512,7 +511,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = get_global_client().get_handle(f"app_{name}", sync=True)
+            handle = v1.get_handle()
             ret = ray.get(handle.remote())
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
@@ -537,7 +536,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
 
         return responses
 
-    serve.run(v1.bind(), name="app")
+    serve.run(v1.bind())
     responses1 = make_calls({"1": 4})
     pids1 = responses1["1"]
 
@@ -545,7 +544,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     def v2(*args):
         return f"2|{os.getpid()}"
 
-    serve.run(v2.bind(), name="app")
+    serve.run(v2.bind())
     responses2 = make_calls({"2": 2})
     assert all(pid not in pids1 for pid in responses2["2"])
 
@@ -563,7 +562,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = get_global_client().get_handle(f"app_{name}", sync=True)
+            handle = v1.get_handle()
             ret = ray.get(handle.remote())
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
@@ -588,7 +587,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
 
         return responses
 
-    serve.run(v1.bind(), name="app")
+    serve.run(v1.bind())
     responses1 = make_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -596,7 +595,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     def v2(*args):
         return f"2|{os.getpid()}"
 
-    serve.run(v2.bind(), name="app")
+    serve.run(v2.bind())
     responses2 = make_calls({"2": 4})
     assert all(pid not in pids1 for pid in responses2["2"])
 
@@ -607,7 +606,8 @@ def test_deploy_handle_validation(serve_instance):
         def b(self, *args):
             return "hello"
 
-    handle = serve.run(A.bind(), name="app")
+    serve.run(A.bind())
+    handle = A.get_handle()
 
     # Legacy code path
     assert ray.get(handle.options(method_name="b").remote()) == "hello"

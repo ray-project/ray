@@ -484,13 +484,12 @@ def test_suprious_call(serve_instance):
 
     tracker = CallTracker.bind()
     with InputNode() as inp:
-        dag = DAGDriver.bind(
-            {"/get": tracker.get.bind(), "/predict": tracker.predict.bind(inp)}
-        )
+        dag = DAGDriver.bind(tracker.predict.bind(inp))
     handle = serve.run(dag)
-    ray.get(handle.predict_with_route.remote("/predict", 1))
+    ray.get(handle.predict.remote(1))
 
-    assert ray.get(handle.predict_with_route.remote("/get", 1)) == ["predict"]
+    call_tracker = CallTracker.get_handle()
+    assert ray.get(call_tracker.get.remote()) == ["predict"]
 
 
 def test_sharing_call_for_broadcast(serve_instance):
