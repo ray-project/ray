@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
+from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -25,7 +26,8 @@ _storage_prefix = None
 _filesystem = None
 
 
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     """Initialize and get the configured storage filesystem, if possible.
 
@@ -51,7 +53,8 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
 
 # TODO(suquark): There is no implementation of 'get_client' in client hook.
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def get_client(prefix: str) -> "KVClient":
     """Returns a KV-client (convenience wrapper around underlying filesystem).
 

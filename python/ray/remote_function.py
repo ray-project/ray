@@ -242,7 +242,7 @@ class RemoteFunction:
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
         task_options.pop("max_calls", None)
-        if client_mode_should_convert(auto_init=True):
+        if client_mode_should_convert():
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
         worker = ray._private.worker.global_worker

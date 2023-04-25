@@ -321,7 +321,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             None if the current task or actor wasn't
             created with any placement group.
     """
-    if client_mode_should_convert(auto_init=True):
+    if client_mode_should_convert():
         # Client mode is only a driver.
         return None
     worker = ray._private.worker.global_worker

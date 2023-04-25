@@ -253,6 +253,10 @@ __all__ += [
 ]
 
 
+from ray._private.auto_init_hook import wrap_auto_init
+wrap_auto_init(__all__)
+
+
 # Delay importing of expensive, isolated subpackages.
 def __getattr__(name: str):
     import importlib

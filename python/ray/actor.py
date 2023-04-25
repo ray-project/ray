@@ -42,7 +42,7 @@ _actor_launch_hook = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -763,7 +763,7 @@ class ActorClass:
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = 1000 if is_asyncio else 1
 
-        if client_mode_should_convert(auto_init=True):
+        if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
 
         # fill actor required options
