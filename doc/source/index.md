@@ -391,7 +391,7 @@ ppo_algo.evaluate()
   </div>
   <div> 
     <h4> Contribute to Ray </h4>
-    <a class="no-underline" href="https://docs.ray.io/en/latest/ray-contribute/getting-involved.html" target="_blank"> <div class="community-box">
+    <a class="no-underline" href="./ray-contribute/getting-involved.html" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/mail.png" width="24px" height="24px" />
             <p>Contributor's guide</p>
