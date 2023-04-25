@@ -445,11 +445,14 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(self, input_queue_size: int) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
 
         For example, an operator that launches a task per input could return
         ExecutionResources(cpu=1) as its incremental usage.
+
+        Args:
+            input_queue_size: The current size of the input queue for this operator.
         """
         return ExecutionResources()
 

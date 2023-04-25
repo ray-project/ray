@@ -123,7 +123,7 @@ class ActorPoolMapOperator(MapOperator):
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
-        if under_resource_limits:
+        if under_resource_limits and input_queue_size > 0:
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed(num_inputs=input_queue_size)
         else:
@@ -325,7 +325,7 @@ class ActorPoolMapOperator(MapOperator):
         if self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_free_slots=self._actor_pool.num_free_slots(),
-            num_inputs=input_queue_size + 1,
+            num_inputs=input_queue_size,
         ):
             # A new task would trigger scale-up, so we include the actor resouce
             # requests in the incremental resources.
@@ -343,6 +343,9 @@ class ActorPoolMapOperator(MapOperator):
         if self._actor_locality_enabled:
             parent["locality_hits"] = self._actor_pool._locality_hits
             parent["locality_misses"] = self._actor_pool._locality_misses
+        parent[
+            "max_tasks_run_for_each_actor"
+        ] = self._actor_pool._max_tasks_in_flight_per_actor
         return parent
 
     @staticmethod
@@ -526,6 +529,8 @@ class _ActorPool:
         self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
+        # The maximum number of tasks in flight each actor has run at any point in time.
+        self._max_tasks_in_flight_per_actor: Dict[ray.actor.ActorHandle, int] = {}
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
         # Actors that are not yet ready (still pending creation).
@@ -570,6 +575,7 @@ class _ActorPool:
             return False
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
+        self._max_tasks_in_flight_per_actor[actor] = 0
         self._actor_locations[actor] = ray.get(ready_ref)
         return True
 
@@ -615,6 +621,9 @@ class _ActorPool:
             else:
                 self._locality_misses += 1
         self._num_tasks_in_flight[actor] += 1
+        self._max_tasks_in_flight_per_actor[actor] = max(
+            self._max_tasks_in_flight_per_actor[actor], self._num_tasks_in_flight[actor]
+        )
         return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):

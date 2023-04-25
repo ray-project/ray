@@ -101,7 +101,7 @@ class TaskPoolMapOperator(MapOperator):
             object_store_memory=self._metrics.cur,
         )
 
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(self, input_queue_size: int) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),

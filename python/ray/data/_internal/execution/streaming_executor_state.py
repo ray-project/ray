@@ -371,7 +371,7 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        under_resource_limits = _execution_allowed(op, cur_usage, limits)
+        under_resource_limits = _execution_allowed(op, state, cur_usage, limits)
         if state.num_queued() > 0 and op.should_add_input() and under_resource_limits:
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
@@ -443,7 +443,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
         return req
 
     for op, state in topology.items():
-        per_task_resource = op.incremental_resource_usage(state.num_queued)
+        per_task_resource = op.incremental_resource_usage(state.num_queued())
         task_bundle = to_bundle(per_task_resource)
         resource_request.extend([task_bundle] * op.num_active_work_refs())
         # Only include incremental resource usage for ops that are ready for
@@ -460,6 +460,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
 
 def _execution_allowed(
     op: PhysicalOperator,
+    state: OpState,
     global_usage: TopologyResourceUsage,
     global_limits: ExecutionResources,
 ) -> bool:
@@ -475,6 +476,7 @@ def _execution_allowed(
 
     Args:
         op: The operator to check.
+        state: The state for the provided operator.
         global_usage: Resource usage across the entire topology.
         global_limits: Execution resource limits.
 
@@ -494,7 +496,7 @@ def _execution_allowed(
         gpu=math.floor(global_usage.overall.gpu or 0),
         object_store_memory=global_usage.overall.object_store_memory,
     )
-    inc = op.incremental_resource_usage()
+    inc = op.incremental_resource_usage(input_queue_size=state.num_queued())
     if inc.cpu and inc.gpu:
         raise NotImplementedError(
             "Operator incremental resource usage cannot specify both CPU "
