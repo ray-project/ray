@@ -297,102 +297,75 @@ download_mnist() {
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
 }
 
-install_pip_packages() {
+retry_pip_install() {
+  local pip_command=$1
+  local status="0"
+  local errmsg=""
 
+  # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
+  # that break the entire CI job: Simply retry installation in this case
+  # after n seconds.
+  for _ in {1..3}; do
+    errmsg=$(eval "${pip_command}" 2>&1) && break
+    status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30
+  done
+  if [ "$status" != "0" ]; then
+    echo "${status}" && return 1
+  fi
+}
+
+install_pip_packages() {
   # Install modules needed in all jobs.
   # shellcheck disable=SC2262
   alias pip="python -m pip"
 
-  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    # Some architectures will build dm-tree from source.
-    # Move bazelrc to a different location temporarily to disable --config=ci settings
-    mv "$HOME/.bazelrc" "$HOME/._brc" || true
-    pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
-    mv "$HOME/._brc" "$HOME/.bazelrc" || true
-  fi
+  # Array to hold all requirements files to install later
+  requirements_files=()
+  requirements_packages=()
 
-  if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
-    # Remove this entire section once Serve dependencies are fixed.
-    if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
-      # We want to install the CPU version only.
-      pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
-    fi
-
-    # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
-    # that break the entire CI job: Simply retry installation in this case
-    # after n seconds.
-    local status="0";
-    local errmsg="";
-    for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -Ur "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
-      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
-    done
-    if [ "$status" != "0" ]; then
-      echo "${status}" && return 1
-    fi
-
-    # Repeat for requirements_test.txt
-    local status="0";
-    local errmsg="";
-    for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements_test.txt 2>&1) && break;
-      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
-    done
-    if [ "$status" != "0" ]; then
-      echo "${status}" && return 1
-    fi
-
-  fi
+  requirements_files+=("${WORKSPACE_DIR}/python/requirements_test.txt")
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
-    # readthedocs has an antiquated build env.
-    # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
-    local python_version
-    python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-    if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
-      { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
-    else
-      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
-    fi
+
+    requirements_files+=("${WORKSPACE_DIR}/doc/requirements-doc.txt")
   fi
 
   # Additional default doc testing dependencies.
   if [ "${DOC_TESTING-}" = 1 ]; then
-    # For Ray Core and Ray Serve DAG visualization docs test
-    sudo apt-get install -y graphviz
-    pip install -U pydot  # For DAG visualization
-    # For the dataset examples
-    sudo apt-get install -y tesseract-ocr
-    pip install -U pytesseract "spacy>=3" spacy_langdetect
-    python -m spacy download en_core_web_sm
+    # For Ray Core and Ray Serve DAG visualization docs test + dataset examples
+    sudo apt-get install -y graphviz tesseract-ocr
+
+    # For DAG visualization
+    requirements_packages+=("pydot")
+    requirements_packages+=("pytesseract")
+    requirements_packages+=("spacy>=3")
+    requirements_packages+=("spacy_langdetect")
   fi
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_rllib.txt
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_rllib.txt")
     #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
 
-  SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+  local install_ml_no_deps=0
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt")
+    install_ml_no_deps=1
   fi
-
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
-    download_mnist
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt")
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_upstream.txt
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_upstream.txt")
   fi
 
   # Additional dependency for Ludwig.
@@ -400,51 +373,81 @@ install_pip_packages() {
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
+    requirements_packages+=("ludwig[test]>=0.4")
+    requirements_packages+=("jsonschema>=4")
   fi
 
   # Additional dependency for time series libraries.
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
+    requirements_packages+=("statsforecast==1.1.0")
+    requirements_packages+=("prophet==1.1.1")
   fi
 
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt")
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    pip install -U -c "${WORKSPACE_DIR}"/python/requirements.txt -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt")
     if [ -n "${ARROW_VERSION-}" ]; then
       if [ "${ARROW_VERSION-}" = nightly ]; then
         pip install --extra-index-url https://pypi.fury.io/arrow-nightlies/ --prefer-binary --pre pyarrow
       else
-        pip install -U pyarrow=="${ARROW_VERSION}"
+        requirements_packages+=("pyarrow==${ARROW_VERSION}")
       fi
     fi
     if [ -n "${ARROW_MONGO_VERSION-}" ]; then
-	pip install -U pymongoarrow=="${ARROW_MONGO_VERSION}"
+      requirements_packages+=("pymongoarrow==${ARROW_MONGO_VERSION}")
     fi
   fi
 
-  # Remove this entire section once Serve dependencies are fixed.
-  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
-    # If CI has deemed that a different version of Torch
-    # should be installed, then upgrade/downgrade to that specific version.
-    if [ -n "${TORCH_VERSION-}" ]; then
-      case "${TORCH_VERSION-1.9.0}" in
-        1.9.0) TORCHVISION_VERSION=0.10.0;;
-        1.8.1) TORCHVISION_VERSION=0.9.1;;
-        1.5) TORCHVISION_VERSION=0.6.0;;
-        *) TORCHVISION_VERSION=0.5.0;;
-      esac
-      pip install --use-deprecated=legacy-resolver --upgrade torch=="${TORCH_VERSION-1.9.0}" torchvision=="${TORCHVISION_VERSION}"
+  if [ "${install_ml_no_deps}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}/python/requirements/ml/requirements_no_deps.txt"
+  fi
+
+  retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [ -z "${TORCH_VERSION-}" ] && { [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; }; then
+      # E.g. torch-spline-conv needs to import torch in their setup.py
+      # so it has to be installed first
+      # (see https://github.com/ray-project/ray/pull/33928)
+      # Keep in sync with requirements_dl.txt
+      pip install torch==1.13.0 torchvision==0.14.0
+      requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+  fi
+
+  # If CI has deemed that a different version of Torch
+  # should be installed, then upgrade/downgrade to that specific version.
+  # Todo: We should find a better way to install these dependencies. Maybe in the
+  # build job?
+  if [ -n "${TORCH_VERSION-}" ]; then
+    case "${TORCH_VERSION-1.9.0}" in
+      1.9.0) TORCHVISION_VERSION=0.10.0;;
+      1.8.1) TORCHVISION_VERSION=0.9.1;;
+      1.6) TORCHVISION_VERSION=0.7.0;;
+      1.5) TORCHVISION_VERSION=0.6.0;;
+      *) TORCHVISION_VERSION=0.5.0;;
+    esac
+    requirements_packages+=("torch==${TORCH_VERSION-1.9.0}")
+    requirements_packages+=("torchvision==${TORCHVISION_VERSION}")
+    # Install right away - some torch dependencies (e.g. torch-spline-conv)
+    # need an existing torch for dependency resolution
+    pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
+
+    # The previous block was excluded because of TORCH_VERSION, so install tf here
+    if [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
+      # Keep it sync with requirements_dl.txt
+      pip install -U "tensorflow==2.11.0" "tensorflow-probability==0.19.0"
     fi
   fi
+
 
   # Inject our own mirror for the CIFAR10 dataset
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+
     TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
     TORCH_CIFAR="${SITE_PACKAGES}/torchvision/datasets/cifar.py"
 
@@ -454,17 +457,42 @@ install_pip_packages() {
       "$TORCH_CIFAR"
   fi
 
+  for package in "${requirements_packages[@]}"; do
+    pip_add+="${package}\n"
+  done
+
+  if [ -n "${pip_add}" ]; then
+    echo "${pip_add}" > "${WORKSPACE_DIR}/python/requirements/_temp_requirements.txt"
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/_temp_requirements.txt")
+  fi
+
+  # Generate the pip command with collected requirements files
+  pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+  for file in "${requirements_files[@]}"; do
+     pip_cmd+=" -r ${file}"
+  done
+
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     "${SCRIPT_DIR}"/install-horovod.sh
   fi
 
-  # install hdfs if needed.
-  if [ "${INSTALL_HDFS-}" = 1 ]; then
-    "${SCRIPT_DIR}"/install-hdfs.sh
+  if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    download_mnist
   fi
 
+  if [ "${DOC_TESTING-}" = 1 ]; then
+    # Todo: This downgrades spacy and related dependencies because
+    # `en_core_web_sm` is only compatible with spacy < 3.6.
+    # We should move to a model that does not depend on a stale version.
+    python -m spacy download en_core_web_sm
+  fi
+}
+
+install_thirdparty_packages() {
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
@@ -491,7 +519,16 @@ install_dependencies() {
     fi
   fi
 
-  install_pip_packages
+  # install hdfs if needed.
+  if [ "${INSTALL_HDFS-}" = 1 ]; then
+    "${SCRIPT_DIR}"/install-hdfs.sh
+  fi
+
+  if [ "${MINIMAL_INSTALL-}" != "1" ]; then
+    install_pip_packages
+  fi
+
+  install_thirdparty_packages
 }
 
 install_dependencies "$@"

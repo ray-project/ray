@@ -4,6 +4,8 @@ ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
+COPY requirements_pinned.txt ./
+COPY requirements_no_deps.txt ./
 COPY requirements_dl.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
@@ -19,19 +21,24 @@ RUN sudo apt-get update \
         libgl1-mesa-dev \
         unzip \
         unrar \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
-    # First, install requirements
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip pip-tools \
+    # Install no-deps requirements. Their dependencies may be overwritten
+    # in subsequent steps
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -r requirements.txt \
-    # Then, keep requirements bounds as constraints and install remaining test dependencies
+           -r requirements_no_deps.txt \
+        # Then, install requirements
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -c requirements.txt \
+           -r requirements_pinned.txt \
+    # Install other requirements. Keep pinned requirements bounds as constraints
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -c requirements_pinned.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
            -r requirements_tune.txt \
            -r requirements_upstream.txt \
     # explicitly install (overwrite) pytorch with CUDA support
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -c requirements_pinned.txt \
            -r requirements_ml_docker.txt \
     # Remove dataclasses & typing because they are included in Python > 3.6
     && if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \

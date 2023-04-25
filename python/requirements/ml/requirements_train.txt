@@ -2,8 +2,8 @@
 
 -r requirements_dl.txt
 
-mosaicml==0.12.1
-mlflow==1.30.0
+mlflow==1.30.0; python_version <= '3.7'
+mlflow==2.2.2; python_version > '3.7'
 tensorboardX==2.4.1
 
 # Dependencies for Hugging Face examples & tests:
