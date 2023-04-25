@@ -40,7 +40,7 @@ def safe_print(*args, **kwargs):
     """
 
     # Ignore prints to StringIO objects, etc.
-    if kwargs.get("file") not in [sys.stdout, sys.stderr]:
+    if kwargs.get("file") not in [sys.stdout, sys.stderr, None]:
         return _print(*args, **kwargs)
 
     try:
