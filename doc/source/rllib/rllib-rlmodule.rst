@@ -73,43 +73,46 @@ The RLModule API provides a unified way to define custom reinforcement learning 
 
 To maintain consistency and usability, RLlib offers a standardized approach for defining module objects for both single-agent and multi-agent reinforcement learning environments. This is achieved through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` and :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` classes. The built-in RLModules in RLlib follow this consistent design pattern, making it easier for you to understand and utilize these modules.
 
-.. tabbed:: Single Agent
+.. tab-set::
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __constructing-rlmodules-sa-begin__
-        :end-before: __constructing-rlmodules-sa-end__
+    .. tab-item:: Single Agent
+
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __constructing-rlmodules-sa-begin__
+            :end-before: __constructing-rlmodules-sa-end__
 
 
-.. tabbed:: Multi Agent
+    .. tab-item:: Multi Agent
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __constructing-rlmodules-ma-begin__
-        :end-before: __constructing-rlmodules-ma-end__
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __constructing-rlmodules-ma-begin__
+            :end-before: __constructing-rlmodules-ma-end__
 
 
 You can pass RL Module specs to the algorithm configuration to be used by the algorithm.
 
-.. tabbed:: Single Agent
+.. tab-set::
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __pass-specs-to-configs-sa-begin__
-        :end-before: __pass-specs-to-configs-sa-end__
+    .. tab-item:: Single Agent
 
-
-    .. note::
-        For passing RL Module specs, all fields do not have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RL Module spec to the algorithm config.)
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __pass-specs-to-configs-sa-begin__
+            :end-before: __pass-specs-to-configs-sa-end__
 
 
-.. tabbed:: Multi Agent
+        .. note::
+            For passing RL Module specs, all fields do not have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RL Module spec to the algorithm config.)
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __pass-specs-to-configs-ma-begin__
-        :end-before: __pass-specs-to-configs-ma-end__
 
+    .. tab-item:: Multi Agent
+
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __pass-specs-to-configs-ma-begin__
+            :end-before: __pass-specs-to-configs-ma-end__
 
 
 Writing Custom Single Agent RL Modules
@@ -146,20 +149,22 @@ Also the class's constrcutor requires a dataclass config object called `~ray.rll
 
 When writing RL Modules, you need to use these fields to construct your model.
 
-.. tabbed:: Single Agent (torch)
+.. tab-set::
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __write-custom-sa-rlmodule-torch-begin__
-        :end-before: __write-custom-sa-rlmodule-torch-end__
+    .. tab-item:: Single Agent (torch)
+
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __write-custom-sa-rlmodule-torch-begin__
+            :end-before: __write-custom-sa-rlmodule-torch-end__
 
 
-.. tabbed:: Single Agent (tensorflow)
-    
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __write-custom-sa-rlmodule-tf-begin__
-        :end-before: __write-custom-sa-rlmodule-tf-end__
+    .. tab-item:: Single Agent (tensorflow)
+
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __write-custom-sa-rlmodule-tf-begin__
+            :end-before: __write-custom-sa-rlmodule-tf-end__
 
 
 In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the checking for the existence of certain input or output keys in the data that is communicated into and out of RL Modules. This serves multiple purposes:
@@ -167,35 +172,37 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 - For the I/O requirement of each method to be self-documenting.
 - For failures to happen quickly. If users extend the modules and implement something that does not match the assumptions of the I/O specs, the check reports missing keys and their expected format. For example, RLModule should always have an ``obs`` key in the input batch and an ``action_dist`` key in the output.
 
-.. tabbed:: Single Level Keys
-    
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __extend-spec-checking-single-level-begin__
-        :end-before: __extend-spec-checking-single-level-end__
+.. tab-set::
 
-.. tabbed:: Nested Keys
+    .. tab-item:: Single Level Keys
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __extend-spec-checking-nested-begin__
-        :end-before: __extend-spec-checking-nested-end__
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __extend-spec-checking-single-level-begin__
+            :end-before: __extend-spec-checking-single-level-end__
 
+    .. tab-item:: Nested Keys
 
-.. tabbed:: TensorShape Spec
-
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __extend-spec-checking-torch-specs-begin__
-        :end-before: __extend-spec-checking-torch-specs-end__
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __extend-spec-checking-nested-begin__
+            :end-before: __extend-spec-checking-nested-end__
 
 
-.. tabbed:: Type Spec
+    .. tab-item:: TensorShape Spec
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __extend-spec-checking-type-specs-begin__
-        :end-before: __extend-spec-checking-type-specs-end__
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __extend-spec-checking-torch-specs-begin__
+            :end-before: __extend-spec-checking-torch-specs-end__
+
+
+    .. tab-item:: Type Spec
+
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __extend-spec-checking-type-specs-begin__
+            :end-before: __extend-spec-checking-type-specs-end__
 
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has two methods for each forward method, totaling 6 methods that can be override to describe the specs of the input and output of each method:
 
@@ -220,12 +227,14 @@ The :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` offers 
 
 The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy. 
 
-.. tabbed:: Multi agent with shared encoder (Torch)
+.. tab-set::
 
-    .. literalinclude:: doc_code/rlmodule_guide.py
-        :language: python
-        :start-after: __write-custom-marlmodule-shared-enc-begin__
-        :end-before: __write-custom-marlmodule-shared-enc-end__
+    .. tab-item:: Multi agent with shared encoder (Torch)
+
+        .. literalinclude:: doc_code/rlmodule_guide.py
+            :language: python
+            :start-after: __write-custom-marlmodule-shared-enc-begin__
+            :end-before: __write-custom-marlmodule-shared-enc-end__
 
 
 To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
@@ -243,44 +252,46 @@ RLlib provides a number of RL Modules for different frameworks (e.g., PyTorch, T
 
 There are two possible ways to extend existing RL Modules:
 
-.. tabbed:: Inheriting existing RL Modules
+.. tab-set::
 
-    One way to extend existing RL Modules is to inherit from them and override the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RL Module.
+    .. tab-item:: Inheriting existing RL Modules
 
-    .. code-block:: python
+        One way to extend existing RL Modules is to inherit from them and override the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RL Module.
 
-        class MyPPORLModule(PPORLModule):
-    
-            def __init__(self, config: RLModuleConfig):
-                super().__init__(config)
-                ...
+        .. code-block:: python
 
-        # Pass in the custom RL Module class to the spec
-        algo_config = algo_config.rl_module(
-            rl_module_spec=SingleAgentRLModuleSpec(module_class=MyPPORLModule)
-        )
+            class MyPPORLModule(PPORLModule):
 
-    
-.. tabbed:: Extending RL Module Catalog
+                def __init__(self, config: RLModuleConfig):
+                    super().__init__(config)
+                    ...
 
-    Another way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`. The :py:class:`~ray.rllib.core.models.catalog.Catalog` is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RL Module, extend the corresponding Catalog class.
-
-    For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
+            # Pass in the custom RL Module class to the spec
+            algo_config = algo_config.rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(module_class=MyPPORLModule)
+            )
 
 
-    .. code-block:: python
+    .. tab-item:: Extending RL Module Catalog
 
-        class MyAwesomeCatalog(PPOCatalog):
+        Another way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`. The :py:class:`~ray.rllib.core.models.catalog.Catalog` is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RL Module, extend the corresponding Catalog class.
 
-            def get_actor_critic_encoder_config():
-                # create your awesome graph encoder here and return it
-                pass
-        
+        For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
 
-        # Pass in the custom catalog class to the spec
-        algo_config = algo_config.rl_module(
-            rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyAwesomeCatalog)
-        )
+
+        .. code-block:: python
+
+            class MyAwesomeCatalog(PPOCatalog):
+
+                def get_actor_critic_encoder_config():
+                    # create your awesome graph encoder here and return it
+                    pass
+
+
+            # Pass in the custom catalog class to the spec
+            algo_config = algo_config.rl_module(
+                rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyAwesomeCatalog)
+            )
 
 
 Migrating from Custom Policies and Models to RL Modules
@@ -293,150 +304,154 @@ In the new `~ray.rllib.core.rl_module.rl_module.RLModule` API the construction o
 
 What your customization could have looked like before:
 
-.. tabbed:: ModelV2
+.. tab-set::
 
-    .. code-block:: python
-        
-        from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+    .. tab-item:: ModelV2
 
+        .. code-block:: python
 
-        class MyCustomModel(TorchModelV2):
-            """Code for your previous custom model"""
-            ...
+            from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+            from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
 
-        class CustomPolicy(TorchPolicyV2):
-
-            @DeveloperAPI
-            @OverrideToImplementCustomLogic
-            def make_model(self) -> ModelV2:
-                """Create model.
-
-                Note: only one of make_model or make_model_and_action_dist
-                can be overridden.
-
-                Returns:
-                ModelV2 model.
-                """
-                return MyCustomModel(...)
+            class MyCustomModel(TorchModelV2):
+                """Code for your previous custom model"""
+                ...
 
 
-.. tabbed:: ModelV2 + Distribution
+            class CustomPolicy(TorchPolicyV2):
 
+                @DeveloperAPI
+                @OverrideToImplementCustomLogic
+                def make_model(self) -> ModelV2:
+                    """Create model.
 
-    .. code-block:: python
-    
-        from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+                    Note: only one of make_model or make_model_and_action_dist
+                    can be overridden.
 
-
-        class MyCustomModel(TorchModelV2):
-            """Code for your previous custom model"""
-            ...
-
-
-        class CustomPolicy(TorchPolicyV2):
-
-            @DeveloperAPI
-            @OverrideToImplementCustomLogic
-            def make_model_and_action_dist(self):
-                """Create model and action distribution function.
-
-                Returns:
+                    Returns:
                     ModelV2 model.
-                    ActionDistribution class.
-                """
-                my_model = MyCustomModel(...) # construct some ModelV2 instance here
-                dist_class = ... # Action distribution cls 
-
-                return my_model, dist_class
+                    """
+                    return MyCustomModel(...)
 
 
-.. tabbed:: Sampler functions
-
-    .. code-block:: python
-
-        from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-        from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-
-        class CustomPolicy(TorchPolicyV2):
-
-            @DeveloperAPI
-            @OverrideToImplementCustomLogic
-            def action_sampler_fn(
-                self,
-                model: ModelV2,
-                *,
-                obs_batch: TensorType,
-                state_batches: TensorType,
-                **kwargs,
-            ) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
-                """Custom function for sampling new actions given policy.
-
-                Args:
-                    model: Underlying model.
-                    obs_batch: Observation tensor batch.
-                    state_batches: Action sampling state batch.
-
-                Returns:
-                    Sampled action
-                    Log-likelihood
-                    Action distribution inputs
-                    Updated state
-                """
-                return None, None, None, None
+    .. tab-item:: ModelV2 + Distribution
 
 
-            @DeveloperAPI
-            @OverrideToImplementCustomLogic
-            def action_distribution_fn(
-                self,
-                model: ModelV2,
-                *,
-                obs_batch: TensorType,
-                state_batches: TensorType,
-                **kwargs,
-            ) -> Tuple[TensorType, type, List[TensorType]]:
-                """Action distribution function for this Policy.
+        .. code-block:: python
 
-                Args:
-                    model: Underlying model.
-                    obs_batch: Observation tensor batch.
-                    state_batches: Action sampling state batch.
+            from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+            from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
-                Returns:
-                    Distribution input.
-                    ActionDistribution class.
-                    State outs.
-                """
-                return None, None, None
+
+            class MyCustomModel(TorchModelV2):
+                """Code for your previous custom model"""
+                ...
+
+
+            class CustomPolicy(TorchPolicyV2):
+
+                @DeveloperAPI
+                @OverrideToImplementCustomLogic
+                def make_model_and_action_dist(self):
+                    """Create model and action distribution function.
+
+                    Returns:
+                        ModelV2 model.
+                        ActionDistribution class.
+                    """
+                    my_model = MyCustomModel(...) # construct some ModelV2 instance here
+                    dist_class = ... # Action distribution cls
+
+                    return my_model, dist_class
+
+
+    .. tab-item:: Sampler functions
+
+        .. code-block:: python
+
+            from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+            from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+
+            class CustomPolicy(TorchPolicyV2):
+
+                @DeveloperAPI
+                @OverrideToImplementCustomLogic
+                def action_sampler_fn(
+                    self,
+                    model: ModelV2,
+                    *,
+                    obs_batch: TensorType,
+                    state_batches: TensorType,
+                    **kwargs,
+                ) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
+                    """Custom function for sampling new actions given policy.
+
+                    Args:
+                        model: Underlying model.
+                        obs_batch: Observation tensor batch.
+                        state_batches: Action sampling state batch.
+
+                    Returns:
+                        Sampled action
+                        Log-likelihood
+                        Action distribution inputs
+                        Updated state
+                    """
+                    return None, None, None, None
+
+
+                @DeveloperAPI
+                @OverrideToImplementCustomLogic
+                def action_distribution_fn(
+                    self,
+                    model: ModelV2,
+                    *,
+                    obs_batch: TensorType,
+                    state_batches: TensorType,
+                    **kwargs,
+                ) -> Tuple[TensorType, type, List[TensorType]]:
+                    """Action distribution function for this Policy.
+
+                    Args:
+                        model: Underlying model.
+                        obs_batch: Observation tensor batch.
+                        state_batches: Action sampling state batch.
+
+                    Returns:
+                        Distribution input.
+                        ActionDistribution class.
+                        State outs.
+                    """
+                    return None, None, None
 
 
 All of the ``Policy.compute_***`` functions expect that `~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and `~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` return a dictionary that contains the key "action_dist" mapping to a ``ray.rllib.models.distributions.Distribution`` instance. Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and ``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance. See `Writing Custom Single Agent RL Modules`_ for more details on how to implement your own custom RL Module.
 
-.. tabbed:: The Equivalent RL Module
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: The Equivalent RL Module
 
-        """
-        No need to override any policy functions. Simply instead implement any custom logic in your custom RL Module
-        """
-        from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
+        .. code-block:: python
+
+            """
+            No need to override any policy functions. Simply instead implement any custom logic in your custom RL Module
+            """
+            from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
 
 
-        class MyRLModule(TorchRLModule):
+            class MyRLModule(TorchRLModule):
 
-            def __init__(self, config: RLConfig):
-                # construct any custom networks here using config
-                # specify an action distribution class here
-                ...
+                def __init__(self, config: RLConfig):
+                    # construct any custom networks here using config
+                    # specify an action distribution class here
+                    ...
 
-            def _forward_inference(self, batch):
-                ...
+                def _forward_inference(self, batch):
+                    ...
 
-            def _forward_exploration(self, batch):
-                ...
+                def _forward_exploration(self, batch):
+                    ...
 
 
 Notable TODOs

@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core";
+import { LinearProgress, makeStyles } from "@material-ui/core";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {
@@ -41,12 +41,14 @@ export const JobProgressBar = ({
 
   const {
     progress,
+    isLoading: progressLoading,
     driverExists,
     totalTasks,
     latestFetchTimestamp: progressTimestamp,
   } = useJobProgress(jobId, advancedProgressBarExpanded);
   const {
     progressGroups,
+    isLoading: progressGroupsLoading,
     total,
     totalTasks: advancedTotalTasks,
     latestFetchTimestamp: totalTimestamp,
@@ -58,10 +60,20 @@ export const JobProgressBar = ({
   if (!driverExists) {
     return <TaskProgressBar />;
   }
+
+  if (
+    progressLoading &&
+    (progressGroupsLoading || !advancedProgressBarRendered)
+  ) {
+    return <LinearProgress />;
+  }
+
   const { status } = job;
   // Use whichever data was received the most recently
   // Note these values may disagree in some way. It might better to consistently use one endpoint.
   const [totalProgress, finalTotalTasks] =
+    total === undefined ||
+    advancedTotalTasks === undefined ||
     progressTimestamp > totalTimestamp
       ? [progress, totalTasks]
       : [total, advancedTotalTasks];

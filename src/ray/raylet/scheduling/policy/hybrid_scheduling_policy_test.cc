@@ -68,13 +68,6 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
                              schedule_top_k_absolute,
                              scheduler_top_k_fraction);
   }
-
-  ClusterResourceManager MockClusterResourceManager(
-      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes) {
-    ClusterResourceManager cluster_resource_manager;
-    cluster_resource_manager.nodes_ = nodes;
-    return cluster_resource_manager;
-  }
 };
 
 TEST_F(HybridSchedulingPolicyTest, GetBestNode) {
