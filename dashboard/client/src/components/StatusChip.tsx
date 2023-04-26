@@ -105,7 +105,7 @@ const useStyles = makeStyles((theme) =>
       borderRadius: 4,
       fontSize: 12,
       margin: 2,
-      display: "flex",
+      display: "inline-flex",
       alignItems: "center",
     },
     afterIcon: {
