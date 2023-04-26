@@ -1,10 +1,9 @@
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
+from typing import Callable, List, Optional, TYPE_CHECKING
 import time
 import concurrent.futures
 import logging
 
 import ray
-from ray.data.block import T
 from ray.data.context import DataContext
 from ray.data.datastream import Datastream
 from ray.data._internal.progress_bar import ProgressBar
@@ -24,9 +23,9 @@ def pipeline_stage(fn: Callable[[], Datastream]) -> Datastream:
 
 
 class PipelineExecutor:
-    def __init__(self, pipeline: "DatasetPipeline[T]"):
-        self._pipeline: "DatasetPipeline[T]" = pipeline
-        self._stages: List[concurrent.futures.Future[Datastream[Any]]] = [None] * (
+    def __init__(self, pipeline: "DatasetPipeline"):
+        self._pipeline: "DatasetPipeline" = pipeline
+        self._stages: List[concurrent.futures.Future[Datastream]] = [None] * (
             len(self._pipeline._optimized_stages) + 1
         )
         self._iter = iter(self._pipeline._base_iterable)
@@ -160,7 +159,7 @@ class PipelineExecutor:
 class PipelineSplitExecutorCoordinator:
     def __init__(
         self,
-        pipeline: "DatasetPipeline[T]",
+        pipeline: "DatasetPipeline",
         n: int,
         splitter: Callable[[Datastream], List["Datastream"]],
         context: DataContext,

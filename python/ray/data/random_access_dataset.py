@@ -4,11 +4,11 @@ import random
 import time
 from collections import defaultdict
 import numpy as np
-from typing import List, Any, Generic, Optional, TYPE_CHECKING
+from typing import List, Any, Optional, TYPE_CHECKING
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import T, BlockAccessor
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
-class RandomAccessDataset(Generic[T]):
+class RandomAccessDataset:
     """A class that provides distributed, random access to a Datastream.
 
     See: ``Datastream.to_random_access_dataset()``.
@@ -33,7 +33,7 @@ class RandomAccessDataset(Generic[T]):
 
     def __init__(
         self,
-        ds: "Datastream[T]",
+        ds: "Datastream",
         key: str,
         num_workers: int,
     ):
@@ -130,7 +130,7 @@ class RandomAccessDataset(Generic[T]):
 
         return block_to_workers, worker_to_blocks
 
-    def get_async(self, key: Any) -> ObjectRef[Optional[T]]:
+    def get_async(self, key: Any) -> ObjectRef[Any]:
         """Asynchronously finds the record for a single key.
 
         Args:
@@ -144,7 +144,7 @@ class RandomAccessDataset(Generic[T]):
             return ray.put(None)
         return self._worker_for(block_index).get.remote(block_index, key)
 
-    def multiget(self, keys: List[Any]) -> List[Optional[T]]:
+    def multiget(self, keys: List[Any]) -> List[Optional[Any]]:
         """Synchronously find the records for a list of keys.
 
         Args:

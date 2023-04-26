@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, List, Tuple, Union, Optional
+from typing import Callable, List, Tuple, Union, Optional
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
@@ -27,8 +27,6 @@ from ray.data.block import (
     BlockMetadata,
     KeyFn,
     KeyType,
-    T,
-    U,
 )
 from ray.data.context import DataContext
 from ray.data.datastream import DataBatch, Datastream
@@ -118,13 +116,13 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 
 @PublicAPI
-class GroupedData(Generic[T]):
+class GroupedData:
     """Represents a grouped datastream created by calling ``Datastream.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, datastream: Datastream[T], key: KeyFn):
+    def __init__(self, datastream: Datastream, key: KeyFn):
         """Construct a datastream grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -139,7 +137,7 @@ class GroupedData(Generic[T]):
             f"key={self._key!r})"
         )
 
-    def aggregate(self, *aggs: AggregateFn) -> Datastream[U]:
+    def aggregate(self, *aggs: AggregateFn) -> Datastream:
         """Implements an accumulator-based aggregation.
 
         Examples:
@@ -273,7 +271,7 @@ class GroupedData(Generic[T]):
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         **ray_remote_args,
-    ) -> "Datastream[Any]":
+    ) -> "Datastream":
         # TODO AttributeError: 'GroupedData' object has no attribute 'map_groups'
         #  in the example below.
         """Apply the given function to each group of records of this datastream.
@@ -395,7 +393,7 @@ class GroupedData(Generic[T]):
             **ray_remote_args,
         )
 
-    def count(self) -> Datastream[U]:
+    def count(self) -> Datastream:
         """Compute count aggregation.
 
         Examples:
@@ -415,7 +413,7 @@ class GroupedData(Generic[T]):
 
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+    ) -> Datastream:
         r"""Compute grouped sum aggregation.
 
         Examples:
@@ -474,7 +472,7 @@ class GroupedData(Generic[T]):
 
     def min(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+    ) -> Datastream:
         """Compute grouped min aggregation.
 
         Examples:
@@ -533,7 +531,7 @@ class GroupedData(Generic[T]):
 
     def max(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+    ) -> Datastream:
         """Compute grouped max aggregation.
 
         Examples:
@@ -592,7 +590,7 @@ class GroupedData(Generic[T]):
 
     def mean(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+    ) -> Datastream:
         """Compute grouped mean aggregation.
 
         Examples:
@@ -655,7 +653,7 @@ class GroupedData(Generic[T]):
         on: Union[KeyFn, List[KeyFn]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-    ) -> Datastream[U]:
+    ) -> Datastream:
         """Compute grouped standard deviation aggregation.
 
         Examples:

@@ -7,7 +7,6 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Generic,
     Iterable,
     Iterator,
     List,
@@ -38,8 +37,6 @@ from ray.data.block import (
     DataBatch,
     KeyFn,
     RowUDF,
-    T,
-    U,
     _apply_strict_mode_batch_format,
 )
 from ray.data.context import DataContext
@@ -50,7 +47,6 @@ from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
 )
-from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -139,12 +135,8 @@ class DatasetPipeline:
         """
         return PipelinedDataIterator(self)
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
         """Return a local row iterator over the data in the pipeline.
-
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
-        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
-        iterator. If the datastream is not tabular, the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -161,7 +153,7 @@ class DatasetPipeline:
             A local iterator over the records in the pipeline.
         """
 
-        def gen_rows() -> Iterator[Union[T, TableRow]]:
+        def gen_rows() -> Iterator[Dict[str, Any]]:
             time_start = time.perf_counter()
 
             for ds in self.iter_datasets():
@@ -718,7 +710,7 @@ class DatasetPipeline:
         """
 
         class Peekable:
-            def __init__(self, base_iter: Iterator[T]):
+            def __init__(self, base_iter: Iterator[Datastream]):
                 self._iter = base_iter
                 self._buffer = None
 
@@ -730,13 +722,13 @@ class DatasetPipeline:
                     except StopIteration:
                         pass
 
-            def peek(self) -> T:
+            def peek(self) -> Datastream:
                 self._fill_buffer_if_possible()
                 if self._buffer is None:
                     raise StopIteration
                 return self._buffer
 
-            def __next__(self) -> T:
+            def __next__(self) -> Datastream:
                 self._fill_buffer_if_possible()
                 if self._buffer is None:
                     raise StopIteration
@@ -1045,7 +1037,7 @@ class DatasetPipeline:
 
     def write_datasource(
         self,
-        datasource: Datasource[T],
+        datasource: Datasource,
         *,
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
@@ -1060,12 +1052,12 @@ class DatasetPipeline:
             )
         )
 
-    def take(self, limit: int = 20) -> List[T]:
+    def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Call :py:meth:`Datastream.take <ray.data.Datastream.take>` over the stream of
         output batches from the pipeline"""
         return Datastream.take(self, limit)
 
-    def take_all(self, limit: Optional[int] = None) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Call :py:meth:`Datastream.take_all <ray.data.Datastream.take_all>` over the stream
         of output batches from the pipeline"""
         return Datastream.take_all(self, limit)

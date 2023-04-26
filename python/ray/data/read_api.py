@@ -46,7 +46,6 @@ from ray.data._internal.util import (
     ndarray_to_block,
     get_table_block_metadata,
 )
-from ray.data.row import TableRow
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
 from ray.data.datastream import Datastream, MaterializedDatastream
@@ -284,9 +283,7 @@ def range_arrow(*args, **kwargs):
 
 
 @PublicAPI
-def range_tensor(
-    n: int, *, shape: Tuple = (1,), parallelism: int = -1
-) -> Datastream:
+def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datastream:
     """Create a Tensor stream from a range of integers [0..n).
 
     Examples:
@@ -1655,9 +1652,7 @@ def from_pandas_refs(
 
 
 @PublicAPI
-def from_numpy(
-    ndarrays: Union[np.ndarray, List[np.ndarray]]
-) -> MaterializedDatastream:
+def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDatastream:
     """Create a datastream from a list of NumPy ndarrays.
 
     Args:
@@ -1803,9 +1798,7 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[
-    MaterializedDatastream
-]:
+) -> Union[MaterializedDatastream]:
     """Create a datastream from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used

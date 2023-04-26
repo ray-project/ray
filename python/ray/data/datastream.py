@@ -388,7 +388,7 @@ class Datastream:
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ) -> "Datastream[Any]":
+    ) -> "Datastream":
         """Apply the given function to batches of data.
 
         This applies the ``fn`` in parallel with map tasks, with each task handling
@@ -1674,7 +1674,7 @@ class Datastream:
             self._lazy,
         )
 
-    def groupby(self, key: Optional[str]) -> "GroupedData[T]":
+    def groupby(self, key: Optional[str]) -> "GroupedData":
         """Group the datastream by the key function or column name.
 
         Examples:
@@ -2061,9 +2061,7 @@ class Datastream:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(
-        self, key: Optional[str] = None, descending: bool = False
-    ) -> "Datastream":
+    def sort(self, key: Optional[str] = None, descending: bool = False) -> "Datastream":
         # TODO ds.sort(lambda ...) fails with:
         #  Callable key '<function <lambda> at 0x1b07a4cb0>' requires
         #  datastream format to be 'simple', was 'arrow'.
@@ -2112,7 +2110,7 @@ class Datastream:
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream") -> "Datastream[(T, U)]":
+    def zip(self, other: "Datastream") -> "Datastream":
         """Materialize and zip this datastream with the elements of another.
 
         The datastreams must have the same number of rows. For tabular datastreams, the
@@ -3790,7 +3788,7 @@ class Datastream:
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
     @ConsumptionAPI
-    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
+    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by looping over this datastream.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
@@ -3884,7 +3882,7 @@ class Datastream:
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
-    ) -> "DatasetPipeline[T]":
+    ) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
