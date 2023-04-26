@@ -176,7 +176,7 @@ class ActorPoolMapOperator(MapOperator):
         # no-op in the streaming execution case.
         if self._bundle_queue:
             # Try to scale up if work remains in the work queue.
-            self._scale_up_if_needed()
+            self._scale_up_if_needed(len(self._bundle_queue))
         else:
             # Only try to scale down if the work queue has been fully consumed.
             self._scale_down_if_needed()
