@@ -160,8 +160,22 @@ def _is_local_windows_path(path: str) -> bool:
 
 
 def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
-    """Translate pyarrow s3 query options into s3fs storage_kwargs"""
-    # Map from s3 query keys --> s3fs kwarg names
+    """Translate pyarrow s3 query options into s3fs ``storage_kwargs``.
+
+    ``storage_kwargs`` are passed to ``s3fs.S3Filesystem``. They accept
+    ``client_kwargs``, which are passed to ``botocore.session.Session.Client``.
+
+    In this function, we translate query string parameters from an s3 URI
+    (e.g. ``s3://bucket/folder?endpoint_override=somewhere``) into the respective
+    query parameters for the botocore clent.
+
+    S3Filesystem API ref: https://s3fs.readthedocs.io/en/latest/api.html
+
+    Botocore Client API ref: https://boto3.amazonaws.com/v1/documentation/api/latest/
+    reference/core/session.html#boto3.session.Session.client
+
+    """
+    # Map from s3 query keys --> botocore client arguments
     option_map = {
         "endpoint_override": "endpoint_url",
         "region": "region_name",
@@ -176,11 +190,22 @@ def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
 
     # s3fs directory cache does not work correctly, so we pass
     # `use_listings_cache` to disable it. See https://github.com/fsspec/s3fs/issues/657
+    # We should keep this for s3fs versions <= 2023.4.0.
     return {"client_kwargs": client_kwargs, "use_listings_cache": False}
 
 
 def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
-    """Translate pyarrow gcs query options into gcsfs storage_kwargs"""
+    """Translate pyarrow s3 query options into s3fs ``storage_kwargs``.
+
+    ``storage_kwargs`` are passed to ``gcsfs.GCSFileSystem``.
+
+    In this function, we translate query string parameters from an s3 URI
+    (e.g. ``s3://bucket/folder?endpoint_override=somewhere``) into the respective
+    arguments for the gcs filesystem.
+
+    GCSFileSystem API ref: https://gcsfs.readthedocs.io/en/latest/api.html
+
+    """
     # Map from gcs query keys --> gcsfs kwarg names
     option_map = {
         "endpoint_override": "endpoint_url",
