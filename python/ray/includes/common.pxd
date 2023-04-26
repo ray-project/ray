@@ -342,6 +342,10 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetAllJobInfo(
             int64_t timeout_ms, c_vector[CJobTableData]& result)
 
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+    unordered_map[c_string, double] PythonGetResourcesTotal(
+        const CGcsNodeInfo& node_info)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
@@ -351,6 +355,17 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string node_id() const
         c_string node_name() const
         int state() const
+        c_string node_manager_address() const
+        c_string node_manager_hostname() const
+        int node_manager_port() const
+        int object_manager_port() const
+        c_string object_store_socket_name() const
+        c_string raylet_socket_name() const
+        int metrics_export_port() const
+        void ParseFromString(const c_string &serialized)
+
+    cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
+        ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const
