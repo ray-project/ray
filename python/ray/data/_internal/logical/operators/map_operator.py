@@ -1,10 +1,7 @@
 from typing import Any, Dict, Iterable, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.compute import (
-    UDF,
-    ComputeStrategy,
-)
+from ray.data._internal.compute import UDF, ComputeStrategy, TaskPoolStrategy
 from ray.data.block import BatchUDF, RowUDF
 from ray.data.context import DEFAULT_BATCH_SIZE
 
@@ -75,7 +72,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._target_block_size = target_block_size
-        self._compute = compute or "tasks"
+        self._compute = compute or TaskPoolStrategy()
 
 
 class MapBatches(AbstractUDFMap):

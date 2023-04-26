@@ -3,4 +3,4 @@
 #   docker_image: anyscale/ray-ml:latest-py39
 #   ray_version: nightly
 # or define a build_id for existing images, e.g. for "anyscaleray-ml231-py39-gpu"
-build_id: "anyscaleray-mlnightly-py39-gpu"
+build_id: "anyscaleray-ml240-py39-gpu"

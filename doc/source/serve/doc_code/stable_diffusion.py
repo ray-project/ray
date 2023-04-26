@@ -59,7 +59,7 @@ class StableDiffusionV2:
         return image
 
 
-my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
+entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # __example_code_end__
 
@@ -88,7 +88,7 @@ if __name__ == "__main__":
         }
     )
 
-    with serve_session(my_first_deployment) as handle:
+    with serve_session(entrypoint) as handle:
         ray.get(handle.generate.remote("hi"))
 
         prompt = "a cute cat is dancing on the grass."

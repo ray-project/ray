@@ -354,7 +354,7 @@ def test_num_errors_terminated(tmpdir):
         trials[i].status = Trial.TERMINATED
 
     create_tune_experiment_checkpoint(trials, local_checkpoint_dir=str(tmpdir))
-    result_grid = ResultGrid(tune.ExperimentAnalysis(tmpdir))
+    result_grid = ResultGrid(tune.ExperimentAnalysis(str(tmpdir)))
     assert len(result_grid.errors) == 3
     assert result_grid.num_errors == 3
     assert result_grid.num_terminated == 2
