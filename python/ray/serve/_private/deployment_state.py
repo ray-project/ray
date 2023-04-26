@@ -534,7 +534,7 @@ class ActorReplicaWrapper:
                 # traceback.format_exc().
                 return ReplicaStartupStatus.FAILED, str(e)
 
-        return ReplicaStartupStatus.SUCCEEDED
+        return ReplicaStartupStatus.SUCCEEDED, None
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
