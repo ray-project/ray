@@ -300,41 +300,26 @@ def deployment(
         app = MyDeployment.bind()
 
     Args:
-        name (Default[str]): Globally-unique name identifying this
-            deployment. If not provided, the name of the class or function will
-            be used.
-        num_replicas (Default[Optional[int]]): The number of processes to start up that
-            will handle requests to this deployment. Defaults to 1.
-        init_args (Default[Tuple[Any]]): Positional args to be passed to the
-            class constructor when starting up deployment replicas. These can
-            also be passed when you call `.deploy()` on the returned Deployment.
-        init_kwargs (Default[Dict[Any, Any]]): Keyword args to be passed to the
-            class constructor when starting up deployment replicas. These can
-            also be passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Default[Union[str, None]]): Requests to paths under this
-            HTTP path prefix will be routed to this deployment. Defaults to
-            '/{name}'. When set to 'None', no HTTP endpoint will be created.
-            Routing is done based on longest-prefix match, so if you have
-            deployment A with a prefix of '/a' and deployment B with a prefix
-            of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
-            to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
-            a '/' unless they're the root (just '/'), which acts as a
-            catch-all.
-        ray_actor_options (Default[Dict]): Options to be passed to the Ray
-            actor constructor such as resource requirements. Valid options are
-            `accelerator_type`, `memory`, `num_cpus`, `num_gpus`,
-            `object_store_memory`, `resources`, and `runtime_env`.
-        user_config (Default[Optional[Any]]): Config to pass to the
-            reconfigure method of the deployment. This can be updated
-            dynamically without changing the version of the deployment and
-            restarting its replicas. The user_config must be json-serializable
-            to keep track of updates, so it must only contain json-serializable
-            types, or json-serializable types nested in lists and dictionaries.
-        max_concurrent_queries (Default[int]): The maximum number of queries
-            that will be sent to a replica of this deployment without receiving
-            a response. Defaults to 100.
-        is_driver_deployment (Optional[bool]): [Experiment] when set it as True, serve
-            will deploy exact one deployment to every node.
+        name: Name uniquely identifying this deployment within the application.
+            If not provided, the name of the class or function will be used.
+        num_replicas: The number of replicas to run that will handle requests to
+            this deployment. Defaults to 1.
+        init_args: [DEPRECATED] These should be passed to `.bind()` instead.
+        init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
+        route_prefix: Requests to paths under this HTTP path prefix will be routed
+            to this deployment. Defaults to '/{name}'. This can only be set for the
+            ingress (top-level) deployment of an application.
+        ray_actor_options: Options to be passed to the Ray actor decorator such as
+            resource requirements. Valid options are `accelerator_type`, `memory`,
+            `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
+            and `runtime_env`.
+        user_config: Config to pass to the reconfigure method of the deployment. This
+            can be updated dynamically without restarting the replicas of the
+             deployment. The user_config must be fully JSON-serializable.
+        max_concurrent_queries: The maximum number of queries that will be sent to a
+            replica of this deployment without receiving a response. Defaults to 100.
+        is_driver_deployment: [EXPERIMENTAL] when set, exactly one
+            replica of this deployment will run on every node (like a daemon set).
 
     Returns:
         `Deployment`
