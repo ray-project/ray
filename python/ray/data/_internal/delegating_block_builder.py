@@ -11,7 +11,7 @@ from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder
 from ray.data._internal.pandas_block import PandasRow, PandasBlockBuilder
 
 
-class DelegatingBlockBuilder(BlockBuilder[T]):
+class DelegatingBlockBuilder(BlockBuilder):
     def __init__(self):
         self._builder = None
         self._empty_block = None

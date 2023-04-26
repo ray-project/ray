@@ -436,7 +436,7 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
@@ -451,7 +451,7 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     )
 
 
-def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block[np.ndarray]":
+def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()

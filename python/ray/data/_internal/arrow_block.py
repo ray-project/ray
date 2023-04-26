@@ -105,7 +105,7 @@ class ArrowRow(TableRow):
         return self._row.num_columns
 
 
-class ArrowBlockBuilder(TableBlockBuilder[T]):
+class ArrowBlockBuilder(TableBlockBuilder):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
@@ -293,7 +293,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def _zip(self, acc: BlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "Block":
         r = self.to_arrow()
         s = acc.to_arrow()
         for col_name in s.column_names:
@@ -310,7 +310,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> ArrowBlockBuilder[T]:
+    def builder() -> ArrowBlockBuilder:
         return ArrowBlockBuilder()
 
     @staticmethod
@@ -422,7 +422,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet"
@@ -461,7 +461,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         partitions.append(table.slice(last_idx))
         return partitions
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
+    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -540,8 +540,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List[Block], key: "SortKeyT", _descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -553,11 +553,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block[ArrowRow]],
+        blocks: List[Block],
         key: KeyFn,
         aggs: Tuple[AggregateFn],
         finalize: bool,
-    ) -> Tuple[Block[ArrowRow], BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,

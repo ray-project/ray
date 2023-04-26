@@ -31,7 +31,7 @@ class AggregateFn(object):
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
         accumulate_row: Callable[[AggType, T], AggType] = None,
-        accumulate_block: Callable[[AggType, Block[T]], AggType] = None,
+        accumulate_block: Callable[[AggType, Block], AggType] = None,
         finalize: Callable[[AggType], U] = lambda a: a,
         name: Optional[str] = None,
     ):
@@ -69,7 +69,7 @@ class AggregateFn(object):
             )
         if accumulate_block is None:
 
-            def accumulate_block(a: AggType, block: Block[T]) -> AggType:
+            def accumulate_block(a: AggType, block: Block) -> AggType:
                 block_acc = BlockAccessor.for_block(block)
                 for r in block_acc.iter_rows():
                     a = accumulate_row(a, r)
@@ -222,7 +222,7 @@ class Mean(_AggregateOnKeyBase):
             ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
         )
 
-        def vectorized_mean(block: Block[T]) -> AggType:
+        def vectorized_mean(block: Block) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             count = block_acc.count(on)
             if count == 0 or count is None:
@@ -292,7 +292,7 @@ class Std(_AggregateOnKeyBase):
 
         null_merge = _null_wrap_merge(ignore_nulls, merge)
 
-        def vectorized_std(block: Block[T]) -> AggType:
+        def vectorized_std(block: Block) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             count = block_acc.count(on)
             if count == 0 or count is None:
@@ -404,7 +404,7 @@ class Quantile(_AggregateOnKeyBase):
 
         null_merge = _null_wrap_merge(ignore_nulls, merge)
 
-        def block_row_ls(block: Block[T]) -> AggType:
+        def block_row_ls(block: Block) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             ls = []
             for row in block_acc.iter_rows():

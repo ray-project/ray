@@ -28,7 +28,7 @@ from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 
 
-class SimpleBlockBuilder(BlockBuilder[T]):
+class SimpleBlockBuilder(BlockBuilder):
     def __init__(self):
         self._items = []
         self._size_estimator = SizeEstimator()
@@ -128,7 +128,7 @@ class SimpleBlockAccessor(BlockAccessor):
         else:
             return None
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         if not isinstance(other, list):
             raise ValueError(
                 "Cannot zip {} with block of type {}".format(type(self), type(other))
@@ -142,7 +142,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return list(zip(self._items, other))
 
     @staticmethod
-    def builder() -> SimpleBlockBuilder[T]:
+    def builder() -> SimpleBlockBuilder:
         return SimpleBlockBuilder()
 
     def sample(self, n_samples: int = 1, key: "SortKeyT" = None) -> List[T]:
@@ -256,7 +256,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
             return [items]
@@ -293,7 +293,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def combine(
         self, key: KeyFn, aggs: Tuple[AggregateFn]
-    ) -> Block[Tuple[KeyType, AggType]]:
+    ) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -364,8 +364,8 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block[T]], key: "SortKeyT", descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List[Block], key: "SortKeyT", descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         stats = BlockExecStats.builder()
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
@@ -375,11 +375,11 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block[Tuple[KeyType, AggType]]],
+        blocks: List[Block],
         key: KeyFn,
         aggs: Tuple[AggregateFn],
         finalize: bool,
-    ) -> Tuple[Block[Tuple[KeyType, Union[U, AggType]]], BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,

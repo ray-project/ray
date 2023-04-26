@@ -410,7 +410,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     @staticmethod
-    def builder() -> "BlockBuilder[T]":
+    def builder() -> "BlockBuilder":
         """Create a builder for this block type."""
         raise NotImplementedError
 

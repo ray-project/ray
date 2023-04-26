@@ -84,7 +84,7 @@ class PandasRow(TableRow):
         return self._row.shape[1]
 
 
-class PandasBlockBuilder(TableBlockBuilder[T]):
+class PandasBlockBuilder(TableBlockBuilder):
     def __init__(self):
         pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
@@ -264,7 +264,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> PandasBlockBuilder[T]:
+    def builder() -> PandasBlockBuilder:
         return PandasBlockBuilder()
 
     @staticmethod
@@ -352,7 +352,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List[Block[T]]:
+    ) -> List[Block]:
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet"
@@ -464,7 +464,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
+        blocks: List[Block], key: "SortKeyT", _descending: bool
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
