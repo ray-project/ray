@@ -3467,7 +3467,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
+        cluster_compute: 32cpus_gce.yaml
 
 - name: rllib_learning_tests_apex_tf
   group: RLlib tests
