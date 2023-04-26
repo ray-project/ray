@@ -983,8 +983,7 @@ def test_usage_lib_report_data(
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=0)
-        # Runtime env is required to run this test in minimal installation test.
-        ray.init(address=cluster.address, runtime_env={"pip": ["ray[serve]"]})
+        ray.init(address=cluster.address)
         """
         Make sure the generated data is following the schema.
         """
@@ -1024,32 +1023,34 @@ provider:
         Make sure report usage data works as expected
         """
 
-        @ray.remote(num_cpus=0)
-        class ServeInitator:
-            def __init__(self):
-                # Start the ray serve server to verify requests are sent
-                # to the right place.
-                from ray import serve
+        if os.environ.get("RAY_MINIMAL") != "1":
 
-                serve.start()
+            @ray.remote(num_cpus=0)
+            class ServeInitator:
+                def __init__(self):
+                    # Start the ray serve server to verify requests are sent
+                    # to the right place.
+                    from ray import serve
 
-                @serve.deployment(ray_actor_options={"num_cpus": 0})
-                async def usage(request):
-                    body = await request.json()
-                    if body == asdict(d):
-                        return True
-                    else:
-                        return False
+                    serve.start()
 
-                usage.deploy()
+                    @serve.deployment(ray_actor_options={"num_cpus": 0})
+                    async def usage(request):
+                        body = await request.json()
+                        if body == asdict(d):
+                            return True
+                        else:
+                            return False
 
-            def ready(self):
-                pass
+                    usage.deploy()
 
-        # We need to start a serve with runtime env to make this test
-        # work with minimal installation.
-        s = ServeInitator.remote()
-        ray.get(s.ready.remote())
+                def ready(self):
+                    pass
+
+            # We need to start a serve with runtime env to make this test
+            # work with minimal installation.
+            s = ServeInitator.remote()
+            ray.get(s.ready.remote())
 
         # Query our endpoint over HTTP.
         r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
@@ -1130,32 +1131,32 @@ provider:
 
         reporter = StatusReporter.remote()
 
-        @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitiator:
-            def __init__(self):
-                # This is used in the worker process
-                # so it won't be tracked as library usage.
-                from ray import serve
+        if os.environ.get("RAY_MINIMAL") != "1":
 
-                serve.start()
+            @ray.remote(num_cpus=0)
+            class ServeInitiator:
+                def __init__(self):
+                    # This is used in the worker process
+                    # so it won't be tracked as library usage.
+                    from ray import serve
 
-                # Usage report should be sent to the URL every 1 second.
-                @serve.deployment(ray_actor_options={"num_cpus": 0})
-                async def usage(request):
-                    body = await request.json()
-                    reporter.reported.remote()
-                    reporter.report_payload.remote(body)
-                    return True
+                    serve.start()
 
-                usage.deploy()
+                    # Usage report should be sent to the URL every 1 second.
+                    @serve.deployment(ray_actor_options={"num_cpus": 0})
+                    async def usage(request):
+                        body = await request.json()
+                        reporter.reported.remote()
+                        reporter.report_payload.remote(body)
+                        return True
 
-            def ready(self):
-                pass
+                    usage.deploy()
 
-        # We need to start a serve with runtime env to make this test
-        # work with minimal installation.
-        s = ServeInitiator.remote()
-        ray.get(s.ready.remote())
+                def ready(self):
+                    pass
+
+            s = ServeInitiator.remote()
+            ray.get(s.ready.remote())
 
         """
         Verify the usage stats are reported to the server.
@@ -1202,9 +1203,6 @@ provider:
             "_test2": "extra_v3",
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
-            "serve_num_deployments": "1",
-            "serve_num_gpu_deployments": "0",
-            "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
             "num_actor_creation_tasks": "0",
@@ -1217,12 +1215,14 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
+            expected_payload["serve_num_deployments"] = "1"
+            expected_payload["serve_num_gpu_deployments"] = "0"
+            expected_payload["serve_api_version"] = "v1"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
-            # Since we start a serve actor for mocking a server using runtime env.
-            assert set(payload["library_usages"]) == {"serve"}
+            assert set(payload["library_usages"]) == {}
         else:
             # Serve is recorded due to our mock server.
             assert set(payload["library_usages"]) == {"rllib", "train", "tune", "serve"}
@@ -1405,8 +1405,8 @@ if os.environ.get("RAY_MINIMAL") != "1":
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Test depends on runtime env feature not supported on Windows.",
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
 )
 # TODO(https://github.com/ray-project/ray/issues/33486)
 @pytest.mark.skipif(
@@ -1442,10 +1442,7 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
 
                 tune.run(objective)
 
-        # Use a runtime env to run tests in minimal installation.
-        a = ActorWithLibImport.options(
-            runtime_env={"pip": ["ray[rllib]", "ray[tune]"]}
-        ).remote()
+        a = ActorWithLibImport.remote()
         ray.get(a.ready.remote())
 
         """
