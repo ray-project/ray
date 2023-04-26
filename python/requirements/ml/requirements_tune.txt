@@ -11,7 +11,7 @@ dragonfly-opt==0.1.6
 flaml==1.1.1
 freezegun==1.1.0
 # Requires decord which is unavailable for arm64
-gluoncv==0.10.1.post0; platform_machine != "arm64"
+gluoncv==0.10.5.post0; platform_machine != "arm64"
 gpy==1.10.0
 # Requires libtorrent which is unavailable for arm64
 autorom[accept-rom-license]; platform_machine != "arm64"

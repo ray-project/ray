@@ -41,7 +41,7 @@ openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
-opentelemetry-exporter-opencensus
+opentelemetry-exporter-opencensus==0.20b0
 pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
@@ -56,7 +56,7 @@ Pygments==2.13.0
 pymongo==4.3.2
 # TODO: Upgrade to pyspark 3.4.0 once raydp supports it
 # https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
-pyspark==3.3.2
+pyspark==3.3.1
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-rerunfailures==10.2
@@ -108,7 +108,14 @@ markdown-it-py==1.1.0
 attrs==21.4.0
 pytz==2022.7.1
 # Compatibility with spacy 3.5 (model en_core_web_sm)
-typing-extensions==4.4.0
+typing-extensions==4.5.0
+networkx==2.6.3; python_version <= '3.7'
+# Aim requires segment-analytics-python, which requires backoff~=2.10,
+# which conflicts with the opentelemetry-api 1.1.0.
+segment-analytics-python=2.2.0
+httpcore==0.15.0
+backoff==1.10
+sympy==1.10.1; python_version <= '3.7'
 
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
