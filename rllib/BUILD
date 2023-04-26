@@ -2088,6 +2088,14 @@ py_test(
     ],
 )
 
+
+py_test(
+    name = "test_dataset_writer",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["offline/tests/test_dataset_writer.py"]
+)
+
 py_test(
     name = "test_feature_importance",
     tags = ["team:rllib", "offline", "torch_only"],
@@ -2398,6 +2406,16 @@ py_test(
     srcs = ["utils/tests/test_actor_manager.py"],
     data = ["utils/tests/random_numbers.pkl"],
 )
+
+
+py_test(
+    name = "test_io_utils",
+    main = "utils/tests/test_io.py",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_io.py"]
+)
+
 
 # --------------------------------------------------------------------
 # rllib/tests/ directory

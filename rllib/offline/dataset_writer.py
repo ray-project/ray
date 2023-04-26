@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from ray import data
+import ray
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_writer import _to_json_dict
 from ray.rllib.offline.output_writer import OutputWriter
@@ -77,14 +77,29 @@ class DatasetWriter(OutputWriter):
         # Todo: We should flush at the end of sampling even if this
         # condition was not reached.
         if len(self.samples) >= self.max_num_samples_per_file:
-            ds = data.from_items(self.samples, output_arrow_format=True).repartition(
-                num_blocks=1, shuffle=False
-            )
-            if self.format == "json":
-                ds.write_json(self.path, try_create_dir=True)
-            elif self.format == "parquet":
-                ds.write_parquet(self.path, try_create_dir=True)
-            else:
-                raise ValueError("Unknown output type: ", self.format)
-            self.samples = []
+            self._write_samples_to_file()
             logger.debug("Wrote dataset in {}s".format(time.time() - start))
+
+    def close(self):
+        if self.samples:
+            self._write_samples_to_file()
+
+    def _write_samples_to_file(self):
+        ds = ray.data.from_items(self.samples, output_arrow_format=True).repartition(
+            num_blocks=1, shuffle=False
+        )
+        if self.format == "json":
+            ds.write_json(self.path, try_create_dir=True)
+        elif self.format == "parquet":
+            ds.write_parquet(self.path, try_create_dir=True)
+        else:
+            raise ValueError("Unknown output type: ", self.format)
+        self.samples = []
+
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
