@@ -407,7 +407,7 @@ install_pip_packages() {
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
+    pip install -U "statsforecast==1.5.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.
