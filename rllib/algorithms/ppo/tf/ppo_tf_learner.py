@@ -112,4 +112,4 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
     @override(PPOLearner)
     def _set_kl_coeff(self, value: float) -> None:
-        self.kl_coeff.assign(value)
+        self.curr_kl_coeff.assign(value)

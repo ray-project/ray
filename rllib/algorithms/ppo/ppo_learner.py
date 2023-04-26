@@ -54,7 +54,9 @@ class PPOLearner(Learner):
         # registered as part of the graph so that upon update the graph can be updated
         # (e.g. in TF with eager tracing)
         self.curr_kl_coeff_val = self.hps.kl_coeff
-        self.curr_kl_coeff = get_variable(self.hps.kl_coeff, framework=self.framework)
+        self.curr_kl_coeff = get_variable(
+            self.hps.kl_coeff, framework=self.framework, torch_tensor=True
+        )
 
     @override(Learner)
     def additional_update_per_module(
