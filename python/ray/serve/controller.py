@@ -416,9 +416,8 @@ class ServeController:
         if docs_path is not None:
             assert docs_path.startswith("/")
 
-        # For V1 API, application name is empty string. This is only for metrics
-        # purpose.
-        # For V2 API, it is supposed to be SERVE_DEFAULT_APP_NAME by default
+        # app_name is None for V1 API, reset it to empty string to avoid
+        # breaking metrics.
         if app_name is None:
             app_name = ""
 
