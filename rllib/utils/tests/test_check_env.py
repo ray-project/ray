@@ -1,19 +1,21 @@
-import gymnasium as gym
-from gymnasium.spaces import Box, Dict, Discrete
 import logging
+import unittest
+from unittest.mock import MagicMock, Mock
+
+import gymnasium as gym
 import numpy as np
 import pytest
-import unittest
-from unittest.mock import Mock, MagicMock
+from gymnasium.spaces import Box, Dict, Discrete
 
 from ray.rllib.env.base_env import convert_to_base_env
-from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
+from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper, make_multi_agent
+from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.pre_checks.env import (
+    check_base_env,
     check_env,
     check_gym_environments,
     check_multiagent_environments,
-    check_base_env,
 )
 
 
@@ -103,6 +105,10 @@ class TestGymCheckEnv(unittest.TestCase):
         error = "Your step function must return a info that is a dict."
         with pytest.raises(ValueError, match=error):
             check_env(env)
+
+    def test_parametric_actions(self):
+        env = ParametricActionsCartPole(10)
+        check_env(env)
 
 
 class TestCheckMultiAgentEnv(unittest.TestCase):
