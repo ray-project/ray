@@ -8,7 +8,6 @@ import pytest
 import ray
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import ReadTask, Reader
