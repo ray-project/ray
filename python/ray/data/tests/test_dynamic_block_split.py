@@ -113,18 +113,7 @@ def test_enable_in_ray_client(ray_start_cluster_enabled):
     "compute",
     [
         "tasks",
-        # TODO(Clark): Remove skip for old execution backend once the old execution
-        # backend is removed.
-        pytest.param(
-            "actors",
-            marks=pytest.mark.skipif(
-                not DataContext.get_current().new_execution_backend,
-                reason=(
-                    "Dynamic block splitting for the actor compute strategy is only "
-                    "enabled for the new execution backend."
-                ),
-            ),
-        ),
+        "actors",
     ],
 )
 def test_dataset(
@@ -133,6 +122,10 @@ def test_dataset(
     target_max_block_size,
     compute,
 ):
+    if compute == "tasks":
+        compute = ray.data._internal.compute.TaskPoolStrategy()
+    else:
+        compute = ray.data.ActorPoolStrategy()
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
     ray.init(num_cpus=2)
@@ -193,7 +186,7 @@ def test_dataset(
     assert len(ds.take(5)) == 5
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
     for batch in ds.iter_batches(batch_size=10):
-        assert len(batch) == 10
+        assert len(batch["one"]) == 10
 
 
 def test_dataset_pipeline(

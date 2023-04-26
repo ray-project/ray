@@ -68,7 +68,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def num_rows(self) -> int:
         return len(self._items)
 
-    def iter_rows(self, _) -> Iterator[T]:
+    def iter_rows(self, public_row_format: bool) -> Iterator[T]:
         return iter(self._items)
 
     def slice(self, start: int, end: int, copy: bool = False) -> List[T]:

@@ -3655,6 +3655,8 @@ class Datastream(Generic[T]):
         refs = self.to_pandas_refs()
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
         schema = self.schema()
+        if isinstance(schema, Schema):
+            schema = schema.base_schema  # Backwards compat with non strict mode.
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
@@ -3705,7 +3707,7 @@ class Datastream(Generic[T]):
 
         schema = self.schema()
         if isinstance(schema, Schema):
-            schema = schema.base_schema  # Backwards compat for RayDP.
+            schema = schema.base_schema  # Backwards compat with non strict mode.
         return raydp.spark.ray_dataset_to_spark_dataframe(
             spark, schema, self.get_internal_block_refs()
         )
@@ -3810,6 +3812,8 @@ class Datastream(Generic[T]):
         # Schema is safe to call since we have already triggered execution with
         # get_internal_block_refs.
         schema = self.schema(fetch_if_missing=True)
+        if isinstance(schema, Schema):
+            schema = schema.base_schema  # Backwards compat with non strict mode.
         if isinstance(schema, pa.Schema):
             # Zero-copy path.
             return blocks

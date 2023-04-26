@@ -237,7 +237,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     def create_reader(
         self,
         n: int,
-        block_format: str = "list",
+        block_format: str = "arrow",
         tensor_shape: Tuple = (1,),
         column_name: Optional[str] = None,
     ) -> List[ReadTask]:

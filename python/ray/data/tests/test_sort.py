@@ -459,7 +459,7 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
         assert task_context["num_instances_below_parallelism"] <= 1
         task_context["num_instances_below_parallelism"] = 0
         for i, row in enumerate(ds.iter_rows()):
-            assert row == i
+            assert row["id"] == i
 
     finally:
         ctx.use_push_based_shuffle = original
