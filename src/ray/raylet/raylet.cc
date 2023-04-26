@@ -112,6 +112,7 @@ void Raylet::Stop() {
 }
 
 ray::Status Raylet::RegisterGcs() {
+  // commetn
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
