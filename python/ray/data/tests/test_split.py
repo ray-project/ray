@@ -4,6 +4,7 @@ import random
 import time
 from unittest.mock import patch
 
+import pandas as pd
 import numpy as np
 import pytest
 from ray.data.block import BlockMetadata
@@ -26,6 +27,7 @@ from ray.data._internal.split import (
 from ray.data.block import BlockAccessor
 from ray.data.datastream import Dataset
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -97,7 +99,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     metadata = []
     total_rows = 0
     for block_size in block_sizes:
-        block = list(range(total_rows, total_rows + block_size))
+        block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
@@ -119,7 +121,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     assert total_rows - expected_total_rows == total_rows % num_splits
     # Check that all rows are unique (content check).
     split_rows = [row for split in splits for row in split.take(total_rows)]
-    assert len(set(split_rows)) == len(split_rows)
+    assert len(set(extract_values("id", split_rows))) == len(split_rows)
 
 
 def test_equal_split_balanced_grid(ray_start_regular_shared):
