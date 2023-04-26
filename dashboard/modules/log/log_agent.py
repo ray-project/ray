@@ -98,8 +98,6 @@ def find_start_offset_last_n_lines_from_offset(
     nbytes_from_end = (
         0  # Number of bytes that should be tailed from the end of the file
     )
-    num_blocks_read = 0  # Number of blocks read so far
-
     # Non new line terminating offset, adjust the line count and treat the non-newline
     # terminated line as the last line. e.g. line 1\nline 2
     file.seek(max(0, offset - 1), os.SEEK_SET)
@@ -119,18 +117,18 @@ def find_start_offset_last_n_lines_from_offset(
         block_data = file.read(min(block_size, prev_offset - read_offset))
         num_lines = block_data.count(b"\n")
         if num_lines > lines_more:
-            # This is the last block.
+            # This is the last block to read.
             # Need to find the offset of exact number of lines to tail
             # in the block.
-            # Use `split` here to split away the last
+            # Use `split` here to split away the extra lines, i.e.
+            # first `num_lines - lines_more` lines.
             lines = block_data.split(b"\n", num_lines - lines_more)
-            # len(lines[0]) + 1 for the new line character split
+            # Added the len of those lines that at the end of the block.
             nbytes_from_end += len(lines[-1])
             break
 
         # Need to read more blocks.
         lines_more -= num_lines
-        num_blocks_read += 1
         nbytes_from_end += len(block_data)
 
         if read_offset == 0:
