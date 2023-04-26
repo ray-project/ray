@@ -41,7 +41,6 @@ class ParametricActionsCartPole(gym.Env):
                 "cart": self.wrapped.observation_space,
             }
         )
-        self._skip_env_checking = True
 
     def update_avail_actions(self):
         self.action_assignments = np.array(
