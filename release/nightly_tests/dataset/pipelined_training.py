@@ -14,7 +14,7 @@ from horovod.ray import RayExecutor
 
 from ray_shuffling_data_loader.data_generation import DATA_SPEC
 from ray_shuffling_data_loader.embedding_model import MyModel, annotation, huber_loss
-from ray.data.datastream_pipeline import DatasetPipeline
+from ray.data import DatasetPipeline
 
 # Training settings
 parser = argparse.ArgumentParser(description="Dataset ingestion Example")

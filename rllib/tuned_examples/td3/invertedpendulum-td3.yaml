@@ -5,7 +5,7 @@ invertedpendulum-td3:
     env: InvertedPendulum-v2
     run: TD3
     stop:
-        episode_reward_mean: 9999.9
+        sampler_results/episode_reward_mean: 9999.9
         time_total_s: 900 # 15 minutes
         timesteps_total: 1000000
     config:
