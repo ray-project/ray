@@ -19,7 +19,7 @@ This page describes how to write code snippets so that they're tested in CI.
 Types of examples
 -----------------
 
-There are two types of examples: *doctest-style* and *code-output-style*.
+There are three types of examples: *doctest-style*, *code-output-style*, and *literalinclude*.
 
 *doctest-style* examples
 ========================
@@ -66,7 +66,7 @@ They're rendered like this:
     .. testcode::
 
         def is_even(x):
-                return (x % 2) == 0
+            return (x % 2) == 0
 
         print(is_even(0))
         print(is_even(1))
@@ -81,7 +81,7 @@ They're rendered like this:
 .. testcode::
 
     def is_even(x):
-            return (x % 2) == 0
+        return (x % 2) == 0
 
     print(is_even(0))
     print(is_even(1))
@@ -91,9 +91,38 @@ They're rendered like this:
     True
     False
 
+*literalinclude* examples
+=========================
+
+*literalinclude* examples display Python modules. ::
+
+    .. literalinclude:: ./doc_code/example_module.py
+        :language: python
+        :start-after: __is_even_begin__
+        :end-before: __is_even_end__
+
+.. literalinclude:: ./doc_code/example_module.py
+    :language: python
+
+They're rendered like this:
+
+.. literalinclude:: ./doc_code/example_module.py
+    :language: python
+    :start-after: __is_even_begin__
+    :end-before: __is_even_end__
+
 ---------------------------------------
 Which type of example should you write?
 ---------------------------------------
+
+There's no hard rule about which style you should use. Use your judgement to
+determine which style best illustrates your API.
+
+.. tip::
+    If you're not sure which style to use, use *code-block-style*.
+
+When to use *doctest-style*
+===========================
 
 If you're writing a small example that emphasizes object representations, or if you
 want to print intermediate objects, use *doctest-style*. ::
@@ -101,9 +130,14 @@ want to print intermediate objects, use *doctest-style*. ::
     .. doctest::
 
         >>> import ray
-        >>> dataset = ray.data.read_csv("s3://air-example-data/iris.csv")
-        >>> dataset.input_files()
-        ['air-example-data/iris.csv']
+        >>> ds = ray.data.range(100)
+        >>> ds.schema()
+        <class 'int'>
+        >>> ds.take(5)
+        [0, 1, 2, 3, 4]
+
+When to use *code-block-style*
+==============================
 
 If you're writing a longer example, or if object representations aren't relevant to your example, use *code-block-style*. ::
 
@@ -136,7 +170,45 @@ If you're writing a longer example, or if object representations aren't relevant
 
         Final accuracy: 1.0
 
-There's no hard rule about which style you should use. In general, use *code-block-style* if you're writing end-to-end workflows. Otherwise, use your best judgement as to which style illustrates the API better.
+When to use *literalinclude*
+============================
+If you're writing an end-to-end examples and your examples doesn't containt outputs, use
+*literalinclude*.
+
+-----------------------------------
+How to handle hard-to-test examples
+-----------------------------------
+
+When is it okay to not test an example?
+=======================================
+
+You don't need to test examples that require GPUs, or examples that depend on external
+systems like Weights and Biases.
+
+Skipping *doctest-style* examples
+=================================
+
+To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code. ::
+
+    .. doctest::
+
+        >>> import ray
+        >>> ray.data.read_images("s3://private-bucket")  # doctest: +SKIP
+
+Skipping *code-block-style* examples
+====================================
+
+To skip a *code-block-style* example, add `:skipif: True` to the `testoutput` block. ::
+
+    .. testcode::
+        :skipif: True
+
+        from ray.air.integrations.wandb import WandbLoggerCallback
+        callback = WandbLoggerCallback(
+            project="Optimization_Project",
+            api_key_file=...,
+            log_config=True
+        )
 
 ----------------------------------------------
 How to handle long or non-determnistic outputs
@@ -147,15 +219,19 @@ If your Python code is non-deterministic, or if your output is excessively long,
 Ignoring *doctest-style* outputs
 ================================
 
-To ignore parts of a *doctest-style* output, append `# doctest: +ELLIPSIS` to  your Python code and replace problematic sections with ellipsis. ::
+To ignore parts of a *doctest-style* output, append `# doctest: +ELLIPSIS` to your Python code and replace problematic sections with ellipsis. ::
 
     .. doctest::
 
         >>> import ray
-        >>> ray.data.read_images("s3://air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=..., dtype=uint8)})
+        >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
+        Datastream(
+            num_blocks=...,
+            num_rows=...,
+            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+        )
 
-To ignore an output altogether, write a *code-block-style* snippet. Don't use `# DOCTEST: +SKIP`.
+To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
 
 Ignoring *code-block-style* outputs
 ===================================
@@ -165,13 +241,17 @@ To ignore parts of a *code-block-style* output, add `:options: +ELLIPSIS` to the
     .. testcode::
 
         import ray
-        ds = ray.data.read_images("s3://air-example-data-2/imagenet-sample-images")
+        ds = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
         print(ds)
 
     .. testoutput::
         :options: +ELLIPSIS
 
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=..., dtype=uint8)})
+        Datastream(
+            num_blocks=...,
+            num_rows=...,
+            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+        )
 
 To ignore an output altogether, replace the output with a single elipsis. ::
 
@@ -185,7 +265,29 @@ To ignore an output altogether, replace the output with a single elipsis. ::
 How to test examples
 --------------------
 
-To test code snippets, run::
+Testing specific examples
+=========================
+
+To test specific examples, install `pytest-sphinx`.
+
+.. code-block:: bash
+
+    pip install pytest-sphinx
+
+Then, run pytest on a module, docstring, or user guide.
+
+.. code-block:: bash
+
+    pytest --doctest-modules python/ray/data/read_api.py
+    pytest --doctest-modules python/ray/data/read_api.py::ray.data.read_api.range
+    pytest --doctest-modules doc/source/data/getting-started.rst
+
+Testing all examples
+====================
+
+To test all code snippets, run
+
+.. code-block:: bash
 
     RAY_MOCK_MODULES=0 make doctest
 
