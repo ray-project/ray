@@ -115,8 +115,8 @@ They're rendered like this:
 Which type of example should you write?
 ---------------------------------------
 
-There's no hard rule about which style you should use. Use your judgement to
-determine which style best illustrates your API.
+There's no hard rule about which style you should use. Choose the style that best
+illustrates your API.
 
 .. tip::
     If you're not sure which style to use, use *code-block-style*.
@@ -172,7 +172,7 @@ If you're writing a longer example, or if object representations aren't relevant
 
 When to use *literalinclude*
 ============================
-If you're writing an end-to-end examples and your examples doesn't containt outputs, use
+If you're writing an end-to-end examples and your examples doesn't contain outputs, use
 *literalinclude*.
 
 -----------------------------------
