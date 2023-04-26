@@ -45,37 +45,38 @@ There are three broad categories of Trainers that Train offers:
 Quick Start to Distributed Training with Ray Train
 --------------------------------------------------
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-       :language: python
-       :start-after: __xgboost_start__
-       :end-before: __xgboost_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: LightGBM
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __xgboost_start__
+           :end-before: __xgboost_end__
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-       :language: python
-       :start-after: __lightgbm_start__
-       :end-before: __lightgbm_end__
+    .. tab-item:: LightGBM
 
-.. tabbed:: Pytorch
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __lightgbm_start__
+           :end-before: __lightgbm_end__
 
-   .. literalinclude:: /ray-air/doc_code/torch_trainer.py
-      :language: python
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+       .. literalinclude:: /ray-air/doc_code/torch_trainer.py
+          :language: python
 
-   .. literalinclude:: /ray-air/doc_code/tf_starter.py
-      :language: python
-      :start-after: __air_tf_train_start__
-      :end-before: __air_tf_train_end__
+    .. tab-item:: Tensorflow
 
-.. tabbed:: Horovod
+       .. literalinclude:: /ray-air/doc_code/tf_starter.py
+          :language: python
+          :start-after: __air_tf_train_start__
+          :end-before: __air_tf_train_end__
 
-   .. literalinclude:: /ray-air/doc_code/hvd_trainer.py
-      :language: python
+    .. tab-item:: Horovod
 
+       .. literalinclude:: /ray-air/doc_code/hvd_trainer.py
+          :language: python
 
 .. _train-framework-catalog:
 
