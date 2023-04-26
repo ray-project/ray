@@ -38,6 +38,7 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
+    "suppress",  # custom extension from _ext folder
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -371,6 +372,10 @@ tag_mapping = {
     # Serve, RLlib and AIR could use one.
 }
 
+suppress_loggers = {
+    'sphinx.ext.autodoc': True,
+}
+
 # Create file with tag mappings for tags.js to use.
 with open("./_static/tag-mapping.json", "w") as f:
     json.dump(tag_mapping, f)
@@ -401,7 +406,6 @@ def setup(app):
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
-
     app.add_js_file("js/top-navigation.js", defer="defer")
 
     base_path = Path(__file__).parent
