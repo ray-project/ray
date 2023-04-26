@@ -1,5 +1,4 @@
 import logging
-from typing import Optional, Tuple
 
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
@@ -9,6 +8,7 @@ import asyncio
 import grpc
 import io
 import os
+
 
 from pathlib import Path
 
@@ -24,116 +24,108 @@ BLOCK_SIZE = 1 << 16
 # Keep-alive interval for reading the file
 DEFAULT_KEEP_ALIVE_INTERVAL_SEC = 1
 
-def _find_end_offsets_next_n_lines_from_offset(file: io.BufferedIOBase, start_offset: int, block_size: int = BLOCK_SIZE) -> int:
+
+def find_end_offset_file(file: io.BufferedIOBase) -> int:
     """
-    Find the offsets of next n lines from a start offset.
-    """
-
-
-def _find_end_offsets_next_n_lines_from_lines(file: io.BufferedIOBase, start_line: int, block_size: int = BLOCK_SIZE) -> int:
-
-
-
-def _find_tail_start_from_last_lines(
-    file: io.BufferedIOBase,
-    lines_to_tail: int,
-    block_size: int = BLOCK_SIZE,
-    end_offset: Optional[int] = None,
-) -> Tuple[int, int]:
-    """
-    Find the start offset of last `lines_to_tail` lines in a file.
-    If the file has no trailing `\n`, it will be treated as if a new line exists.
+    Find the offset of the end of a file without changing the file pointer.
 
     Args:
-        file: A binary file object
-        lines_to_tail: Number of lines to tail
-        block_size: Number of bytes for a single file read, tunable for
-            testing purpose mainly
+        file: File object
 
-    Return:
-        Tuple of offsets:
-            offset_read_start: the start offset of the last `lines_to_tail`
-            offset_file_end: the end of file offset
-
-    Note:
-        If file is appended concurrently, this function might find an offset
-        that contains more than last `lines_to_tail` from the end of the file.
-
-        This function doesn't handle concurrent overwrite to the file in another
-        thread/process. E.g., if the file is truncated/overwritten, the behavior
-        is undefined, depending how the file has changed.
-
+    Returns:
+        Offset of the end of a file.
     """
+    old_pos = file.tell()  # store old position
+    file.seek(0, io.SEEK_END)  # move file pointer to end of file
+    end = file.tell()  # return end of file offset
+    file.seek(old_pos, io.SEEK_SET)
+    return end
 
-    assert (
-        lines_to_tail >= 0
-    ), "Non negative input required for number of lines to tail "
 
-    file.seek(0, os.SEEK_END)
-    # The end offset of the last block currently being read
-    offset_file_end = file.tell()
-    # Number of bytes that should be tailed from the end of the file
-    nbytes_from_end = 0
-    # Number of blocks read so far
-    num_blocks_read = 0
+def find_end_offset_next_n_lines_from_offset(
+    file: io.BufferedIOBase, start_offset: int, n: int
+) -> int:
+    """
+    Find the offsets of next n lines from a start offset.
 
-    if lines_to_tail == 0:
-        return offset_file_end, offset_file_end
+    Args:
+        file: File object
+        start_offset: Start offset to read from, inclusive.
+        n: Number of lines to find.
 
-    # Non new line terminating file, adjust the line count and treat the last
-    # line as a new line
-    file.seek(-1, os.SEEK_END)
+    Returns:
+        Offset of the end of the next n line (exclusive)
+    """
+    file.seek(start_offset)  # move file pointer to start offset
+    end_offset = None
+    for _ in range(n):  # loop until we find n lines or reach end of file
+        line = file.readline()  # read a line and consume new line character
+        if not line:  # end of file
+            break
+        end_offset = file.tell()  # end offset.
+
+    logger.debug(f"Found next {n} lines from {start_offset} offset")
+    return (
+        end_offset if end_offset is not None else file.seek(0, io.SEEK_END)
+    )  # return last line offset or end of file offset if no lines found
+
+
+def find_start_offset_last_n_lines_from_offset(
+    file: io.BufferedIOBase, offset: int, n: int, block_size: int = BLOCK_SIZE
+) -> int:
+    """
+    Find the offset of the beginning of the line of the last X lines from an offset.
+
+    Args:
+        file: File object
+        offset: Start offset from which to find last X lines, -1 means end of file.
+            The offset is exclusive, i.e. data at the offset is not included
+            in the result.
+        n: Number of lines to find
+        block_size: Block size to read from file
+
+    Returns:
+        Offset of the beginning of the line of the last X lines from a start offset.
+    """
+    logger.debug(f"Finding last {n} lines from {offset} offset")
+    if offset == -1:
+        offset = file.seek(0, io.SEEK_END)  # move file pointer to end of file
+    else:
+        file.seek(offset, io.SEEK_SET)  # move file pointer to start offset
+
+    if n == 0:
+        return offset
+    nbytes_from_end = (
+        0  # Number of bytes that should be tailed from the end of the file
+    )
+    num_blocks_read = 0  # Number of blocks read so far
+
+    # Non new line terminating offset, adjust the line count and treat the non-newline
+    # terminated line as the last line. e.g. line 1\nline 2
+    file.seek(max(0, offset - 1), os.SEEK_SET)
     if file.read(1) != b"\n":
-        lines_to_tail -= 1
+        n -= 1
 
     # Remaining number of lines to tail
-    lines_more = lines_to_tail
-
-    if offset_file_end > block_size:
-        # More than 1 block data, then read the previous block from
-        # the end offset
-        read_offset = offset_file_end - block_size
-    else:
-        # Less than 1 block data, seek to the beginning directly
-        read_offset = 0
-
+    lines_more = n
+    read_offset = max(0, offset - block_size)
     # So that we know how much to read on the last block (the block 0)
-    prev_offset = offset_file_end
+    prev_offset = offset
 
     while lines_more >= 0 and read_offset >= 0:
-
         # Seek to the current block start
         file.seek(read_offset, 0)
-
         # Read the current block (or less than block) data
         block_data = file.read(min(block_size, prev_offset - read_offset))
-
         num_lines = block_data.count(b"\n")
         if num_lines > lines_more:
             # This is the last block.
             # Need to find the offset of exact number of lines to tail
             # in the block.
             # Use `split` here to split away the last
-            # n=lines_more lines. The length to be tailed lines will be
-            # in the last un-split token:
-            # E.g.,
-            #   block           = 0123\n5678\nabcde\n
-            #   lines_to_tail   = 1
-            #   num_lines       = 3
-            #
-            #   block.split(num_lines - lines_to_tail)
-            #   will produce splits:
-            #
-            #   block           = 0123\n5678\nabcde\n
-            #                     -----|-----|-------
-            #                                 ^
-            #                           where tail should start.
             lines = block_data.split(b"\n", num_lines - lines_more)
-
+            # len(lines[0]) + 1 for the new line character split
             nbytes_from_end += len(lines[-1])
-            logger.debug(
-                f"Found {lines_to_tail} lines from last {nbytes_from_end} bytes"
-            )
             break
 
         # Need to read more blocks.
@@ -141,41 +133,25 @@ def _find_tail_start_from_last_lines(
         num_blocks_read += 1
         nbytes_from_end += len(block_data)
 
-        logger.debug(
-            f"lines_more={lines_more}, nbytes_from_end={nbytes_from_end}, "
-            f"read_offset={read_offset}, end={offset_file_end}"
-        )
-
         if read_offset == 0:
             # We have read all blocks (since the start)
-            if lines_more > 0:
-                logger.debug(
-                    f"Read all {nbytes_from_end} from {file.name}, "
-                    f"but only found {lines_to_tail - lines_more} / {lines_to_tail} "
-                    "lines."
-                )
             break
-
         # Continuing with the previous block
         prev_offset = read_offset
         read_offset = max(0, read_offset - block_size)
 
-    offset_read_start = offset_file_end - nbytes_from_end
+    offset_read_start = offset - nbytes_from_end
     assert (
         offset_read_start >= 0
     ), f"Read start offset({offset_read_start}) should be non-negative"
-    logger.debug(
-        f"tailing {file.name}'s last {lines_to_tail} lines "
-        f"from {offset_read_start} to {offset_file_end}"
-    )
-    return offset_read_start, offset_file_end
+    return offset_read_start
 
 
 async def _stream_log_in_chunk(
     context: grpc.aio.ServicerContext,
     file: io.BufferedIOBase,
     start_offset: int,
-    end_offset: Optional[int] = None,
+    end_offset: int = -1,
     keep_alive_interval_sec: int = -1,
     block_size: int = BLOCK_SIZE,
 ):
@@ -188,9 +164,9 @@ async def _stream_log_in_chunk(
         context: gRPC server side context
         file: Binary file to stream
         start_offset: File offset where streaming starts
-        end_offset: If None, implying streaming til the EOF.
+        end_offset: If -1, implying streaming til the EOF.
         keep_alive_interval_sec: Duration for which streaming will be
-            retried when reaching the file end
+            retried when reaching the file end, -1 means no retry.
         block_size: Number of bytes per chunk, exposed for testing
 
     Return:
@@ -198,7 +174,7 @@ async def _stream_log_in_chunk(
     """
     assert "b" in file.mode, "Only binary file is supported."
     assert not (
-        keep_alive_interval_sec >= 0 and end_offset is not None
+        keep_alive_interval_sec >= 0 and end_offset is not -1
     ), "Keep-alive is not allowed when specifying an end offset"
 
     file.seek(start_offset, 0)
@@ -207,7 +183,7 @@ async def _stream_log_in_chunk(
     # Until gRPC is done
     while not context.done():
         # Read in block
-        if end_offset is not None:
+        if end_offset != -1:
             to_read = min(end_offset - cur_offset, block_size)
         else:
             to_read = block_size
@@ -228,7 +204,7 @@ async def _stream_log_in_chunk(
 
         # Have read the requested section [start_offset, end_offset), done
         cur_offset += len(bytes)
-        if end_offset is not None and cur_offset >= end_offset:
+        if end_offset != -1 and cur_offset >= end_offset:
             break
 
 
@@ -293,7 +269,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
-        if "/" in request.log_file_name or not os.path.isfile(filepath):
+        if not os.path.isfile(filepath):
             await context.send_initial_metadata(
                 [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
             )
@@ -303,12 +279,13 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
                 # Default stream entire file
                 start_offset = 0
-                end_offset = None
+                end_offset = find_end_offset_file(f)
+
                 if lines != -1:
                     # If specified tail line number,
                     # look for the file offset with the line count
-                    start_offset, end_offset = _find_tail_start_from_last_lines(
-                        f, lines
+                    start_offset = find_start_offset_last_n_lines_from_offset(
+                        f, offset=end_offset, n=lines
                     )
 
                 # If keep alive: following the log every 'interval'
@@ -321,9 +298,9 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                     )
 
                     # When following (keep_alive), it will read beyond the end
-                    end_offset = None
+                    end_offset = -1
 
-                logger.debug(
+                logger.info(
                     f"Tailing logs from {start_offset} to {end_offset} for {lines}, "
                     f"with keep_alive={keep_alive_interval_sec}"
                 )

@@ -21,7 +21,11 @@ from ray.core.generated.common_pb2 import Address
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
-from ray.dashboard.modules.log.log_agent import _find_tail_start_from_last_lines
+from ray.dashboard.modules.log.log_agent import (
+    find_end_offset_file,
+    find_end_offset_next_n_lines_from_offset,
+    find_start_offset_last_n_lines_from_offset,
+)
 from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 
 from ray.dashboard.modules.log.log_manager import LogsManager
@@ -63,6 +67,8 @@ def generate_actor_data(id, node_id, worker_id):
 def _read_file(fp, start, end):
     """Help func to read a file with offsets"""
     fp.seek(start, 0)
+    if end == -1:
+        return fp.read()
     return fp.read(end - start)
 
 
@@ -81,7 +87,7 @@ async def _stream_log(context, fp, start, end):
 
 
 def _write_lines_and_get_offset_at_index(
-    f, num_lines, line_index_with_offset, start_offset=0, trailing_new_line=True
+    f, num_lines, start_offset=0, trailing_new_line=True
 ):
     """
     Write multiple lines into a file, and record offsets
@@ -89,73 +95,97 @@ def _write_lines_and_get_offset_at_index(
     Args:
         f: a binary file object that's writable
         num_lines: Number of lines to write
-        line_index_with_offset: The index of the lines for which
-            the start offset of the line should be recorded an returned.
         start_offset: The offset to start writing
         trailing_new_line: True if a '\n' is added at the end of the
             lines.
 
     Return:
-        offset_at_line: The file offset of the start of the line at index
-            `line_index_with_offset`
-        offset_end: The offset of the end of file
+        offsets: A list of offsets of the lines.
+        offset_end: The offset of the end of file.
     """
-    assert line_index_with_offset <= num_lines
     f.seek(start_offset, 0)
 
-    nwrite = 0
-    offset_at_line = -1
+    offsets = []
     for i in range(num_lines):
-        if i == line_index_with_offset:
-            offset_at_line = nwrite
-
+        offsets.append(f.tell())
         if i == num_lines - 1 and not trailing_new_line:
             # Last line no newline
             line = f"{i}-test-line"
         else:
             line = f"{i}-test-line\n"
-        nwrite += f.write(line.encode("utf-8"))
+        f.write(line.encode("utf-8"))
 
     f.flush()
     f.seek(0, 2)
     offset_end = f.tell()
 
-    # Marking offset past the last line.
-    if line_index_with_offset == num_lines:
-        offset_at_line = offset_end
-    return offset_at_line, offset_end
+    return offsets, offset_end
 
 
-@pytest.mark.parametrize(
-    "lines_to_tail",
-    [0, 1, 10, 100, 1000],
-)
-@pytest.mark.parametrize(
-    "block_size",
-    [4, 8, 16, 32, 512, 1024, 1 << 16],
-)
-@pytest.mark.parametrize(
-    "total_lines",
-    [1000],
-)
-def test_find_tail_start_from_last_lines(
-    lines_to_tail, block_size, total_lines, temp_file
-):
-    """Test getting correct offsets with trailing lines count"""
-    expect_offset, end = _write_lines_and_get_offset_at_index(
-        temp_file, total_lines, total_lines - lines_to_tail
-    )
-    with open(temp_file.name, "rb") as test_file:
+@pytest.mark.parametrize("new_line", [True, False])
+@pytest.mark.parametrize("block_size", [4, 16, 256])
+def test_find_start_offset_last_n_lines_from_offset(new_line, temp_file, block_size):
 
-        start_offset, end_offset = _find_tail_start_from_last_lines(
-            test_file, lines_to_tail=lines_to_tail, block_size=block_size
+    with open(temp_file.name, "wb") as file:
+        o, end_file = _write_lines_and_get_offset_at_index(
+            file, num_lines=50, start_offset=0, trailing_new_line=new_line
         )
+    file = open(temp_file.name, "rb")
+    # Test the function with different offsets and number of lines to find
+    assert find_start_offset_last_n_lines_from_offset(file, o[3], 1, block_size) == o[2]
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[10], 10, block_size) == o[0]
+    )
 
-        assert (
-            start_offset == expect_offset
-        ), "Non-matching offset for finding the tail start pos"
+    # Test end of file last 1 line
+    assert find_start_offset_last_n_lines_from_offset(file, -1, 1, block_size) == o[-1]
 
-        assert end_offset == end, "Non-matching offset for file end"
+    # Test end of file no line
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, -1, 0, block_size) == end_file
+    )
+
+    # Test no line from middle of file
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[30], 0, block_size) == o[30]
+    )
+
+    # Test more lines than file
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[30], 100, block_size) == o[0]
+    )
+
+    # Test offsets in the middle of a line
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[2] + 1, 1, block_size)
+        == o[2]
+    )
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[2] - 1, 1, block_size)
+        == o[1]
+    )
+    file.close()
+
+
+def test_find_end_offset_next_n_lines_from_offset(temp_file):
+    with open(temp_file.name, "wb") as file:
+        o, end_file = _write_lines_and_get_offset_at_index(
+            file, num_lines=10, start_offset=0
+        )
+    file = open(temp_file.name, "rb")
+    # Test the function with different offsets and number of lines to find
+    assert find_end_offset_next_n_lines_from_offset(file, o[3], 1) == o[4]
+    assert find_end_offset_next_n_lines_from_offset(file, o[3], 2) == o[5]
+    assert find_end_offset_next_n_lines_from_offset(file, 0, 1) == o[1]
+
+    # Test end of file
+    assert find_end_offset_next_n_lines_from_offset(file, o[3], 999) == end_file
+
+    # Test offset diff
+    assert find_end_offset_next_n_lines_from_offset(file, 1, 1) == o[1]
+    assert find_end_offset_next_n_lines_from_offset(file, o[1] - 1, 1) == o[1]
+
+    file.close()
 
 
 @pytest.mark.asyncio
@@ -198,20 +228,18 @@ async def test_log_tails(lines_to_tail, total_lines, trailing_new_line, temp_fil
     _write_lines_and_get_offset_at_index(
         temp_file,
         total_lines,
-        total_lines - lines_to_tail,
         trailing_new_line=trailing_new_line,
     )
 
     with open(temp_file.name, "rb") as test_file:
         context = MagicMock(grpc.aio.ServicerContext)
         context.done.return_value = False
-
-        start_offset, end_offset = _find_tail_start_from_last_lines(
-            test_file, lines_to_tail=lines_to_tail
+        start_offset = find_start_offset_last_n_lines_from_offset(
+            test_file, offset=-1, n=lines_to_tail
         )
 
-        actual_data = await _stream_log(context, test_file, start_offset, end_offset)
-        expected_data = _read_file(test_file, start_offset, end_offset)
+        actual_data = await _stream_log(context, test_file, start_offset, -1)
+        expected_data = _read_file(test_file, start_offset, -1)
 
         assert actual_data == expected_data, "Non-matching data from stream log"
 
@@ -226,31 +254,23 @@ async def test_log_tails(lines_to_tail, total_lines, trailing_new_line, temp_fil
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "lines_to_tail,total_lines",
-    [(0, 100), (100, 100), (10, 100), (1, 100), (99, 100)],
+    [(0, 5), (5, 5), (2, 5), (1, 5), (4, 5)],
 )
 async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
     """Test tailing a log file that grows at the same time"""
-    _write_lines_and_get_offset_at_index(
-        temp_file, total_lines, total_lines - lines_to_tail
-    )
+    _write_lines_and_get_offset_at_index(temp_file, total_lines)
 
     with open(temp_file.name, "rb") as test_file:
         context = MagicMock(grpc.aio.ServicerContext)
         context.done.return_value = False
-
-        start_offset, end_offset = _find_tail_start_from_last_lines(
-            test_file, lines_to_tail=lines_to_tail
+        start_offset = find_start_offset_last_n_lines_from_offset(
+            test_file, offset=-1, n=lines_to_tail
         )
 
-        # Modify the file with append here
+        actual_data = await _stream_log(context, test_file, start_offset, -1)
+
+        end_offset = find_end_offset_file(test_file)
         expected_data = _read_file(test_file, start_offset, end_offset)
-        num_new_lines = 100
-        _, new_end_offset = _write_lines_and_get_offset_at_index(
-            temp_file, num_new_lines, -1, start_offset=end_offset
-        )
-
-        actual_data = await _stream_log(context, test_file, start_offset, end_offset)
-
         assert actual_data == expected_data, "Non-matching data from stream log"
 
         all_lines = actual_data.decode("utf-8")
@@ -258,16 +278,19 @@ async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
             all_lines.count("\n") == lines_to_tail
         ), "Non-matching number of lines tailed"
 
-        # Tail again should read the new lines written
-        start_offset, end_offset = _find_tail_start_from_last_lines(
-            test_file, lines_to_tail=lines_to_tail + num_new_lines
+        # Modify the file with append here
+        num_new_lines = 2
+        _write_lines_and_get_offset_at_index(
+            temp_file, num_new_lines, start_offset=end_offset
         )
 
-        assert (
-            end_offset == new_end_offset
-        ), "Non-matching end offset found after append"
-        expected_data = _read_file(test_file, start_offset, new_end_offset)
-        actual_data = await _stream_log(context, test_file, start_offset, end_offset)
+        # Tail again should read the new lines written
+        start_offset = find_start_offset_last_n_lines_from_offset(
+            test_file, offset=-1, n=lines_to_tail + num_new_lines
+        )
+
+        expected_data = _read_file(test_file, start_offset, -1)
+        actual_data = await _stream_log(context, test_file, start_offset, -1)
 
         assert (
             actual_data == expected_data
@@ -758,7 +781,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         lines = []
         for line in stream_response.iter_lines():
             lines.append(line.decode("utf-8"))
-        return len(lines) == 5 or len(lines) == 6
+        assert len(lines) == 5 or len(lines) == 6
+        return True
 
     wait_for_condition(verify_basic)
 
