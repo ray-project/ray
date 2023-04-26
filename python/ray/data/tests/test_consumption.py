@@ -381,7 +381,7 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
                     lambda i=i: range_(i),
                     BlockMetadata(
                         num_rows=n,
-                        size_bytes=None,
+                        size_bytes=0,
                         schema=None,
                         input_files=None,
                         exec_stats=None,
@@ -414,7 +414,7 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
                     lambda: [[1] * n],
                     BlockMetadata(
                         num_rows=None,
-                        size_bytes=None,
+                        size_bytes=0,
                         schema=None,
                         input_files=None,
                         exec_stats=None,
