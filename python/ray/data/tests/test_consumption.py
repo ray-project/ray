@@ -1,5 +1,6 @@
 import logging
 import math
+import sys
 import os
 import random
 import time
@@ -381,7 +382,10 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
                     lambda i=i: range_(i),
                     BlockMetadata(
                         num_rows=n,
-                        size_bytes=0,
+                        size_bytes=sum(
+                            sys.getsizeof(i)
+                            for i in range(parallelism * i, parallelism * i + n)
+                        ),
                         schema=None,
                         input_files=None,
                         exec_stats=None,
@@ -414,7 +418,7 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
                     lambda: [[1] * n],
                     BlockMetadata(
                         num_rows=None,
-                        size_bytes=0,
+                        size_bytes=sys.getsizeof(1) * n,
                         schema=None,
                         input_files=None,
                         exec_stats=None,
