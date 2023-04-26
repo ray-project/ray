@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", contravariant=True)
 U = TypeVar("U", covariant=True)
 
+KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
 
@@ -102,15 +103,8 @@ Block = Union[list, "pyarrow.Table", "pandas.DataFrame", bytes]
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
 
 
-class CallableProtocol(Protocol):
-    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
-        ...
-
-
 # A class type that implements __call__.
 CallableClass = type
-
-CallableProtocol
 
 
 class _CallableClassProtocol(Protocol[T, U]):
@@ -118,29 +112,11 @@ class _CallableClassProtocol(Protocol[T, U]):
         ...
 
 
-# A UDF on data batches.
-BatchUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[DataBatch, ...], DataBatch]
-    Callable[[DataBatch], DataBatch],
-    Callable[[DataBatch], Iterator[DataBatch]],
-    "_CallableClassProtocol",
-]
-
-# A UDF on data rows.
-RowUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[T, ...], U]
+# A user defined function passed to map, map_batches, ec.
+UserDefinedFunction = Union[
     Callable[[T], U],
-    "_CallableClassProtocol[T, U]",
-]
-
-
-FlatMapUDF = Union[
-    RowUDF,
     Callable[[T], Iterator[U]],
+    "_CallableClassProtocol",
 ]
 
 # A list of block references pending computation by a single task. For example,

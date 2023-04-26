@@ -25,7 +25,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
-    KeyFn,
     KeyType,
 )
 from ray.data.context import DataContext
@@ -40,7 +39,7 @@ class _GroupbyOp(ShuffleOp):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         """Partition the block and combine rows with the same key."""
@@ -64,7 +63,7 @@ class _GroupbyOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
@@ -77,7 +76,7 @@ class _GroupbyOp(ShuffleOp):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
@@ -122,7 +121,7 @@ class GroupedData:
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, datastream: Datastream, key: KeyFn):
+    def __init__(self, datastream: Datastream, key: str):
         """Construct a datastream grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -247,7 +246,7 @@ class GroupedData:
     def _aggregate_on(
         self,
         agg_cls: type,
-        on: Union[KeyFn, List[KeyFn]],
+        on: Union[str, List[str]],
         ignore_nulls: bool,
         *args,
         **kwargs,
@@ -412,7 +411,7 @@ class GroupedData:
         return self.aggregate(Count())
 
     def sum(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Datastream:
         r"""Compute grouped sum aggregation.
 
@@ -471,7 +470,7 @@ class GroupedData:
         return self._aggregate_on(Sum, on, ignore_nulls)
 
     def min(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Datastream:
         """Compute grouped min aggregation.
 
@@ -530,7 +529,7 @@ class GroupedData:
         return self._aggregate_on(Min, on, ignore_nulls)
 
     def max(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Datastream:
         """Compute grouped max aggregation.
 
@@ -589,7 +588,7 @@ class GroupedData:
         return self._aggregate_on(Max, on, ignore_nulls)
 
     def mean(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Datastream:
         """Compute grouped mean aggregation.
 
@@ -650,7 +649,7 @@ class GroupedData:
 
     def std(
         self,
-        on: Union[KeyFn, List[KeyFn]] = None,
+        on: Union[str, List[str]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Datastream:

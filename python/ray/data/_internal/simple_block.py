@@ -22,7 +22,6 @@ from ray.data.block import (
     KeyType,
     AggType,
     BlockExecStats,
-    KeyFn,
 )
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
@@ -80,7 +79,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def take(self, indices: List[int]) -> List[T]:
         return [self._items[i] for i in indices]
 
-    def select(self, columns: List[KeyFn]) -> List[T]:
+    def select(self, columns: List[str]) -> List[T]:
         if len(columns) != 1 or not callable(columns[0]):
             raise ValueError(
                 "Column must be a single callable when selecting on Simple blocks, "
@@ -101,7 +100,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return pandas.DataFrame({"value": self._items})
 
     def to_numpy(
-        self, columns: Optional[Union[KeyFn, List[KeyFn]]] = None
+        self, columns: Optional[Union[str, List[str]]] = None
     ) -> np.ndarray:
         if columns is not None:
             if not isinstance(columns, list):
@@ -157,7 +156,7 @@ class SimpleBlockAccessor(BlockAccessor):
             return ret
         return [key(x) for x in ret]
 
-    def count(self, on: KeyFn) -> Optional[U]:
+    def count(self, on: str) -> Optional[U]:
         if on is not None and not callable(on):
             raise ValueError(
                 "on must be a callable or None when aggregating on Simple blocks, but "
@@ -179,7 +178,7 @@ class SimpleBlockAccessor(BlockAccessor):
         self,
         init: AggType,
         accum: Callable[[AggType, T], AggType],
-        on: KeyFn,
+        on: str,
         ignore_nulls: bool,
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation."""
@@ -207,16 +206,16 @@ class SimpleBlockAccessor(BlockAccessor):
                 a = accum(a, r)
         return a if has_data else None
 
-    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(0, lambda a, r: a + r, on, ignore_nulls)
 
-    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(float("inf"), min, on, ignore_nulls)
 
-    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(float("-inf"), max, on, ignore_nulls)
 
-    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(
             [0, 0],
             lambda a, r: [a[0] + r, a[1] + 1],
@@ -224,7 +223,7 @@ class SimpleBlockAccessor(BlockAccessor):
             ignore_nulls,
         )
 
-    def std(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def std(self, on: str, ignore_nulls: bool) -> Optional[U]:
         def accum(a: List[float], r: float) -> List[float]:
             # Accumulates the current count, the current mean, and the sum of
             # squared differences from the current mean (M2).
@@ -240,7 +239,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def sum_of_squared_diffs_from_mean(
         self,
-        on: KeyFn,
+        on: str,
         ignore_nulls: bool,
         mean: Optional[U] = None,
     ) -> Optional[U]:
@@ -291,7 +290,7 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block:
+    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -374,7 +373,7 @@ class SimpleBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List[Block],
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
         finalize: bool,
     ) -> Tuple[Block, BlockMetadata]:

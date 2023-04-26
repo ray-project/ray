@@ -94,7 +94,7 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
-    CallableProtocol,
+    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockMetadata,
@@ -171,8 +171,8 @@ class Datastream:
     """A Datastream is a distributed data collection for data loading and processing.
 
     Datastreams are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
-    where each block holds data in Arrow memory format, representing a shard of the
-    overall data collection. The block also determines the unit of parallelism.
+    where each block holds data in Arrow format, representing a shard of the overall
+    data collection. The block also determines the unit of parallelism.
 
     Datastreams can be created in multiple ways: from synthetic data via ``range_*()``
     APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
@@ -273,7 +273,7 @@ class Datastream:
 
     def map(
         self,
-        fn: CallableProtocol[Dict[str, Any], Dict[str, Any]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
@@ -377,7 +377,7 @@ class Datastream:
 
     def map_batches(
         self,
-        fn: CallableProtocol[DataBatch, DataBatch],
+        fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[ComputeStrategy] = None,
@@ -811,7 +811,7 @@ class Datastream:
 
     def flat_map(
         self,
-        fn: CallableProtocol[Dict[str, Any], List[Dict[str, Any]]],
+        fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
@@ -885,7 +885,7 @@ class Datastream:
 
     def filter(
         self,
-        fn: CallableProtocol[Dict[str, Any], bool],
+        fn: UserDefinedFunction[Dict[str, Any], bool],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,

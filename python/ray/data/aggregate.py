@@ -9,7 +9,6 @@ from ray.data.block import (
     BlockAccessor,
     KeyType,
     AggType,
-    KeyFn,
     _validate_key_fn,
 )
 from ray.data._internal.null_aggregate import (
@@ -87,7 +86,7 @@ class AggregateFn(object):
 
 
 class _AggregateOnKeyBase(AggregateFn):
-    def _set_key_fn(self, on: KeyFn):
+    def _set_key_fn(self, on: str):
         self._key_fn = on
 
     def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
@@ -115,9 +114,9 @@ class Sum(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -146,9 +145,9 @@ class Min(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -177,9 +176,9 @@ class Max(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -208,9 +207,9 @@ class Mean(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -262,10 +261,10 @@ class Std(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -333,9 +332,9 @@ class AbsMax(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
@@ -355,7 +354,7 @@ class AbsMax(_AggregateOnKeyBase):
         )
 
 
-def _to_on_fn(on: Optional[KeyFn]):
+def _to_on_fn(on: Optional[str]):
     if on is None:
         return lambda r: r
     elif isinstance(on, str):
@@ -370,10 +369,10 @@ class Quantile(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[KeyFn] = None,
+        on: Optional[str] = None,
         q: float = 0.5,
         ignore_nulls: bool = True,
-        alias_name: Optional[KeyFn] = None,
+        alias_name: Optional[str] = None,
     ):
         self._set_key_fn(on)
         self._q = q

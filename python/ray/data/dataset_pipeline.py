@@ -32,11 +32,9 @@ from ray.data._internal.iterator.pipelined_iterator import (
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
 from ray.data.block import (
-    BatchUDF,
+    UserDefinedFunction,
     Block,
     DataBatch,
-    KeyFn,
-    RowUDF,
     _apply_strict_mode_batch_format,
 )
 from ray.data.context import DataContext
@@ -784,7 +782,7 @@ class DatasetPipeline:
 
     def map(
         self,
-        fn: RowUDF,
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -797,7 +795,7 @@ class DatasetPipeline:
 
     def map_batches(
         self,
-        fn: BatchUDF,
+        fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
@@ -828,7 +826,7 @@ class DatasetPipeline:
 
     def flat_map(
         self,
-        fn: RowUDF,
+        fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -841,7 +839,7 @@ class DatasetPipeline:
 
     def filter(
         self,
-        fn: RowUDF,
+        fn: UserDefinedFunction[Dict[str, Any], bool],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -917,7 +915,7 @@ class DatasetPipeline:
         )
 
     def sort_each_window(
-        self, key: Optional[KeyFn] = None, descending: bool = False
+        self, key: Optional[str] = None, descending: bool = False
     ) -> "DatasetPipeline":
         """Apply :py:meth:`Datastream.sort <ray.data.Datastream.sort>` to each datastream/window
         in this pipeline."""
