@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import os
+import sys
 import threading
 import uuid
 from typing import Any, Dict, Iterable, Optional
@@ -37,6 +38,11 @@ def safe_print(*args, **kwargs):
     By default, the builtin print will be patched to this function when tqdm_ray is
     used. To disable this, set RAY_TQDM_PATCH_PRINT=0.
     """
+
+    # Ignore prints to StringIO objects, etc.
+    if kwargs.get("file") not in [sys.stdout, sys.stderr, None]:
+        return _print(*args, **kwargs)
+
     try:
         instance().hide_bars()
         _print(*args, **kwargs)
