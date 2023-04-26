@@ -369,10 +369,10 @@
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
+      --test_tag_filters=client_tests,small_size_python_tests,main
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=ray_ha
+      --test_tag_filters=ray_ha,main
       --test_env=DOCKER_HOST=tcp://docker:2376
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
@@ -387,7 +387,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large --test_tag_filters=main
 
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -396,7 +396,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,main
       python/ray/tests/...
 
 - label: ":python: (Medium K-Z)"
@@ -406,8 +406,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,main
       python/ray/tests/...
+
 
 - label: ":redis: (External Redis) (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -417,7 +418,7 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
+      --test_tag_filters=client_tests,small_size_python_tests,main
       --test_env=TEST_EXTERNAL_REDIS=1
       -- python/ray/tests/...
 
@@ -429,7 +430,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/ci.sh test_large --test_env=TEST_EXTERNAL_REDIS=1
+    - ./ci/ci.sh test_large --test_env=TEST_EXTERNAL_REDIS=1 --test_tag_filters=main
 
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -438,7 +439,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,main
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
 
@@ -450,9 +451,58 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,main
       --test_env=TEST_EXTERNAL_REDIS=1
       -- //python/ray/tests/...
+
+- label: ":radio: (Syncer) (Small & Client)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - bash ./ci/ci.sh prepare_docker
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=client_tests,small_size_python_tests,use_ray_syncer
+      -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=ray_ha,use_ray_syncer
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      -- python/ray/tests/...
+
+- label: ":radio: (Syncer) (Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: large
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - ./ci/ci.sh test_large --test_tag_filters=use_ray_syncer
+
+- label: ":radio: (Syncer) (Medium A-J)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,use_ray_syncer
+      python/ray/tests/...
+
+- label: ":radio: (Medium K-Z)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,use_ray_syncer
+      python/ray/tests/...
 
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
