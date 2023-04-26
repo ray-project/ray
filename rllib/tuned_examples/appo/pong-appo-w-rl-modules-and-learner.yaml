@@ -42,7 +42,7 @@ pong-appo:
         # Run with Learner API.
         _enable_learner_api: true
         grad_clip_by_global_norm: 10.0
-        # Use a single Learner worker on the GPU.
+        # Use N Learner worker on the GPU.
         num_learner_workers: 4
         num_gpus_per_learner_worker: 1
         # Since we are using learner workers, the driver process does not need
@@ -51,6 +51,6 @@ pong-appo:
 
         # Run with RLModule API.
         _enable_rl_module_api: true
-        # Empty exploration settings as exploration is done via
-        # RLModule.forward_exploration().
+        # Need to unset this b/c we are using the RLModule API, which
+        # provides exploration control via the RLModule's `forward_exploration` method.
         exploration_config: {}
