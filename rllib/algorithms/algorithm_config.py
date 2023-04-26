@@ -316,9 +316,8 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
-        self.grad_clip_by_value = None
-        self.grad_clip_by_norm = None
-        self.grad_clip_by_global_norm = None
+        self.grad_clip = None
+        self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
@@ -884,7 +883,6 @@ class AlgorithmConfig(_Config):
         # RLModule.forward_exploration() method or setup model parameters such that it
         # will disable the stochasticity of this method (e.g. by setting the std to 0
         # or setting temperature to 0 for the Categorical distribution).
-
         if self._enable_rl_module_api and not self.explore:
             raise ValueError(
                 "When RLModule API is enabled, explore parameter cannot be False. "
@@ -896,6 +894,14 @@ class AlgorithmConfig(_Config):
                 "or setup model parameters such that it will disable the "
                 "stochasticity of this method (e.g. by setting the std to 0 or "
                 "setting temperature to 0 for the Categorical distribution)."
+            )
+
+        # Validate grad clipping settings.
+        if self.grad_clip_by not in ["value", "norm", "global_norm"]:
+            raise ValueError(
+                "Only one of the settings: `grad_clip_by_value`, "
+                "`grad_clip_by_norm` and `grad_clip_by_global_norm` may be set (not"
+                " None)!"
             )
 
         # TODO: Deprecate self.simple_optimizer!
