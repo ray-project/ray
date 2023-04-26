@@ -423,7 +423,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # the former comes before the latter.
     planner = Planner()
     read_op = Read(ParquetDatasource())
-    op = MapBatches(read_op, lambda x: x, compute="tasks")
+    op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
@@ -463,7 +463,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     planner = Planner()
     read_op = Read(ParquetDatasource())
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, lambda x: x, compute="tasks")
+    op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -706,13 +706,12 @@ def test_sort_validate_keys(
     enable_optimizer,
 ):
     ds = ray.data.range(10)
-    assert ds.sort("id").take_all() == list(range(10))
+    assert extract_values("id", ds.sort("id").take_all()) == list(range(10))
 
     invalid_col_name = "invalid_column"
     with pytest.raises(
         ValueError,
-        match=f"String key '{invalid_col_name}' requires datastream format to be "
-        "'arrow' or 'pandas', was 'simple'",
+        match=f"The column '{invalid_col_name}' does not exist"
     ):
         ds.sort(invalid_col_name).take_all()
 
@@ -736,16 +735,6 @@ def test_sort_validate_keys(
         match=f"The column '{invalid_col_name}' does not exist in the schema",
     ):
         ds_named.sort(invalid_col_name).take_all()
-
-    def dummy_sort_fn(x):
-        return x
-
-    with pytest.raises(
-        ValueError,
-        match=f"Callable key '{dummy_sort_fn}' requires datastream format to be "
-        "'simple'",
-    ):
-        ds_named.sort(dummy_sort_fn).take_all()
 
 
 def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
@@ -783,14 +772,10 @@ def test_aggregate_validate_keys(
     enable_optimizer,
 ):
     ds = ray.data.range(10)
-    # Test case with key=None, i.e. grouped into a single group.
-    assert ds.groupby(key=None).count().take_all() == [(10,)]
-
     invalid_col_name = "invalid_column"
     with pytest.raises(
         ValueError,
-        match=f"String key '{invalid_col_name}' requires datastream format to be "
-        "'arrow' or 'pandas', was 'simple'",
+        match=f"The column '{invalid_col_name}' does not exist"
     ):
         ds.groupby(invalid_col_name).count()
 
@@ -821,16 +806,6 @@ def test_aggregate_validate_keys(
         match=f"The column '{invalid_col_name}' does not exist in the schema",
     ):
         ds_named.groupby(invalid_col_name).count()
-
-    def dummy_sort_fn(x):
-        return x
-
-    with pytest.raises(
-        ValueError,
-        match=f"Callable key '{dummy_sort_fn}' requires datastream format to be "
-        "'simple'",
-    ):
-        ds_named.groupby(dummy_sort_fn).count()
 
 
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
