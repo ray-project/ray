@@ -38,11 +38,14 @@ Define a simple "hello world" application, run it locally, and query it over HTT
 :language: python
 ```
 
-:::{tabbed} More examples
-For more examples, select from the tabs.
-:::
+:::{tab-set} 
 
-:::{tabbed} Model composition
+::::::{tab-item} More examples
+For more examples, select from the tabs.
+::::::
+
+:::{tab-set}
+:::{tab-item} Model composition
 
 Use Serve's model composition API to combine multiple deployments into a single application.
 
@@ -51,16 +54,16 @@ Use Serve's model composition API to combine multiple deployments into a single 
 ```
 :::
 
-:::{tabbed} FastAPI integration
+::::::{tab-item} FastAPI integration
 
 Use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to elegantly handle HTTP parsing and validation.
 
 ```{literalinclude} doc_code/fastapi_example.py
 :language: python
 ```
-:::
+::::::
 
-:::{tabbed} Hugging Face Transformers model
+::::::{tab-item} Hugging Face Transformers model
 
 To run this example, install the following: ``pip install transformers``
 
@@ -70,6 +73,8 @@ The model we'll use is a sentiment analysis model: it will take a text string as
 ```{literalinclude} doc_code/transformers_example.py
 :language: python
 ```
+::::::
+
 :::
 
 ## Why choose Serve?

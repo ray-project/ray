@@ -28,44 +28,46 @@ Deep Learning, Tree-Based, and other Trainers
 
 There are three categories of built-in Trainers:
 
-.. tabbed:: Deep Learning Trainers
+.. tab-set::
 
-    Ray Train supports the following deep learning trainers:
+    .. tab-item:: Deep Learning Trainers
 
-    - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
-    - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
-    - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
+        Ray Train supports the following deep learning trainers:
 
-    For these trainers, you usually define your own training function that loads the model
-    and executes single-worker training steps. Refer to the following guides for more details:
+        - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
+        - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
+        - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
 
-    - :ref:`Deep learning user guide <train-dl-guide>`
-    - :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
+        For these trainers, you usually define your own training function that loads the model
+        and executes single-worker training steps. Refer to the following guides for more details:
 
-.. tabbed:: Tree-Based Trainers
+        - :ref:`Deep learning user guide <train-dl-guide>`
+        - :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
 
-    Tree-based trainers utilize gradient-based decision trees for training. The most popular libraries
-    for this are XGBoost and LightGBM.
+    .. tab-item:: Tree-Based Trainers
 
-    - :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
-    - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
+        Tree-based trainers utilize gradient-based decision trees for training. The most popular libraries
+        for this are XGBoost and LightGBM.
 
-    For these trainers, you just pass a dataset and parameters. The training loop is configured
-    automatically.
+        - :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
+        - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
 
-    - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
-    - :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
+        For these trainers, you just pass a dataset and parameters. The training loop is configured
+        automatically.
+
+        - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
+        - :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
 
 
-.. tabbed:: Other Trainers
+    .. tab-item:: Other Trainers
 
-    Some trainers don't fit into the other two categories, such as:
+        Some trainers don't fit into the other two categories, such as:
 
-    - :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>` for NLP
-    - :class:`RLTrainer <ray.train.rl.RLTrainer>` for reinforcement learning
-    - :class:`SklearnTrainer <ray.train.sklearn.sklearn_trainer.SklearnTrainer>` for (non-distributed) training of sklearn models.
+        - :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>` for NLP
+        - :class:`RLTrainer <ray.train.rl.RLTrainer>` for reinforcement learning
+        - :class:`SklearnTrainer <ray.train.sklearn.sklearn_trainer.SklearnTrainer>` for (non-distributed) training of sklearn models.
 
-    - :ref:`Other trainers in the Ray AIR documentation <air-trainers-other>`
+        - :ref:`Other trainers in the Ray AIR documentation <air-trainers-other>`
 
 .. _train-key-concepts-config:
 
