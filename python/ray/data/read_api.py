@@ -1269,17 +1269,17 @@ def read_tfrecords(
         fast_read = True
     except ModuleNotFoundError:
         if platform.processor() == "arm":
-            logger.get_logger().warning(
+            logger.warning(
                 "This function depends on tfx-bsl which is currently not supported"
                 " on devices with Apple silicon (e.g. M1) and requires an"
                 " environment with x86 CPU architecture."
             )
         else:
-            logger.get_logger().warning(
+            logger.warning(
                 "To use TFRecordDatasource with large datasets, please install"
                 " tfx-bsl package with pip install tfx_bsl --no-dependencies`."
             )
-        logger.get_logger().info(
+        logger.info(
             "Falling back to slower strategy for reading tf.records. This"
             "reading strategy should be avoided when reading large datasets."
         )
