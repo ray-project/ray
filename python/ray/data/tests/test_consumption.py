@@ -148,7 +148,7 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(extract_values("id", ds.iter_rows())) == [0, 1, 2, 3, 4]
 
 
-def test_range_table(ray_start_regular_shared):
+def test_range(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 10
@@ -1380,7 +1380,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
     # Test Arrow-native creation APIs.
     # Test range_table.
     try:
-        ray.data.range_table(10).take_all()
+        ray.data.range(10).take_all()
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 

@@ -20,10 +20,14 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     xs = list(range(num_items))
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
-    assert extract_values("item", ds.sort("item").take(num_items)) == list(range(num_items))
+    assert extract_values("item", ds.sort("item").take(num_items)) == list(
+        range(num_items)
+    )
     # Make sure we have rows in each block.
     assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
-    assert extract_values("item", ds.sort("item", descending=True).take(num_items)) == list(reversed(range(num_items)))
+    assert extract_values(
+        "item", ds.sort("item", descending=True).take(num_items)
+    ) == list(reversed(range(num_items)))
 
     # Test empty dataset.
     ds = ray.data.from_items([])
@@ -130,9 +134,7 @@ def test_sort_arrow_with_empty_blocks(
             [{"A": (x % 3), "B": x} for x in range(3)], parallelism=3
         )
         ds = ds.filter(lambda r: r["A"] == 0)
-        assert [row for row in ds.sort("A").iter_rows()] == [
-            {"A": 0, "B": 0}
-        ]
+        assert [row for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
 
         # Test empty dataset.
         ds = ray.data.range(10).filter(lambda r: r["id"] > 10)

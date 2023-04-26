@@ -121,7 +121,9 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
 
     def gen(name):
         path = os.path.join(tmp_path, name)
-        ray.data.range(1000, parallelism=1).map(lambda _: {"out": LARGE_VALUE}).write_csv(path)
+        ray.data.range(1000, parallelism=1).map(
+            lambda _: {"out": LARGE_VALUE}
+        ).write_csv(path)
         return ray.data.read_csv(path)
 
     # 20MiB

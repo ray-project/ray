@@ -12,7 +12,8 @@ def test_basic(ray_start_regular_shared, pandas):
     ds = ds.add_column("embedding", lambda b: b["id"] ** 2)
     if not pandas:
         ds = ds.map_batches(
-            lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas")
+            lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas"
+        )
 
     rad = ds.to_random_access_dataset("id", num_workers=1)
 
