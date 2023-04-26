@@ -496,7 +496,7 @@ class Datastream:
                 autoscaling actor pool.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or``"numpy"`` to select
+                select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
@@ -2074,7 +2074,7 @@ class Datastream:
             batch_size: The max number of records to return.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or``"numpy"`` to select
+                select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
 
@@ -2905,7 +2905,7 @@ class Datastream:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or``"numpy"`` to select
+                select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.

@@ -197,12 +197,10 @@ class DatasetPipeline:
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None to return
-                the underlying block exactly as is with no additional formatting.
-                The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or ``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -1063,7 +1061,7 @@ class DatasetPipeline:
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
-        """Cbatch :py:meth:`Datastream.take_batch <ray.data.Datastream.take_batch>`
+        """Call :py:meth:`Datastream.take_batch <ray.data.Datastream.take_batch>`
         over the stream of output batches from the pipeline"""
         return Datastream.take_batch(self, batch_size, batch_format=batch_format)
 
