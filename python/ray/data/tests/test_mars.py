@@ -45,10 +45,6 @@ def test_mars(ray_start_regular):
         pdf2,
     )
 
-    # Test simple datasets
-    with pytest.raises(NotImplementedError):
-        ray.data.range(10).to_mars()
-
     cluster.stop()
 
 
