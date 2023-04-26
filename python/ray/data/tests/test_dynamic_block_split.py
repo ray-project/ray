@@ -209,7 +209,7 @@ def test_dataset_pipeline(
     dsp = dsp.map_batches(lambda x: x)
     result_batches = list(ds.iter_batches(batch_size=5))
     for batch in result_batches:
-        assert len(batch) == 5
+        assert len(batch["one"]) == 5
     assert len(result_batches) == num_blocks_per_task * num_tasks / 5
 
     dsp = ds.window(blocks_per_window=2)
