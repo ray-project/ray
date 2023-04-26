@@ -7,31 +7,11 @@ import {
   RiCloseCircleFill,
   RiLoader4Line,
 } from "react-icons/ri";
-import { Link } from "react-router-dom";
 import { CommonRecentCard } from "../../../components/CommonRecentCard";
-import { UnifiedJob } from "../../../type/job";
-import { ServeApplication, ServeApplicationStatus } from "../../../type/serve";
 import { useServeApplications } from "../../serve/hook/useServeApplications";
-import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      padding: theme.spacing(2, 3),
-    },
-    listContainer: {
-      marginTop: theme.spacing(2),
-      flex: 1,
-      overflow: "hidden",
-    },
-    listItem: {
-      "&:not(:first-child)": {
-        marginTop: theme.spacing(1),
-      },
-    },
-
     icon: {
       width: 24,
       height: 24,
