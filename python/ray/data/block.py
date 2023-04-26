@@ -107,10 +107,18 @@ Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
+DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+
+
+class CallableProtocol(Protocol[T, U]):
+    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
+        ...
+
 
 # A class type that implements __call__.
 CallableClass = type
+
+CallableProtocol
 
 
 class _CallableClassProtocol(Protocol[T, U]):

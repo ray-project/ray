@@ -94,15 +94,12 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
-    BatchUDF,
+    CallableProtocol,
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
     DataBatch,
-    FlatMapUDF,
-    KeyFn,
-    RowUDF,
     StrictModeError,
     T,
     U,
@@ -170,7 +167,7 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 
 @PublicAPI
-class Datastream(Generic[T]):
+class Datastream:
     """A Datastream is a distributed data collection for data loading and processing.
 
     Datastreams are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
@@ -265,8 +262,8 @@ class Datastream(Generic[T]):
 
     @staticmethod
     def copy(
-        ds: "Datastream[T]", _deep_copy: bool = False, _as: Optional[type] = None
-    ) -> "Datastream[T]":
+        ds: "Datastream", _deep_copy: bool = False, _as: Optional[type] = None
+    ) -> "Datastream":
         if not _as:
             _as = Datastream
         if _deep_copy:
@@ -276,11 +273,11 @@ class Datastream(Generic[T]):
 
     def map(
         self,
-        fn: Callable[[Dict], Dict],
+        fn: CallableProtocol[Dict[str, Any], Dict[str, Any]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[U]":
+    ) -> "Datastream":
         """Apply the given function to each record of this datastream.
 
         Note that mapping individual records can be quite slow. Consider using
@@ -380,10 +377,10 @@ class Datastream(Generic[T]):
 
     def map_batches(
         self,
-        fn: BatchUDF,
+        fn: CallableProtocol[DataBatch, DataBatch],
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -395,22 +392,10 @@ class Datastream(Generic[T]):
         """Apply the given function to batches of data.
 
         This applies the ``fn`` in parallel with map tasks, with each task handling
-        a block or a bundle of blocks of the datastream. Each batch is executed serially
-        at Ray level (at lower level, the processing of the batch is usually
-        vectorized).
-
-        Batches are represented as dataframes, ndarrays, or lists. The default batch
-        type is determined by your datastream's schema. To determine the default batch
-        type, call :meth:`~Datastream.default_batch_format`. Alternatively, set the batch
-        type with ``batch_format``.
+        a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
 
         To learn more about writing functions for :meth:`~Datastream.map_batches`, read
         :ref:`writing user-defined functions <transform_datastreams_writing_udfs>`.
-
-        .. tip::
-            If you have a small number of big blocks, it may limit parallelism. You may
-            consider increasing the number of blocks via ``.repartition()`` before
-            applying ``.map_batches()``.
 
         .. tip::
             If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
@@ -692,7 +677,7 @@ class Datastream(Generic[T]):
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Add the given column to the datastream.
 
         This is only supported for datastreams convertible to pandas format.
@@ -744,7 +729,7 @@ class Datastream(Generic[T]):
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "Datastream[U]":
+    ) -> "Datastream":
         """Drop one or more columns from the datastream.
 
         Examples:
@@ -784,7 +769,7 @@ class Datastream(Generic[T]):
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Select one or more columns from the datastream.
 
         All input columns used to select need to be in the schema of the datastream.
@@ -826,11 +811,11 @@ class Datastream(Generic[T]):
 
     def flat_map(
         self,
-        fn: FlatMapUDF[T, U],
+        fn: CallableProtocol[Dict[str, Any], List[Dict[str, Any]]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[U]":
+    ) -> "Datastream":
         """Apply the given function to each record and then flatten results.
 
         Consider using ``.map_batches()`` for better performance (the batch size can be
@@ -900,11 +885,11 @@ class Datastream(Generic[T]):
 
     def filter(
         self,
-        fn: RowUDF[T, U],
+        fn: CallableProtocol[Dict[str, Any], bool],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Filter out records that do not satisfy the given predicate.
 
         Consider using ``.map_batches()`` for better performance (you can implement
@@ -961,7 +946,7 @@ class Datastream(Generic[T]):
 
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Datastream[T]":
+    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Datastream":
         """Repartition the datastream into exactly this number of blocks.
 
         After repartitioning, all blocks in the returned datastream will have
@@ -1006,7 +991,7 @@ class Datastream(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Randomly shuffle the elements of this datastream.
 
         Examples:
@@ -1052,7 +1037,7 @@ class Datastream(Generic[T]):
         self,
         *,
         seed: Optional[int] = None,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Randomly shuffle the blocks of this datastream.
 
         Examples:
@@ -1084,7 +1069,7 @@ class Datastream(Generic[T]):
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Randomly samples a fraction of the elements of this datastream.
 
         Note that the exact number of elements returned is not guaranteed,
@@ -1207,7 +1192,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
-    ) -> List["MaterializedDatastream[T]"]:
+    ) -> List["MaterializedDatastream"]:
         """Materialize and split the datastream into ``n`` disjoint pieces.
 
         This returns a list of MaterializedDatastreams that can be passed to Ray tasks
@@ -1410,7 +1395,7 @@ class Datastream(Generic[T]):
         ]
 
     @ConsumptionAPI
-    def split_at_indices(self, indices: List[int]) -> List["MaterializedDatastream[T]"]:
+    def split_at_indices(self, indices: List[int]) -> List["MaterializedDatastream"]:
         """Materialize and split the datastream at the given indices (like np.split).
 
         Examples:
@@ -1475,7 +1460,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split_proportionately(
         self, proportions: List[float]
-    ) -> List["MaterializedDatastream[T]"]:
+    ) -> List["MaterializedDatastream"]:
         """Materialize and split the datastream using proportions.
 
         A common use case for this would be splitting the datastream into train
@@ -1548,7 +1533,7 @@ class Datastream(Generic[T]):
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
-    ) -> Tuple["MaterializedDatastream[T]", "MaterializedDatastream[T]"]:
+    ) -> Tuple["MaterializedDatastream", "MaterializedDatastream"]:
         """Materialize and split the datastream into train and test subsets.
 
         Examples:
@@ -1600,7 +1585,7 @@ class Datastream(Generic[T]):
             return ds.split_at_indices([ds_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Datastream[T]"]) -> "Datastream[T]":
+    def union(self, *other: List["Datastream"]) -> "Datastream":
         """Materialize and combine this datastream with others of the same type.
 
         The order of the blocks in the datastreams is preserved, as is the
@@ -1689,7 +1674,7 @@ class Datastream(Generic[T]):
             self._lazy,
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedData[T]":
+    def groupby(self, key: Optional[str]) -> "GroupedData[T]":
         """Group the datastream by the key function or column name.
 
         Examples:
@@ -1755,7 +1740,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def sum(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute sum over entire datastream.
 
@@ -1817,7 +1802,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def min(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute minimum over entire datastream.
 
@@ -1879,7 +1864,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def max(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute maximum over entire datastream.
 
@@ -1941,7 +1926,7 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def mean(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute mean over entire datastream.
 
@@ -2004,7 +1989,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def std(
         self,
-        on: Optional[Union[KeyFn, List[KeyFn]]] = None,
+        on: Optional[Union[str, List[str]]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> U:
@@ -2077,8 +2062,8 @@ class Datastream(Generic[T]):
         return self._aggregate_result(ret)
 
     def sort(
-        self, key: Optional[KeyFn] = None, descending: bool = False
-    ) -> "Datastream[T]":
+        self, key: Optional[str] = None, descending: bool = False
+    ) -> "Datastream":
         # TODO ds.sort(lambda ...) fails with:
         #  Callable key '<function <lambda> at 0x1b07a4cb0>' requires
         #  datastream format to be 'simple', was 'arrow'.
@@ -2127,7 +2112,7 @@ class Datastream(Generic[T]):
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream[U]") -> "Datastream[(T, U)]":
+    def zip(self, other: "Datastream") -> "Datastream[(T, U)]":
         """Materialize and zip this datastream with the elements of another.
 
         The datastreams must have the same number of rows. For tabular datastreams, the
@@ -2174,7 +2159,7 @@ class Datastream(Generic[T]):
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
-    def limit(self, limit: int) -> "Datastream[T]":
+    def limit(self, limit: int) -> "Datastream":
         """Materialize and truncate the datastream to the first ``limit`` records.
 
         Contrary to :meth`.take`, this will not move any data to the caller's
@@ -3855,7 +3840,7 @@ class Datastream(Generic[T]):
                 self._blocks = blocks
                 self._i = 0
 
-            def __next__(self) -> Callable[[], "Datastream[T]"]:
+            def __next__(self) -> Callable[[], "Datastream"]:
                 if times and self._i >= times:
                     raise StopIteration
                 epoch = self._i
@@ -3975,7 +3960,7 @@ class Datastream(Generic[T]):
                 self._splits = splits.copy()
                 self._epoch = epoch
 
-            def __next__(self) -> "Datastream[T]":
+            def __next__(self) -> "Datastream":
                 if not self._splits:
                     raise StopIteration
 
@@ -4090,7 +4075,7 @@ class Datastream(Generic[T]):
         return pipe
 
     @Deprecated(message="Use `Datastream.materialize()` instead.")
-    def fully_executed(self) -> "MaterializedDatastream[T]":
+    def fully_executed(self) -> "MaterializedDatastream":
         logger.warning(
             "Deprecation warning: use Datastream.materialize() instead of "
             "fully_executed()."
@@ -4110,7 +4095,7 @@ class Datastream(Generic[T]):
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def materialize(self) -> "MaterializedDatastream[T]":
+    def materialize(self) -> "MaterializedDatastream":
         """Execute and materialize this datastream into object store memory.
 
         This can be used to read all blocks into memory. By default, Datastream
@@ -4159,7 +4144,7 @@ class Datastream(Generic[T]):
         message="Datastream is lazy by default, so this conversion call is no longer "
         "needed and this API will be removed in a future release"
     )
-    def lazy(self) -> "Datastream[T]":
+    def lazy(self) -> "Datastream":
         """Enable lazy evaluation.
 
         Datastream is lazy by default, so this is only useful for datastreams created
@@ -4269,7 +4254,7 @@ class Datastream(Generic[T]):
         """
         return pickle.loads(serialized_ds)
 
-    def _divide(self, block_idx: int) -> ("Datastream[T]", "Datastream[T]"):
+    def _divide(self, block_idx: int) -> ("Datastream", "Datastream"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
         l_ds = Datastream(
@@ -4421,7 +4406,7 @@ class Datastream(Generic[T]):
         return BlockFormat.SIMPLE
 
     def _aggregate_on(
-        self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
+        self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
     ):
         """Helper for aggregating on a particular subset of the datastream.
 
@@ -4436,7 +4421,7 @@ class Datastream(Generic[T]):
     def _build_multicolumn_aggs(
         self,
         agg_cls: type,
-        on: Optional[Union[KeyFn, List[KeyFn]]],
+        on: Optional[Union[str, List[str]]],
         ignore_nulls: bool,
         *args,
         skip_cols: Optional[List[str]] = None,

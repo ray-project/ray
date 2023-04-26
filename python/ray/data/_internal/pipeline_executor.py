@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-def pipeline_stage(fn: Callable[[], Datastream[T]]) -> Datastream[T]:
+def pipeline_stage(fn: Callable[[], Datastream]) -> Datastream:
     # Force eager evaluation of all blocks in the pipeline stage. This
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
@@ -162,7 +162,7 @@ class PipelineSplitExecutorCoordinator:
         self,
         pipeline: "DatasetPipeline[T]",
         n: int,
-        splitter: Callable[[Datastream], List["Datastream[T]"]],
+        splitter: Callable[[Datastream], List["Datastream"]],
         context: DataContext,
     ):
         DataContext._set_current(context)
@@ -172,7 +172,7 @@ class PipelineSplitExecutorCoordinator:
         self.splitter = splitter
         self.cur_splits = [None] * self.n
 
-    def next_datastream_if_ready(self, split_index: int) -> Optional[Datastream[T]]:
+    def next_datastream_if_ready(self, split_index: int) -> Optional[Datastream]:
         # TODO(swang): This will hang if one of the consumers fails and is
         # re-executed from the beginning. To make this fault-tolerant, we need
         # to make next_datastream_if_ready idempotent.
