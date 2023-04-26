@@ -140,7 +140,7 @@ class MockReplicaActorWrapper:
             self.recovering = False
             self.started = True
             self.version = self.starting_version
-        return ready, self.version
+        return ready, self.version, None
 
     def resource_requirements(self) -> Tuple[str, str]:
         assert self.started

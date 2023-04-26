@@ -597,7 +597,6 @@ def test_status_constructor_error(ray_start_stop):
         return (
             serve_status["app_status"]["status"] == "DEPLOY_FAILED"
             and "ZeroDivisionError" in serve_status["deployment_statuses"][0]["message"]
-            and "1/0" in serve_status["deployment_statuses"][0]["message"]
         )
 
     wait_for_condition(check_for_failed_deployment)
