@@ -63,7 +63,7 @@ pip install "ray[air]"
 
 `````{dropdown} Efficiently process your data into features.
 
-Load data into a ``Dataset``.
+Load data into a ``Datastream``.
 
 ```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
@@ -139,11 +139,11 @@ Use the trained model for batch prediction with a ``BatchPredictor``.
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
 Simply click on the dropdowns below to see examples of our most popular libraries.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datastreams
 :animate: fade-in-slide-down
 
-Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
-Datasets provide basic distributed data transformations such as `map`, `filter`, and `repartition`.
+Ray Data is the standard way to load and exchange data in Ray libraries and applications.
+Ray Data provides basic distributed data transformations such as `map`, `filter`, and `repartition`.
 They are compatible with a variety of file formats, datasources, and distributed frameworks.
 
 ````{note}
@@ -154,8 +154,8 @@ pip install "ray[data]" dask
 ```
 ````
 
-Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``.
-Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
+Get started by creating a Datastream from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``.
+A Datastream can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
@@ -163,18 +163,18 @@ Datasets can hold either plain Python objects (schema is a Python type), or Arro
 :end-before: __create_from_python_end__
 ```
 
-Datasets can be created from files on local disk or remote datasources such as S3. Any filesystem 
+Datastreams can be created from files on local disk or remote datasources such as S3. Any filesystem 
 [supported by pyarrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html) can be used to specify file locations.
-You can also create a ``Dataset`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
+You can also create a ``Datastream`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
 :start-after: __create_from_files_begin__
 :end-before: __create_from_files_end__
 ```
-Datasets can be transformed in parallel using ``.map()``. 
+Datastreams can be transformed in parallel using ``.map()``. 
 Transformations are executed *eagerly* and block until the operation is finished.
-Datasets also supports ``.filter()`` and ``.flat_map()``.
+Datastreams also supports ``.filter()`` and ``.flat_map()``.
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
@@ -182,7 +182,7 @@ Datasets also supports ``.filter()`` and ``.flat_map()``.
 :end-before: __data_transform_end__
 ```
 
-```{link-button} ../data/dataset
+```{link-button} ../data/data
 :type: ref
 :text: Learn more about Ray Data
 :classes: btn-outline-primary btn-block

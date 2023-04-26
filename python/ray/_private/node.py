@@ -239,9 +239,9 @@ class Node:
                     self.gcs_address,
                     self._raylet_ip_address,
                 )
-                self._plasma_store_socket_name = node_info.object_store_socket_name
-                self._raylet_socket_name = node_info.raylet_socket_name
-                self._ray_params.node_manager_port = node_info.node_manager_port
+                self._plasma_store_socket_name = node_info["object_store_socket_name"]
+                self._raylet_socket_name = node_info["raylet_socket_name"]
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -272,7 +272,7 @@ class Node:
         if head:
             gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
             if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
 
@@ -304,7 +304,7 @@ class Node:
                 self._raylet_ip_address,
             )
             if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info.node_manager_port
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -485,7 +485,7 @@ class Node:
     @property
     def address(self):
         """Get the address for bootstrapping, e.g. the address to pass to
-        `ray start` or `ray.int()` to start worker nodes, that has been
+        `ray start` or `ray.init()` to start worker nodes, that has been
         converted to ip:port format.
         """
         return self._gcs_address

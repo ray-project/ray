@@ -161,34 +161,34 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
     def test_case_stats_exist():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        return all(
-            [
-                "ray_node_cpu_utilization" in metric_names,
-                "ray_node_cpu_count" in metric_names,
-                "ray_node_mem_used" in metric_names,
-                "ray_node_mem_available" in metric_names,
-                "ray_node_mem_total" in metric_names,
-                "ray_node_mem_total" in metric_names,
-                "ray_node_mem_shared_bytes" in metric_names,
-                "ray_component_rss_mb" in metric_names,
-                "ray_component_uss_mb" in metric_names,
-                "ray_node_disk_io_read" in metric_names,
-                "ray_node_disk_io_write" in metric_names,
-                "ray_node_disk_io_read_count" in metric_names,
-                "ray_node_disk_io_write_count" in metric_names,
-                "ray_node_disk_io_read_speed" in metric_names,
-                "ray_node_disk_io_write_speed" in metric_names,
-                "ray_node_disk_read_iops" in metric_names,
-                "ray_node_disk_write_iops" in metric_names,
-                "ray_node_disk_usage" in metric_names,
-                "ray_node_disk_free" in metric_names,
-                "ray_node_disk_utilization_percentage" in metric_names,
-                "ray_node_network_sent" in metric_names,
-                "ray_node_network_received" in metric_names,
-                "ray_node_network_send_speed" in metric_names,
-                "ray_node_network_receive_speed" in metric_names,
-            ]
-        )
+        predicates = [
+            "ray_node_cpu_utilization" in metric_names,
+            "ray_node_cpu_count" in metric_names,
+            "ray_node_mem_used" in metric_names,
+            "ray_node_mem_available" in metric_names,
+            "ray_node_mem_total" in metric_names,
+            "ray_node_mem_total" in metric_names,
+            "ray_component_rss_mb" in metric_names,
+            "ray_component_uss_mb" in metric_names,
+            "ray_node_disk_io_read" in metric_names,
+            "ray_node_disk_io_write" in metric_names,
+            "ray_node_disk_io_read_count" in metric_names,
+            "ray_node_disk_io_write_count" in metric_names,
+            "ray_node_disk_io_read_speed" in metric_names,
+            "ray_node_disk_io_write_speed" in metric_names,
+            "ray_node_disk_read_iops" in metric_names,
+            "ray_node_disk_write_iops" in metric_names,
+            "ray_node_disk_usage" in metric_names,
+            "ray_node_disk_free" in metric_names,
+            "ray_node_disk_utilization_percentage" in metric_names,
+            "ray_node_network_sent" in metric_names,
+            "ray_node_network_received" in metric_names,
+            "ray_node_network_send_speed" in metric_names,
+            "ray_node_network_receive_speed" in metric_names,
+        ]
+        if sys.platform == "linux" or sys.platform == "linux2":
+            predicates.append("ray_node_mem_shared_bytes" in metric_names)
+        return all(predicates)
 
     def test_case_ip_correct():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)

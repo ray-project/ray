@@ -308,7 +308,8 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
+      FAST=True make develop
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
@@ -555,7 +556,7 @@ lint_bazel_pytest() {
     # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
     # - converts the xml to json
     # - feeds the json into pytest_checker.py
-    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python scripts/pytest_checker.py
+    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python ci/lint/pytest_checker.py
   done
 }
 
