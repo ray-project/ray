@@ -17,7 +17,7 @@ def test_obtain_test_result():
 
     def _mock_check_output(input: List[str]) -> str:
         commit, run = tuple(input[-1].split("-"))
-        return bytes(test_case[commit][int(run)], 'utf-8')
+        return bytes(test_case[commit][int(run)], "utf-8")
 
     for test_case in test_cases:
         with mock.patch(
@@ -27,6 +27,7 @@ def test_obtain_test_result():
             commits = set(test_case.keys())
             flaky_rerun = len(test_case[list(commits)[0]])
             _obtain_test_result(commits, flaky_rerun) == test_case
+
 
 def test_bisect():
     test_cases = {
