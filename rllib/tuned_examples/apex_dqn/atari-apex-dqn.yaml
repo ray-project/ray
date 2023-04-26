@@ -4,7 +4,7 @@ apex-breakoutnoframeskip-v5:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     stop:
         time_total_s: 7200
-        episode_reward_mean: 20.0
+        sampler_results/episode_reward_mean: 20.0
         timesteps_total: 7000000
     config:
         # Make analogous to old v4 + NoFrameskip.
