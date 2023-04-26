@@ -69,7 +69,11 @@ def _validate_resource_quantity(name, quantity):
         return f"The quantity of resource {name} cannot be negative"
     if (
         isinstance(quantity, float)
-        and not (quantity * ray._raylet.RESOURCE_UNIT_SCALING).is_integer()
+        and (
+            int(quantity * ray._raylet.RESOURCE_UNIT_SCALING)
+            / ray._raylet.RESOURCE_UNIT_SCALING
+        )
+        != quantity
     ):
         return (
             f"The precision of the fractional quantity of resource {name}"
