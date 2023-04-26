@@ -173,10 +173,9 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 class Datastream(Generic[T]):
     """A Datastream is a distributed data collection for data loading and processing.
 
-    Datastreams are distributed streams that produce ``ObjectRef[Block]`` outputs,
-    where each block holds an ordered collection of items, representing a shard of the
-    overall data collection. The block can be either a ``pyarrow.Table``, or Python
-    list. The block also determines the unit of parallelism.
+    Datastreams are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
+    where each block holds data in Arrow memory format, representing a shard of the
+    overall data collection. The block also determines the unit of parallelism.
 
     Datastreams can be created in multiple ways: from synthetic data via ``range_*()``
     APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
@@ -213,31 +212,26 @@ class Datastream(Generic[T]):
     Examples:
         >>> import ray
         >>> ds = ray.data.range(1000)
-        >>> # Transform in parallel with map_batches().
-        >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+        >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
+        >>> ds = ds.map_batches(lambda batch: {"id": batch["id"] * 2})
         MapBatches(<lambda>)
-        +- Datastream(num_blocks=17, num_rows=1000, schema=<class 'int'>)
-        >>> # Compute maximum
-        >>> ds.max()
+        +- Datastream(num_blocks=17, num_rows=1000, schema={id: int64})
+        >>> # Compute the maximum.
+        >>> ds.max("id")
         999
-        >>> # Group the data.
-        >>> ds.groupby(lambda x: x % 3).count()
-        Aggregate
-        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Shuffle this datastream randomly.
-        >>> ds.random_shuffle()
+        >>> ds = ds.random_shuffle()
         RandomShuffle
-        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
-        >>> ds.sort()
+        >>> ds = ds.sort("id")
         Sort
-        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
 
     Both unexecuted and materialized Datastreams can be passed between Ray tasks and
-    actors without incurring a copy. Datastream supports conversion to/from several more
-    featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and are also
-    compatible with distributed
-    TensorFlow / PyTorch.
+    actors without incurring a copy. Datastream supports conversion to/from several
+    more featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and are also
+    compatible with distributed TensorFlow / PyTorch.
     """
 
     def __init__(
@@ -282,7 +276,7 @@ class Datastream(Generic[T]):
 
     def map(
         self,
-        fn: RowUDF[T, U],
+        fn: Callable[[Dict], Dict],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -296,9 +290,10 @@ class Datastream(Generic[T]):
             >>> import ray
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
-            >>> ds.map(lambda x: x * 2)
+            >>> # The function goes from record (Dict[str, Any]) to record.
+            >>> ds.map(lambda record: {"id": record["id"] * 2})
             Map
-            +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
@@ -316,9 +311,8 @@ class Datastream(Generic[T]):
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute=ActorPoolStrategy(size=8) the transform will be applied on a
             >>> # pool of 8 Ray actors, each allocated 1 GPU by Ray.
-            >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map(CachedModel, # doctest: +SKIP
-            ...        compute=ActorPoolStrategy(size=8),
+            ...        compute=ray.data.ActorPoolStrategy(size=8),
             ...        num_gpus=1)
 
         Time complexity: O(datastream size / parallelism)
@@ -327,7 +321,7 @@ class Datastream(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            compute: The compute strategy, either "tasks" (default) to use Ray
+            compute: The compute strategy, either None (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
