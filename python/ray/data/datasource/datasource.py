@@ -1,6 +1,6 @@
 import builtins
 from copy import copy
-from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -13,7 +13,6 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
-    T,
 )
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -23,7 +22,7 @@ WriteResult = Any
 
 
 @PublicAPI
-class Datasource(Generic[T]):
+class Datasource:
     """Interface for defining a custom ``ray.data.Datastream`` datasource.
 
     To read a datasource into a datastream, use ``ray.data.read_datasource()``.
@@ -36,7 +35,7 @@ class Datasource(Generic[T]):
     ``write()`` are called in remote tasks.
     """
 
-    def create_reader(self, **read_args) -> "Reader[T]":
+    def create_reader(self, **read_args) -> "Reader":
         """Return a Reader for the given read arguments.
 
         The reader object will be responsible for querying the read metadata, and
@@ -48,7 +47,7 @@ class Datasource(Generic[T]):
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
-    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask[T]"]:
+    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
@@ -131,7 +130,7 @@ class Datasource(Generic[T]):
 
 
 @PublicAPI
-class Reader(Generic[T]):
+class Reader(Generic):
     """A bound read operation for a datasource.
 
     This is a stateful class so that reads can be prepared in multiple stages.
@@ -146,7 +145,7 @@ class Reader(Generic[T]):
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask[T]"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
@@ -169,7 +168,7 @@ class _LegacyDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask[T]"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
@@ -223,7 +222,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
 
 
 @PublicAPI
-class RangeDatasource(Datasource[Union[ArrowRow, int]]):
+class RangeDatasource(Datasource):
     """An example datasource that generates ranges of numbers from [0..n).
 
     Examples:
@@ -340,7 +339,7 @@ class _RangeDatasourceReader(Reader):
 
 
 @DeveloperAPI
-class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
+class DummyOutputDatasource(Datasource):
     """An example implementation of a writable datasource for testing.
 
     Examples:
@@ -400,7 +399,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
 
 @DeveloperAPI
-class RandomIntRowDatasource(Datasource[ArrowRow]):
+class RandomIntRowDatasource(Datasource):
     """An example datasource that generates rows with random int64 columns.
 
     Examples:

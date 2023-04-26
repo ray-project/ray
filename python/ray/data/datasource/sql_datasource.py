@@ -23,7 +23,7 @@ def _cursor_to_block(cursor) -> Block:
 
 
 @PublicAPI(stability="alpha")
-class SQLDatasource(Datasource[ArrowRow]):
+class SQLDatasource(Datasource):
     def __init__(self, connection_factory: Callable[[], Connection]):
         self.connection_factory = connection_factory
 

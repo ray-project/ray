@@ -327,7 +327,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
 
 @PublicAPI
 def read_datasource(
-    datasource: Datasource[T],
+    datasource: Datasource,
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,

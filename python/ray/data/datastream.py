@@ -2846,7 +2846,7 @@ class Datastream:
     @ConsumptionAPI
     def write_datasource(
         self,
-        datasource: Datasource[T],
+        datasource: Datasource,
         *,
         ray_remote_args: Dict[str, Any] = None,
         **write_args,

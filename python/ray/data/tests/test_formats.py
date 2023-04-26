@@ -223,7 +223,7 @@ def test_from_torch(shutdown_only, tmp_path):
     assert actual_data == expected_data
 
 
-class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
+class NodeLoggerOutputDatasource(Datasource):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
     def __init__(self):

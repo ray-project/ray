@@ -190,7 +190,7 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
+class FileBasedDatasource(Datasource):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
