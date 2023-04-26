@@ -14,7 +14,10 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatastreamStats
-from ray.data._internal.stage_impl import RandomizeBlocksStage
+from ray.data._internal.stage_impl import (
+    RandomizeBlocksStage,
+    LimitStage,
+)
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
@@ -26,6 +29,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
@@ -300,6 +304,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             min_rows_per_bundle=stage.target_block_size,
             ray_remote_args=stage.ray_remote_args,
         )
+    elif isinstance(stage, LimitStage):
+        return LimitOperator(stage.limit, input_op)
     elif isinstance(stage, AllToAllStage):
         fn = stage.fn
         block_udf = stage.block_udf
