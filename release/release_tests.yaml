@@ -10,7 +10,10 @@
 #  working_dir: example_dir
 #
 #  # How often to run the tests.
-#  # One of [manual, any, multi, nightly, weekly].
+#  # One of [manual, any, multi, nightly, nightly-3x, weekly].
+#  # Descriptions of each frequency (that's not immediately obvious):
+#  # - manual: Not run on a schedule, but can be manually run through the buildkite UI.
+#  # - nightly-3x: Run 3 times a week (Monday, Wednesday, Friday).
 #  frequency: weekly
 #  # Owning team. This field will be persisted to the database
 #  team: ml
@@ -834,80 +837,77 @@
 # Workspace templates release tests #
 #####################################
 
-- name: workspace_template_small_01_batch_inference
+- name: workspace_template_batch_inference
   group: Workspace templates
-  working_dir: workspace_templates/01_batch_inference
+  working_dir: workspace_templates/tests
   python: "3.9"
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   cluster:
     cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
 
   run:
     timeout: 600
-    script: jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test batch_inference.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test batch_inference.ipynb && ipython _test.py
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ../configs/release_test_cluster_env.yaml
-        cluster_compute: ../configs/compute/gpu/gcp_small.yaml
+      - __suffix__: aws
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_env: ../configs/release_test_cluster_env.yaml
+          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
 
 
-- name: workspace_template_small_02_many_model_training
+- name: workspace_template_many_model_training
   group: Workspace templates
-  working_dir: workspace_templates/02_many_model_training
+  working_dir: workspace_templates/tests
   python: "3.9"
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   cluster:
     cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/cpu/aws_small.yaml
+    cluster_compute: ../configs/compute/cpu/aws_release_test.yaml
 
   run:
-    timeout: 300
-    script: pip install -U -r requirements.txt
-      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test many_model_training.ipynb && ipython _test.py
+    timeout: 600
+    script: jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ../configs/release_test_cluster_env.yaml
-        cluster_compute: ../configs/compute/cpu/gcp_small.yaml
+      - __suffix__: aws
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_env: ../configs/release_test_cluster_env.yaml
+          cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
 
-- name: workspace_template_small_03_serving_stable_diffusion
+
+- name: workspace_template_serving_stable_diffusion
   group: Workspace templates
-  working_dir: workspace_templates/03_serving_stable_diffusion
+  working_dir: workspace_templates/tests
   python: "3.9"
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   cluster:
     cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_small.yaml
+    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
 
   run:
     timeout: 900
-    script: pip install -U -r requirements.txt
-      && jupyter nbconvert --TagRemovePreprocessor.remove_input_tags='large'
-      --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ../configs/release_test_cluster_env.yaml
-        cluster_compute: ../configs/compute/gpu/gcp_small.yaml
+      - __suffix__: aws
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_env: ../configs/release_test_cluster_env.yaml
+          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+
 
 #######################
 # XGBoost release tests
