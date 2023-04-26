@@ -123,9 +123,11 @@ class ImpalaConfig(AlgorithmConfig):
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
 
-        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 40.0
-        self.grad_clip_by_global_norm = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
 
         self.opt_type = "adam"
         self.lr_schedule = None

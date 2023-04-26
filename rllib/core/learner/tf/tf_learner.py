@@ -30,6 +30,7 @@ from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
@@ -102,35 +103,14 @@ class TfLearner(Learner):
         self,
         gradients_dict: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        """Applies grad clipping depending on the optimizer config."""
+        """Postprocesses gradients depending on the optimizer config."""
 
-        # Clip by value (each gradient individually).
-        grad_clip_by_value = self._optimizer_config.get("grad_clip_by_value", None)
-        if grad_clip_by_value is not None:
-            gradients_dict = {
-                k: tf.clip_by_value(v, -grad_clip_by_value, grad_clip_by_value)
-                for k, v in gradients_dict.items()
-            }
-
-        # Clip by L2-norm (per gradient tensor).
-        grad_clip_by_norm = self._optimizer_config.get("grad_clip_by_norm", None)
-        if grad_clip_by_norm is not None:
-            gradients_dict = {
-                k: tf.clip_by_norm(v, grad_clip_by_norm)
-                for k, v in gradients_dict.items()
-            }
-
-        # Clip by global L2-norm (across all gradient tensors).
-        grad_clip_by_global_norm = self._optimizer_config.get(
-            "grad_clip_by_global_norm", None
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
         )
-        if grad_clip_by_global_norm is not None:
-            clipped_grads, _ = tf.clip_by_global_norm(
-                list(gradients_dict.values()), grad_clip_by_global_norm
-            )
-            gradients_dict = {
-                k: v for k, v in zip(gradients_dict.keys(), clipped_grads)
-            }
 
         return gradients_dict
 

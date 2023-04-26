@@ -27,7 +27,7 @@ from ray.rllib.core.learner.learner import (
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import clip_gradients, convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -84,44 +84,14 @@ class TorchLearner(Learner):
         self,
         gradients_dict: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        """Applies grad clipping depending on the optimizer config."""
+        """Postprocesses gradients depending on the optimizer config."""
 
-        # Clip by value (each gradient individually).
-        grad_clip_by_value = self._optimizer_config.get("grad_clip_by_value", None)
-        if grad_clip_by_value is not None:
-            gradients_dict = {
-                k: torch.clip(v, -grad_clip_by_value, grad_clip_by_value)
-                for k, v in gradients_dict.items()
-            }
-
-        # Clip by L2-norm (per gradient tensor).
-        grad_clip_by_norm = self._optimizer_config.get("grad_clip_by_norm", None)
-        if grad_clip_by_norm is not None:
-            gradients_dict = {
-                k: nn.utils.clip_grad_norm_(v, grad_clip_by_norm)
-                for k, v in gradients_dict.items()
-            }
-
-        # Clip by global L2-norm (across all gradient tensors).
-        grad_clip_by_global_norm = self._optimizer_config.get(
-            "grad_clip_by_global_norm", None
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
         )
-        if grad_clip_by_global_norm is not None:
-            # Compute the global L2-norm of all the gradient tensors.
-            grad_tensors = gradients_dict.values()
-            total_l2_norm = 0.0
-            for tensor in grad_tensors:
-                # `.norm()` is the square root of the sum of all squares.
-                # We need to "undo" the square root b/c we want to compute the global
-                # norm afterwards -> `** 2`.
-                total_l2_norm += tensor.norm(2) ** 2
-            # Now we do the square root.
-            total_l2_norm = torch.sqrt(total_l2_norm)
-
-            # Clip all the gradients.
-            if total_l2_norm > grad_clip_by_global_norm:
-                for tensor in grad_tensors:
-                    tensor.mul_(grad_clip_by_global_norm / total_l2_norm)
 
         return gradients_dict
 

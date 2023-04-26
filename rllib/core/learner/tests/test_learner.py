@@ -117,9 +117,8 @@ class TestLearner(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=("tf2")):
             # Clip by value only.
             config.training(
-                grad_clip_by_value=0.75,
-                grad_clip_by_norm=None,
-                grad_clip_by_global_norm=None,
+                grad_clip=0.75,
+                grad_clip_by="value",
             )
             # TODO (sven): remove this once validation does NOT cause HPs to be
             #  generated anymore.
@@ -153,9 +152,8 @@ class TestLearner(unittest.TestCase):
 
             # Clip by norm.
             config = config.copy(copy_frozen=False).training(
-                grad_clip_by_value=None,
-                grad_clip_by_norm=1.0,
-                grad_clip_by_global_norm=None,
+                grad_clip=1.0,
+                grad_clip_by="norm",
             )
             # TODO (sven): remove this once validation does NOT cause HPs to be
             #  generated anymore.
@@ -177,9 +175,8 @@ class TestLearner(unittest.TestCase):
 
             # Clip by global norm.
             config = config.copy(copy_frozen=False).training(
-                grad_clip_by_value=None,
-                grad_clip_by_norm=None,
-                grad_clip_by_global_norm=5.0,
+                grad_clip=5.0,
+                grad_clip_by="global_norm",
             )
             # TODO: remove this once validation does NOT cause HPs to be generated
             #  anymore

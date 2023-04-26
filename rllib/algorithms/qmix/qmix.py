@@ -78,9 +78,11 @@ class QMixConfig(SimpleQConfig):
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
 
-        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 10.0
-        self.grad_clip_by_global_norm = 10.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
 
         # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
         # alternative `learn_on_loaded_batch` alternative for the GPU.

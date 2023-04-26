@@ -118,9 +118,11 @@ class SimpleQConfig(AlgorithmConfig):
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
 
-        # TODO (sven): Deprecate grad_clip setting once all-in on new Learner API.
         self.grad_clip = 40.0
-        self.grad_clip_by_global_norm = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
 
         self.tau = 1.0
         # __sphinx_doc_end__
