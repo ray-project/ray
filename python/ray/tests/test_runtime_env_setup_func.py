@@ -15,7 +15,7 @@ def test_setup_func_basic(shutdown_only):
     ray.init(
         num_cpus=1,
         runtime_env={
-            "worker_setup_func": lambda: configure_logging(logging.DEBUG),
+            "worker_setup_hook": lambda: configure_logging(logging.DEBUG),
             "env_vars": {"ABC": "123"},
         },
     )
@@ -46,10 +46,10 @@ def test_setup_func_basic(shutdown_only):
     # ray.get(
     #     f.options(
     #         runtime_env={
-    #             "worker_setup_func": lambda: configure_logging(logging.INFO)}
+    #             "worker_setup_hook": lambda: configure_logging(logging.INFO)}
     #     ).remote("INFO"))
     # a = Actor.optinos(
-    #     runtime_env={"worker_setup_func": lambda: configure_logging(logging.INFO)}
+    #     runtime_env={"worker_setup_hook": lambda: configure_logging(logging.INFO)}
     # ).remote("INFO")
     # assert ray.get(a.__ray_ready__.remote())
 

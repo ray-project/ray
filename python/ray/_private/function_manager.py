@@ -9,7 +9,7 @@ import threading
 import time
 import traceback
 from collections import defaultdict, namedtuple
-from typing import Optional
+from typing import Optional, Callable
 
 import ray
 import ray._private.profiling as profiling
@@ -179,6 +179,56 @@ class FunctionActorManager:
         # that the notification doesn't include any actual data.
         # TODO(mwtian) implement per-job notification here.
         self._worker.gcs_publisher.publish_function_key(key)
+
+    def export_setup_func(self, setup_func: Callable) -> str:
+        """Export the setup hook function and return the key.
+        
+        """
+        # SANG-TODO: Test
+        pickled_function = pickle_dumps(
+            setup_func,
+            f"Cannot serialize the setup function {setup_func.__name__}"
+        )
+
+        function_to_run_id = hashlib.shake_128(pickled_function).digest(
+            ray_constants.ID_SIZE
+        )
+        key = make_function_table_key(
+            # This value should match with gcs_function_manager.h.
+            # Otherwise, it won't be GC'ed.
+            b"FunctionsToRun",
+            self._worker.current_job_id.binary(),
+            function_to_run_id)
+
+        check_oversized_function(
+            pickled_function,
+            setup_func.__name__,
+            "function",
+            self._worker
+        )
+
+        try:
+            self._worker.gcs_client.internal_kv_put(
+                key,
+                pickle.dumps(
+                    {
+                        "job_id": self._worker.current_job_id.binary(),
+                        "function_id": function_to_run_id,
+                        "function": pickled_function,
+                    }
+                ),
+                # overwrite
+                True,
+                ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to export the setup hook "
+                f"{setup_func.__name__}.")
+            logger.exception(e)
+            raise e
+    
+        return key
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.

@@ -1794,6 +1794,7 @@ cdef class CoreWorker:
         self.cgname_to_eventloop_dict = None
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
+        self.current_runtime_env = None
 
     def shutdown(self):
         with nogil:
