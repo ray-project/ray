@@ -180,6 +180,10 @@ if __name__ == "__main__":
         # Set to INFO so we'll see the server's actual address:port.
         .debugging(log_level="INFO")
     )
+    # Disable RLModules because they need connectors
+    # TODO(Artur): Deprecate ExternalEnv and reenable connectors and RL Modules here
+    config.rl_module(_enable_rl_module_api=False)
+    config.training(_enable_learner_api=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":

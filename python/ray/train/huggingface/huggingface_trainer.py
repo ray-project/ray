@@ -92,17 +92,18 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     shards, with each Actor training on a single shard.
     All the other datasets will not be split.
 
+    Please note that if you use a custom ``transformers.Trainer`` subclass,
+    the ``get_train_dataloader`` method will be wrapped around to disable
+    sharding by ``transformers.IterableDatasetShard``, as the dataset will
+    already be sharded on the Ray AIR side.
+
     You can also provide ``datasets.Dataset`` object or other dataset objects
     allowed by ``transformers.Trainer`` directly in the ``trainer_init_per_worker``
     function, without specifying the ``datasets`` dict. It is recommended to initialize
     those objects inside the function, as otherwise they will be serialized and passed
     to the function, which may lead to long runtime and memory issues with large
-    amounts of data.
-
-    Please note that if you use a custom ``transformers.Trainer`` subclass,
-    the ``get_train_dataloader`` method will be wrapped around to disable
-    sharding by ``transformers.IterableDatasetShard``, as the dataset will
-    already be sharded on the Ray AIR side.
+    amounts of data. In this case, the training dataset will be split
+    automatically by Transformers.
 
     HuggingFace loggers will be automatically disabled, and the ``local_rank``
     argument in ``TrainingArguments`` will be automatically set. Please note
@@ -209,7 +210,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             ``transformers.Trainer`` object and takes in the following arguments:
             train ``Torch.Dataset``, optional evaluation ``Torch.Dataset``
             and config as kwargs. The Torch Datasets are automatically
-            created by converting the Ray Datasets internally before
+            created by converting the Datastreams internally before
             they are passed into the function.
         trainer_init_config: Configurations to pass into
             ``trainer_init_per_worker`` as kwargs.
@@ -219,7 +220,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset and key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset

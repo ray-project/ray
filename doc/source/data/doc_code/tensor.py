@@ -6,9 +6,9 @@ from typing import Dict, Any
 # __create_range_begin__
 import ray
 
-# Create a Dataset of tensors.
+# Create a Datastream of tensors.
 ds = ray.data.range_tensor(10000, shape=(64, 64))
-# -> Dataset(num_blocks=200, num_rows=10000,
+# -> Datastream(num_blocks=200, num_rows=10000,
 #            schema={__value__: numpy.ndarray(shape=(64, 64), dtype=int64)})
 
 ds.take(2)
@@ -34,7 +34,7 @@ import ray
 import pandas as pd
 import numpy as np
 
-# Start with a tabular base dataset.
+# Start with a tabular base datastream.
 ds = ray.data.range_table(1000)
 
 # Create a single TensorArray column.
@@ -53,7 +53,7 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 ds.map_batches(single_col_udf)
 ds.materialize()
-# -> Dataset(num_blocks=17, num_rows=1000,
+# -> Datastream(num_blocks=17, num_rows=1000,
 #            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
 
@@ -75,7 +75,7 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 ds.map_batches(multi_col_udf)
 ds.materialize()
-# -> Dataset(num_blocks=17, num_rows=1000,
+# -> Datastream(num_blocks=17, num_rows=1000,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=int64),
 #                    embed: numpy.ndarray(shape=(256,), dtype=uint8)})
 # __create_pandas_2_end__
@@ -85,12 +85,12 @@ import ray
 
 # From in-memory numpy data.
 ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
-# -> Dataset(num_blocks=1, num_rows=1000,
+# -> Datastream(num_blocks=1, num_rows=1000,
 #            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 
 # From saved numpy files.
 ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
+# -> Datastream(num_blocks=1, num_rows=3,
 #            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 # __create_numpy_end__
 
@@ -99,7 +99,7 @@ import ray
 
 # Reading previously saved Tensor data works out of the box.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
@@ -140,12 +140,12 @@ df = pd.DataFrame({
     "one": [1, 2, 3],
     "two": [tensor.tobytes() for tensor in arr]})
 
-# Write the dataset to Parquet. The tensor column will be written as an
+# Write the datastream to Parquet. The tensor column will be written as an
 # array of opaque byte blobs.
 ds = ray.data.from_pandas([df])
 ds.write_parquet(path)
 
-# Read the Parquet files into a new Dataset, with the serialized tensors
+# Read the Parquet files into a new Datastream, with the serialized tensors
 # automatically cast to our tensor column extension type.
 ds = ray.data.read_parquet(
     path, tensor_column_schema={"two": (np.int_, (2, 2, 2))})
@@ -172,7 +172,7 @@ df = pd.DataFrame({
     "one": [1, 2, 3],
     "two": [pickle.dumps(tensor) for tensor in arr]})
 
-# Write the dataset to Parquet. The tensor column will be written as an
+# Write the datastream to Parquet. The tensor column will be written as an
 # array of opaque byte blobs.
 ds = ray.data.from_pandas([df])
 ds.write_parquet(path)
@@ -184,7 +184,7 @@ def cast_udf(block: pa.Table) -> pa.Table:
     block["two"] = TensorArray([pickle.loads(a) for a in block["two"]])
     return pa.Table.from_pandas(block)
 
-# Read the Parquet files into a new Dataset, applying the casting UDF
+# Read the Parquet files into a new Datastream, applying the casting UDF
 # on-the-fly within the underlying read tasks.
 ds = ray.data.read_parquet(path, _block_udf=cast_udf)
 
@@ -197,7 +197,7 @@ ds.materialize()
 
 # __create_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
-# -> Dataset(num_blocks=3, num_rows=3, 
+# -> Datastream(num_blocks=3, num_rows=3, 
 #            schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
@@ -214,9 +214,9 @@ ds.take(1)
 # __consume_native_begin__
 import ray
 
-# Read a single-column example dataset.
+# Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
+# -> Datastream(num_blocks=1, num_rows=3,
 #            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: np.ndarray) -> np.ndarray:
@@ -245,9 +245,9 @@ next(ds.iter_batches())
 # __consume_native_2_begin__
 import ray
 
-# Read a multi-column example dataset.
+# Read a multi-column example datastream.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
@@ -269,9 +269,9 @@ next(ds.iter_batches())
 # __consume_pandas_begin__
 import ray
 
-# Read a single-column example dataset.
+# Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
+# -> Datastream(num_blocks=1, num_rows=3,
 #            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: pd.DataFrame) -> pd.DataFrame:
@@ -292,9 +292,9 @@ next(ds.iter_batches(batch_format="pandas"))
 # __consume_pandas_2_begin__
 import ray
 
-# Read a multi-column example dataset.
+# Read a multi-column example datastream.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
@@ -319,9 +319,9 @@ from ray.data.extensions.tensor_extension import ArrowTensorArray
 
 import pyarrow
 
-# Read a single-column example dataset.
+# Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
+# -> Datastream(num_blocks=1, num_rows=3,
 #            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: pyarrow.Table) -> pyarrow.Table:
@@ -351,9 +351,9 @@ next(ds.iter_batches(batch_format="pyarrow"))
 # __consume_pyarrow_end__
 
 # __consume_pyarrow_2_begin__
-# Read a multi-column example dataset.
+# Read a multi-column example datastream.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
 def add_one(batch: pyarrow.Table) -> pyarrow.Table:
@@ -387,9 +387,9 @@ next(ds.iter_batches(batch_format="pyarrow"))
 # __consume_numpy_begin__
 import ray
 
-# Read a single-column example dataset.
+# Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
+# -> Datastream(num_blocks=1, num_rows=3,
 #            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: np.ndarray) -> np.ndarray:
@@ -417,9 +417,9 @@ next(ds.iter_batches(batch_format="numpy"))
 # __consume_numpy_end__
 
 # __consume_numpy_2_begin__
-# Read a multi-column example dataset.
+# Read a multi-column example datastream.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
 def add_one(batch: Dict[str, Any]) -> Dict[str, Any]:
@@ -453,12 +453,12 @@ ds.materialize()
 shutil.rmtree("/tmp/some_path")
 
 # __write_1_begin__
-# Read a multi-column example dataset.
+# Read a multi-column example datastream.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
-# You can write the dataset to Parquet.
+# You can write the datastream to Parquet.
 ds.write_parquet("/tmp/some_path")
 
 # And you can read it back.
@@ -472,12 +472,12 @@ read_ds.materialize()
 shutil.rmtree("/tmp/some_path")
 
 # __write_2_begin__
-# Read a single-column example dataset.
+# Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
+# -> Datastream(num_blocks=1, num_rows=3,
 #            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
-# You can write the dataset to Parquet.
+# You can write the datastream to Parquet.
 ds.write_numpy("/tmp/some_path")
 
 # And you can read it back.
@@ -488,11 +488,11 @@ print(read_ds.schema())
 
 # fmt: off
 # __create_variable_shaped_tensors_begin___
-# Create a Dataset of variable-shaped tensors.
+# Create a Datastream of variable-shaped tensors.
 ragged_array = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
 df = pd.DataFrame({"feature": ragged_array, "label": [1, 1]})
 ds = ray.data.from_pandas([df, df])
-# -> Dataset(num_blocks=2, num_rows=4,
+# -> Datastream(num_blocks=2, num_rows=4,
 #            schema={feature: numpy.ndarray(shape=(None, None), dtype=float64), 
 #            label: int64})
 
@@ -508,7 +508,7 @@ ds.take(2)
 
 # fmt: off
 # __tf_variable_shaped_tensors_begin___
-# Convert Ray Dataset to a TensorFlow Dataset.
+# Convert Datastream to a TensorFlow Dataset.
 tf_ds = ds.to_tf(
     batch_size=2,
     feature_columns="feature",

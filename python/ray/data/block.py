@@ -22,7 +22,6 @@ import numpy as np
 import ray
 from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
-from ray.data._internal.usage import record_block_format_usage
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -34,9 +33,9 @@ except ImportError:
     resource = None
 
 if sys.version_info >= (3, 8):
-    from typing import Protocol
+    from typing import Literal, Protocol
 else:
-    from typing_extensions import Protocol
+    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas
@@ -162,7 +161,7 @@ VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
 
 def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
-    ctx = ray.data.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         if given_batch_format == "default":
             given_batch_format = "numpy"
@@ -172,6 +171,31 @@ def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
                 f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
             )
     return given_batch_format
+
+
+def _apply_strict_mode_batch_size(
+    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+) -> Optional[int]:
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        if use_gpu and (not given_batch_size or given_batch_size == "default"):
+            raise StrictModeError(
+                "`batch_size` must be provided to `map_batches` when requesting GPUs. "
+                "The optimal batch size depends on the model, data, and GPU used. "
+                "It is recommended to use the largest batch size that doesn't result "
+                "in your GPU device running out of memory. You can view the GPU memory "
+                "usage via the Ray dashboard."
+            )
+        elif given_batch_size == "default":
+            return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
+
+    else:
+        if given_batch_size == "default":
+            return ray.data.context.DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
 
 
 @DeveloperAPI
@@ -397,7 +421,7 @@ class BlockAccessor(Generic[T]):
         if isinstance(batch, np.ndarray):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            ctx = ray.data.DatasetContext.get_current()
+            ctx = ray.data.DataContext.get_current()
             if ctx.strict_mode:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(batch)}: "
@@ -415,7 +439,7 @@ class BlockAccessor(Generic[T]):
                 return ArrowBlockAccessor.numpy_to_block(
                     batch, passthrough_arrow_not_implemented_errors=True
                 )
-            except pa.ArrowNotImplementedError:
+            except (pa.ArrowNotImplementedError, pa.ArrowInvalid):
                 import pandas as pd
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
@@ -433,22 +457,19 @@ class BlockAccessor(Generic[T]):
         if isinstance(block, pyarrow.Table):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            record_block_format_usage("arrow")
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
-            record_block_format_usage("pandas")
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-            record_block_format_usage("arrow")
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
-            ctx = ray.data.DatasetContext.get_current()
+            ctx = ray.data.DataContext.get_current()
             if ctx.strict_mode:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(block)}: "
@@ -457,7 +478,6 @@ class BlockAccessor(Generic[T]):
                     "wrap them in a dict of numpy arrays, e.g., "
                     "return `{'item': np.array(batch)}` instead of just `batch`."
                 )
-            record_block_format_usage("simple")
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
