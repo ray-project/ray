@@ -81,6 +81,9 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       whiteSpace: "nowrap",
       color: "#5F6469",
     },
+    icon: {
+      marginRight: theme.spacing(1),
+    },
   }),
 );
 
@@ -94,7 +97,7 @@ const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
 
   const cardContent = (
     <React.Fragment>
-      <JobStatusIcon job={job} />
+      <JobStatusIcon className={classes.icon} job={job} />
       <div className={classes.textContainer}>
         <Typography className={classes.title} variant="body2">
           {job.job_id ?? job.submission_id}

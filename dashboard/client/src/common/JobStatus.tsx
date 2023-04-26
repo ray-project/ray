@@ -8,14 +8,17 @@ import {
 } from "react-icons/ri";
 import { StatusChip } from "../components/StatusChip";
 import { UnifiedJob } from "../type/job";
+import { ClassNameProps } from "./props";
 
 const useJobRunningIconStyles = makeStyles((theme) =>
   createStyles({
     icon: {
-      width: 24,
-      height: 24,
-      marginRight: theme.spacing(1),
-      flex: "0 0 20px",
+      width: 20,
+      height: 20,
+    },
+    iconSmall: {
+      width: 16,
+      height: 16,
     },
     "@keyframes spinner": {
       from: {
@@ -35,20 +38,36 @@ const useJobRunningIconStyles = makeStyles((theme) =>
   }),
 );
 
-export const JobRunningIcon = () => {
+type JobRunningIconProps = { small?: boolean } & ClassNameProps;
+
+export const JobRunningIcon = ({
+  className,
+  small = false,
+}: JobRunningIconProps) => {
   const classes = useJobRunningIconStyles();
   return (
-    <RiLoader4Line className={classNames(classes.icon, classes.iconRunning)} />
+    <RiLoader4Line
+      className={classNames(
+        classes.icon,
+        classes.iconRunning,
+        {
+          [classes.iconSmall]: small,
+        },
+        className,
+      )}
+    />
   );
 };
 
 const useJobStatusIconStyles = makeStyles((theme) =>
   createStyles({
     icon: {
-      width: 24,
-      height: 24,
-      marginRight: theme.spacing(1),
-      flex: "0 0 20px",
+      width: 20,
+      height: 20,
+    },
+    iconSmall: {
+      width: 16,
+      height: 16,
     },
     colorSuccess: {
       color: theme.palette.success.main,
@@ -61,27 +80,46 @@ const useJobStatusIconStyles = makeStyles((theme) =>
 
 type JobStatusIconProps = {
   job: UnifiedJob;
-};
+  small?: boolean;
+} & ClassNameProps;
 
-export const JobStatusIcon = ({ job }: JobStatusIconProps) => {
+export const JobStatusIcon = ({
+  job,
+  small = false,
+  className,
+}: JobStatusIconProps) => {
   const classes = useJobStatusIconStyles();
 
   switch (job.status) {
     case "SUCCEEDED":
       return (
         <RiCheckboxCircleFill
-          className={classNames(classes.icon, classes.colorSuccess)}
+          className={classNames(
+            classes.icon,
+            classes.colorSuccess,
+            {
+              [classes.iconSmall]: small,
+            },
+            className,
+          )}
         />
       );
     case "FAILED":
     case "STOPPED":
       return (
         <RiCloseCircleFill
-          className={classNames(classes.icon, classes.colorError)}
+          className={classNames(
+            classes.icon,
+            classes.colorError,
+            {
+              [classes.iconSmall]: small,
+            },
+            className,
+          )}
         />
       );
     default:
-      return <JobRunningIcon />;
+      return <JobRunningIcon className={className} small={small} />;
   }
 };
 
@@ -92,8 +130,11 @@ type JobStatusWithIconProps = {
 export const JobStatusWithIcon = ({ job }: JobStatusWithIconProps) => {
   return (
     <Box display="inline-flex" alignItems="center">
-      <StatusChip type="job" status={job.status} />
-      <JobStatusIcon job={job} />
+      <StatusChip
+        type="job"
+        status={job.status}
+        icon={<JobStatusIcon job={job} />}
+      />
     </Box>
   );
 };
