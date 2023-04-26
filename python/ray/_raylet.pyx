@@ -2444,7 +2444,7 @@ cdef class CoreWorker:
                 if status.IsOutOfResource():
                     actor = self.get_actor_handle(actor_id)
                     actor_handle = (CCoreWorkerProcess.GetCoreWorker()
-                                .GetActorHandle(c_actor_id))
+                                    .GetActorHandle(c_actor_id))
                     raise PendingCallsLimitExceeded(
                         f"The task {function_descriptor.function_name} could not be "
                         f"submitted to {repr(actor)} because more than"
