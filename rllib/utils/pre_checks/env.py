@@ -1,10 +1,11 @@
 """Common pre-checks for all RLlib experiments."""
-from copy import copy
 import logging
-import numpy as np
 import traceback
-import tree  # pip install dm_tree
+from copy import copy
 from typing import TYPE_CHECKING, Set, Union
+
+import numpy as np
+import tree  # pip install dm_tree
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -38,11 +39,11 @@ def check_env(env: EnvType) -> None:
     """
     from ray.rllib.env import (
         BaseEnv,
+        ExternalEnv,
+        ExternalMultiAgentEnv,
         MultiAgentEnv,
         RemoteBaseEnv,
         VectorEnv,
-        ExternalMultiAgentEnv,
-        ExternalEnv,
     )
 
     if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
@@ -212,6 +213,10 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
                     space_type,
                 )
             )
+    # sample a valid action in case of parametric actions
+    if isinstance(reset_obs, dict):
+        if "action_mask" in reset_obs:
+            sampled_action = env.action_space.sample(mask=reset_obs["action_mask"])
 
     # Check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
