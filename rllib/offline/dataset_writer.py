@@ -8,6 +8,7 @@ from ray.rllib.offline.json_writer import _to_json_dict
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.io import is_remote_path
 from typing import Dict, List
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,12 @@ class DatasetWriter(OutputWriter):
         ), "output_config.path must be specified when using Dataset output."
 
         self.format = output_config["format"]
-        self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
+
+        output_path = output_config["path"]
+        if is_remote_path(output_path):
+            self.path = output_path
+        else:
+            self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
             if "max_num_samples_per_file" in output_config
