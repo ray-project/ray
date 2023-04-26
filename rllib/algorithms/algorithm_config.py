@@ -429,6 +429,7 @@ class AlgorithmConfig(_Config):
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
         self._disable_initialize_loss_from_dummy_batch = False
+        self._load_only_minibatch_onto_device = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -963,6 +964,14 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+        if (
+            self.simple_optimizer or self.framework_str != "torch"
+        ) and self._load_only_minibatch_onto_device:
+            raise ValueError(
+                "`load_only_minibatch_onto_device` is only supported for "
+                f"config.framework({self.framework_str}) and without simple_optimizer."
+            )
 
         # Detect if specified env is an Atari env.
         if self.is_atari is None:
@@ -1625,6 +1634,10 @@ class AlgorithmConfig(_Config):
             _enable_learner_api: Whether to enable the LearnerGroup and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
+            _load_only_minibatch_onto_device: Whether to load only the minibatch onto
+                the given device. This is useful for larger training batches that
+                don't fit on the given device while the mini-batches and their
+                gradients do. This experimental setting is only supported for torch
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2460,6 +2473,7 @@ class AlgorithmConfig(_Config):
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_execution_plan_api: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
+        _load_only_minibatch_onto_device: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2503,6 +2517,8 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _load_only_minibatch_onto_device is not NotProvided:
+            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 
