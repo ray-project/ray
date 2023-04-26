@@ -231,7 +231,10 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     try:
         fsspec_fs = fsspec.filesystem(parsed.scheme, **storage_kwargs)
     except Exception:
-        # Raised when protocol not known
+        # ValueError when protocol is not known.
+        # ImportError when protocol is known but package not installed.
+        # Other errors can be raised if args/kwargs are incompatible.
+        # Thus we should except broadly here.
         return None
 
     fsspec_handler = pyarrow.fs.FSSpecHandler
