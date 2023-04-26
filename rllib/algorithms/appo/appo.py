@@ -239,6 +239,11 @@ class APPOConfig(ImpalaConfig):
         )
 
 
+class UpdateTargetAndKL:
+    def __init__(self, workers, config):
+        pass
+
+
 class APPO(Impala):
     def __init__(self, config, *args, **kwargs):
         """Initializes an APPO instance."""
