@@ -965,7 +965,7 @@ class Learner:
         need to happen for instantiation of the module.
 
         Returns:
-            The constructed MultiAgentRLModule.
+            A constructed MultiAgentRLModule.
         """
         if self._module_obj is not None:
             module = self._module_obj
