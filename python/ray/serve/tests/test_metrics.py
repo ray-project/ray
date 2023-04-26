@@ -193,6 +193,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == "/fake_route"
     assert num_requests[0]["method"] == "GET"
+    assert num_requests[0]["application"] == ""
     print("serve_num_http_requests working as expected.")
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
@@ -215,6 +216,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_deployment_errors[0]["deployment"] == "app_f"
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
+    assert num_deployment_errors[0]["application"] == "app"
     print("serve_num_deployment_http_error_requests working as expected.")
 
 
