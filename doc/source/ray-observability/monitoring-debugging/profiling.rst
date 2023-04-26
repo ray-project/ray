@@ -21,21 +21,23 @@ First, install ``memray``.
 But in this example, we will write them to `/tmp/ray/session_latest/logs` because Ray dashboard allows you to download files inside the log folder.
 This will allow you to download profiling files from other nodes.
 
-.. tabbed:: Actors
+.. tab-set::
 
-  .. literalinclude:: ../doc_code/memray_profiling.py
-      :language: python
-      :start-after: __memray_profiling_start__
-      :end-before: __memray_profiling_end__
+    .. tab-item:: Actors
 
-.. tabbed:: Tasks
+      .. literalinclude:: ../doc_code/memray_profiling.py
+          :language: python
+          :start-after: __memray_profiling_start__
+          :end-before: __memray_profiling_end__
 
-  Note that tasks have a shorter lifetime, so there could be lots of memory profiling files.
+    .. tab-item:: Tasks
 
-  .. literalinclude:: ../doc_code/memray_profiling.py
-      :language: python
-      :start-after: __memray_profiling_task_start__
-      :end-before: __memray_profiling_task_end__
+      Note that tasks have a shorter lifetime, so there could be lots of memory profiling files.
+
+      .. literalinclude:: ../doc_code/memray_profiling.py
+          :language: python
+          :start-after: __memray_profiling_task_start__
+          :end-before: __memray_profiling_task_end__
 
 Once the task or actor runs, go to the :ref:`Logs View <dash-logs-view>` of the dashboard. Find and click the log file name.
 

@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Tuple
 
 import click
 import yaml
@@ -26,8 +26,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.common import ServeDeployMode
-from ray.serve.deployment import deployment_to_schema
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -231,7 +230,7 @@ def deploy(config_file_name: str, address: str):
     help=(
         "Runs an application from the specified import path (e.g., my_script:"
         "app) or application(s) from a YAML config.\n\n"
-        "If passing an import path, it must point to a bound Serve application or "
+        "If passing an import path, it must point to a Serve Application or "
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
@@ -613,9 +612,9 @@ def shutdown(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Serve Deployment Graph's config file.",
     help=(
-        "Imports the ClassNode(s) or FunctionNode(s) at IMPORT_PATH(S) and generates a "
+        "Imports the Application at IMPORT_PATH(S) and generates a "
         "structured config for it. If the flag --multi-app is set, accepts multiple "
-        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "Applications and generates a multi-application config. Config "
         "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
@@ -659,14 +658,13 @@ def build(
     sys.path.insert(0, app_dir)
 
     def build_app_config(import_path: str, name: str = None):
-        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-        if not isinstance(node, (ClassNode, FunctionNode)):
+        app: Application = import_attr(import_path)
+        if not isinstance(app, Application):
             raise TypeError(
-                f"Expected '{import_path}' to be ClassNode or "
-                f"FunctionNode, but got {type(node)}."
+                f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(node)
+        app = build_app(app)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
