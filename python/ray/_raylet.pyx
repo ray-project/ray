@@ -2743,6 +2743,7 @@ cdef class CoreWorker:
 
         task_output_inlined_bytes = 0
         i = -1
+
         for i, output in enumerate(outputs):
             if num_returns >= 0 and i >= num_returns:
                 raise ValueError(

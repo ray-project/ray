@@ -462,6 +462,7 @@ class Worker:
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
+        self.generator_cache = {}
 
     @property
     def connected(self):

@@ -1,6 +1,7 @@
 import inspect
 import logging
 import weakref
+from functools import wraps
 from typing import Any, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
@@ -22,7 +23,7 @@ from ray._private.inspect_util import (
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
-from ray.exceptions import AsyncioActorExit
+from ray.exceptions import AsyncioActorExit, RayTaskError, RayTaskStopIteration
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -39,6 +40,82 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
+
+
+# @PrivateAPI
+class StreamingObjectRefGenerator:
+    def __init__(self, session_id_object_ref, actor, method_name, is_gencoroutine):
+        # The first return value of generator actor method
+        # always returns the session_id.
+        self._session_id_object_ref = session_id_object_ref
+        import weakref
+
+        self._actor_ref = weakref.ref(actor)
+        self._actor_id = actor._actor_id
+        self._method_name = method_name
+        self._is_gencoroutine = is_gencoroutine
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            if self._is_gencoroutine:
+                return ray.get(
+                    self._next(next_func=self._actor_ref().__ray_async_generator_next__)
+                )
+            else:
+                return ray.get(
+                    self._next(next_func=self._actor_ref().__ray_generator_next__)
+                )
+        except RayTaskError as e:
+            if isinstance(e.cause, RayTaskStopIteration):
+                raise StopIteration
+            else:
+                raise e
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            if self._is_gencoroutine:
+                return await self._next(
+                    next_func=self._actor_ref().__ray_async_generator_next__
+                )
+            else:
+                return await self._next(
+                    next_func=self._actor_ref().__ray_generator_next__
+                )
+        except RayTaskError as e:
+            if isinstance(e.cause, RayTaskStopIteration):
+                raise StopAsyncIteration
+            else:
+                raise e
+
+    def _next(self, *, next_func):
+        # Since it is a weak ref, it could be GC'ed already if the caller
+        # already del actor_handle.
+        if self._actor_ref() is None:
+            raise ValueError(
+                f"The actor {self._actor_id} is already "
+                "garbage collected. Did you call del?"
+            )
+        # SANG-TODO Properly add a task name here.
+        result_ref = next_func.remote(
+            _ray_generator_session_id=self._session_id_object_ref
+        )
+        return result_ref
+
+    def __del__(self):
+        if self._actor_ref() is None:
+            raise ValueError(
+                f"The actor {self._actor_id} is already "
+                "garbage collected. Did you call del?"
+            )
+        self._actor_ref().__clean_generator__.remote(
+            _ray_generator_session_id=self._session_id_object_ref
+        )
 
 
 @PublicAPI
@@ -248,6 +325,8 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
+        # FUNCTION, GENERATOR
+        self.method_types = {}
         self.concurrency_group_for_methods = {}
 
         for method_name, method in actor_methods:
@@ -281,6 +360,15 @@ class _ActorClassMethodMetadata(object):
                 self.concurrency_group_for_methods[
                     method_name
                 ] = method.__ray_concurrency_group__
+
+            if inspect.isgeneratorfunction(method):
+                self.method_types[method_name] = "GENERATOR"
+            elif inspect.isasyncgenfunction(method):
+                self.method_types[method_name] = "ASYNC_GENERATOR"
+            elif inspect.iscoroutinefunction(method):
+                self.method_types[method_name] = "ASYNC_FUNCTION"
+            else:
+                self.method_types[method_name] = "FUNCTION"
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -480,6 +568,44 @@ class ActorClass:
         actor_creation_function_descriptor = PythonFunctionDescriptor.from_class(
             modified_class.__ray_actor_class__
         )
+
+        # Replace generator methods
+        def generator_decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                import uuid
+
+                worker = ray._private.worker.global_worker
+                generator = func(*args, **kwargs)
+                _ray_generator_session_id = str(uuid.uuid4())
+                worker.generator_cache[_ray_generator_session_id] = generator
+                return _ray_generator_session_id
+
+            return wrapper
+
+        # Replace async generator methods
+        def async_generator_decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                import uuid
+
+                worker = ray._private.worker.global_worker
+                generator = func(*args, **kwargs)
+                _ray_generator_session_id = str(uuid.uuid4())
+                worker.generator_cache[_ray_generator_session_id] = generator
+                return _ray_generator_session_id
+
+            return wrapper
+
+        for name, method in inspect.getmembers(
+            modified_class, predicate=inspect.isasyncgenfunction
+        ):
+            setattr(modified_class, name, async_generator_decorator(method))
+
+        for name, method in inspect.getmembers(
+            modified_class, predicate=inspect.isgeneratorfunction
+        ):
+            setattr(modified_class, name, generator_decorator(method))
 
         self.__ray_metadata__ = _ActorClassMetadata(
             Language.PYTHON,
@@ -750,6 +876,8 @@ class ActorClass:
         if kwargs is None:
             kwargs = {}
         meta = self.__ray_metadata__
+
+        # Find if async methods exist.
         actor_has_async_methods = (
             len(
                 inspect.getmembers(
@@ -997,6 +1125,7 @@ class ActorClass:
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
+            meta.method_meta.method_types,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
@@ -1056,6 +1185,7 @@ class ActorHandle:
         method_decorators,
         method_signatures,
         method_num_returns,
+        method_types,
         actor_method_cpus,
         actor_creation_function_descriptor,
         session_and_job,
@@ -1066,6 +1196,7 @@ class ActorHandle:
         self._ray_original_handle = original_handle
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
+        self._ray_method_types = method_types
         self._ray_method_num_returns = method_num_returns
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
@@ -1181,6 +1312,19 @@ class ActorHandle:
             object_refs = object_refs[0]
         elif len(object_refs) == 0:
             object_refs = None
+
+        if (
+            self._ray_method_types[method_name] == "GENERATOR"
+            or self._ray_method_types[method_name] == "ASYNC_GENERATOR"
+        ):
+            assert object_refs is not None
+            assert not isinstance(object_refs, list)
+            return StreamingObjectRefGenerator(
+                object_refs,
+                self,
+                method_name,
+                self._ray_method_types[method_name] == "ASYNC_GENERATOR",
+            )
 
         return object_refs
 
@@ -1328,6 +1472,34 @@ def _modify_class(cls):
             worker = ray._private.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
+
+        def __ray_generator_next__(self, _ray_generator_session_id: str):
+            worker = ray._private.worker.global_worker
+            if _ray_generator_session_id not in worker.generator_cache:
+                raise RayTaskStopIteration
+
+            generator = worker.generator_cache[_ray_generator_session_id]
+            try:
+                return next(generator)
+            except StopIteration:
+                del worker.generator_cache[_ray_generator_session_id]
+                raise RayTaskStopIteration
+
+        async def __ray_async_generator_next__(self, _ray_generator_session_id: str):
+            worker = ray._private.worker.global_worker
+            if _ray_generator_session_id not in worker.generator_cache:
+                raise RayTaskStopIteration
+
+            generator = worker.generator_cache[_ray_generator_session_id]
+            try:
+                return await generator.__anext__()
+            except StopAsyncIteration:
+                del worker.generator_cache[_ray_generator_session_id]
+                raise RayTaskStopIteration
+
+        def __clean_generator__(self, _ray_generator_session_id: str):
+            worker = ray._private.worker.global_worker
+            del worker.generator_cache[_ray_generator_session_id]
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

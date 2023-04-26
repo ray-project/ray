@@ -19,6 +19,10 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 import setproctitle
 
 
+class RayTaskStopIteration(Exception):
+    pass
+
+
 @PublicAPI
 class RayError(Exception):
     """Super class of all ray exception types."""
