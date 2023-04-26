@@ -1060,6 +1060,13 @@ class DatasetPipeline:
         of output batches from the pipeline"""
         return Datastream.take_all(self, limit)
 
+    def take_batch(
+        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
+    ) -> DataBatch:
+        """Cbatch :py:meth:`Datastream.take_batch <ray.data.Datastream.take_batch>`
+        over the stream of output batches from the pipeline"""
+        return Datastream.take_batch(self, batch_size, batch_format=batch_format)
+
     def show(self, limit: int = 20) -> None:
         """Call :py:meth:`Datastream.show <ray.data.Datastream.show>` over the stream of
         output batches from the pipeline"""

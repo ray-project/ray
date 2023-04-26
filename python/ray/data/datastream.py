@@ -1372,12 +1372,12 @@ class Datastream:
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_at_indices([2, 5])
-            >>> d1.take()
-            [{"id": 0}, {"id": 1}]
-            >>> d2.take()
-            [{"id": 2}, {"id": 3}, {"id": 4}]
-            >>> d3.take()
-            [{"id": 5}, {"id": 6}, {"id": 7}, {"id": 8}, {"id": 9}]
+            >>> d1.take_batch()
+            {"id": array([0, 1])}
+            >>> d2.take_batch()
+            {"id": array([2, 3, 4])}
+            >>> d3.take_batch()
+            {"id": array([5, 6, 7, 8, 9])}
 
         Time complexity: O(num splits)
 
@@ -1448,12 +1448,12 @@ class Datastream:
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
-            >>> d1.take()
-            [{"id": 0}, {"id": 1}]
-            >>> d2.take()
-            [{"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}, {"id": 6}]
-            >>> d3.take()
-            [{"id": 7}, {"id": 8}, {"id": 9}]
+            >>> d1.take_batch()
+            {"id": array([0, 1])}
+            >>> d2.take_batch()
+            {"id": array([2, 3, 4, 5, 6])}
+            >>> d3.take_batch()
+            {"id": array([7, 8, 9])}
 
         Time complexity: O(num splits)
 
@@ -1511,10 +1511,10 @@ class Datastream:
             >>> import ray
             >>> ds = ray.data.range(8)
             >>> train, test = ds.train_test_split(test_size=0.25)
-            >>> train.take()
-            [{"id": 0}, {"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}]
-            >>> test.take()
-            [{"id": 6}, {"id": 7}]
+            >>> train.take_batch()
+            {"id": array([0, 1, 2, 3, 4, 5])}
+            >>> test.take_batch()
+            {"id": array([6, 7])}
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -2001,10 +2001,10 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ds1 = ray.data.range(2)
-            >>> ds2 = ray.data.range(2)
-            >>> ds1.zip(ds2).take()
-            [{"id": 0, "id_1": 0}, {"id": 1, "id_1": 1}]
+            >>> ds1 = ray.data.range(5)
+            >>> ds2 = ray.data.range(5)
+            >>> ds1.zip(ds2).take_batch()
+            {"id": array([0, 1, 2, 3, 4]), "id_1": array([0, 1, 2, 3, 4])},
 
         Time complexity: O(datastream size / parallelism)
 
@@ -2037,8 +2037,8 @@ class Datastream:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.limit(2).take()
-            [{"id": 0}, {"id": 1}]
+            >>> ds.limit(5).take_batch()
+            {"id": array([0, 1, 2, 3, 4])}
 
         Time complexity: O(limit specified)
 
@@ -2073,12 +2073,10 @@ class Datastream:
         Args:
             batch_size: The max number of records to return.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
-                to return the underlying block exactly as is with no additional
-                formatting. The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
 
         Returns:
             A batch of up to ``batch_size`` records from the datastream.
@@ -2099,7 +2097,7 @@ class Datastream:
         return res
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def take(self, limit: int = 20) -> List[T]:
+    def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` records from the datastream.
 
         This will move up to ``limit`` records to the caller's machine; if
@@ -2128,7 +2126,7 @@ class Datastream:
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def take_all(self, limit: Optional[int] = None) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the records in the datastream.
 
         This will move the entire datastream to the caller's machine; if the
@@ -2201,13 +2199,8 @@ class Datastream:
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
-    def schema(
-        self, fetch_if_missing: bool = True
-    ) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self, fetch_if_missing: bool = True) -> "Schema":
         """Return the schema of the datastream.
-
-        For datastream of Arrow records, this will return the Arrow schema.
-        For datastream of Python objects, this returns their Python type.
 
         Time complexity: O(1)
 
@@ -2217,7 +2210,7 @@ class Datastream:
                 Default is True.
 
         Returns:
-            The Python type or Arrow schema of the records, or None if the
+            The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
         ctx = DataContext.get_current()
@@ -2288,7 +2281,7 @@ class Datastream:
     ) -> None:
         """Write the datastream to parquet.
 
-        This is only supported for datastream convertible to Arrow records.
+        This is only supported for datastreams convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
         Unless a custom block path provider is given, the format of the output
@@ -2631,8 +2624,7 @@ class Datastream:
             path: The path to the destination root directory, where npy
                 files will be written to.
             column: The name of the table column that contains the tensor to
-                be written. The default is ``"__value__"``, the column name that
-                Datastream uses for storing tensors in single-column tables.
+                be written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: Try to create all directories in destination path
                 if True. Does nothing if all directories already exist.
@@ -2642,6 +2634,13 @@ class Datastream:
                 write each datastream block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        context = DataContext.get_current()
+        if context.strict_mode and column == TENSOR_COLUMN_NAME:
+            raise ValueError(
+                "In strict mode, the column must be specified "
+                "(e.g., `write_numpy(column='data')`)."
+            )
+
         self.write_datasource(
             NumpyDatasource(),
             ray_remote_args=ray_remote_args,
@@ -2850,12 +2849,8 @@ class Datastream:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, Mapping]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
         """Return a local row iterator over the datastream.
-
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dicts
-        are yielded for each row by the iterator. If the datastream is not tabular,
-        the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -2909,12 +2904,10 @@ class Datastream:
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
-                to return the underlying block exactly as is with no additional
-                formatting. The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -3670,15 +3663,16 @@ class Datastream:
 
         Examples:
             >>> import ray
+            >>> ds = ray.data.range(5, parallelism=1)
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ray.data.range(5, parallelism=1).repeat().take()
-            [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...]
+            >>> ds.repeat().take_batch()
+            {"id": array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
             >>> # Can apply transformations to the pipeline.
-            >>> ray.data.range(5, parallelism=1).repeat().map(lambda x: -x).take()
-            [0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...]
+            >>> ds.repeat().map(lambda x: -x).take_batch()
+            {"id": array([0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...])}
             >>> # Can shuffle each epoch (datastream) in the pipeline.
-            >>> ray.data.range(5).repeat().random_shuffle().take() # doctest: +SKIP
-            [2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...]
+            >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
+            {"id": array([2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...])}
 
         Args:
             times: The number of times to loop over this datastream, or None
