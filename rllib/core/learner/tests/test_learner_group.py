@@ -90,8 +90,11 @@ class RemoteTrainingHelper:
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
         )
-        local_learner_results = local_learner.update(ma_batch)
-        learner_group_results = learner_group.update(ma_batch)
+        # the optimizer state is not initialized fully until the first time that
+        # training is completed. A call to get state before that won't contain the
+        # optimizer state. So we do a dummy update here to initialize the optimizer
+        local_learner.update(ma_batch)
+        learner_group.update(ma_batch)
 
         check(local_learner.get_state(), learner_group.get_state())
         local_learner_results = local_learner.update(ma_batch)
@@ -121,8 +124,6 @@ class TestLearnerGroup(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
             training_helper = RemoteTrainingHelper.remote()
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
-            # training_helper = RemoteTrainingHelper()
-            # training_helper.local_training_helper(fw, scaling_mode)
 
     def test_update_multigpu(self):
         fws = ["tf", "torch"]

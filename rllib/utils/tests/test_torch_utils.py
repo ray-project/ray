@@ -4,7 +4,10 @@ import numpy as np
 import torch.cuda
 
 import ray
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    copy_tensors_and_move_to_device,
+)
 
 
 class TestTorchUtils(unittest.TestCase):
@@ -42,6 +45,35 @@ class TestTorchUtils(unittest.TestCase):
         self.assertTrue(converted["a"][1] is tensor)
         self.assertTrue(converted["b"].dtype is torch.float32)
         self.assertTrue(converted["c"] is None)
+
+    def test_copy_tensors_and_move_to_device(self):
+        array = np.array([1, 2, 3], dtype=np.float32)
+        tensor = torch.from_numpy(array)
+        tensor_2 = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64)
+
+        # Test single tensor
+        copied_tensor = copy_tensors_and_move_to_device(tensor, torch.device("cpu"))
+        self.assertTrue(copied_tensor.device == torch.device("cpu"))
+        self.assertNotEqual(id(copied_tensor), id(tensor))
+        self.assertTrue(all(copied_tensor == tensor))
+
+        # check that dtypes aren't modified
+        copied_tensor_2 = copy_tensors_and_move_to_device(tensor_2, torch.device("cpu"))
+        self.assertTrue(copied_tensor_2.dtype == tensor_2.dtype)
+        self.assertFalse(copied_tensor_2.dtype == torch.float32)
+
+        # Test nested structure
+        nested_structure = {"a": tensor, "b": tensor_2, "c": 1}
+        copied_nested_structure = copy_tensors_and_move_to_device(
+            nested_structure, torch.device("cpu")
+        )
+        self.assertTrue(copied_nested_structure["a"].device == torch.device("cpu"))
+        self.assertTrue(copied_nested_structure["b"].device == torch.device("cpu"))
+        self.assertTrue(copied_nested_structure["c"] == 1)
+        self.assertNotEqual(id(copied_nested_structure["a"]), id(tensor))
+        self.assertNotEqual(id(copied_nested_structure["b"]), id(tensor_2))
+        self.assertTrue(all(copied_nested_structure["a"] == tensor))
+        self.assertTrue(all(copied_nested_structure["b"] == tensor_2))
 
 
 if __name__ == "__main__":

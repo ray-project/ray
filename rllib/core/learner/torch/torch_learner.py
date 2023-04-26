@@ -28,7 +28,10 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_and_move_to_device
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    copy_tensors_and_move_to_device,
+)
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.framework import try_import_torch
 
@@ -122,7 +125,7 @@ class TorchLearner(Learner):
         optimizer_name_weights = {}
         for name, optim in self._named_optimizers.items():
             optim_state_dict = optim.state_dict()
-            optim_state_dict_cpu = copy_and_move_to_device(
+            optim_state_dict_cpu = copy_tensors_and_move_to_device(
                 optim_state_dict, device="cpu"
             )
             optimizer_name_weights[name] = optim_state_dict_cpu
@@ -137,7 +140,7 @@ class TorchLearner(Learner):
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
             optim = self._named_optimizers[name]
-            weight_dict_correct_device = copy_and_move_to_device(
+            weight_dict_correct_device = copy_tensors_and_move_to_device(
                 weight_dict, device=self._device
             )
             optim.load_state_dict(weight_dict_correct_device)
