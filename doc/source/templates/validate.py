@@ -4,23 +4,19 @@ from pathlib import Path
 import yaml
 
 
-def get_doc_path() -> Path:
-    # For CI, Bazel will set this environment variable as the "data" directory.
-    test_data_dir = os.environ.get("TEST_SRCDIR")
+def get_root_path() -> Path:
+    """
+    If we're running from a Ray repo, and just use the
+    current file to get the doc directory.
+    ray/doc/source/examples/ -> ray/
 
-    if test_data_dir:
-        doc_path = Path(test_data_dir)
-    else:
-        # Otherwise, we're running from a Ray repo, and just use the
-        # current file to get the doc directory.
-        # ray/doc/source/examples/ -> ray/doc
-        doc_path = (Path(__file__).parent / ".." / "..").resolve()
-
-    return doc_path
-
-
-def rel_path_to_doc(rel_path_to_ray) -> Path:
-    return Path(rel_path_to_ray).relative_to("doc")
+    For CI, the current file location is:
+    `<bazel_runfiles_dir>/doc/source/examples/validate.py`
+    We can get the "ray root dir" in the same way:
+    <bazel_runfiles_dir>/doc/source/examples -> <bazel_runfiles_dir>/
+    """
+    root_path = Path(__file__).parent / ".." / ".." / ".."
+    return root_path.resolve()
 
 
 def validate_templates_yaml_schema(templates) -> dict:
@@ -38,31 +34,29 @@ def validate_templates_yaml_schema(templates) -> dict:
 
 
 def validate_template_paths(templates, invalid_paths) -> None:
-    doc_path = get_doc_path()
+    root_path = get_root_path()
 
     for template_name, template_config in templates.items():
         if "path" not in template_config:
             continue
 
-        # The yaml specifies relative paths to the ray root directory: doc/a/b/c
-        rel_path_to_ray = template_config["path"]
-        # Relative path to the ray/doc directory: -> a/b/c
-        rel_path = rel_path_to_doc(rel_path_to_ray)
-        if not (doc_path / rel_path).exists():
+        # The yaml specifies relative paths to the ray root directory
+        rel_path = template_config["path"]
+        if not (root_path / rel_path).exists():
             invalid_paths[template_name].append(rel_path)
 
 
 def validate_cluster_envs(templates, invalid_paths, invalid_yamls) -> None:
-    doc_path = get_doc_path()
+    root_path = get_root_path()
 
     for template_name, template_config in templates.items():
         if "cluster_env" not in template_config:
             continue
 
-        cluster_env_rel_path = rel_path_to_doc(template_config["cluster_env"])
-        cluster_env_path = doc_path / cluster_env_rel_path
+        rel_path = template_config["cluster_env"]
+        cluster_env_path = root_path / rel_path
         if not cluster_env_path.exists():
-            invalid_paths[template_name].append(cluster_env_rel_path)
+            invalid_paths[template_name].append(rel_path)
         else:
             try:
                 # Assert that the yaml file is properly formatted.
@@ -73,7 +67,7 @@ def validate_cluster_envs(templates, invalid_paths, invalid_yamls) -> None:
 
 
 def validate_compute_configs(templates, invalid_paths, invalid_yamls) -> dict:
-    doc_path = get_doc_path()
+    root_path = get_root_path()
     required_cloud_providers = {"AWS", "GCP"}
 
     all_missing_providers = {}
@@ -89,11 +83,9 @@ def validate_compute_configs(templates, invalid_paths, invalid_yamls) -> dict:
             all_missing_providers[template_name] = missing_providers
             continue
 
-        rel_paths = [
-            rel_path_to_doc(path) for path in compute_config_per_provider.values()
-        ]
+        rel_paths = list(compute_config_per_provider.values())
         for rel_path in rel_paths:
-            compute_config_path = doc_path / rel_path
+            compute_config_path = root_path / rel_path
             if not compute_config_path.exists():
                 invalid_paths[template_name].append(rel_path)
             else:
@@ -108,8 +100,8 @@ def validate_compute_configs(templates, invalid_paths, invalid_yamls) -> dict:
 
 
 if __name__ == "__main__":
-    doc_path = get_doc_path()
-    templates_catalog_path = doc_path / "source/templates/templates.yaml"
+    root_path = get_root_path()
+    templates_catalog_path = root_path / "doc/source/templates/templates.yaml"
 
     with open(templates_catalog_path, "r") as f:
         templates = yaml.safe_load(f)
