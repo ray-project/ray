@@ -710,8 +710,7 @@ def test_sort_validate_keys(
 
     invalid_col_name = "invalid_column"
     with pytest.raises(
-        ValueError,
-        match=f"The column '{invalid_col_name}' does not exist"
+        ValueError, match=f"The column '{invalid_col_name}' does not exist"
     ):
         ds.sort(invalid_col_name).take_all()
 
@@ -774,8 +773,7 @@ def test_aggregate_validate_keys(
     ds = ray.data.range(10)
     invalid_col_name = "invalid_column"
     with pytest.raises(
-        ValueError,
-        match=f"The column '{invalid_col_name}' does not exist"
+        ValueError, match=f"The column '{invalid_col_name}' does not exist"
     ):
         ds.groupby(invalid_col_name).count()
 

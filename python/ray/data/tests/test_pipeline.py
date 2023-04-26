@@ -129,7 +129,11 @@ def test_pipeline_actors(shutdown_only):
         ray.data.range(3)
         .repeat(10)
         .map(column_udf("id", lambda x: x + 1))
-        .map(column_udf("id", lambda x: x + 1), compute=ray.data.ActorPoolStrategy(), num_gpus=1)
+        .map(
+            column_udf("id", lambda x: x + 1),
+            compute=ray.data.ActorPoolStrategy(),
+            num_gpus=1,
+        )
     )
 
     assert sorted(extract_values("id", pipe.take(999))) == sorted([2, 3, 4] * 10)
@@ -218,7 +222,12 @@ def test_window_by_bytes(ray_start_regular_shared):
 
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
-    pipe = ray.data.range(5).map(column_udf("id", lambda x: x * 2)).repeat(3).map(column_udf("id", lambda x: x * 2))
+    pipe = (
+        ray.data.range(5)
+        .map(column_udf("id", lambda x: x * 2))
+        .repeat(3)
+        .map(column_udf("id", lambda x: x * 2))
+    )
     results = [extract_values("id", p.take()) for p in pipe.iter_epochs()]
     assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
 
@@ -288,7 +297,9 @@ def test_basic_pipeline(ray_start_regular_shared):
     assert extract_values("id", pipe.take()) == list(range(10))
 
     pipe = (
-        ds.window(blocks_per_window=1).map(lambda x: x).flat_map(lambda x: [{"id": x["id"]}, {"id": x["id"] + 1}])
+        ds.window(blocks_per_window=1)
+        .map(lambda x: x)
+        .flat_map(lambda x: [{"id": x["id"]}, {"id": x["id"] + 1}])
     )
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
     assert pipe.count() == 20
@@ -525,7 +536,7 @@ def test_split(ray_start_regular_shared):
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
-    pipe = ray.data.range(n).map(column_udf("id",lambda x: x + 1)).repeat(2)
+    pipe = ray.data.range(n).map(column_udf("id", lambda x: x + 1)).repeat(2)
 
     @ray.remote(num_cpus=0)
     def consume(shard, i):
