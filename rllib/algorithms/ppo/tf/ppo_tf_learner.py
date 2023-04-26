@@ -1,7 +1,7 @@
 import logging
 from typing import Mapping, Any
 
-from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,8 +15,8 @@ _, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class PPOTfLearner(PPOBaseLearner, TfLearner):
-    """Implements tf-specific PPO loss logic on top of PPOBaseLearner.
+class PPOTfLearner(PPOLearner, TfLearner):
+    """Implements tf-specific PPO loss logic on top of PPOLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()`.
     """
@@ -110,10 +110,10 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             "cur_kl_coeff": self.kl_coeff,
         }
 
-    @override(PPOBaseLearner)
+    @override(PPOLearner)
     def _create_kl_variable(self, value: float) -> Any:
         return tf.Variable(value, trainable=False, dtype=tf.float32)
 
-    @override(PPOBaseLearner)
+    @override(PPOLearner)
     def _set_kl_coeff(self, value: float) -> None:
         self.kl_coeff.assign(value)

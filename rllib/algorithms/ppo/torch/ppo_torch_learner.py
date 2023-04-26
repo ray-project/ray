@@ -1,7 +1,7 @@
 import logging
 from typing import Mapping, Any
 
-from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,8 +15,8 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PPOTorchLearner(PPOBaseLearner, TorchLearner):
-    """Implements torch-specific PPO loss logic on top of PPOBaseLearner.
+class PPOTorchLearner(PPOLearner, TorchLearner):
+    """Implements torch-specific PPO loss logic on top of PPOLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()`.
     """
@@ -110,10 +110,10 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
             "cur_kl_coeff": self.kl_coeff,
         }
 
-    @override(PPOBaseLearner)
+    @override(PPOLearner)
     def _create_kl_variable(self, value: float) -> Any:
         return torch.tensor(value)
 
-    @override(PPOBaseLearner)
+    @override(PPOLearner)
     def _set_kl_coeff(self, value: float):
         self.kl_coeff.data = torch.tensor(value, device=self.kl_coeff.device)

@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-import numpy as np
 from typing import Any, List, Mapping
-import tree
 
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.core.learner.learner import LearnerHPs
 from ray.rllib.utils.annotations import override
-from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_TRAINED,
@@ -16,8 +16,8 @@ from ray.rllib.utils.typing import ResultDict
 
 
 @dataclass
-class ImpalaHPs(LearnerHPs):
-    """Hyper-parameters for IMPALA.
+class ImpalaHyperparameters(LearnerHyperparameters):
+    """Learner-related hyper-parameters for IMPALA.
 
     Attributes:
         rollout_frag_or_episode_len: The length of a rollout fragment or episode.
@@ -45,33 +45,15 @@ class ImpalaHPs(LearnerHPs):
 
     rollout_frag_or_episode_len: int = None
     recurrent_seq_len: int = None
-    discount_factor: float = 0.99
-    vtrace_clip_rho_threshold: float = 1.0
-    vtrace_clip_pg_rho_threshold: float = 1.0
-    vtrace_drop_last_ts: bool = True
-    vf_loss_coeff: float = 0.5
-    entropy_coeff: float = 0.01
+    discount_factor: float = None
+    vtrace_clip_rho_threshold: float = None
+    vtrace_clip_pg_rho_threshold: float = None
+    vtrace_drop_last_ts: bool = None
+    vf_loss_coeff: float = None
+    entropy_coeff: float = None
 
 
-class ImpalaBaseLearner(Learner):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.vtrace_clip_rho_threshold = self._hps.vtrace_clip_rho_threshold
-        self.vtrace_clip_pg_rho_threshold = self._hps.vtrace_clip_pg_rho_threshold
-        self.vtrace_drop_last_ts = self._hps.vtrace_drop_last_ts
-        self.vf_loss_coeff = self._hps.vf_loss_coeff
-        self.entropy_coeff = self._hps.entropy_coeff
-        self.rollout_frag_or_episode_len = self._hps.rollout_frag_or_episode_len
-        self.recurrent_seq_len = self._hps.recurrent_seq_len
-        self.discount_factor = self._hps.discount_factor
-        assert (
-            self.rollout_frag_or_episode_len is not None
-            or self.recurrent_seq_len is not None
-        ) and not (self.rollout_frag_or_episode_len and self.recurrent_seq_len), (
-            "Either rollout_frag_or_episode_len or recurrent_seq_len"
-            " must be set in the IMPALA HParams. "
-        )
+class ImpalaLearner(Learner):
 
     @override(Learner)
     def compile_results(

@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
-from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 
 
 @dataclass
-class PPOLearnerHPs(LearnerHPs):
+class PPOLearnerHyperparameters(LearnerHyperparameters):
     """Hyperparameters for the PPO RL Trainer"""
 
     kl_coeff: float = 0.2

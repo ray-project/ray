@@ -5,7 +5,7 @@ from typing import Any, Dict, Mapping
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import OLD_ACTION_DIST_KEY
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
-from ray.rllib.algorithms.impala.impala_base_learner import ImpalaHPs
+from ray.rllib.algorithms.impala.impala_base_learner import ImpalaHyperparameters
 from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.rl_module.marl_module import ModuleID
@@ -22,7 +22,7 @@ LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 
 
 @dataclass
-class AppoHPs(ImpalaHPs):
+class AppoHyperparameters(ImpalaHyperparameters):
     """Hyper-parameters for APPO.
 
     Attributes:
@@ -65,8 +65,8 @@ class APPOTfLearner(ImpalaTfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner.
 
     This class implements the APPO loss under `_compute_loss_per_module()` and
-        implements the target network and KL coefficient updates under
-        `additional_updates_per_module()`
+    implements the target network and KL coefficient updates under
+    `additional_updates_per_module()`
     """
 
     def __init__(self, *args, **kwargs):
@@ -87,7 +87,6 @@ class APPOTfLearner(ImpalaTfLearner):
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
-
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )
@@ -96,34 +95,34 @@ class APPOTfLearner(ImpalaTfLearner):
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         old_actions_logp_time_major = make_time_major(
             old_target_policy_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
 
         # the discount factor that is used should be gamma except for timesteps where
@@ -133,21 +132,21 @@ class APPOTfLearner(ImpalaTfLearner):
             - tf.cast(
                 make_time_major(
                     batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=self.rollout_frag_or_episode_len,
-                    recurrent_seq_len=self.recurrent_seq_len,
-                    drop_last=self.vtrace_drop_last_ts,
+                    trajectory_len=self.hps.rollout_frag_or_episode_len,
+                    recurrent_seq_len=self.hps.recurrent_seq_len,
+                    drop_last=self.hps.vtrace_drop_last_ts,
                 ),
                 dtype=tf.float32,
             )
-        ) * self.discount_factor
+        ) * self.hps.discount_factor
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=old_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
             discounts=discounts_time_major,
         )
 
@@ -167,7 +166,9 @@ class APPOTfLearner(ImpalaTfLearner):
             pg_advantages * logp_ratio,
             (
                 pg_advantages
-                * tf.clip_by_value(logp_ratio, 1 - self.clip_param, 1 + self.clip_param)
+                * tf.clip_by_value(
+                    logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param
+                )
             ),
         )
 
@@ -185,8 +186,8 @@ class APPOTfLearner(ImpalaTfLearner):
         # The summed weighted loss.
         total_loss = (
             mean_pi_loss
-            + (mean_vf_loss * self.vf_loss_coeff)
-            + (mean_entropy_loss * self.entropy_coeff)
+            + (mean_vf_loss * self.hps.vf_loss_coeff)
+            + (mean_entropy_loss * self.hps.entropy_coeff)
             + (mean_kl_loss * self.kl_coeffs[module_id])
         )
 
@@ -220,7 +221,7 @@ class APPOTfLearner(ImpalaTfLearner):
             for old_var, current_var in zip(
                 target_network.variables, current_network.variables
             ):
-                updated_var = self.tau * current_var + (1.0 - self.tau) * old_var
+                updated_var = self.hps.tau * current_var + (1.0 - self.hps.tau) * old_var
                 old_var.assign(updated_var)
 
     def _update_module_kl_coeff(
