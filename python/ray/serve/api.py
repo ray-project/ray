@@ -72,7 +72,7 @@ def start(
         detached: Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
-        http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
+        http_options: Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
@@ -110,7 +110,7 @@ def start(
 def shutdown() -> None:
     """Completely shut down Serve on the cluster.
 
-    Deletes all applications and shuts down Serve system processes.
+    Deletes all applications and shuts down Serve system actors.
     """
 
     try:
@@ -164,9 +164,6 @@ def get_replica_context() -> ReplicaContext:
 @PublicAPI(stability="beta")
 def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
     """Wrap a deployment class with a FastAPI application for HTTP request parsing.
-
-    Can be used to define a deployment that uses FastAPI for HTTP request
-    parsing/validation.
 
     Example:
 

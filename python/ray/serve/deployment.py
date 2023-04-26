@@ -112,11 +112,10 @@ class Deployment:
             def __init__(self, name: str):
                 self._name = name
 
-            def say_hi(self):
-                return "Hello from " + self.name
+            def __call__(self, request):
+                return "Hello world!"
 
-            app = MyDeployment.bind("Mr. Magoo")
-
+            app = MyDeployment.bind()
             # Run via `serve.run` or the `serve run` CLI command.
             serve.run(app)
 
@@ -238,17 +237,14 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Positional args passed to the underlying class's constructor."""
         return self._init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
-        """Keyword args passed to the underlying class's constructor."""
         return self._init_kwargs
 
     @property
     def url(self) -> Optional[str]:
-        """Full HTTP url for this deployment."""
         if self._route_prefix is None or self._is_driver_deployment:
             # this deployment is not exposed over HTTP
             return None
@@ -422,8 +418,7 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
 
-        Refer to the @serve.deployment decorator docstring for all non-private
-        arguments.
+        Refer to the `@serve.deployment` decorator docs for available arguments.
         """
 
         # NOTE: The user_configured_option_names should be the first thing that's

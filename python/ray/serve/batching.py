@@ -2,7 +2,7 @@ import asyncio
 from functools import wraps
 from inspect import iscoroutinefunction
 import time
-from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 from dataclasses import dataclass
 
 
@@ -197,26 +197,14 @@ def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[ob
 
 T = TypeVar("T")
 R = TypeVar("R")
-F = TypeVar("F", bound=Callable[[List[T]], List[R]])
-G = TypeVar("G", bound=Callable[[T], R])
-
-
-# Normal decorator use case (called with no arguments).
-@overload
-def batch(func: F) -> G:
-    pass
-
-
-# "Decorator factory" use case (called with arguments).
-@overload
-def batch(
-    max_batch_size: Optional[int] = 10, batch_wait_timeout_s: Optional[float] = 0.0
-) -> Callable[[F], G]:
-    pass
 
 
 @PublicAPI(stability="beta")
-def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
+def batch(
+    _func: Optional[Callable[T, R]] = None,
+    max_batch_size: int = 10,
+    batch_wait_timeout_s: float = 0.0,
+) -> Callable[List[T], List[R]]:
     """Converts a function to perform request microbatching.
 
     The function can be a standalone function or a class method. In both
