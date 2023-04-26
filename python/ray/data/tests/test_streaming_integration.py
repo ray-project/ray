@@ -1,4 +1,5 @@
 import itertools
+import pandas as pd
 import random
 import pytest
 import threading
@@ -29,7 +30,7 @@ from ray.data.tests.conftest import *  # noqa
 def make_transform(block_fn):
     def map_fn(block_iter, ctx):
         for block in block_iter:
-            yield block_fn(block)
+            yield pd.DataFrame({"id": block_fn(block["id"])})
 
     return map_fn
 
@@ -38,7 +39,7 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     output = []
     for bundle in bundles:
         for block, _ in bundle.blocks:
-            output.append(ray.get(block))
+            output.append(list(ray.get(block)["id"]))
     return output
 
 
