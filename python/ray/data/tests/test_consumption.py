@@ -352,7 +352,7 @@ def test_limit(ray_start_regular_shared, lazy):
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
 # TODO(hchen): Re-enable this test after fixing #34234.
-@pytest.skip("This is not implemented for the streaming executor yet.")
+@pytest.mark.skip("This is not implemented for the streaming executor yet.")
 @pytest.mark.parametrize("limit,expected", [(10, 1), (20, 2), (30, 3), (60, 6)])
 def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
     # Test that dataset truncation eliminates redundant reads.
