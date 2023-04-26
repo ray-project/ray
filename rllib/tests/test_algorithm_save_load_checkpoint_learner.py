@@ -35,6 +35,9 @@ def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
         algo_cfg.training(_enable_learner_api=True)
         .rl_module(_enable_rl_module_api=True)
         .rollouts(num_rollout_workers=0)
+        # setting min_time_s_per_iteration=0 and min_sample_timesteps_per_iteration=1
+        # to make sure that we get results as soon as sampling/training is done at
+        # least once
         .reporting(min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=1)
         .debugging(seed=10)
     )
@@ -69,6 +72,9 @@ def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
         algo_cfg.training(_enable_learner_api=True)
         .rl_module(_enable_rl_module_api=True)
         .rollouts(num_rollout_workers=0)
+        # setting min_time_s_per_iteration=0 and min_sample_timesteps_per_iteration=1
+        # to make sure that we get results as soon as sampling/training is done at
+        # least once
         .reporting(min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=1)
         .debugging(seed=10)
     )

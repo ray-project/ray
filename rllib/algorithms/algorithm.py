@@ -2146,7 +2146,6 @@ class Algorithm(Trainable):
         if self.config._enable_learner_api:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
-            state["learner_state_dir"] = "learner/"
 
         return checkpoint_dir
 
