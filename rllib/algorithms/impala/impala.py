@@ -111,7 +111,9 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
-        self.vtrace_drop_last_ts = True
+        # TODO (sven): Deprecate this setting. It makes no sense to drop the last ts.
+        #  It's actually dangerous if there are important rewards "hiding" in that ts.
+        self.vtrace_drop_last_ts = False
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
