@@ -1547,9 +1547,14 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
 
     for k in concated_samples[0].keys():
         try:
-            concatd_data[k] = tree.map_structure(
-                _concat_values, *[c[k] for c in concated_samples]
-            )
+            if k == "infos":
+                concatd_data[k] = _concat_values(
+                    *[s[k] for s in concated_samples], time_major=time_major
+                )
+            else:
+                concatd_data[k] = tree.map_structure(
+                    _concat_values, *[c[k] for c in concated_samples]
+                )
         except Exception:
             raise ValueError(
                 f"Cannot concat data under key '{k}', b/c "
@@ -1635,7 +1640,7 @@ def _concat_values(*values, time_major=None) -> TensorType:
 
     Args:
         values: The values to concatenate.
-        time_major (bool): Whether to concatenate along the first axis
+        time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
     """
     if torch and any([torch.is_tensor(t) for t in values]):
