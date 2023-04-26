@@ -140,7 +140,7 @@ class ImpalaConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.minibatch_size = self.train_batch_size
+        self._minibatch_size = "auto"
         self.num_rollout_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
@@ -172,7 +172,7 @@ class ImpalaConfig(AlgorithmConfig):
         gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
-        minibatch_size: Optional[int] = NotProvided,
+        minibatch_size: Optional[Union[int, str]] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
@@ -226,10 +226,11 @@ class ImpalaConfig(AlgorithmConfig):
             minibatch_buffer_size: How many train batches should be retained for
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             minibatch_size: The size of minibatches that are trained over during
-                each SGD iteration. Note this only has an effect if
-                `_enable_learner_api` == True.
-                Note: minibatch_size must be a multiple of rollout_fragment_length or
-                sequence_length and smaller than or equal to train_batch_size.
+                each SGD iteration. If "auto", will use the same value as
+                `train_batch_size`.
+                Note that this setting only has an effect if `_enable_learner_api=True`
+                and it must be a multiple of `rollout_fragment_length` or
+                `sequence_length` and smaller than or equal to `train_batch_size`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -345,7 +346,7 @@ class ImpalaConfig(AlgorithmConfig):
         if gamma is not NotProvided:
             self.gamma = gamma
         if minibatch_size is not NotProvided:
-            self.minibatch_size = minibatch_size
+            self._minibatch_size = minibatch_size
 
         return self
 
@@ -400,11 +401,10 @@ class ImpalaConfig(AlgorithmConfig):
                 and self.minibatch_size <= self.train_batch_size
             ):
                 raise ValueError(
-                    "minibatch_size must be a multiple of rollout_fragment_length and "
-                    "must be smaller than or equal to train_batch_size. Got"
-                    f" minibatch_size={self.minibatch_size}, train_batch_size="
-                    f"{self.train_batch_size}, and rollout_fragment_length="
-                    f"{self.get_rollout_fragment_length()}"
+                    f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
+                    "or a multiple of `rollout_fragment_length` "
+                    f"({self.rollout_fragment_length}) while at the same time smaller "
+                    f"than or equal to `train_batch_size` ({self.train_batch_size})!"
                 )
 
     @override(AlgorithmConfig)
@@ -426,7 +426,7 @@ class ImpalaConfig(AlgorithmConfig):
             vf_loss_coeff=self.vf_loss_coeff,
             vtrace_drop_last_ts=self.vtrace_drop_last_ts,
             vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            vtrace_clip_pg_rho_threshold=(self.vtrace_clip_pg_rho_threshold),
+            vtrace_clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
         )
         assert (learner_hps.rollout_frag_or_episode_len is None) != (
             learner_hps.recurrent_seq_len is None
@@ -436,12 +436,22 @@ class ImpalaConfig(AlgorithmConfig):
         )
         return learner_hps
 
+    # TODO (sven): Make these get_... methods all read-only @properties instead.
     def get_replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
 
         Formula: ratio = 1 / proportion
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
+
+    @property
+    def minibatch_size(self):
+        # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
+        # through the entire train batch). Otherwise, use user provided setting.
+        return (
+            self.train_batch_size if self._minibatch_size == "auto"
+            else self._minibatch_size
+        )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
@@ -708,6 +718,8 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         # Concatenate single batches into batches of size `train_batch_size`.
         self.concatenate_batches_and_pre_queue(batches)
+        # Using the Learner API. Call `update()` on our LearnerGroup object with
+        # all collected batches.
         if self.config._enable_learner_api:
             train_results = self.learn_on_processed_samples()
         else:
@@ -721,12 +733,10 @@ class Impala(Algorithm):
             if self.config._enable_learner_api:
                 if train_results:
                     pids = list(set(train_results.keys()) - {ALL_MODULES})
-                else:
-                    pids = []
-                self.update_workers_from_learner_group(
-                    workers_that_need_updates=workers_that_need_updates,
-                    policy_ids=pids,
-                )
+                    self.update_workers_from_learner_group(
+                        workers_that_need_updates=workers_that_need_updates,
+                        policy_ids=pids,
+                    )
             else:
                 pids = list(train_results.keys())
                 self.update_workers_if_necessary(
@@ -919,6 +929,7 @@ class Impala(Algorithm):
 
         """
         result = {}
+        # There are batches on the queue -> Send them to the learner group.
         if self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner.pop(0)
             # If there are no learner workers and learning is directly on the driver
@@ -931,18 +942,24 @@ class Impala(Algorithm):
                 num_iters=self.config.num_sgd_iter,
                 minibatch_size=self.config.minibatch_size,
             )
+        # Nothing on the queue -> Don't send requests to learner group.
         else:
             lg_results = None
 
         if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES][
+            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
                 NUM_ENV_STEPS_TRAINED
-            ]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES][
+            )
+            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
                 NUM_AGENT_STEPS_TRAINED
-            ]
-            del lg_results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
-            del lg_results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED]
+            )
+            lg_queue_stats = self.learner_group.get_in_queue_stats()
+            self._counters["learner_group_queue_size"] = (
+                lg_queue_stats["learner_group_queue_size"]
+            )
+            self._counters["learner_group_queue_ts_dropped"] = (
+                lg_queue_stats["learner_group_queue_ts_dropped"]
+            )
             result = lg_results
 
         return result
@@ -1024,10 +1041,9 @@ class Impala(Algorithm):
             Batches that have been processed by the mixin buffer.
 
         """
-        processed_batches = []
         batches = [b for _, b in worker_to_sample_batches]
-        if not batches:
-            return processed_batches
+        processed_batches = []
+
         for batch in batches:
             assert not isinstance(
                 batch, ObjectRef
@@ -1189,11 +1205,7 @@ class Impala(Algorithm):
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
-        if self.config._enable_learner_api:
-            result["custom_metrics"] = {
-                "learner_group_queue_size": self.learner_group.in_queue_size
-            }
-        else:
+        if not self.config._enable_learner_api:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )

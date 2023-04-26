@@ -97,7 +97,6 @@ class LearnerHyperparameters:
     Validation of the values of these hyperparameters should be done by the
     respective AlgorithmConfig class.
     """
-
     pass
 
 

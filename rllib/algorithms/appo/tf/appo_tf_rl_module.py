@@ -1,6 +1,9 @@
 from typing import List
 
-
+from ray.rllib.algorithms.appo.appo_learner import (
+    OLD_ACTION_DIST_KEY,
+    OLD_ACTION_DIST_LOGITS_KEY,
+)
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
@@ -14,13 +17,8 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
-OLD_ACTION_DIST_KEY = "old_action_dist"
-OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
-
 
 class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def setup(self):
         super().setup()
@@ -49,8 +47,10 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTfRLModule)
     def _forward_train(self, batch: NestedDict):
         outs = super()._forward_train(batch)
-        old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
-        old_action_dist_logits = self.old_pi(old_pi_inputs_encoded)
+        old_pi_inputs_encoded = tf.stop_gradient(
+            self.old_encoder(batch)[ENCODER_OUT][ACTOR]
+        )
+        old_action_dist_logits = tf.stop_gradient(self.old_pi(old_pi_inputs_encoded))
         old_action_dist = self.action_dist_cls.from_logits(old_action_dist_logits)
         outs[OLD_ACTION_DIST_KEY] = old_action_dist
         outs[OLD_ACTION_DIST_LOGITS_KEY] = old_action_dist_logits

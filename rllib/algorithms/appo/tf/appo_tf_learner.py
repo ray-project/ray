@@ -84,15 +84,17 @@ class APPOTfLearner(TfLearner, AppoLearner):
                 dtype=tf.float32,
             )
         ) * self.hps.discount_factor
+
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=old_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major,
         )
 
         # The policy gradients loss.
@@ -117,8 +119,11 @@ class APPOTfLearner(TfLearner, AppoLearner):
             ),
         )
 
-        action_kl = old_target_policy_dist.kl(target_policy_dist)
-        mean_kl_loss = tf.math.reduce_mean(action_kl)
+        if self._hps.use_kl_loss:
+            action_kl = old_target_policy_dist.kl(target_policy_dist)
+            mean_kl_loss = tf.math.reduce_mean(action_kl)
+        else:
+            mean_kl_loss = 0.0
         mean_pi_loss = -tf.math.reduce_mean(surrogate_loss)
 
         # The baseline loss.
@@ -126,7 +131,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
         mean_vf_loss = 0.5 * tf.math.reduce_mean(delta**2)
 
         # The entropy loss.
-        mean_entropy_loss = -tf.math.reduce_mean(target_actions_logp_time_major)
+        mean_entropy_loss = -tf.math.reduce_mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
@@ -140,7 +145,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
             self.TOTAL_LOSS_KEY: total_loss,
             POLICY_LOSS_KEY: mean_pi_loss,
             VF_LOSS_KEY: mean_vf_loss,
-            ENTROPY_KEY: mean_entropy_loss,
+            ENTROPY_KEY: -mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
             LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.kl_coeffs[module_id],
         }

@@ -78,7 +78,7 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
         #  dist_class` in the old code torch impala policy?
         device = behaviour_actions_logp_time_major[0].device
 
-        # TODO(Artur): See if we should compute v-trace corrected targets on CPU
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
