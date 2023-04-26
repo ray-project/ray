@@ -12,7 +12,7 @@ Just as in the original `xgboost.train() <https://xgboost.readthedocs.io/en/stab
 `lightgbm.train() <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__ functions, the
 training parameters are passed as the ``params`` dictionary.
 
-.. tabbed:: XGBoost
+.. tab-item:: XGBoost
 
     Run ``pip install -U xgboost_ray``.
 
@@ -21,7 +21,7 @@ training parameters are passed as the ``params`` dictionary.
         :start-after: __xgboost_start__
         :end-before: __xgboost_end__
 
-.. tabbed:: LightGBM
+.. tab-item:: LightGBM
 
     Run ``pip install -U lightgbm_ray``.
 
@@ -75,48 +75,49 @@ adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
 
 Here are some examples for common use-cases:
 
+.. tab-set::
 
-.. tabbed:: Multi-node CPU
+    .. tab-item:: Multi-node CPU
 
-    Setup: 4 nodes with 8 CPUs each.
+        Setup: 4 nodes with 8 CPUs each.
 
-    Use-case: To utilize all resources in multi-node training.
+        Use-case: To utilize all resources in multi-node training.
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-        :language: python
-        :start-after: __scaling_cpu_start__
-        :end-before: __scaling_cpu_end__
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __scaling_cpu_start__
+            :end-before: __scaling_cpu_end__
 
-    Note that we pass 0 CPUs for the trainer resources, so that all resources can
-    be allocated to the actual distributed training workers.
+        Note that we pass 0 CPUs for the trainer resources, so that all resources can
+        be allocated to the actual distributed training workers.
 
 
-.. tabbed:: Single-node multi-GPU
+    .. tab-item:: Single-node multi-GPU
 
-    Setup: 1 node with 8 CPUs and 4 GPUs.
+        Setup: 1 node with 8 CPUs and 4 GPUs.
 
-    Use-case: If you have a single node with multiple GPUs, you need to use
-    distributed training to leverage all GPUs.
+        Use-case: If you have a single node with multiple GPUs, you need to use
+        distributed training to leverage all GPUs.
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-        :language: python
-        :start-after: __scaling_gpu_start__
-        :end-before: __scaling_gpu_end__
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __scaling_gpu_start__
+            :end-before: __scaling_gpu_end__
 
-.. tabbed:: Multi-node multi-GPU
+    .. tab-item:: Multi-node multi-GPU
 
-    Setup: 4 node with 8 CPUs and 4 GPUs each.
+        Setup: 4 node with 8 CPUs and 4 GPUs each.
 
-    Use-case: If you have a multiple nodes with multiple GPUs, you need to
-    schedule one worker per GPU.
+        Use-case: If you have a multiple nodes with multiple GPUs, you need to
+        schedule one worker per GPU.
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-        :language: python
-        :start-after: __scaling_gpumulti_start__
-        :end-before: __scaling_gpumulti_end__
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __scaling_gpumulti_start__
+            :end-before: __scaling_gpumulti_end__
 
-    Note that you just have to adjust the number of workers - everything else
-    will be handled by Ray automatically.
+        Note that you just have to adjust the number of workers - everything else
+        will be handled by Ray automatically.
 
 
 How many remote actors should I use?
