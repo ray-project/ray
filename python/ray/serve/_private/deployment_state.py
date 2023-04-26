@@ -470,6 +470,11 @@ class ActorReplicaWrapper:
                     - for PENDING_ALLOCATION, PENDING_INITIALIZATION, or FAILED states
                 version:
                     - for SUCCEEDED state
+            error_msg:
+                None:
+                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION or SUCCEEDED states
+                str:
+                    - for FAILED state
         """
 
         # Check whether the replica has been allocated.
