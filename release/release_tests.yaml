@@ -3381,6 +3381,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
+
 
 - name: rllib_learning_tests_a2c_tf
   group: RLlib tests
@@ -3397,8 +3406,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_a2c_torch
   group: RLlib tests
@@ -3417,6 +3434,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
 - name: rllib_learning_tests_a3c_tf
   group: RLlib tests
   working_dir: rllib_tests
@@ -3432,29 +3458,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=tf
 
-
   alert: default
 
-# TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
-#- name: rllib_learning_tests_a3c_torch
-#  group: RLlib tests
-#  working_dir: rllib_tests
-
-#  frequency: nightly
-#  team: rllib
-#  env: staging_v2
-
-#  cluster:
-#    cluster_env: app_config.yaml
-#    cluster_compute: 32cpus.yaml
-
-#  run:
-#    timeout: 18000
-#    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=torch
-#    type: anyscale_job
-#    file_manager: job
-
-#  alert: default
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 32cpus_gce.yaml
 
 - name: rllib_learning_tests_apex_tf
   group: RLlib tests
@@ -3474,8 +3487,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=apex --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_24cpus_gce.yaml
 
 - name: rllib_learning_tests_apex_torch
   group: RLlib tests
@@ -3493,6 +3514,15 @@
     script: python learning_tests/run.py --yaml-sub-dir=apex --framework=torch
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_24cpus_gce.yaml
 
 - name: rllib_learning_tests_appo_tf
   group: RLlib tests
@@ -3540,6 +3570,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 - name: rllib_learning_tests_bc_tf
   group: RLlib tests
   working_dir: rllib_tests
@@ -3557,6 +3596,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
 - name: rllib_learning_tests_bc_torch
   group: RLlib tests
   working_dir: rllib_tests
@@ -3573,6 +3621,15 @@
     script: python learning_tests/run.py --yaml-sub-dir=bc --framework=torch
 
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_cql_tf
   group: RLlib tests
@@ -3594,6 +3651,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
 - name: rllib_learning_tests_cql_torch
   group: RLlib tests
   working_dir: rllib_tests
@@ -3614,6 +3680,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
 - name: rllib_learning_tests_ddpg_tf
   group: RLlib tests
   working_dir: rllib_tests
@@ -3629,8 +3704,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_ddpg_torch
   group: RLlib tests
@@ -3647,8 +3730,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_dqn_tf
   group: RLlib tests
@@ -3665,8 +3756,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_dqn_torch
   group: RLlib tests
@@ -3686,8 +3785,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_es_tf
   group: RLlib tests
@@ -3704,8 +3811,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=es --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_es_torch
   group: RLlib tests
@@ -3722,8 +3837,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=es --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_impala_tf
   group: RLlib tests
@@ -3740,8 +3863,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=impala --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_impala_torch
   group: RLlib tests
@@ -3758,8 +3889,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=impala --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_marwil_tf
   group: RLlib tests
@@ -3779,8 +3918,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_marwil_torch
   group: RLlib tests
@@ -3800,8 +3947,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_ppo_tf
   group: RLlib tests
@@ -3818,8 +3973,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
 
 - name: rllib_learning_tests_ppo_torch
   group: RLlib tests
@@ -3865,8 +4028,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=sac --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_sac_torch
   group: RLlib tests
@@ -3885,6 +4056,15 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
+
 - name: rllib_learning_tests_slateq_tf
   group: RLlib tests
   working_dir: rllib_tests
@@ -3900,8 +4080,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_slateq_torch
   group: RLlib tests
@@ -3921,8 +4109,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_td3_tf
   group: RLlib tests
@@ -3939,8 +4135,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=tf
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_td3_torch
   group: RLlib tests
@@ -3957,8 +4161,16 @@
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=torch
 
-
   alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
@@ -4001,7 +4213,6 @@
     timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
 
-
   alert: default
 
   variations:
@@ -4027,7 +4238,6 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_attention_learning_tests/run.py
-
 
   alert: default
 
