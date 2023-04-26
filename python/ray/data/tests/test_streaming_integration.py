@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.util import make_ref_bundles
 from ray._private.test_utils import wait_for_condition
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 
 
 def make_transform(block_fn):
@@ -286,7 +287,7 @@ def test_scheduling_progress_when_output_blocked(
     # The pipeline should fully execute even when the output iterator is blocked.
     wait_for_condition(lambda: ray.get(counter.get.remote()) == 100)
     # Check we can take the rest.
-    assert list(it) == [[x] for x in range(1, 100)]
+    assert [b["id"] for b in it] == [[x] for x in range(1, 100)]
 
 
 def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
@@ -345,7 +346,7 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.
-    assert ds.take_all() == list(range(10000))
+    assert extract_values("id", ds.take_all()) == list(range(10000))
 
 
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
@@ -469,12 +470,12 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     # Test recover.
     base = ray.data.range(1000, parallelism=100)
     ds1 = base.map_batches(
-        f, compute=ray.data.ActorPoolStrategy(4, 4), max_task_retries=999
+        f, compute=ray.data.ActorPoolStrategy(size=4), max_task_retries=999
     )
     ds1.take_all()
 
     # Test disabling fault tolerance.
-    ds2 = base.map_batches(f, compute=ray.data.ActorPoolStrategy(4, 4), max_restarts=0)
+    ds2 = base.map_batches(f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0)
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()
 
