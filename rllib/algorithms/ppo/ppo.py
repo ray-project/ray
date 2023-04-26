@@ -17,7 +17,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHyperparameters
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,

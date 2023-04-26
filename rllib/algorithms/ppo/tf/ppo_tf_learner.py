@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping, Any
+from typing import Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -88,13 +88,13 @@ class PPOTfLearner(PPOLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.entropy_coeff * curr_entropy
+            - self.hps.entropy_coeff * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.kl_coeff * mean_kl_loss
+            total_loss += self.curr_kl_coeff * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
@@ -106,13 +106,9 @@ class PPOTfLearner(PPOLearner, TfLearner):
             ),
             "entropy": mean_entropy,
             "kl": mean_kl_loss,
-            "entropy_coeff": self.entropy_coeff,
-            "cur_kl_coeff": self.kl_coeff,
+            "entropy_coeff": self.hps.entropy_coeff,
+            "cur_kl_coeff": self.curr_kl_coeff,
         }
-
-    @override(PPOLearner)
-    def _create_kl_variable(self, value: float) -> Any:
-        return tf.Variable(value, trainable=False, dtype=tf.float32)
 
     @override(PPOLearner)
     def _set_kl_coeff(self, value: float) -> None:
