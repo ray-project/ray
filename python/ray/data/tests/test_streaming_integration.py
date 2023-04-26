@@ -475,7 +475,9 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     ds1.take_all()
 
     # Test disabling fault tolerance.
-    ds2 = base.map_batches(f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0)
+    ds2 = base.map_batches(
+        f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
+    )
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()
 
