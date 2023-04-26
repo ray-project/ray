@@ -173,7 +173,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
 
 @PublicAPI
-def copy_tensors_and_move_to_device(x: TensorStructType, device: Optional[str] = None):
+def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
     """Creates a copy of `x` and makes deep copies torch.Tensors in x.
 
     Also moves the copied tensors to the specified device (if not None).
