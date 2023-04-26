@@ -1986,7 +1986,7 @@ py_test(
 py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
 )
 
