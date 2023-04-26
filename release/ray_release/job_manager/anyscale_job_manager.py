@@ -11,7 +11,6 @@ from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     HaJobStates,
 )
-from anyscale.controllers.job_controller import terminal_state
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -35,6 +34,7 @@ job_status_to_return_code = {
     HaJobStates.BROKEN: -2,
     HaJobStates.TERMINATED: -3,
 }
+terminal_state = set(job_status_to_return_code.keys())
 
 
 class AnyscaleJobManager:
