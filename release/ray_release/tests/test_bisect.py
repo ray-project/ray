@@ -25,8 +25,8 @@ def test_obtain_test_result():
             side_effect=_mock_check_output,
         ):
             commits = set(test_case.keys())
-            flaky_rerun = len(test_case[list(commits)[0]])
-            _obtain_test_result(commits, flaky_rerun) == test_case
+            rerun_per_commit = len(test_case[list(commits)[0]])
+            _obtain_test_result(commits, rerun_per_commit) == test_case
 
 
 def test_bisect():
@@ -57,7 +57,7 @@ def test_bisect():
     for output, input in test_cases.items():
 
         def _mock_run_test(
-            test: Test, commit: List[str], flaky_rerun
+            test: Test, commit: List[str], rerun_per_commit
         ) -> Dict[str, str]:
             return input
 
