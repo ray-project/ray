@@ -379,7 +379,7 @@ class Datastream:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Optional[Union[int, Literal["default"]]] = "default",
+        batch_size: Union[int, None, Literal["default"]] = "default",
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
@@ -416,54 +416,31 @@ class Datastream:
 
         Examples:
 
-            >>> import pandas as pd
+            >>> import numpy as np
             >>> import ray
-            >>> df = pd.DataFrame({
-            ...     "name": ["Luna", "Rory", "Scout"],
-            ...     "age": [4, 14, 9]
-            ... })
-            >>> ds = ray.data.from_pandas(df)
+            >>> ds = ray.data.from_items([
+            ...     {"name": "Luna", "age": 4},
+            ...     {"name": "Rory", "age": 14},
+            ...     {"name": "Scout", "age": 9},
+            ...])
             >>> ds  # doctest: +SKIP
             MaterializedDatastream(
                 num_blocks=1,
                 num_rows=3,
-                schema={name: object, age: int64}
+                schema={name: string, age: int64}
             )
 
-            Call :meth:`.default_batch_format` to determine the default batch
-            type.
+            Here ``fn`` returns the same batch type as the input, but your ``fn`` can
+            also return a different batch type (e.g., pd.DataFrame). Read more about
+            :ref:`user-defined function output types <transform_datastreams_batch_output_types>`.
 
-            >>> ds.default_batch_format()
-            <class 'pandas.core.frame.DataFrame'>
-
-            .. tip::
-
-                Datastreams created from tabular data like Arrow tables and Parquet files
-                yield ``pd.DataFrame`` batches.
-
-            Once you know the batch type, define a function that transforms batches
-            of data. ``ds.map_batches`` applies the function in parallel.
-
-            >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
+            >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             ...     batch["age_in_dog_years"] = 7 * batch["age"]
             ...     return batch
             >>> ds = ds.map_batches(map_fn)
             >>> ds
             MapBatches(map_fn)
-            +- Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
-
-            Your ``fn`` can return a different type than the input type. To learn more
-            about supported output types, read
-            :ref:`user-defined function output types <transform_datastreams_batch_output_types>`.
-
-            >>> from typing import List
-            >>> def map_fn(batch: pd.DataFrame) -> List[int]:
-            ...     return list(batch["age_in_dog_years"])
-            >>> ds = ds.map_batches(map_fn)
-            >>> ds
-            MapBatches(map_fn)
-            +- MapBatches(map_fn)
-               +- Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            +- Datastream(num_blocks=1, num_rows=3, schema={name: string, age: int64})
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -475,7 +452,6 @@ class Datastream:
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
 
-            >>> from ray.data import ActorPoolStrategy
             >>> init_large_model = ... # doctest: +SKIP
             >>> class CachedModel:
             ...    def __init__(self):
@@ -485,7 +461,7 @@ class Datastream:
             >>> ds.map_batches( # doctest: +SKIP
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
-            ...     compute=ActorPoolStrategy(size=8), # doctest: +SKIP
+            ...     compute=ray.data.ActorPoolStrategy(size=8), # doctest: +SKIP
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
@@ -494,15 +470,14 @@ class Datastream:
             returning a very large output batch, ``fn`` can instead yield the
             output batch in chunks.
 
-            >>> from typing import Iterator
-            >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
+            >>> def map_fn_with_large_output(batch):
             ...     for i in range(3):
-            ...         yield batch * 100
+            ...         yield {"large_output": np.ones((100, 1000))}
             >>> ds = ray.data.from_items([1])
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Datastream(num_blocks=1, num_rows=1, schema=<class 'int'>)
+            +- Datastream(num_blocks=1, num_rows=1, schema={item: int64})
 
 
         Args:
@@ -520,12 +495,10 @@ class Datastream:
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None to return
-                the underlying block exactly as is with no additional formatting.
-                The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -554,9 +527,6 @@ class Datastream:
 
             :meth:`~Datastream.iter_batches`
                 Call this function to iterate over batches of data.
-
-            :meth:`~Datastream.default_batch_format`
-                Call this function to determine the default batch type.
 
             :meth:`~Datastream.flat_map`:
                 Call this method to create new records from existing ones. Unlike
@@ -4271,71 +4241,8 @@ class Datastream:
         )
         return l_ds, r_ds
 
-    @ConsumptionAPI(if_more_than_read=True, datasource_metadata="schema")
+    @Deprecated(message="The batch format is no longer exposed as a public API.")
     def default_batch_format(self) -> Type:
-        """Return this datastream's default batch format.
-
-        The default batch format describes what batches of data look like. To learn more
-        about batch formats, read
-        :ref:`writing user-defined functions <transform_datastreams_writing_udfs>`.
-
-        Examples:
-
-            If your datastream represents a list of Python objects, then the default batch
-            format is ``list``.
-
-            >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema=<class 'int'>)
-            >>> ds.default_batch_format()
-            <class 'list'>
-            >>> next(ds.iter_batches(batch_size=4))
-            [0, 1, 2, 3]
-
-            If your datastream contains a single ``numpy.ndarray``
-            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
-            the default batch format is ``np.ndarray``. For more information on tensor
-            formats, read the :ref:`tensor support guide <data_tensor_support>`.
-
-            >>> ds = ray.data.range_tensor(100)
-            >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)})
-            >>> ds.default_batch_format()
-            <class 'numpy.ndarray'>
-            >>> next(ds.iter_batches(batch_size=4))
-            array([[0],
-                   [1],
-                   [2],
-                   [3]])
-
-            If your datastream represents tabular data and doesn't only consist of a
-            ``__value__`` tensor column (such as is created by
-            :meth:`ray.data.from_numpy`), then the default batch format is
-            ``pd.DataFrame``.
-
-            >>> import pandas as pd
-            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
-            >>> ds = ray.data.from_pandas(df)
-            >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
-            >>> ds.default_batch_format()
-            <class 'pandas.core.frame.DataFrame'>
-            >>> next(ds.iter_batches(batch_size=4))
-              foo  bar
-            0   a    0
-            1   b    1
-
-        .. seealso::
-
-            :meth:`~Datastream.map_batches`
-                Call this function to transform batches of data.
-
-            :meth:`~Datastream.iter_batches`
-                Call this function to iterate over batches of data.
-
-        """  # noqa: E501
-
         context = DataContext.get_current()
         if context.strict_mode:
             raise StrictModeError(
@@ -4356,20 +4263,8 @@ class Datastream:
                 return np.ndarray
             return pd.DataFrame
 
-    @ConsumptionAPI(
-        if_more_than_read=True,
-        datasource_metadata="schema",
-        pattern="for the first block.",
-        insert_after=True,
-    )
-    @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
+    @Deprecated(message="The dataset format is no longer exposed as a public API.")
     def dataset_format(self) -> BlockFormat:
-        """The format of the datastream's underlying data blocks. Possible values
-        are: "arrow", "pandas" and "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
         context = DataContext.get_current()
         if context.strict_mode:
             raise StrictModeError("dataset_format() is not allowed in strict mode")
