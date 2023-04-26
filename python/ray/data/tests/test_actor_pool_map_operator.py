@@ -1,7 +1,6 @@
 import collections
 import time
 
-import pandas as pd
 import pytest
 
 import ray
@@ -431,7 +430,7 @@ class TestActorPool:
         pool = _ActorPool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
-        bundles = make_ref_bundles([pd.DataFrame({"id": [0]}) for _ in range(10)])
+        bundles = make_ref_bundles([[0] for _ in range(10)])
         fake_loc_map = {}
         for i, b in enumerate(bundles):
             fake_loc_map[b] = "node1"
@@ -467,7 +466,7 @@ class TestActorPool:
         pool = _ActorPool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
-        bundles = make_ref_bundles([pd.DataFrame({"id": [0]}) for _ in range(10)])
+        bundles = make_ref_bundles([[0] for _ in range(10)])
         fake_loc_map = {}
         # Also test unknown location handling.
         for i, b in enumerate(bundles):

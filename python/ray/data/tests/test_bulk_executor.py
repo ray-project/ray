@@ -47,7 +47,7 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
 )
 def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
     executor = BulkExecutor(ExecutionOptions(preserve_order=preserve_order))
-    inputs = make_ref_bundles([pd.DataFrame({"id": [x]}) for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
 
     def delay_first(block):
@@ -81,7 +81,7 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
 def test_basic_stats(ray_start_10_cpus_shared):
     executor = BulkExecutor(ExecutionOptions())
     prev_stats = ray.data.range(10).materialize()._plan.stats()
-    inputs = make_ref_bundles([pd.DataFrame({"id": [x]}) for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
         make_transform(lambda block: {"id": [b * 2 for b in block["id"]]}),
@@ -117,7 +117,7 @@ def test_e2e_bulk_sanity(ray_start_10_cpus_shared):
 
 def test_actor_strategy(ray_start_10_cpus_shared):
     executor = BulkExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([pd.DataFrame({"id": [x]}) for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
         make_transform(lambda block: {"id": [b * -1 for b in block["id"]]}), o1
