@@ -219,6 +219,41 @@ def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
     return storage_kwargs
 
 
+def _has_compatible_gcsfs_version() -> bool:
+    """GCSFS does not work for versions > 2022.7.1 and < 2022.10.0.
+
+    See https://github.com/fsspec/gcsfs/issues/498.
+
+    In that case, and if we can't fallback to native PyArrow's GCS handler,
+    we raise an error.
+    """
+    try:
+        import gcsfs
+
+        # For minimal install that only needs python3-setuptools
+        if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
+            "2022.7.1"
+        ) and packaging.version.parse(gcsfs.__version__) < packaging.version.parse(
+            "2022.10.0"
+        ):
+            # PyArrow's GcsFileSystem was introduced in 9.0.0.
+            if packaging.version.parse(pyarrow.__version__) < packaging.version.parse(
+                "9.0.0"
+            ):
+                raise RuntimeError(
+                    "`gcsfs` versions between '2022.7.1' and '2022.10.0' are not "
+                    f"compatible with pyarrow. You have gcsfs version "
+                    f"{gcsfs.__version__}. Please downgrade or upgrade your gcsfs "
+                    f"version or upgrade PyArrow. See more details in "
+                    f"https://github.com/fsspec/gcsfs/issues/498."
+                )
+            # Returning False here means we fall back to pyarrow.
+            return False
+    except ImportError:
+        return False
+    return True
+
+
 def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     parsed = urllib.parse.urlparse(uri)
 
@@ -226,6 +261,9 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     if parsed.scheme in ["s3", "s3a"] and parsed.query:
         storage_kwargs = _translate_s3_options(urllib.parse.parse_qs(parsed.query))
     elif parsed.scheme in ["gs", "gcs"] and parsed.query:
+        if not _has_compatible_gcsfs_version():
+            # If gcsfs is incompatible, fallback to pyarrow.fs.
+            return None
         storage_kwargs = _translate_gcs_options(urllib.parse.parse_qs(parsed.query))
 
     try:
@@ -238,29 +276,6 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
         return None
 
     fsspec_handler = pyarrow.fs.FSSpecHandler
-    if parsed.scheme in ["gs", "gcs"]:
-
-        # TODO(amogkam): Remove after https://github.com/fsspec/gcsfs/issues/498 is
-        #  resolved.
-        try:
-            import gcsfs
-
-            # For minimal install that only needs python3-setuptools
-            if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
-                "2022.7.1"
-            ) and packaging.version.parse(gcsfs.__version__) < packaging.version.parse(
-                "2022.10.0"
-            ):
-                raise RuntimeError(
-                    "`gcsfs` versions between '2022.7.1' and '2022.10.0' are not "
-                    f"compatible with pyarrow. You have gcsfs version "
-                    f"{gcsfs.__version__}. Please downgrade or upgrade your gcsfs "
-                    f"version. See more details in "
-                    f"https://github.com/fsspec/gcsfs/issues/498."
-                )
-        except ImportError:
-            pass
-
     fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
     return fs
 
