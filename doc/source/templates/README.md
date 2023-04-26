@@ -15,7 +15,7 @@ Coming soon...
 
 To add a template:
 
-1. Add your template as a directory somewhere in the Ray repo.
+1. Add your template as a directory somewhere in `doc/source/templates`.
 
     For example:
 
@@ -29,29 +29,30 @@ To add a template:
 
     If your template requires any special dependencies that are not included in a
     base `ray-ml` Docker image, be sure to list and install the necessary dependencies
-    within the notebook.
+    within the notebook. See `03_serving_stable_diffusion` for an example.
 
     ```{note}
     The template should be self-contained and not require any external files.
     This requirement is to simplify the testing procedure.
     ```
 
-2. Add another copy of the template that includes test-specific code.
+2. Add another copy of the template that includes test-specific code and a smoke-test version if applicable.
 
-    NOTE: The need for a second test copy is temporary. Only one notebook will be needed
-    from 2.5 onward.
+    **Note:** The need for a second test copy is temporary. Only one notebook will be needed
+    from 2.5 onward, since the test-specific code will be filtered out.
 
     **Label all test-specific code with the `remove-cell` Jupyter notebook tag.**
 
-    **Put this test copy in `doc/source/templates/tests/test-copy.ipynb`.**
+    **Put this test copy in `doc/source/templates/tests/<name-of-your-template>.ipynb`.**
 
-3. Add a smoke-test version of the template to run in pre-merge CI in `doc/BUILD` under the templates section.
+3. List the smoke-test version of the template in `doc/BUILD` under the templates section. This will configure the smoke-test version to run in pre-merge CI.
 
     Set the `SMOKE_TEST` environment variable, which should be used in your template to
-    set certain smoke test parameters (like limiting dataset size).
+    **to make the template work for a single CI instance.**
+    This environment variable can also be used to conditionally set certain smoke test parameters (like limiting dataset size).
 
     **Make sure that you tag the test with `"gpu"` if required, and any other tags
-    needed for special dependencies.
+    needed for special dependencies.**
 
     ```python
     py_test_run_all_notebooks(
@@ -87,58 +88,39 @@ To add a template:
             frequency: manual
             cluster:
               cluster_env: ../configs/release_test_cluster_env.yaml
-              cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+              cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
 
     run:
       timeout: 300
       script: jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
     ```
 
-5. (Anyscale Only) To make this template show up as an Anyscale Workspace Template:
+5. Add an entry to `doc/source/templates/templates.yaml` that links to your template.
 
-    Make a PR on the product repo that links this template as an entry in the
-    [`workspace-templates.yaml` file](https://github.com/anyscale/product/blob/master/backend/workspace-templates.yaml).
+    ```yaml
+    many-model-training-ray-tune:
+      title: Many Model Training
+      description: Scaling Many Model Training with Ray Tune
+      path: doc/source/templates/02_many_model_training
+      cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+      compute_config:
+        GCP: doc/source/templates/configs/compute/cpu/gce.yaml
+        AWS: doc/source/templates/configs/compute/cpu/aws.yaml
+    ```
+
+    **In this example, `many-model-training-ray-tune` is the template ID, which should be unique.**
 
     **Use the `anyscale_cluster_env.yaml`, `gce.yaml`, and `aws.yaml` files, NOT the release test counterparts.**
 
-    **Make sure the entry name (e.g., `batch-inference-ray-data`) is unique.**
+    When you specify the template's compute config, see `doc/source/templates/configs` for shared configs.
 
-    ```yaml
-    batch-inference-ray-data:
-      title: Batch Inference
-      description: Scaling Batch Inference with Ray Data
-      path: doc/source/templates/01_batch_inference
-      cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
-      compute_config:
-        GCP: doc/source/templates/configs/compute/gpu/gce.yaml
-        AWS: doc/source/templates/configs/compute/gpu/aws.yaml
-    ```
+6. Run a validation script on `templates.yaml` to make sure that the paths you specified are all valid and all yamls are properly formatted.
 
-6. Success! Your template is ready for review.
-
-<!-- 3. Add an entry to `doc/source/templates/templates.yaml` that links to your template.
-
-    ```yaml
-    - name: Many Model Training using Ray Tune
-      # Paths should be relative to the Ray repo root directory
-      path: doc/source/templates/02_many_model_training
-      cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
-      small:
-        compute_config:
-          gcp: doc/source/templates/configs/compute/cpu/gcp_small.yaml
-          aws: doc/source/templates/configs/compute/cpu/aws_small.yaml
-      large:
-        compute_config:
-          # Relative to `path`
-          gcp: doc/source/templates/configs/compute/cpu/gcp_large.yaml
-          aws: doc/source/templates/configs/compute/cpu/aws_large.yaml
-    ```
-
-    When you specify the template's compute config, see `doc/source/templates/configs` for defaults.
-
-4. Run a validation script on `templates.yaml` to make sure that the paths you specified are all valid.
+    **Note:** This will also run in CI, but you can check quickly by running the validation script.
 
     ```bash
     $ python doc/source/templates/validate.py
     Success!
-    ``` -->
+    ```
+
+7. Success! Your template is ready for review.
