@@ -1,10 +1,19 @@
 from collections import deque
 import pathlib
 import socket
-from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
-
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     ModuleID,

@@ -54,7 +54,6 @@ class ImpalaHyperparameters(LearnerHyperparameters):
 
 
 class ImpalaLearner(Learner):
-
     @override(Learner)
     def compile_results(
         self,
@@ -84,10 +83,8 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
         A reduced result dict.
     """
     result = tree.map_structure(lambda *x: np.mean(x), *results)
-    agent_steps_trained = sum(
-        [r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results]
-    )
-    env_steps_trained = sum([r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results])
+    agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
+    env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
     result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
     result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
     return result

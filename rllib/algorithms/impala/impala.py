@@ -426,13 +426,10 @@ class ImpalaConfig(AlgorithmConfig):
             vf_loss_coeff=self.vf_loss_coeff,
             vtrace_drop_last_ts=self.vtrace_drop_last_ts,
             vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            vtrace_clip_pg_rho_threshold=(
-                self.vtrace_clip_pg_rho_threshold
-            ),
+            vtrace_clip_pg_rho_threshold=(self.vtrace_clip_pg_rho_threshold),
         )
-        assert (
-            (learner_hps.rollout_frag_or_episode_len is None)
-            != (learner_hps.recurrent_seq_len is None)
+        assert (learner_hps.rollout_frag_or_episode_len is None) != (
+            learner_hps.recurrent_seq_len is None
         ), (
             "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
             "None in ImpalaHyperparameters!"

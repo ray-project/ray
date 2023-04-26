@@ -20,7 +20,6 @@ from ray.rllib.algorithms.appo.appo_learner import (
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
-from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override

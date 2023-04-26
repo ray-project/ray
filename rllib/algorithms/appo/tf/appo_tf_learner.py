@@ -221,7 +221,9 @@ class APPOTfLearner(ImpalaTfLearner):
             for old_var, current_var in zip(
                 target_network.variables, current_network.variables
             ):
-                updated_var = self.hps.tau * current_var + (1.0 - self.hps.tau) * old_var
+                updated_var = (
+                    self.hps.tau * current_var + (1.0 - self.hps.tau) * old_var
+                )
                 old_var.assign(updated_var)
 
     def _update_module_kl_coeff(

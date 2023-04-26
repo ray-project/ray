@@ -14,7 +14,6 @@ from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 
 def get_learner(learning_rate=1e-3) -> Learner:
@@ -77,7 +76,7 @@ class TestLearner(unittest.TestCase):
 
         with tf.GradientTape() as tape:
             params = learner.module[DEFAULT_POLICY_ID].trainable_variables
-            loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+            loss = {"total_loss": sum(tf.reduce_sum(param) for param in params)}
             gradients = learner.compute_gradients(loss, tape)
 
         # type should be a mapping from ParamRefs to gradients
@@ -140,7 +139,7 @@ class TestLearner(unittest.TestCase):
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:
-                loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+                loss = {"total_loss": sum(tf.reduce_sum(param) for param in params)}
                 gradients = learner.compute_gradients(loss, tape)
                 learner.apply_gradients(gradients)
 
