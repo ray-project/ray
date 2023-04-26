@@ -2,7 +2,7 @@ import asyncio
 from functools import wraps
 from inspect import iscoroutinefunction
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar
 from dataclasses import dataclass
 
 
@@ -197,15 +197,31 @@ def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[ob
 
 T = TypeVar("T")
 R = TypeVar("R")
+F = TypeVar("F", bound=Callable[[List[T]], List[R]])
+G = TypeVar("G", bound=Callable[[T], R])
+
+
+# Normal decorator use case (called with no arguments).
+@overload
+def batch(func: F) -> G:
+    pass
+
+
+# "Decorator factory" use case (called with arguments).
+@overload
+def batch(
+    max_batch_size: int = 10, batch_wait_timeout_s: float = 0.0
+) -> Callable[[F], G]:
+    pass
 
 
 @PublicAPI(stability="beta")
 def batch(
-    _func: Optional[Callable[T, R]] = None,
+    _func: Optional[Callable] = None,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
-) -> Callable[List[T], List[R]]:
-    """Converts a function to perform request microbatching.
+):
+    """Converts a function to asynchronously handle batches.
 
     The function can be a standalone function or a class method. In both
     cases, the function must be `async def` and take a list of objects as
@@ -216,33 +232,19 @@ def batch(
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
     Example:
-
-        .. code-block:: python
-
-            from ray import serve
-            from starlette.requests import Request
-
-            @serve.deployment
-            class BatchedDeployment:
-                @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
-                async def batch_handler(self, requests: List[Request]) -> List[str]:
-                    response_batch = []
-                    for r in requests:
-                        name = (await requests.json())["name"]
-                        response_batch.append(f"Hello {name}!")
-
-                    return response_batch
-
-                async def __call__(self, request: Request):
-                    return await self.batch_handler(request)
-
-            app = BatchedDeployment.bind()
+        >>> from ray import serve
+        >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5) # doctest: +SKIP
+        ... async def handle_batch(batch: List[str]): # doctest: +SKIP
+        ...     return [s.lower() for s in batch] # doctest: +SKIP
+        >>> async def handle_single(s: str): # doctest: +SKIP
+        ...     # Returns s.lower().
+        ...     return await handle_batch(s) # doctest: +SKIP
 
     Arguments:
         max_batch_size: the maximum batch size that will be executed in
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
-            `max_batch_size` elements before running on the current batch.
+            `max_batch_size` elements before running the underlying function.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
