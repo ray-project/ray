@@ -31,10 +31,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        # make sure all the coefficients are on the same device as the model
-        if self.curr_kl_coeff.device != self._device:
-            self.curr_kl_coeff = self.curr_kl_coeff.to(self._device)
-
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
         prev_action_dist = action_dist_class.from_logits(
