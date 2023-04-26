@@ -1547,14 +1547,9 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
 
     for k in concated_samples[0].keys():
         try:
-            if k == "infos":
-                concatd_data[k] = _concat_values(
-                    [s[k] for s in concated_samples], time_major=time_major
-                )
-            else:
-                concatd_data[k] = tree.map_structure(
-                    _concat_values, *[c[k] for c in concated_samples]
-                )
+            concatd_data[k] = tree.map_structure(
+                _concat_values, *[c[k] for c in concated_samples]
+            )
         except Exception:
             raise ValueError(
                 f"Cannot concat data under key '{k}', b/c "
