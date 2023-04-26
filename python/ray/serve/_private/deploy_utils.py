@@ -1,8 +1,11 @@
 from typing import Dict, Tuple, Union, Callable, Type, Optional, Any
+import hashlib
+import json
 import logging
 import time
 
 from ray.serve.config import ReplicaConfig, DeploymentConfig
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import DeploymentInfo
@@ -135,3 +138,22 @@ def deploy_args_to_deployment_info(
         autoscaling_policy=autoscaling_policy,
         is_driver_deployment=is_driver_deployment,
     )
+
+
+def get_app_code_version(app_config: ServeApplicationSchema) -> str:
+    """Returns the code version of an application.
+
+    Args:
+        app_config: The application config.
+
+    Returns: a hash of the import path and (application level) runtime env representing
+            the code version of the application.
+    """
+    encoded = json.dumps(
+        {
+            "import_path": app_config.import_path,
+            "runtime_env": app_config.runtime_env,
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.md5(encoded).hexdigest()

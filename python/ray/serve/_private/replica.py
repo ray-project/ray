@@ -161,8 +161,7 @@ def create_replica_wrapper(name: str):
                     _callable,
                     deployment_name,
                     replica_tag,
-                    deployment_config,
-                    deployment_config.user_config,
+                    deployment_config.autoscaling_config,
                     version,
                     is_function,
                     controller_handle,
@@ -227,13 +226,15 @@ def create_replica_wrapper(name: str):
             )
 
         async def is_initialized(
-            self, user_config: Optional[Any] = None, _after: Optional[Any] = None
+            self,
+            deployment_config: DeploymentConfig = None,
+            _after: Optional[Any] = None,
         ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             await self._initialize_replica()
 
-            metadata = await self.reconfigure(user_config)
+            metadata = await self.reconfigure(deployment_config)
 
             # A new replica should not be considered healthy until it passes an
             # initial health check. If an initial health check fails, consider
@@ -242,11 +243,9 @@ def create_replica_wrapper(name: str):
             return metadata
 
         async def reconfigure(
-            self, user_config: Optional[Any] = None
+            self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            if user_config is not None:
-                await self.replica.reconfigure(user_config)
-
+            await self.replica.reconfigure(deployment_config)
             return await self.get_metadata()
 
         async def get_metadata(
@@ -254,7 +253,7 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Wait for replica initialization to finish
             await self._init_finish_event.wait()
-            return self.replica.deployment_config, self.replica.version
+            return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
             if self.replica is not None:
@@ -281,19 +280,17 @@ class RayServeReplica:
         _callable: Callable,
         deployment_name: str,
         replica_tag: ReplicaTag,
-        deployment_config: DeploymentConfig,
-        user_config: Any,
+        autoscaling_config: Any,
         version: DeploymentVersion,
         is_function: bool,
         controller_handle: ActorHandle,
     ) -> None:
-        self.deployment_config = deployment_config
         self.deployment_name = deployment_name
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
-        self.user_config = user_config
         self.version = version
+        self.deployment_config = None
         self.rwlock = aiorwlock.RWLock()
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
@@ -360,11 +357,9 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
-        self._shutdown_wait_loop_s = deployment_config.graceful_shutdown_wait_loop_s
-
-        if deployment_config.autoscaling_config:
+        if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
-            config = deployment_config.autoscaling_config
+            config = autoscaling_config
             start_metrics_pusher(
                 interval_s=config.metrics_interval_s,
                 collection_callback=self._collect_autoscaling_metrics,
@@ -484,26 +479,36 @@ class RayServeReplica:
 
         return result, success
 
-    async def reconfigure(self, user_config: Any):
+    async def reconfigure(self, deployment_config: DeploymentConfig):
         async with self.rwlock.writer_lock:
-            self.user_config = user_config
-            self.version = DeploymentVersion(
-                self.version.code_version, user_config=user_config
+            user_config_changed = False
+            if (
+                self.deployment_config is None
+                or self.deployment_config.user_config != deployment_config.user_config
+            ):
+                user_config_changed = True
+            self.deployment_config = deployment_config
+            self.version = DeploymentVersion.from_deployment_version(
+                self.version, self.deployment_config
             )
-            if self.is_function:
-                raise ValueError("deployment_def must be a class to use user_config")
-            elif not hasattr(self.callable, RECONFIGURE_METHOD):
-                raise RayServeException(
-                    "user_config specified but deployment "
-                    + self.deployment_name
-                    + " missing "
-                    + RECONFIGURE_METHOD
-                    + " method"
+
+            if self.deployment_config.user_config is not None and user_config_changed:
+                if self.is_function:
+                    raise ValueError(
+                        "deployment_def must be a class to use user_config"
+                    )
+                elif not hasattr(self.callable, RECONFIGURE_METHOD):
+                    raise RayServeException(
+                        "user_config specified but deployment "
+                        + self.deployment_name
+                        + " missing "
+                        + RECONFIGURE_METHOD
+                        + " method"
+                    )
+                reconfigure_method = sync_to_async(
+                    getattr(self.callable, RECONFIGURE_METHOD)
                 )
-            reconfigure_method = sync_to_async(
-                getattr(self.callable, RECONFIGURE_METHOD)
-            )
-            await reconfigure_method(user_config)
+                await reconfigure_method(self.deployment_config.user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         async with self.rwlock.reader_lock:
@@ -546,7 +551,7 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(self._shutdown_wait_loop_s)
+            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
@@ -557,8 +562,9 @@ class RayServeReplica:
             else:
                 logger.info(
                     "Waiting for an additional "
-                    f"{self._shutdown_wait_loop_s}s to shut down because "
-                    f"there are {self.num_ongoing_requests} ongoing requests."
+                    f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
+                    f"down because there are {self.num_ongoing_requests} ongoing "
+                    "requests."
                 )
 
         # Explicitly call the del method to trigger clean up.
