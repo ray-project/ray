@@ -1724,7 +1724,7 @@ class Datastream:
             {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
-            on: a column name or a list of column names to sum.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the sum; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1734,7 +1734,7 @@ class Datastream:
         Returns:
             The sum result.
 
-            For varying arguments for ``on``, the return varies:
+            For different values of ``on``, the return varies:
 
             - ``on=None``: a dict containing the column-wise sum of all
               columns,
@@ -1781,7 +1781,7 @@ class Datastream:
         Returns:
             The min result.
 
-            For varying arguments for ``on``, the return varies:
+            For different values of ``on``, the return varies:
 
             - ``on=None``: an dict containing the column-wise min of
               all columns,
@@ -1828,7 +1828,7 @@ class Datastream:
         Returns:
             The max result.
 
-            For varying arguments for ``on``, the return varies:
+            For different values of ``on``, the return varies:
 
             - ``on=None``: an dict containing the column-wise max of
               all columns,
@@ -1875,7 +1875,7 @@ class Datastream:
         Returns:
             The mean result.
 
-            For varying arguments for ``on``, the return varies:
+            For different values of ``on``, the return varies:
 
             - ``on=None``: an dict containing the column-wise mean of
               all columns,
@@ -1935,7 +1935,7 @@ class Datastream:
         Returns:
             The standard deviation result.
 
-            For varying arguments for ``on``, the return varies:
+            For different values of ``on``, the return varies:
 
             - ``on=None``: an dict containing the column-wise std of
               all columns,

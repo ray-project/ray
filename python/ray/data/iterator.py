@@ -233,7 +233,7 @@ class DataIterator(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def schema(self) -> Schema:
+    def schema(self) -> "Schema":
         """Return the schema of the datastream iterated over."""
         raise NotImplementedError
 
