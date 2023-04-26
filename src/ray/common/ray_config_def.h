@@ -267,7 +267,7 @@ RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 /// object directory.
 RAY_CONFIG(int64_t, fetch_fail_timeout_milliseconds, 600000)
 
-/// Temporary workaround for https://gitsb.com/ray-project/ray/pull/16402.
+/// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 
 // Whether to inline object status in serialized references.
