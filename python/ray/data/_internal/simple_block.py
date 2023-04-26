@@ -99,9 +99,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
         return pandas.DataFrame({"value": self._items})
 
-    def to_numpy(
-        self, columns: Optional[Union[str, List[str]]] = None
-    ) -> np.ndarray:
+    def to_numpy(self, columns: Optional[Union[str, List[str]]] = None) -> np.ndarray:
         if columns is not None:
             if not isinstance(columns, list):
                 columns = [columns]
