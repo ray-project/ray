@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 
 import ray
-from ray.data.block import Block, DataBatch, T, BlockAccessor
+from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder

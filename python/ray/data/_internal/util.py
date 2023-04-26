@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
     import pyarrow
     import pandas
-    from ray.data._internal.arrow_block import ArrowRow
     from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)

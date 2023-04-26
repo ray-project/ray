@@ -1,5 +1,5 @@
 import os
-from typing import List, Union
+from typing import List
 
 import pandas as pd
 import pyarrow as pa
@@ -13,7 +13,6 @@ from fsspec.implementations.http import HTTPFileSystem
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import (

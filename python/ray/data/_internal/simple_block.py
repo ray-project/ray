@@ -291,9 +291,7 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(
-        self, key: KeyFn, aggs: Tuple[AggregateFn]
-    ) -> Block:
+    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.

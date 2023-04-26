@@ -1,11 +1,10 @@
 import builtins
 from copy import copy
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
 import ray
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
@@ -130,7 +129,7 @@ class Datasource:
 
 
 @PublicAPI
-class Reader(Generic):
+class Reader:
     """A bound read operation for a datasource.
 
     This is a stateful class so that reads can be prepared in multiple stages.
