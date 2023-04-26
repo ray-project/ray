@@ -76,6 +76,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_LEARNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -2077,6 +2078,14 @@ class Algorithm(Trainable):
                     policy_state.pkl
                 pol_2/
                     policy_state.pkl
+            learner/
+                learner_state.json
+                module_state/
+                    module_1/
+                        ...
+                optimizer_state/
+                    optimizers_module_1/
+                        ...
             rllib_checkpoint.json
             algorithm_state.pkl
 
@@ -2099,7 +2108,10 @@ class Algorithm(Trainable):
             policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
-        state["checkpoint_version"] = CHECKPOINT_VERSION
+        if self.config._enable_learner_api:
+            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
+        else:
+            state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write state (w/o policies) to disk.
         state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
@@ -2130,21 +2142,24 @@ class Algorithm(Trainable):
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
+        # if we are using the learner API, save the learner group state
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
+            self.learner_group.save_state(learner_state_dir)
+
         return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+    def load_checkpoint(self, checkpoint: str) -> None:
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
-        if isinstance(checkpoint, str):
-            checkpoint_info = get_checkpoint_info(checkpoint)
-            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info
-            )
-        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
-        else:
-            checkpoint_data = checkpoint
+
+        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint, "learner")
+            self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
