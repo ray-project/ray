@@ -48,8 +48,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-# We need this builder function because we want to share the same
-# custom logics between TF1 dynamic and TF2 eager policies.
+# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
 def get_appo_tf_policy(name: str, base: type) -> type:
     """Construct an APPOTFPolicy inheriting either dynamic or eager base policies.
 
