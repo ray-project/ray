@@ -140,7 +140,7 @@ steps:
     - bazel test $(./ci/run/bazel_export_options) --config=ci
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=client_tests,small_size_python_tests
+      --test_tag_filters=client_tests,small_size_python_tests,main
       -- python/ray/tests/...
     - *epilogue_commands
 
@@ -150,7 +150,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large --test_tag_filters=main
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
@@ -159,7 +159,7 @@ steps:
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,main
       python/ray/tests/...
     - *epilogue_commands
 
@@ -169,6 +169,6 @@ steps:
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,main
       python/ray/tests/...
     - *epilogue_commands
