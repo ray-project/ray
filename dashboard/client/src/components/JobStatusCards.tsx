@@ -62,44 +62,40 @@ type StatusCardProps = {
 
 export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
   return (
-    <TitleCard title="">
-      <Box
-        mb={2}
-        display="flex"
-        flexDirection="column"
-        height="300px"
-        style={{
-          overflow: "hidden",
-          overflowY: "scroll",
-        }}
-        sx={{ borderRadius: "16px" }}
-      >
-        {cluster_status?.data
-          ? formatNodeStatus(cluster_status?.data.clusterStatus)
-          : "No cluster status."}
-      </Box>
-    </TitleCard>
+    <Box
+      mb={2}
+      display="flex"
+      flexDirection="column"
+      height="300px"
+      style={{
+        overflow: "hidden",
+        overflowY: "scroll",
+      }}
+      sx={{ borderRadius: "16px" }}
+    >
+      {cluster_status?.data
+        ? formatNodeStatus(cluster_status?.data.clusterStatus)
+        : "No cluster status."}
+    </Box>
   );
 };
 
 export const ResourceStatusCard = ({ cluster_status }: StatusCardProps) => {
   return (
-    <TitleCard title="">
-      <Box
-        mb={2}
-        display="flex"
-        flexDirection="column"
-        height="300px"
-        style={{
-          overflow: "hidden",
-          overflowY: "scroll",
-        }}
-        sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
-      >
-        {cluster_status?.data
-          ? formatResourcesStatus(cluster_status?.data.clusterStatus)
-          : "No cluster status."}
-      </Box>
-    </TitleCard>
+    <Box
+      mb={2}
+      display="flex"
+      flexDirection="column"
+      height="300px"
+      style={{
+        overflow: "hidden",
+        overflowY: "scroll",
+      }}
+      sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
+    >
+      {cluster_status?.data
+        ? formatResourcesStatus(cluster_status?.data.clusterStatus)
+        : "No cluster status."}
+    </Box>
   );
 };

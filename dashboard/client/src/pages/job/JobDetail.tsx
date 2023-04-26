@@ -189,10 +189,14 @@ export const JobDetailChartsPage = () => {
       </TitleCard>
       <Grid container>
         <Grid item xs={4}>
-          <NodeStatusCard cluster_status={cluster_status} />
+          <TitleCard title="">
+            <NodeStatusCard cluster_status={cluster_status} />
+          </TitleCard>
         </Grid>
         <Grid item xs={4}>
-          <ResourceStatusCard cluster_status={cluster_status} />
+          <TitleCard title="">
+            <ResourceStatusCard cluster_status={cluster_status} />
+          </TitleCard>
         </Grid>
       </Grid>
       <TitleCard>

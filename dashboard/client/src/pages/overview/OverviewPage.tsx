@@ -1,6 +1,7 @@
 import { createStyles, Grid, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
+import { displayPartsToString } from "typescript";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import EventTable from "../../components/EventTable";
 import {
@@ -13,6 +14,7 @@ import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
 import { OverviewCard } from "./cards/OverviewCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
+import { RecentServeCard } from "./cards/RecentServeCard";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -56,8 +58,8 @@ export const OverviewPage = () => {
       />
       <div className={classes.overviewCardsContainer}>
         <ClusterUtilizationCard className={classes.overviewCard} />
-        <NodeCountCard className={classes.overviewCard} />
         <RecentJobsCard className={classes.overviewCard} />
+        <RecentServeCard className={classes.overviewCard} />
       </div>
 
       <CollapsibleSection
@@ -73,16 +75,38 @@ export const OverviewPage = () => {
         title="Autoscaler"
         startExpanded
       >
-        <div className={classes.overviewCardsContainer}>
-          <NodeCountCard className={classes.overviewCard} />
-          <OverviewCard className={classes.root}>
-            <NodeStatusCard cluster_status={cluster_status} />
-          </OverviewCard>
-          <OverviewCard className={classes.root}>
-            <ResourceStatusCard cluster_status={cluster_status} />
-          </OverviewCard>
-        </div>
+        {
+          <div className={classes.overviewCardsContainer}>
+            <NodeCountCard className={classes.overviewCard} />
+            <OverviewCard
+              className={classNames(classes.root, classes.overviewCard)}
+            >
+              <NodeStatusCard cluster_status={cluster_status} />
+            </OverviewCard>
+            <OverviewCard
+              className={classNames(classes.root, classes.overviewCard)}
+            >
+              <ResourceStatusCard cluster_status={cluster_status} />
+            </OverviewCard>
+          </div>
+        }
       </CollapsibleSection>
     </div>
   );
 };
+
+// <Grid container>
+// <Grid item xs={4}>
+//   <NodeCountCard className={classes.overviewCard} />
+// </Grid>
+// <Grid item xs={4}>
+//   <OverviewCard className={classes.root}>
+//     <NodeStatusCard cluster_status={cluster_status} />
+//   </OverviewCard>
+// </Grid>
+// <Grid item xs={4}>
+//   <OverviewCard className={classes.root}>
+//     <ResourceStatusCard cluster_status={cluster_status} />
+//   </OverviewCard>
+// </Grid>
+// </Grid>
