@@ -15,76 +15,78 @@ Tune further integrates with a wide range of additional hyperparameter optimizat
 
 **Click on the following tabs to see code examples for various machine learning frameworks**:
 
-.. tabbed:: Quickstart
+.. tab-set::
 
-    To run this example, install the following: ``pip install "ray[tune]"``.
+    .. tab-item:: Quickstart
 
-    In this quick-start example you `minimize` a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
-    The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
-    We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
+        To run this example, install the following: ``pip install "ray[tune]"``.
 
-    .. callout::
+        In this quick-start example you `minimize` a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
+        The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
+        We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
 
-        .. literalinclude:: ../../../python/ray/tune/tests/example.py
-           :language: python
-           :start-after: __quick_start_begin__
-           :end-before: __quick_start_end__
+        .. callout::
 
-        .. annotations::
-            <1> Define an objective function.
+            .. literalinclude:: ../../../python/ray/tune/tests/example.py
+               :language: python
+               :start-after: __quick_start_begin__
+               :end-before: __quick_start_end__
 
-            <2> Define a search space.
+            .. annotations::
+                <1> Define an objective function.
 
-            <3> Start a Tune run and print the best result.
+                <2> Define a search space.
 
-
-.. tabbed:: Keras+Hyperopt
-
-    To tune your Keras models with Hyperopt, you wrap your model in an objective function whose ``config`` you
-    can access for selecting hyperparameters.
-    In the example below we only tune the ``activation`` parameter of the first layer of the model, but you can
-    tune any parameter of the model you want.
-    After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
-    It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
-
-    .. callout::
-
-        .. literalinclude:: doc_code/keras_hyperopt.py
-            :language: python
-            :start-after: __keras_hyperopt_start__
-            :end-before: __keras_hyperopt_end__
-
-        .. annotations::
-            <1> Wrap a Keras model in an objective function.
-
-            <2> Define a search space and initialize the search algorithm.
-
-            <3> Start a Tune run that maximizes accuracy.
-
-.. tabbed:: PyTorch+Optuna
-
-    To tune your PyTorch models with Optuna, you wrap your model in an objective function whose ``config`` you
-    can access for selecting hyperparameters.
-    In the example below we only tune the ``momentum`` and learning rate (``lr``) parameters of the model's optimizer,
-    but you can tune any other model parameter you want.
-    After defining the search space, you can simply initialize the ``OptunaSearch`` object and pass it to ``run``.
-    It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
-    We stop tuning this training run after ``5`` iterations, but you can easily define other stopping rules as well.
+                <3> Start a Tune run and print the best result.
 
 
-    .. callout::
+    .. tab-item:: Keras+Hyperopt
 
-        .. literalinclude:: doc_code/pytorch_optuna.py
-            :language: python
-            :start-after: __pytorch_optuna_start__
-            :end-before: __pytorch_optuna_end__
+        To tune your Keras models with Hyperopt, you wrap your model in an objective function whose ``config`` you
+        can access for selecting hyperparameters.
+        In the example below we only tune the ``activation`` parameter of the first layer of the model, but you can
+        tune any parameter of the model you want.
+        After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
+        It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
 
-        .. annotations::
-            <1> Wrap a PyTorch model in an objective function.
+        .. callout::
 
-            <2> Define a search space and initialize the search algorithm.
+            .. literalinclude:: doc_code/keras_hyperopt.py
+                :language: python
+                :start-after: __keras_hyperopt_start__
+                :end-before: __keras_hyperopt_end__
 
-            <3> Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
+            .. annotations::
+                <1> Wrap a Keras model in an objective function.
+
+                <2> Define a search space and initialize the search algorithm.
+
+                <3> Start a Tune run that maximizes accuracy.
+
+    .. tab-item:: PyTorch+Optuna
+
+        To tune your PyTorch models with Optuna, you wrap your model in an objective function whose ``config`` you
+        can access for selecting hyperparameters.
+        In the example below we only tune the ``momentum`` and learning rate (``lr``) parameters of the model's optimizer,
+        but you can tune any other model parameter you want.
+        After defining the search space, you can simply initialize the ``OptunaSearch`` object and pass it to ``run``.
+        It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
+        We stop tuning this training run after ``5`` iterations, but you can easily define other stopping rules as well.
+
+
+        .. callout::
+
+            .. literalinclude:: doc_code/pytorch_optuna.py
+                :language: python
+                :start-after: __pytorch_optuna_start__
+                :end-before: __pytorch_optuna_end__
+
+            .. annotations::
+                <1> Wrap a PyTorch model in an objective function.
+
+                <2> Define a search space and initialize the search algorithm.
+
+                <3> Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
 
 With Tune you can also launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>`
 in less than 10 lines of code.
