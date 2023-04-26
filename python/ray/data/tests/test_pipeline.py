@@ -548,7 +548,7 @@ def test_split_at_indices(ray_start_regular_shared):
     )
 
 
-def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset[ArrowRow], pd.DataFrame]:
+def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset, pd.DataFrame]:
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
