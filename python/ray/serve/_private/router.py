@@ -290,7 +290,7 @@ class Router:
         self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
-            tag_keys=("deployment", "route"),
+            tag_keys=("deployment", "route", "application"),
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
 
@@ -316,7 +316,9 @@ class Router:
     ):
         """Assign a query and returns an object ref represent the result"""
 
-        self.num_router_requests.inc(tags={"route": request_meta.route})
+        self.num_router_requests.inc(
+            tags={"route": request_meta.route, "application": request_meta.app_name}
+        )
         return await self._replica_set.assign_replica(
             Query(
                 args=list(request_args),
