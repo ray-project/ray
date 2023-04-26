@@ -1434,7 +1434,7 @@ class DeploymentState:
 
         return replicas_stopped
 
-    def _check_curr_status(self) -> bool:
+    def _check_curr_status(self) -> Tuple[bool, bool]:
         """Check the current deployment status.
 
         Checks the difference between the target vs. running replica count for
@@ -1443,8 +1443,7 @@ class DeploymentState:
         This will update the current deployment status depending on the state
         of the replicas.
 
-        Returns:
-            was_deleted
+        Returns (deleted, any_replicas_recovering).
         """
         # TODO(edoakes): we could make this more efficient in steady-state by
         # having a "healthy" flag that gets flipped if an update or replica
@@ -1453,6 +1452,9 @@ class DeploymentState:
         target_version = self._target_state.version
         target_replica_count = self._target_state.num_replicas
 
+        any_replicas_recovering = (
+            self._replicas.count(states=[ReplicaState.RECOVERING]) > 0
+        )
         all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
         running_at_target_version_replica_cnt = self._replicas.count(
             states=[ReplicaState.RUNNING], version=target_version
@@ -1488,7 +1490,7 @@ class DeploymentState:
                         f"details. Retrying after {self._backoff_time_s} seconds."
                     ),
                 )
-                return False
+                return False, any_replicas_recovering
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1504,16 +1506,16 @@ class DeploymentState:
         ):
             # Check for deleting.
             if self._target_state.deleting and all_running_replica_cnt == 0:
-                return True
+                return True, any_replicas_recovering
 
             # Check for a non-zero number of deployments.
             if target_replica_count == running_at_target_version_replica_cnt:
                 self._curr_status_info = DeploymentStatusInfo(
                     self._name, DeploymentStatus.HEALTHY
                 )
-                return False
+                return False, any_replicas_recovering
 
-        return False
+        return False, any_replicas_recovering
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
@@ -1707,7 +1709,7 @@ class DeploymentState:
 
         return running_replicas_changed
 
-    def update(self) -> bool:
+    def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -1715,8 +1717,9 @@ class DeploymentState:
         Also updates the internal DeploymentStatusInfo based on the current
         state of the system.
 
-        Returns true if this deployment was successfully deleted.
+        Returns (deleted, any_replicas_recovering).
         """
+        deleted, any_replicas_recovering = False, False
         try:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
@@ -1730,16 +1733,15 @@ class DeploymentState:
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
 
-            deleted = self._check_curr_status()
+            deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
-            deleted = False
 
-        return deleted
+        return deleted, any_replicas_recovering
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -1837,7 +1839,8 @@ class DriverDeploymentState(DeploymentState):
         pending_replicas = nums_nodes - new_running_replicas - old_running_replicas
         return max(rollout_size - pending_replicas, 0)
 
-    def update(self) -> bool:
+    def update(self) -> Tuple[bool, bool]:
+        """Returns (deleted, any_replicas_recovering)."""
         try:
             if self._target_state.deleting:
                 self._stop_all_replicas()
@@ -1864,7 +1867,7 @@ class DriverDeploymentState(DeploymentState):
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
-            return False
+            return False, False
 
     def should_autoscale(self) -> bool:
         return False
@@ -2194,9 +2197,13 @@ class DeploymentStateManager:
             current_handle_queued_queries = 0
         return current_handle_queued_queries
 
-    def update(self):
-        """Updates the state of all deployments to match their goal state."""
+    def update(self) -> bool:
+        """Updates the state of all deployments to match their goal state.
+
+        Returns True if any of the deployments have replicas in the RECOVERING state.
+        """
         deleted_tags = []
+        any_recovering = False
         for deployment_name, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
                 current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
@@ -2210,7 +2217,7 @@ class DeploymentStateManager:
                 deployment_state.autoscale(
                     current_num_ongoing_requests, current_handle_queued_queries
                 )
-            deleted = deployment_state.update()
+            deleted, recovering = deployment_state.update()
             if deleted:
                 deleted_tags.append(deployment_name)
                 deployment_info = deployment_state.target_info
@@ -2219,11 +2226,15 @@ class DeploymentStateManager:
                     self._deleted_deployment_metadata.popitem(last=False)
                 self._deleted_deployment_metadata[deployment_name] = deployment_info
 
+            any_recovering |= recovering
+
         for tag in deleted_tags:
             del self._deployment_states[tag]
 
         if len(deleted_tags):
             self._record_deployment_usage()
+
+        return any_recovering
 
     def _record_deployment_usage(self):
         record_extra_usage_tag(
