@@ -662,7 +662,7 @@ class ActorReplicaWrapper:
             ):
                 logger.warning(
                     f"Replica {self._replica_tag} failed the health "
-                    f"check {self._consecutive_health_check_failures}"
+                    f"check {self._consecutive_health_check_failures} "
                     "times in a row, marking it unhealthy."
                 )
                 self._healthy = False

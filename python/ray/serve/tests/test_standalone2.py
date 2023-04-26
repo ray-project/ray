@@ -23,7 +23,7 @@ from ray._private.test_utils import (
 from ray.exceptions import RayActorError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
 from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
@@ -462,6 +462,13 @@ class TestDeployApp:
         return all(
             f"ServeReplica:{name}" not in actor_names for name in deployment_names
         )
+
+    def get_num_replicas(self, client: ServeControllerClient, deployment_name: str):
+        replicas = ray.get(
+            client._controller._dump_replica_states_for_testing.remote(deployment_name)
+        )
+        running_replicas = replicas.get([ReplicaState.RUNNING])
+        return len(running_replicas)
 
     def get_test_config(self) -> Dict:
         return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
@@ -1214,7 +1221,7 @@ class TestDeployApp:
             pids.append(pid)
         assert pid1 in pids
 
-    def test_update_config_graceful_shutdown_timeout_s(
+    def test_update_config_graceful_shutdown_timeout(
         self, client: ServeControllerClient
     ):
         """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
@@ -1314,6 +1321,89 @@ class TestDeployApp:
 
         # Check that it's the same replica, it didn't get teared down
         assert pid1 == pid2
+
+    def test_update_config_health_check_period(self, client: ServeControllerClient):
+        """Check that replicas stay alive when max_concurrent_queries is updated."""
+
+        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.pid.async_node",
+            "deployments": [{"name": "f", "health_check_period_s": 100}],
+        }
+
+        # Deploy first time, wait for replica running and deployment healthy
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(
+            partial(self.check_deployment_running, client, name), timeout=15
+        )
+        handle = client.get_handle(name)
+        pid1 = ray.get(handle.remote())[0]
+        # Health check counter shouldn't increase beyond any initial health checks done
+        # upon replica actor startup
+        initial_counter = ray.get(handle.get_counter.remote(health_check=True))
+        time.sleep(5)
+        assert initial_counter == ray.get(handle.get_counter.remote(health_check=True))
+
+        # Redeploy with health check period reduced to 1 second
+        config_template["deployments"][0]["health_check_period_s"] = 0.1
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(
+            partial(self.check_deployment_running, client, name), timeout=15
+        )
+        # health check counter should now very quickly increase
+        wait_for_condition(
+            lambda: ray.get(handle.get_counter.remote(health_check=True)) >= 30,
+            retry_interval_ms=1000,
+            timeout=5,
+        )
+
+        # Check that it's the same replica, it didn't get teared down
+        pid2 = ray.get(handle.remote())[0]
+        assert pid1 == pid2
+
+    def test_update_config_health_check_timeout(self, client: ServeControllerClient):
+        """Check that replicas stay alive when max_concurrent_queries is updated."""
+
+        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+        # Deploy with a very long initial health_check_timeout_s
+        # Also set small health_check_period_s to make test run faster
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.pid.async_node",
+            "deployments": [
+                {
+                    "name": "f",
+                    "health_check_period_s": 1,
+                    "health_check_timeout_s": 1000,
+                }
+            ],
+        }
+
+        # Deploy first time, wait for replica running and deployment healthy
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(
+            partial(self.check_deployment_running, client, name), timeout=15
+        )
+        handle = client.get_handle(name)
+        pid1 = ray.get(handle.remote())[0]
+
+        # Redeploy with health check timeout reduced to 1 second
+        config_template["deployments"][0]["health_check_timeout_s"] = 1
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(
+            partial(self.check_deployment_running, client, name), timeout=15
+        )
+        # Check that it's the same replica, it didn't get teared down
+        # (needs to be done before the tests below because the replica will be marked
+        # unhealthy then stopped and restarted)
+        pid2 = ray.get(handle.remote())[0]
+        assert pid1 == pid2
+
+        # Block in health check
+        ray.get(handle.send.remote(clear=True, health_check=True))
+        wait_for_condition(
+            lambda: client.get_serve_status().get_deployment_status(name).status
+            == DeploymentStatus.UNHEALTHY
+        )
 
     def test_deploy_separate_runtime_envs(self, client: ServeControllerClient):
         """Deploy two applications with separate runtime envs."""
