@@ -10,10 +10,23 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import DDPStrategy
 
-if Version(pl.__version__) >= Version("2.0.0"):
+_LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
+_TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
+
+if _LIGHTNING_GREATER_EQUAL_2_0:
     from pytorch_lightning.strategies import FSDPStrategy
 else:
     from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
+
+_distributed_available = torch.distributed.is_available()
+_fsdp_available = _TORCH_GREATER_EQUAL_1_12 and _distributed_available
+if _fsdp_available:
+    from torch.distributed.fsdp import (
+        FullStateDictConfig,
+        FullyShardedDataParallel,
+        StateDictType,
+    )
+
 
 import ray
 from ray.air import session
@@ -26,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
+def _strip_prefix_from_state_dict(state_dict: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+    prefix_len = len(prefix)
+    return {k[prefix_len:]: v for k, v in state_dict.items()}
 
 def get_worker_root_device():
     """Get the first torch device of the current worker if there are multiple."""
@@ -64,6 +80,26 @@ class RayFSDPStrategy(FSDPStrategy):
             num_replicas=self.world_size,
             rank=self.global_rank,
         )
+    
+    def lightning_module_state_dict(self) -> Dict[str, Any]:
+        """Gathers the full state dict by unsharding all the parameters.
+
+        To avoid OOM, the returned parameters will only be returned on rank 0 and on CPU. All other ranks get an empty
+        dict.
+        """
+        assert self.model is not None
+
+        if _LIGHTNING_GREATER_EQUAL_2_0:
+            print("lightning_module_state_dict\n\n\n\n")
+            with FullyShardedDataParallel.state_dict_type(
+                module=self.model,
+                state_dict_type=StateDictType.FULL_STATE_DICT,
+                state_dict_config=FullStateDictConfig(offload_to_cpu=(self.world_size > 1), rank0_only=True),
+            ):
+                state_dict = self.model.state_dict()
+                return _strip_prefix_from_state_dict(state_dict, prefix="_forward_module.")
+        else:
+            return super().lightning_module_state_dict()
 
 
 class RayEnvironment(LightningEnvironment):
