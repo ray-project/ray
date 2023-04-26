@@ -1,4 +1,4 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { createStyles, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import _ from "lodash";
 import React from "react";
@@ -10,7 +10,6 @@ import {
 import { CommonRecentCard } from "../../../components/CommonRecentCard";
 import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
-import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -118,11 +117,4 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
       footerLink={"/jobs"}
     ></CommonRecentCard>
   );
-};
-
-const useRecentJobListItemStyles = makeStyles((theme) => createStyles({}));
-
-type RecentJobListItemProps = {
-  job: UnifiedJob;
-  className?: string;
 };
