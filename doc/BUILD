@@ -251,6 +251,17 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
+# Templates that only require CPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["source/templates/tests/many_model_training.ipynb"],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+    env = {"SMOKE_TEST": "1"},
+)
+
 # Templates that require GPU
 
 py_test_run_all_notebooks(
@@ -262,17 +273,6 @@ py_test_run_all_notebooks(
     exclude = [],
     data = ["//doc:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-    env = {"SMOKE_TEST": "1"},
-)
-
-# Templates that require timeseries libs
-
-py_test_run_all_notebooks(
-    size = "large",
-    include = ["source/templates/tests/many_model_training.ipynb"],
-    exclude = [],
-    data = ["//doc:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs"],
     env = {"SMOKE_TEST": "1"},
 )
 
