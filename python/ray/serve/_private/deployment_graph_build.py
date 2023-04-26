@@ -66,7 +66,8 @@ def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
             should be executable via `ray_dag_root_node.execute(user_input)`
             and should have `InputNode` in it.
         name: Application name,. If provided, formatting all the deployment name to
-            {name}_{deployment_name}
+            {name}_{deployment_name}, if not provided, the deployment name won't be
+            updated.
 
     Returns:
         deployments: All deployments needed for an e2e runnable serve pipeline,
@@ -273,6 +274,16 @@ def transform_ray_dag_to_serve_dag(
                 dag_node._body.__annotations__["return"]
             )
 
+        # Set the deployment name if the user provides.
+        if "deployment_schema" in dag_node._bound_other_args_to_resolve:
+            schema = dag_node._bound_other_args_to_resolve["deployment_schema"]
+            if (
+                inspect.isfunction(dag_node._body)
+                and schema.name != dag_node._body.__name__
+            ):
+                deployment_name = schema.name
+
+        # Update the deployment name if the application name provided.
         if name:
             deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
 

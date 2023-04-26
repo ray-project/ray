@@ -80,6 +80,26 @@ def test_strict_map_output(ray_start_regular_shared, enable_strict_mode):
     ds.map(lambda x: UserDict({"x": object()})).materialize()
 
 
+def test_strict_convert_map_output(ray_start_regular_shared, enable_strict_mode):
+    ds = ray.data.range(1).map_batches(lambda x: {"id": [0, 1, 2, 3]}).materialize()
+    assert ds.take_batch()["id"].tolist() == [0, 1, 2, 3]
+
+    with pytest.raises(ValueError):
+        # Strings not converted into array.
+        ray.data.range(1).map_batches(lambda x: {"id": "string"}).materialize()
+
+    class UserObj:
+        def __eq__(self, other):
+            return isinstance(other, UserObj)
+
+    ds = (
+        ray.data.range(1)
+        .map_batches(lambda x: {"id": [0, 1, 2, UserObj()]})
+        .materialize()
+    )
+    assert ds.take_batch()["id"].tolist() == [0, 1, 2, UserObj()]
+
+
 def test_strict_default_batch_format(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.range(1)
 
