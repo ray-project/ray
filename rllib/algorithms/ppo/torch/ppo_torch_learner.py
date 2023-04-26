@@ -108,4 +108,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
     @override(PPOLearner)
     def _set_kl_coeff(self, value: float):
-        self.curr_kl_coeff.data = value
+        self.curr_kl_coeff.data = torch.tensor(
+            value,
+            dtype=torch.float32,
+            device=self.curr_kl_coeff.device,
+        )
