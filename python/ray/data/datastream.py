@@ -2825,7 +2825,7 @@ class Datastream(Generic[T]):
             Currently, this supports only a subset of the pyarrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
             types will fail on type checking. See all the supported types at:
-            https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+            https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
 
         .. note::
             The records will be inserted into MongoDB as new documents. If a record has
