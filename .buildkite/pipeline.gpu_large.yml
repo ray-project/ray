@@ -50,7 +50,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-py37,-post_wheel_build doc/...
 
-- label: ":tv: :python: Lightning 2.0 Train GPU tests"
+- label: ":zap: :python: Lightning 2.0 Train GPU tests"
   conditions:
     ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   commands:
