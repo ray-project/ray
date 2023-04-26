@@ -794,9 +794,9 @@ class Datastream:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
+            >>> ds.flat_map(lambda x: [{"id": 1}, {"id": 2}, {"id": 4}])
             FlatMap
-            +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
 
         Time complexity: O(datastream size / parallelism)
 
@@ -868,9 +868,9 @@ class Datastream:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.filter(lambda x: x % 2 == 0)
+            >>> ds.filter(lambda x: x["id"] % 2 == 0)
             Filter
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema={id: int64})
 
         Time complexity: O(datastream size / parallelism)
 
@@ -970,11 +970,11 @@ class Datastream:
             >>> # Shuffle this datastream randomly.
             >>> ds.random_shuffle()
             RandomShuffle
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema={id: int64})
             >>> # Shuffle this datastream with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
             RandomShuffle
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema={id: int64})
 
         Time complexity: O(datastream size / parallelism)
 
@@ -1373,11 +1373,11 @@ class Datastream:
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_at_indices([2, 5])
             >>> d1.take()
-            [0, 1]
+            [{"id": 0}, {"id": 1}]
             >>> d2.take()
-            [2, 3, 4]
+            [{"id": 2}, {"id": 3}, {"id": 4}]
             >>> d3.take()
-            [5, 6, 7, 8, 9]
+            [{"id": 5}, {"id": 6}, {"id": 7}, {"id": 8}, {"id": 9}]
 
         Time complexity: O(num splits)
 
@@ -1449,11 +1449,11 @@ class Datastream:
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
             >>> d1.take()
-            [0, 1]
+            [{"id": 0}, {"id": 1}]
             >>> d2.take()
-            [2, 3, 4, 5, 6]
+            [{"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}, {"id": 6}]
             >>> d3.take()
-            [7, 8, 9]
+            [{"id": 7}, {"id": 8}, {"id": 9}]
 
         Time complexity: O(num splits)
 
@@ -1512,9 +1512,9 @@ class Datastream:
             >>> ds = ray.data.range(8)
             >>> train, test = ds.train_test_split(test_size=0.25)
             >>> train.take()
-            [0, 1, 2, 3, 4, 5]
+            [{"id": 0}, {"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}]
             >>> test.take()
-            [6, 7]
+            [{"id": 6}, {"id": 7}]
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -1649,11 +1649,7 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            Aggregate
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
-            >>> # Group by an Arrow table column and aggregate.
+            >>> # Group by a table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
@@ -1663,8 +1659,7 @@ class Datastream:
         Time complexity: O(datastream size * log(datastream size / parallelism))
 
         Args:
-            key: A key function or Arrow column name. If this is None, the
-                grouping is global.
+            key: A column name. If this is None, the grouping is global.
 
         Returns:
             A lazy GroupedData that can be aggregated later.
@@ -1679,7 +1674,7 @@ class Datastream:
         return GroupedData(self, key)
 
     @ConsumptionAPI
-    def aggregate(self, *aggs: AggregateFn) -> U:
+    def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate the entire datastream as one group.
 
         Examples:
@@ -1701,8 +1696,7 @@ class Datastream:
             a tuple of ``(agg1, agg2, ...)`` where each tuple element is
             the corresponding aggregation result.
             If the input datastream is an Arrow datastream then the output is
-            an ``ArrowRow`` where each column is the corresponding
-            aggregation result.
+            an dict where each column is the corresponding aggregation result.
             If the datastream is empty, return ``None``.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
@@ -1711,7 +1705,7 @@ class Datastream:
     @ConsumptionAPI
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute sum over entire datastream.
 
         Examples:
@@ -1730,13 +1724,7 @@ class Datastream:
             {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
-            on: The data subset on which to compute the sum.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar sum of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise sum of all columns.
+            on: a column name or a list of column names to sum.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the sum; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1746,22 +1734,13 @@ class Datastream:
         Returns:
             The sum result.
 
-            For a simple datastream, the output is:
+            For varying arguments for ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the sum of all rows,
-            - ``on=callable``: a scalar representing the sum of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(sum_1, ..., sum_n)`` representing the sum of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ArrowRow containing the column-wise sum of all
+            - ``on=None``: a dict containing the column-wise sum of all
               columns,
             - ``on="col"``: a scalar representing the sum of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``dict``
               containing the column-wise sum of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1773,7 +1752,7 @@ class Datastream:
     @ConsumptionAPI
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute minimum over entire datastream.
 
         Examples:
@@ -1792,13 +1771,7 @@ class Datastream:
             {'min(A)': 0, 'min(B)': 0}
 
         Args:
-            on: The data subset on which to compute the min.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar min of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise min of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the min; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1808,22 +1781,13 @@ class Datastream:
         Returns:
             The min result.
 
-            For a simple datastream, the output is:
+            For varying arguments for ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the min of all rows,
-            - ``on=callable``: a scalar representing the min of the outputs
-              of the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(min_1, ..., min_n)`` representing the min of the outputs
-              of the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise min of
+            - ``on=None``: an dict containing the column-wise min of
               all columns,
             - ``on="col"``: a scalar representing the min of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise min of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1835,7 +1799,7 @@ class Datastream:
     @ConsumptionAPI
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute maximum over entire datastream.
 
         Examples:
@@ -1854,13 +1818,7 @@ class Datastream:
             {'max(A)': 99, 'max(B)': 9801}
 
         Args:
-            on: The data subset on which to compute the max.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar max of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise max of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the max; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1870,22 +1828,13 @@ class Datastream:
         Returns:
             The max result.
 
-            For a simple datastream, the output is:
+            For varying arguments for ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the max of all rows,
-            - ``on=callable``: a scalar representing the max of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(max_1, ..., max_n)`` representing the max of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise max of
+            - ``on=None``: an dict containing the column-wise max of
               all columns,
             - ``on="col"``: a scalar representing the max of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise max of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1897,7 +1846,7 @@ class Datastream:
     @ConsumptionAPI
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute mean over entire datastream.
 
         Examples:
@@ -1916,13 +1865,7 @@ class Datastream:
             {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
-            on: The data subset on which to compute the mean.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar mean of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise mean of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the mean; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1932,22 +1875,13 @@ class Datastream:
         Returns:
             The mean result.
 
-            For a simple datastream, the output is:
+            For varying arguments for ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the mean of all rows,
-            - ``on=callable``: a scalar representing the mean of the outputs
-              of the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(mean_1, ..., mean_n)`` representing the mean of the outputs
-              of the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise mean of
+            - ``on=None``: an dict containing the column-wise mean of
               all columns,
             - ``on="col"``: a scalar representing the mean of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise mean of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1962,7 +1896,7 @@ class Datastream:
         on: Optional[Union[str, List[str]]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-    ) -> U:
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute standard deviation over entire datastream.
 
         Examples:
@@ -1989,13 +1923,7 @@ class Datastream:
             https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
-            on: The data subset on which to compute the std.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar std of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise std of all columns.
+            on: a column name or a list of column names to aggregate.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
@@ -2007,22 +1935,13 @@ class Datastream:
         Returns:
             The standard deviation result.
 
-            For a simple datastream, the output is:
+            For varying arguments for ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the std of all rows,
-            - ``on=callable``: a scalar representing the std of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(std_1, ..., std_n)`` representing the std of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise std of
+            - ``on=None``: an dict containing the column-wise std of
               all columns,
             - ``on="col"``: a scalar representing the std of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise std of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -2032,36 +1951,22 @@ class Datastream:
         return self._aggregate_result(ret)
 
     def sort(self, key: Optional[str] = None, descending: bool = False) -> "Datastream":
-        # TODO ds.sort(lambda ...) fails with:
-        #  Callable key '<function <lambda> at 0x1b07a4cb0>' requires
-        #  datastream format to be 'simple', was 'arrow'.
-        #  How do I create something "simple" here?
         """Sort the datastream by the specified key column or key function.
 
         Examples:
             >>> import ray
-            >>> # Sort using the entire record as the key.
-            >>> ds = ray.data.range(100)
-            >>> ds.sort()
-            Sort
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
             +- Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
-            >>> # Sort by a key function.
-            >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
         Time complexity: O(datastream size * log(datastream size / parallelism))
 
         Args:
-            key:
-                - For Arrow tables, key must be a single column name.
-                - For datastreams of Python objects, key can be either a lambda
-                  function that returns a comparison key to sort by, or None
-                  to sort by the original value.
+            key: The column to sort by. To sort by multiple columns, use a map function
+                to generate the sort column beforehand.
             descending: Whether to sort in descending order.
 
         Returns:
@@ -2083,8 +1988,7 @@ class Datastream:
     def zip(self, other: "Datastream") -> "Datastream":
         """Materialize and zip this datastream with the elements of another.
 
-        The datastreams must have the same number of rows. For tabular datastreams, the
-        datastreams will be concatenated horizontally; namely, their column sets will be
+        The datastreams must have the same number of rows. Their column sets will be
         merged, and any duplicate column names disambiguated with _1, _2, etc. suffixes.
 
         .. note::
@@ -2097,10 +2001,10 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ds1 = ray.data.range(5)
-            >>> ds2 = ray.data.range(5, parallelism=2).map(lambda x: x + 1)
+            >>> ds1 = ray.data.range(2)
+            >>> ds2 = ray.data.range(2)
             >>> ds1.zip(ds2).take()
-            [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
+            [{"id": 0, "id_1": 0}, {"id": 1, "id_1": 1}]
 
         Time complexity: O(datastream size / parallelism)
 
@@ -2108,13 +2012,9 @@ class Datastream:
             other: The datastream to zip with on the right hand side.
 
         Returns:
-            If the inputs are simple datastreams, this returns a ``Datastream``
-            containing (k, v) pairs, where k comes from the first datastream and v
-            comes from the second.
-            If the inputs are tabular datastreams, this returns a ``Datastream``
-            containing the columns of the second datastream concatenated horizontally
-            with the columns of the first datastream, with duplicate column names
-            disambiguated with _1, _2, etc. suffixes.
+            A ``Datastream`` containing the columns of the second datastream
+            concatenated horizontally with the columns of the first datastream,
+            with duplicate column names disambiguated with _1, _2, etc. suffixes.
         """
 
         plan = self._plan.with_stage(ZipStage(other))
@@ -2137,8 +2037,8 @@ class Datastream:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.limit(100).map(lambda x: x * 2).take()
-            [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38]
+            >>> ds.limit(2).take()
+            [{"id": 0}, {"id": 1}]
 
         Time complexity: O(limit specified)
 
