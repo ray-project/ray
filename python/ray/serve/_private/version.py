@@ -51,8 +51,8 @@ class DeploymentVersion:
         return self._hash == other._hash
 
     def requires_actor_restart(self, new_version):
-        """Compares the current version with the new version, and determines whether the
-        new version requires actors of the current version to be restarted.
+        """Determines whether the new version requires actors of the current version to
+        be restarted.
         """
         return (
             self.code_version != new_version.code_version
@@ -60,10 +60,20 @@ class DeploymentVersion:
         )
 
     def requires_actor_reconfigure(self, new_version):
-        """Compares the current version with the new version, and determines whether the
-        new version requires actors of the current version to be restarted.
+        """Determines whether the new version requires calling reconfigure() on the
+        replica actor.
         """
         return self.reconfigure_actor_hash != new_version.reconfigure_actor_hash
+
+    def requires_long_poll_broadcast(self, new_version):
+        """Determines whether lightweightly updating an existing replica to the new
+        version requires broadcasting through long poll that the running replicas has
+        changed.
+        """
+        return (
+            self.deployment_config.max_concurrent_queries
+            != new_version.deployment_config.max_concurrent_queries
+        )
 
     def compute_hashes(self):
         # If this changes, the controller will directly restart all existing replicas.

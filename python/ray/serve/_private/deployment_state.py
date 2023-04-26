@@ -1258,8 +1258,11 @@ class DeploymentState:
     def delete(self) -> None:
         self._set_target_state_deleting()
 
-    def _stop_wrong_version_replicas(self, max_to_stop=math.inf) -> int:
-        """Stop the replicas with outdated versions
+    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> int:
+        """Stop or update replicas with outdated versions.
+
+        Stop replicas with versions that require the actor to be restarted, and
+        reconfigure replicas that require refreshing deployment config values.
 
         Args:
             max_to_stop: max number of replicas to stop, by default,
@@ -1275,7 +1278,6 @@ class DeploymentState:
         code_version_changes = 0
         reconfigure_changes = 0
         for replica in replicas_to_update:
-            replicas_changed = True
             # If the new version requires the actors to be restarted, stop the replica.
             # A new one with the correct version will be started later as part of the
             # normal scale-up process.
@@ -1283,10 +1285,15 @@ class DeploymentState:
                 code_version_changes += 1
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
+                replicas_changed = True
             # Otherwise, only lightweight options in deployment config is a mismatch, so
             # we update it dynamically without restarting the replica.
             else:
                 reconfigure_changes += 1
+                if replica.version.requires_long_poll_broadcast(
+                    self._target_state.version
+                ):
+                    replicas_changed = True
                 actor_updating = replica.reconfigure(self._target_state.version)
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
@@ -1364,7 +1371,7 @@ class DeploymentState:
         rollout_size = max(int(0.2 * self._target_state.num_replicas), 1)
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
-        return self._stop_wrong_version_replicas(max_to_stop)
+        return self._stop_or_update_outdated_version_replicas(max_to_stop)
 
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""

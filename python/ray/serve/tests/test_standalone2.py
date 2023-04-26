@@ -1303,13 +1303,8 @@ class TestDeployApp:
             futs = [pool.submit(partial(requests.get, url)) for _ in range(3)]
             # Only 2 out of the 3 queries should have been sent to the replica because
             # max concurrent queries is 2
-            with pytest.raises(
-                RuntimeError,
-                match="The condition wasn't met before the timeout expired.",
-            ):
-                wait_for_condition(
-                    lambda: 103 == ray.get(handle.get_counter.remote()), timeout=5
-                )
+            time.sleep(10)
+            assert ray.get(handle.get_counter.remote()) < 103
 
             # Unblock
             ray.get(handle.send.remote())
