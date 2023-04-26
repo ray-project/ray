@@ -23,7 +23,7 @@ class ImmutableDeploymentDict(dict):
 
 
 @DeveloperAPI
-class Application:
+class BuiltApplication:
     """A static, pre-built Serve application.
 
     An application consists of a number of Serve deployments that can send
