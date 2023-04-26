@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING, Collection
 
 import contextlib
 import collections
@@ -26,7 +26,6 @@ import ray
 from ray._private.dict import unflattened_lookup
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.callback import Callback
-from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     EPISODE_REWARD_MEAN,
@@ -356,6 +355,62 @@ def _best_trial_str(
     )
 
 
+def _render_table_item(key: str, item: Any, prefix: str = ""):
+    key = prefix + key
+    if isinstance(item, float):
+        # tabulate does not work well with mixed-type columns, so we format
+        # numbers ourselves.
+        yield key, f"{item:.5f}".rstrip("0")
+    elif isinstance(item, list):
+        yield key, str(item)
+    elif isinstance(item, Dict):
+        yield key, None
+        for sk, sv in item.items():
+            yield from _render_table_item(sk, sv, prefix=prefix + "/")
+    else:
+        yield key, item
+
+
+def _get_dict_as_table_data(
+    data: Dict,
+    exclude: Optional[Collection] = None,
+    upper_keys: Optional[Collection] = None,
+):
+    exclude = exclude or set()
+    upper_keys = upper_keys or set()
+
+    upper = []
+    lower = []
+
+    for key, value in sorted(data.items()):
+        if key in exclude:
+            continue
+
+        for k, v in _render_table_item(key, value):
+            if key in upper_keys:
+                upper.append([k, v])
+            else:
+                lower.append([k, v])
+
+    if not upper:
+        return lower
+
+    else:
+        return upper + [[None, None]] + lower
+
+
+def _print_dict_as_table(
+    data: Dict,
+    exclude: Optional[Collection] = None,
+    division: Optional[Collection] = None,
+):
+    table_data = _get_dict_as_table_data(
+        data=data, exclude=exclude, upper_keys=division
+    )
+
+    print(tabulate(table_data, colalign=("left", "right"), tablefmt="simple"))
+
+
 class ProgressReporter:
     """Periodically prints out status update."""
 
@@ -594,6 +649,7 @@ class TrainReporter(ProgressReporter):
 
 # These keys are blacklisted for printing out training/tuning intermediate/final result!
 BLACKLISTED_KEYS = {
+    "config",
     "date",
     "done",
     "hostname",
@@ -650,12 +706,23 @@ class AirResultProgressCallback(Callback):
     def __init__(self, verbosity):
         self._verbosity = verbosity
         self._start_time = time.time()
+        self._trial_last_printed_results = {}
 
-    def _print_result(self, trial, result=None):
-        print(pretty_print(result or trial.last_result, BLACKLISTED_KEYS))
+    def _print_result(self, trial, result: Optional[Dict] = None, force: bool = False):
+        """Only print result if a different result has been reported, or force=True"""
+        result = result or trial.last_result
+
+        last_result_iter = self._trial_last_printed_results.get(trial.trial_id, -1)
+        this_iter = result.get(TRAINING_ITERATION, 0)
+
+        if this_iter != last_result_iter or force:
+            _print_dict_as_table(
+                result, exclude=BLACKLISTED_KEYS, division=AUTO_RESULT_KEYS
+            )
+            self._trial_last_printed_results[trial.trial_id] = this_iter
 
     def _print_config(self, trial):
-        print(pretty_print(trial.config))
+        _print_dict_as_table(trial.config)
 
     def on_trial_result(
         self,
@@ -669,13 +736,9 @@ class AirResultProgressCallback(Callback):
             return
         curr_time, running_time = _get_time_str(self._start_time, time.time())
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"finished iter {result[TRAINING_ITERATION]} "
-                    f"at {curr_time} (running for {running_time})",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"finished iteration {result[TRAINING_ITERATION]} "
+            f"at {curr_time} (running for {running_time})."
         )
         self._print_result(trial, result)
 
@@ -689,13 +752,9 @@ class AirResultProgressCallback(Callback):
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"({finished_iter} iters) "
-                    f"finished at {curr_time} (running for {running_time})",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"completed training after {finished_iter} iterations "
+            f"at {curr_time} (running for {running_time})."
         )
         self._print_result(trial)
 
@@ -714,30 +773,26 @@ class AirResultProgressCallback(Callback):
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"saved checkpoint for iter {saved_iter}"
-                    f" at {checkpoint.dir_or_data}",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"saved a checkpoint for iteration {saved_iter} "
+            f"at: {checkpoint.dir_or_data}"
         )
-        print()
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
         has_config = bool(trial.config)
-        print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    "started with configuration:" if has_config else "started.",
-                ]
-            )
-        )
+
         if has_config:
+            print(
+                f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
+            )
             self._print_config(trial)
+        else:
+            print(
+                f"{self._addressing_tmpl.format(trial)} "
+                f"started without custom configuration."
+            )
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
