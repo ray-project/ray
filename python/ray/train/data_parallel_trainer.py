@@ -2,7 +2,7 @@ import inspect
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-from tabulate import tabulate
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
 from ray import tune
