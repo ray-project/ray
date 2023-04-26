@@ -2158,7 +2158,7 @@ class Algorithm(Trainable):
 
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
+        # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
         # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
         # workers to determine their CPU/GPU resource needs.
 
