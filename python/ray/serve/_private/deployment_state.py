@@ -1888,7 +1888,7 @@ class DriverDeploymentState(DeploymentState):
                         new_config.version = self._target_state.version.code_version
                     self._set_target_state(new_config)
                 max_to_stop = self._calculate_max_replicas_to_stop()
-                self._stop_wrong_version_replicas(max_to_stop)
+                self._stop_or_update_outdated_version_replicas(max_to_stop)
                 self._deploy_driver()
             self._check_and_update_replicas()
             return self._check_curr_status()
