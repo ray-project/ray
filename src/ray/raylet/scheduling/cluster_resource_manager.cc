@@ -27,13 +27,11 @@ ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_servi
   if (RayConfig::instance().use_ray_syncer()) {
     timer_.RunFnPeriodically(
         [this]() {
-          auto now = absl::Now();
-          auto threshold =
-              now - absl::Milliseconds(
-                        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+          auto syncer_delay = absl::Milliseconds(
+              RayConfig::instance().ray_syncer_message_refresh_interval_ms());
           for (auto &[node_id, resource] : received_node_resources_) {
             auto modified_ts = GetNodeResourceModifiedTs(node_id);
-            if (modified_ts && *modified_ts < threshold) {
+            if (modified_ts && *modified_ts + syncer_delay < absl::Now()) {
               AddOrUpdateNode(node_id, resource);
             }
           }
