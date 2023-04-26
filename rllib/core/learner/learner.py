@@ -522,14 +522,14 @@ class Learner:
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
-        mean_grads = [
-            np.mean(grad)
+        mean_abs_grads = [
+            np.mean(np.abs(grad))
             for grad in convert_to_numpy(postprocessed_gradients.values())
             if grad is not None
         ]
 
         module_learner_stats[ALL_MODULES] = {
-            "mean_gradient": np.mean(mean_grads),
+            "mean_abs_postprocessed_gradients": np.mean(mean_abs_grads),
             self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
         }
 
@@ -754,19 +754,21 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
+        self,
+        gradients_dict: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        """Applies potential postprocessings to the gradients.
+        """Applies potential postprocessing operations on the gradients.
 
-        In some algorithms, we may want to perform some postprocessing on the
-        gradients before they are applied. This method is called after gradients
-        have been computed, and modifies them before they are applied.
+        This method is called after gradients have been computed, and modifies them
+        before they are applied to the respective module(s).
+        This includes grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
 
         Args:
             gradients_dict: A dictionary of gradients.
 
         Returns:
-            A dictionary of updated gradients.
+            A dictionary with the updated gradients.
         """
         return gradients_dict
 
@@ -776,7 +778,9 @@ class Learner:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
     ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -957,17 +961,17 @@ class Learner:
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
-        multi-agent RL module. Override this method if there are other things than
-        needs to happen for instantiation of the module.
-
+        multi-agent RL module. Override this method if there are other things that
+        need to happen for instantiation of the module.
 
         Returns:
-            The constructed module.
+            A constructed MultiAgentRLModule.
         """
         if self._module_obj is not None:
             module = self._module_obj
         else:
             module = self._module_spec.build()
+        # If not already, convert to MultiAgentRLModule.
         module = module.as_multi_agent()
         return module
 
@@ -975,11 +979,11 @@ class Learner:
         """Checks whether the result has the correct format.
 
         All the keys should be referencing the module ids that got updated. There is a
-        special key `__all__` that hold any extra information that is not specific to a
-        module.
+        special key `ALL_MODULES` that hold any extra information that is not specific
+        to a module.
 
         Args:
-            results: The result of the update.
+            result: The result of the update.
 
         Raises:
             ValueError: If the result are not in the correct format.
@@ -1000,7 +1004,7 @@ class Learner:
                 if key not in self.module.keys():
                     raise ValueError(
                         f"The key {key} in the result of the update is not a valid "
-                        f"module id. Valid module ids are: {self.module.keys()}"
+                        f"module id. Valid module ids are: {list(self.module.keys())}."
                     )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended

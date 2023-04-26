@@ -38,6 +38,11 @@ def apply_grad_clipping(
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
 
+    Note: This function does NOT perform an analogous operation as
+    tf.clip_by_global_norm. It merely clips by norm (per gradient tensor) and
+    then computes the global norm across all given tensors (but without clipping
+    by that global norm).
+
     Args:
         policy: The TorchPolicy, which calculated `loss`.
         optimizer: A local torch optimizer object.
