@@ -24,6 +24,7 @@ from ray.data.datasource import (
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 from typing import Iterable
@@ -82,17 +83,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
 
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
-
-    # Zero-copy.
-    df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_table(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
-    )
-    assert df.equals(dfds)
-
-    # Conversion.
-    df = pd.DataFrame({"value": list(range(n))})
+    df = pd.DataFrame({"id": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
@@ -105,7 +96,7 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(list(BlockAccessor.for_block(b).iter_rows()))
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
     out = sorted(out)
     assert out == list(range(10)), out
 
@@ -203,7 +194,7 @@ def test_from_tf(ray_start_regular_shared):
 
     ray_dataset = ray.data.from_tf(tf_dataset)
 
-    actual_data = ray_dataset.take_all()
+    actual_data = extract_values("item", ray_dataset.take_all())
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
@@ -219,7 +210,7 @@ def test_from_torch(shutdown_only, tmp_path):
 
     ray_dataset = ray.data.from_torch(torch_dataset)
 
-    actual_data = list(ray_dataset.take_all())
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
 

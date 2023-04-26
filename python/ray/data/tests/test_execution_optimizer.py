@@ -1167,7 +1167,7 @@ def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
 
     ray_dataset = ray.data.from_tf(tf_dataset)
 
-    actual_data = ray_dataset.take_all()
+    actual_data = extract_values("item", ray_dataset.take_all())
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
