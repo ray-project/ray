@@ -472,9 +472,10 @@ def _get_docker_creds() -> Tuple[str, str]:
     if docker_user_pw:
         user, pw = docker_user_pw.split(":", maxsplit=1)
     else:
-        docker_password = os.environ.get("DOCKER_PASSWORD")
-        assert docker_password, "DOCKER_PASSWORD not set."
-        return DOCKER_USERNAME, docker_password
+        user = DOCKER_USERNAME
+        pw = os.environ.get("DOCKER_PASSWORD")
+        assert pw, "DOCKER_PASSWORD not set."
+    return user, pw
 
 
 def _docker_push(image, tag):
