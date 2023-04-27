@@ -8,7 +8,6 @@ import numpy as np
 
 import ray
 from ray.data import datastream
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
 from ray.data.datastream import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
