@@ -57,7 +57,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
-from ray.util import metrics
+from ray.serve import metrics
 from ray._raylet import GcsClient
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -358,6 +358,7 @@ class ActorReplicaWrapper:
                 version,
                 self._controller_name,
                 self._detached,
+                deployment_info.app_name,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1050,7 +1051,7 @@ class DeploymentState:
                 "Tracks whether this deployment replica is healthy. 1 means "
                 "healthy, 0 means unhealthy."
             ),
-            tag_keys=("deployment", "replica"),
+            tag_keys=("deployment", "replica", "application"),
         )
 
     def should_autoscale(self) -> bool:
@@ -1121,6 +1122,12 @@ class DeploymentState:
     @property
     def curr_status_info(self) -> DeploymentStatusInfo:
         return self._curr_status_info
+
+    @property
+    def app_name(self) -> str:
+        if self.target_info.app_name:
+            return self.target_info.app_name
+        return ""
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
@@ -1641,7 +1648,12 @@ class DeploymentState:
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 self.health_check_gauge.set(
-                    1, tags={"deployment": self._name, "replica": replica.replica_tag}
+                    1,
+                    tags={
+                        "deployment": self._name,
+                        "replica": replica.replica_tag,
+                        "application": self.app_name,
+                    },
                 )
             else:
                 running_replicas_changed = True
@@ -1650,7 +1662,12 @@ class DeploymentState:
                     f"{self._name} failed health check, stopping it."
                 )
                 self.health_check_gauge.set(
-                    0, tags={"deployment": self._name, "replica": replica.replica_tag}
+                    0,
+                    tags={
+                        "deployment": self._name,
+                        "replica": replica.replica_tag,
+                        "application": self.app_name,
+                    },
                 )
                 self._stop_replica(replica, graceful_stop=False)
                 # If this is a replica of the target version, the deployment
