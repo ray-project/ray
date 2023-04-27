@@ -199,7 +199,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         def cleaned_metadata(read_task):
             block_meta = read_task.get_metadata()
             task_size = len(cloudpickle.dumps(read_task))
-            if task_size > block_meta.size_bytes:
+            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
                 if task_size > 100000:
                     print(
                         f"WARNING: the read task size ({task_size} bytes) is larger "
@@ -207,7 +207,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                         f"({block_meta.size_bytes} bytes). This may be a size "
                         "reporting bug in the datasource being read from."
                     )
-                block_meta.size_bytes = max(block_meta.size_bytes, task_size)
+                block_meta.size_bytes = task_size
             return block_meta
 
         inputs = InputDataBuffer(
