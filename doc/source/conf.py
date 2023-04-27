@@ -186,10 +186,6 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
-    "ray-references/api/tune/doc/*",
-    "rllib/package_ref/doc/*",
-    "data/api/doc/*",
-    "tune/api/doc/*"
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -379,6 +375,8 @@ tag_mapping = {
 suppress_loggers = {
     'sphinx.ext.autosummary': ['WARNING'],
 }
+
+suppress_records = [".*document isn't included in any toctree.*"]
 
 # Create file with tag mappings for tags.js to use.
 with open("./_static/tag-mapping.json", "w") as f:
