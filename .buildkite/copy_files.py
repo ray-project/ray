@@ -44,11 +44,14 @@ def perform_auth():
     return resp
 
 
+def get_docker_user_pw(resp):
+    pw = resp.json()["docker_password"]
+    return "raytravisbot", pw
+
+
 def handle_docker_login(resp):
-    pwd = resp.json()["docker_password"]
-    subprocess.call(
-        ["docker", "login", "--username", "raytravisbot", "--password", pwd]
-    )
+    user, pw = get_docker_user_pw(resp)
+    subprocess.call(["docker", "login", "--username", user, "--password", pw])
 
 
 def gather_paths(dir_path) -> List[str]:
@@ -118,6 +121,11 @@ if __name__ == "__main__":
 
     if args.destination == "docker_login":
         handle_docker_login(resp)
+    elif args.destination == "docker_login_return":
+        handle_docker_login(resp)
+        # Print user:pw to use downstream
+        user, pw = get_docker_user_pw(resp)
+        print(user + ":" + pw)
     else:
         paths = gather_paths(args.path)
         print("Planning to upload", paths)

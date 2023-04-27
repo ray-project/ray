@@ -468,9 +468,13 @@ def prep_ray_ml():
 
 
 def _get_docker_creds() -> Tuple[str, str]:
-    docker_password = os.environ.get("DOCKER_PASSWORD")
-    assert docker_password, "DOCKER_PASSWORD not set."
-    return DOCKER_USERNAME, docker_password
+    docker_user_pw = os.environ.get("DOCKER_USER_PW")
+    if docker_user_pw:
+        user, pw = docker_user_pw.split(":", maxsplit=1)
+    else:
+        docker_password = os.environ.get("DOCKER_PASSWORD")
+        assert docker_password, "DOCKER_PASSWORD not set."
+        return DOCKER_USERNAME, docker_password
 
 
 def _docker_push(image, tag):
@@ -932,9 +936,7 @@ def main(
                     suffix=suffix,
                 )
 
-        # TODO(ilr) Re-Enable Push READMEs by using a normal password
-        # (not auth token :/)
-        # push_readmes(build_type is MERGE)
+        push_readmes(build_type is MERGE)
 
 
 def fix_docker_images(
