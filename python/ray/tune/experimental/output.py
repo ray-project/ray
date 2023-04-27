@@ -420,6 +420,18 @@ AIR_TABULATE_TABLEFMT = TableFormat(
 )
 
 
+AIR_TABULATE_TABLEFMT = TableFormat(
+    lineabove=Line("╭", "─", "─", "╮"),
+    linebelowheader=Line("├", "─", "─", "┤"),
+    linebetweenrows=None,
+    linebelow=Line("╰", "─", "─", "╯"),
+    headerrow=DataRow("│", " ", "│"),
+    datarow=DataRow("│", " ", "│"),
+    padding=1,
+    with_header_hide=None,
+)
+
+
 def _print_dict_as_table(
     data: Dict,
     header: Optional[str] = None,
