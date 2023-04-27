@@ -48,7 +48,7 @@ class TestTorchUtils(unittest.TestCase):
 
     def test_copy_torch_tensors(self):
         array = np.array([1, 2, 3], dtype=np.float32)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         tensor = torch.from_numpy(array).to(device)
         tensor_2 = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float64).to(device)
 
@@ -77,18 +77,22 @@ class TestTorchUtils(unittest.TestCase):
         # if gpu is available test moving tensor from cpu to gpu and vice versa
         if torch.cuda.is_available():
             tensor = torch.from_numpy(array).to("cpu")
-            copied_tensor = copy_torch_tensors(tensor, "cuda")
+            copied_tensor = copy_torch_tensors(tensor, "cuda:0")
             self.assertFalse(copied_tensor.device == torch.device("cpu"))
-            self.assertTrue(copied_tensor.device == torch.device("cuda"))
+            self.assertTrue(copied_tensor.device == torch.device("cuda:0"))
             self.assertNotEqual(id(copied_tensor), id(tensor))
-            self.assertTrue(all(copied_tensor == tensor))
+            self.assertTrue(
+                all(copied_tensor.detach().cpu().numpy() == tensor.detach().numpy())
+            )
 
-            tensor = torch.from_numpy(array).to("cuda")
+            tensor = torch.from_numpy(array).to("cuda:0")
             copied_tensor = copy_torch_tensors(tensor, "cpu")
-            self.assertFalse(copied_tensor.device == torch.device("cuda"))
+            self.assertFalse(copied_tensor.device == torch.device("cuda:0"))
             self.assertTrue(copied_tensor.device == torch.device("cpu"))
             self.assertNotEqual(id(copied_tensor), id(tensor))
-            self.assertTrue(all(copied_tensor == tensor))
+            self.assertTrue(
+                all(copied_tensor.detach().numpy() == tensor.detach().cpu().numpy())
+            )
 
 
 if __name__ == "__main__":

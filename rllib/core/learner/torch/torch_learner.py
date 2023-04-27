@@ -34,7 +34,6 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
