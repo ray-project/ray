@@ -9,6 +9,7 @@ from pathlib import Path
 import requests
 import pytest
 from jsonschema import validate
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import ray
 import ray._private.usage.usage_constants as usage_constants
@@ -966,10 +967,6 @@ available_node_types:
     assert cluster_config_to_report.cloud_provider == "kuberay"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Test depends on runtime env feature not supported on Windows.",
-)
 # TODO(https://github.com/ray-project/ray/issues/33486)
 @pytest.mark.skipif(
     sys.version_info >= (3, 11, 0),
@@ -1023,45 +1020,33 @@ provider:
         Make sure report usage data works as expected
         """
 
-        if os.environ.get("RAY_MINIMAL") != "1":
+        class UsageStatsServer(BaseHTTPRequestHandler):
+            expected_data = None
 
-            @ray.remote(num_cpus=0)
-            class ServeInitator:
-                def __init__(self):
-                    # Start the ray serve server to verify requests are sent
-                    # to the right place.
-                    from ray import serve
+            def do_POST(self):
+                content_length = int(self.headers["Content-Length"])
+                post_data = self.rfile.read(content_length)
+                if json.loads(post_data) == self.expected_data:
+                    self.send_response(200)
+                else:
+                    self.send_response(400)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
 
-                    serve.start()
+        @ray.remote(num_cpus=0)
+        def run_usage_stats_server(expected_data):
+            UsageStatsServer.expected_data = expected_data
+            server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
+            server.serve_forever()
 
-                    @serve.deployment(ray_actor_options={"num_cpus": 0})
-                    async def usage(request):
-                        body = await request.json()
-                        if body == asdict(d):
-                            return True
-                        else:
-                            return False
-
-                    usage.deploy()
-
-                def ready(self):
-                    pass
-
-            # We need to start a serve with runtime env to make this test
-            # work with minimal installation.
-            s = ServeInitator.remote()
-            ray.get(s.ready.remote())
+        run_usage_stats_server.remote(asdict(d))
 
         # Query our endpoint over HTTP.
-        r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
-        r.raise_for_status()
-        assert json.loads(r.text) is True
+        wait_for_condition(
+            lambda: client.report_usage_data("http://127.0.0.1:8000", d), timeout=30
+        )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Test depends on runtime env feature not supported on Windows.",
-)
 # TODO(https://github.com/ray-project/ray/issues/33486)
 @pytest.mark.skipif(
     sys.version_info >= (3, 11, 0),
@@ -1087,7 +1072,7 @@ provider:
     with monkeypatch.context() as m:
         m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "extra_k1=extra_v1")
         cluster = ray_start_cluster
@@ -1131,32 +1116,25 @@ provider:
 
         reporter = StatusReporter.remote()
 
-        if os.environ.get("RAY_MINIMAL") != "1":
+        class UsageStatsServer(BaseHTTPRequestHandler):
+            reporter = None
 
-            @ray.remote(num_cpus=0)
-            class ServeInitiator:
-                def __init__(self):
-                    # This is used in the worker process
-                    # so it won't be tracked as library usage.
-                    from ray import serve
+            def do_POST(self):
+                content_length = int(self.headers["Content-Length"])
+                post_data = self.rfile.read(content_length)
+                self.reporter.reported.remote()
+                self.reporter.report_payload.remote(json.loads(post_data))
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
 
-                    serve.start()
+        @ray.remote(num_cpus=0)
+        def run_usage_stats_server(reporter):
+            UsageStatsServer.reporter = reporter
+            server = HTTPServer(("127.0.0.1", 8000), UsageStatsServer)
+            server.serve_forever()
 
-                    # Usage report should be sent to the URL every 1 second.
-                    @serve.deployment(ray_actor_options={"num_cpus": 0})
-                    async def usage(request):
-                        body = await request.json()
-                        reporter.reported.remote()
-                        reporter.report_payload.remote(body)
-                        return True
-
-                    usage.deploy()
-
-                def ready(self):
-                    pass
-
-            s = ServeInitiator.remote()
-            ray.get(s.ready.remote())
+        run_usage_stats_server.remote(reporter)
 
         """
         Verify the usage stats are reported to the server.
@@ -1215,17 +1193,13 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
-            expected_payload["serve_num_deployments"] = "1"
-            expected_payload["serve_num_gpu_deployments"] = "0"
-            expected_payload["serve_api_version"] = "v1"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
-            assert set(payload["library_usages"]) == {}
+            assert set(payload["library_usages"]) == set()
         else:
-            # Serve is recorded due to our mock server.
-            assert set(payload["library_usages"]) == {"rllib", "train", "tune", "serve"}
+            assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
