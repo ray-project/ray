@@ -224,16 +224,16 @@ class CountVectorizer(Preprocessor):
                 tokens = token_series.sum()
                 return Counter(tokens)
 
-            return [{col: get_token_counts(col) for col in self.columns}]
+            return {col: [get_token_counts(col)] for col in self.columns}
 
         value_counts = datastream.map_batches(
             get_pd_value_counts, batch_format="pandas"
         )
         total_counts = {col: Counter() for col in self.columns}
         for batch in value_counts.iter_batches(batch_size=None):
-            for x in batch:
-                for col, col_value_counts in x.items():
-                    total_counts[col].update(col_value_counts)
+            for col, counters in batch.items():
+                for counter in counters:
+                    total_counts[col].update(counter)
 
         def most_common(counter: Counter, n: int):
             return Counter(dict(counter.most_common(n)))
