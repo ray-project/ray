@@ -121,6 +121,7 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
+        self.outputs_done_called = False
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -334,15 +335,29 @@ def process_completed_tasks(topology: Topology) -> None:
 
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
+        if op_state.inputs_done_called:
+            continue
         inputs_done = all(
             [
                 dep.completed() and not topology[dep].outqueue
                 for dep in op.input_dependencies
             ]
         )
-        if inputs_done and not op_state.inputs_done_called:
+        if inputs_done:
             op.inputs_done()
             op_state.inputs_done_called = True
+
+    # Traverse the topology in reverse topological order.
+    # For each op, if all of its outputs are done, call outputs_done().
+    for op, op_state in reversed(topology.items()):
+        if op_state.outputs_done_called:
+            continue
+        outputs_done = len(op.output_dependencies) > 0 and all(
+            dep.completed() for dep in op.output_dependencies
+        )
+        if outputs_done:
+            op.outputs_done()
+            op_state.outputs_done_called = True
 
 
 def select_operator_to_run(
@@ -372,7 +387,12 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
-        if state.num_queued() > 0 and op.should_add_input() and under_resource_limits:
+        if (
+            not op.completed()
+            and state.num_queued() > 0
+            and op.should_add_input()
+            and under_resource_limits
+        ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
         op.notify_resource_usage(state.num_queued(), under_resource_limits)

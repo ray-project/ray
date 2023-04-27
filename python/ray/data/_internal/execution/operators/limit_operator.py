@@ -42,6 +42,12 @@ class LimitOperator(PhysicalOperator):
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
 
+    def completed(self) -> bool:
+        if self._limit_reached():
+            return True
+        else:
+            return super().completed()
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
