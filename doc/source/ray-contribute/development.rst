@@ -19,7 +19,7 @@ Clone the repository
 
 To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
 
-.. tabbed:: Git SSH
+.. tab-item:: Git SSH
 
     To clone the repository using Git with SSH (the default) run:
 
@@ -27,7 +27,7 @@ To build Ray locally you will need to have the Git repository, so first, fork it
 
         git clone git@github.com:[your username]/ray.git
 
-.. tabbed:: Git HTTPS
+.. tab-item:: Git HTTPS
 
     To clone the repository using Git with HTTPS run:
 
@@ -43,21 +43,23 @@ Then you can enter into the Ray git repository directory:
 
 Next make sure you connect your repository to the upstream (main project) Ray repository. This will allow you to push your code to your repository when proposing changes (in pull requests) while also pulling updates from the main project.
 
-.. tabbed:: Git SSH
+.. tab-set::
 
-    To connect your repository using SSH (the default) run the command:
+    .. tab-item:: Git SSH
 
-    .. code-block:: shell
+        To connect your repository using SSH (the default) run the command:
 
-        git remote add upstream git@github.com:ray-project/ray.git
+        .. code-block:: shell
 
-.. tabbed:: Git HTTPS
+            git remote add upstream git@github.com:ray-project/ray.git
 
-    To connect your repository using HTTPS run the command:
+    .. tab-item:: Git HTTPS
 
-    .. code-block:: shell
+        To connect your repository using HTTPS run the command:
 
-        git remote add upstream https://github.com/ray-project/ray.git
+        .. code-block:: shell
+
+            git remote add upstream https://github.com/ray-project/ray.git
 
 Every time you want to update your local version you can pull the changes from the main repository:
 
@@ -73,46 +75,48 @@ Prepare the Python environment
 
 You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``. 
 
-.. tabbed:: conda
+.. tab-set::
 
-    Set up a ``conda`` environment named ``ray``:
+    .. tab-item:: conda
 
-    .. code-block:: shell
+        Set up a ``conda`` environment named ``ray``:
 
-        conda create -c conda-forge python=3.9 -n ray
+        .. code-block:: shell
+
+            conda create -c conda-forge python=3.9 -n ray
 
 
-    Activate your virtual environment to tell the shell/terminal to use this particular Python:
+        Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
-    .. code-block:: shell
-		    
-        conda activate ray
-        
-    You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
+        .. code-block:: shell
 
-.. tabbed:: venv
+            conda activate ray
 
-    Use Python's integrated ``venv`` module to create a virtual environment called ``venv`` in the current directory:
+        You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
-    .. code-block:: shell
+    .. tab-item:: venv
 
-        python -m venv venv
+        Use Python's integrated ``venv`` module to create a virtual environment called ``venv`` in the current directory:
 
-    This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
+        .. code-block:: shell
 
-    Activate your virtual environment to tell the  shell/terminal to use this particular Python:
+            python -m venv venv
 
-    .. code-block:: shell
+        This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-        source venv/bin/activate
+        Activate your virtual environment to tell the  shell/terminal to use this particular Python:
 
-    You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
+        .. code-block:: shell
 
-    Creating a new virtual environment can come with older versions of ``pip`` and ``wheel``. To avoid problems when you install packages, use the module ``pip`` to install the latest version of ``pip`` (itself) and ``wheel``:
+            source venv/bin/activate
 
-    .. code-block:: shell
+        You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
-        python -m pip install --upgrade pip wheel
+        Creating a new virtual environment can come with older versions of ``pip`` and ``wheel``. To avoid problems when you install packages, use the module ``pip`` to install the latest version of ``pip`` (itself) and ``wheel``:
+
+        .. code-block:: shell
+
+            python -m pip install --upgrade pip wheel
 
 .. _python-develop:
 
