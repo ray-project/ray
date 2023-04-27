@@ -42,9 +42,12 @@ class LimitOperator(PhysicalOperator):
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
 
+    def accept_new_inputs(self) -> bool:
+        return not self._limit_reached()
+
     def completed(self) -> bool:
         if self._limit_reached():
-            return True
+            return not self.has_next()
         else:
             return super().completed()
 

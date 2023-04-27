@@ -353,7 +353,7 @@ def process_completed_tasks(topology: Topology) -> None:
         if op_state.outputs_done_called:
             continue
         outputs_done = len(op.output_dependencies) > 0 and all(
-            dep.completed() for dep in op.output_dependencies
+            not dep.accept_new_inputs() for dep in op.output_dependencies
         )
         if outputs_done:
             op.outputs_done()
@@ -388,7 +388,7 @@ def select_operator_to_run(
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
         if (
-            not op.completed()
+            op.accept_new_inputs()
             and state.num_queued() > 0
             and op.should_add_input()
             and under_resource_limits
@@ -416,7 +416,7 @@ def select_operator_to_run(
         and all(op.num_active_work_refs() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
-        ops = [op for op, state in topology.items() if state.num_queued() > 0]
+        ops = [op for op, state in topology.items() if op.accept_new_inputs() and state.num_queued() > 0]
 
     # Nothing to run.
     if not ops:

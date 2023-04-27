@@ -351,6 +351,13 @@ class PhysicalOperator(Operator):
         """
         return True
 
+    def accept_new_inputs(self) -> bool:
+        """ Return true if the operator can still accept new inputs.
+
+        Once this return false, it should never return true again.
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
