@@ -351,8 +351,8 @@ class PhysicalOperator(Operator):
         """
         return True
 
-    def accept_new_inputs(self) -> bool:
-        """Return true if the operator can still accept new inputs.
+    def need_more_inputs(self) -> bool:
+        """Return true if the operator still needs more inputs.
 
         Once this return false, it should never return true again.
         """

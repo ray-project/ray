@@ -348,12 +348,13 @@ def process_completed_tasks(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its outputs are done, call outputs_done().
+    # For each op, if all of its downstream operators don't need any more inputs,
+    # call outputs_done() to close the op.
     for op, op_state in reversed(topology.items()):
         if op_state.outputs_done_called:
             continue
         outputs_done = len(op.output_dependencies) > 0 and all(
-            not dep.accept_new_inputs() for dep in op.output_dependencies
+            not dep.need_more_inputs() for dep in op.output_dependencies
         )
         if outputs_done:
             op.outputs_done()
@@ -388,7 +389,7 @@ def select_operator_to_run(
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
         if (
-            op.accept_new_inputs()
+            op.need_more_inputs()
             and state.num_queued() > 0
             and op.should_add_input()
             and under_resource_limits
@@ -419,7 +420,7 @@ def select_operator_to_run(
         ops = [
             op
             for op, state in topology.items()
-            if op.accept_new_inputs() and state.num_queued() > 0
+            if op.need_more_inputs() and state.num_queued() > 0
         ]
 
     # Nothing to run.
