@@ -26,7 +26,6 @@ pyyaml
 scikit-optimize
 redis
 starlette
-tabulate
 uvicorn==0.16.0
 werkzeug
 wandb
