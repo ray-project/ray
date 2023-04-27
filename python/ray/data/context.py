@@ -255,7 +255,9 @@ class DataContext:
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     strict_mode=DEFAULT_STRICT_MODE,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
-                    autoshutdown_previous_executors=DEFAULT_AUTOSHUTDOWN_PREVIOUS_EXECUTORS,
+                    autoshutdown_previous_executors=(
+                        DEFAULT_AUTOSHUTDOWN_PREVIOUS_EXECUTORS
+                    ),
                 )
 
             return _default_context
