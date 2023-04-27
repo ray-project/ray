@@ -371,7 +371,7 @@ def _render_table_item(key: str, item: Any, prefix: str = ""):
     elif isinstance(item, Dict):
         yield key, None
         for sk, sv in item.items():
-            yield from _render_table_item(sk, sv, prefix=prefix + "/")
+            yield from _render_table_item(str(sk), sv, prefix=prefix + "/")
     else:
         yield key, item
 
@@ -391,7 +391,7 @@ def _get_dict_as_table_data(
         if key in exclude:
             continue
 
-        for k, v in _render_table_item(key, value):
+        for k, v in _render_table_item(str(key), value):
             if key in upper_keys:
                 upper.append([k, v])
             else:
