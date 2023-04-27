@@ -62,6 +62,8 @@ command_runner_to_cluster_manager = {
     AnyscaleJobRunner: MinimalClusterManager,
 }
 
+file_manager = JobFileManager
+
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
 
@@ -141,9 +143,11 @@ def _load_test_configuration(
             anyscale_project,
             smoke_test=smoke_test,
         )
-        file_manager = JobFileManager(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(
-            cluster_manager, file_manager, working_dir, artifact_path=artifact_path
+            cluster_manager,  
+            file_manager(cluster_manager=cluster_manager),
+            working_dir, 
+            artifact_path=artifact_path,
         )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
