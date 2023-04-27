@@ -352,7 +352,7 @@ class PhysicalOperator(Operator):
         return True
 
     def accept_new_inputs(self) -> bool:
-        """ Return true if the operator can still accept new inputs.
+        """Return true if the operator can still accept new inputs.
 
         Once this return false, it should never return true again.
         """

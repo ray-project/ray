@@ -416,7 +416,11 @@ def select_operator_to_run(
         and all(op.num_active_work_refs() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
-        ops = [op for op, state in topology.items() if op.accept_new_inputs() and state.num_queued() > 0]
+        ops = [
+            op
+            for op, state in topology.items()
+            if op.accept_new_inputs() and state.num_queued() > 0
+        ]
 
     # Nothing to run.
     if not ops:
