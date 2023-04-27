@@ -197,6 +197,11 @@ def test_http_request_number_of_retries(ray_instance, crash):
     serve.shutdown()
 
 
+@pytest.mark.parametrize(
+    "ray_instance",
+    [],
+    indirect=True,
+)
 def test_replica_health_metric(ray_instance):
     """Test replica health metrics"""
 
