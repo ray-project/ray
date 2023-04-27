@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 import ray
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.lightning import LightningCheckpoint, LightningPredictor
@@ -72,7 +72,7 @@ def test_predictor(
         model_class=LightningMNISTClassifier,
         use_gpu=use_gpu,
         preprocessor=preprocessor,
-        load_from_checkpoint_kwargs=model_config,
+        **model_config,
     )
 
     # Create synthetic input data
@@ -90,7 +90,7 @@ def test_predictor(
 def test_batch_predictor(tmpdir, use_gpu: bool):
     """Test batch prediction with a LightningPredictor."""
     batch_size = 32
-    synthetic_data = convert_batch_type_to_pandas(
+    synthetic_data = _convert_batch_type_to_pandas(
         {
             "image": np.random.rand(batch_size, 1, 28, 28).astype(np.float32),
             "label": np.random.randint(0, 10, (batch_size,)),
@@ -116,7 +116,7 @@ def test_batch_predictor(tmpdir, use_gpu: bool):
         predictor_cls=LightningPredictor,
         use_gpu=use_gpu,
         model_class=LightningMNISTClassifier,
-        load_from_checkpoint_kwargs=model_config,
+        **model_config,
     )
 
     predictions = batch_predictor.predict(

@@ -122,6 +122,16 @@ class PPOConfig(PGConfig):
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
 
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
@@ -464,7 +474,7 @@ class PPO(Algorithm):
                 # TODO (Kourosh): Train results don't match the old format. The thing
                 # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
                 # we need get here?
-                pid: train_results[pid][LEARNER_STATS_KEY].get("mean_kl_loss")
+                pid: train_results[pid][LEARNER_STATS_KEY].get("kl")
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.

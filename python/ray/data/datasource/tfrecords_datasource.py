@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class TFRecordDatasource(FileBasedDatasource):
+    """TFRecord datasource, for reading and writing TFRecord files."""
+
     _FILE_EXTENSION = "tfrecords"
 
     def _read_stream(

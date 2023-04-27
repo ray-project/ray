@@ -134,7 +134,7 @@ def _update_env_seed_if_necessary(
 
     NOTE: this may not work with remote environments (issue #18154).
     """
-    if not seed:
+    if seed is None:
         return
 
     # A single RL job is unlikely to have more than 10K
@@ -265,7 +265,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         log_dir: Optional[str] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
-        dataset_shards: Optional[List[ray.data.dataset.Dataset]] = None,
+        dataset_shards: Optional[List[ray.data.Datastream]] = None,
         # Deprecated: This is all specified in `config` anyways.
         policy_config=DEPRECATED_VALUE,
         input_creator=DEPRECATED_VALUE,
@@ -626,11 +626,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     return env
 
             # Atari type env and "deepmind" preprocessor pref.
-            elif (
-                is_atari(self.env)
-                and not self.config.model.get("custom_preprocessor")
-                and self.config.preprocessor_pref == "deepmind"
-            ):
+            elif is_atari(self.env) and self.config.preprocessor_pref == "deepmind":
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
@@ -651,10 +647,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     )
                     return env
 
-            elif (
-                not self.config.model.get("custom_preprocessor")
-                and self.config.preprocessor_pref is None
-            ):
+            elif self.config.preprocessor_pref is None:
                 # Only turn off preprocessing
                 self.preprocessing_enabled = False
 
@@ -2045,7 +2038,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Policies should deal with preprocessed (automatically flattened)
                 # observations if preprocessing is enabled.
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
-                    obs_space, merged_conf.model
+                    obs_space,
+                    merged_conf.model,
+                    include_multi_binary=self.config.get(
+                        "_enable_rl_module_api", False
+                    ),
                 )
                 # Original observation space should be accessible at
                 # obs_space.original_space after this step.

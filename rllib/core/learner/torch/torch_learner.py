@@ -1,13 +1,12 @@
 import logging
+import pathlib
 from typing import (
     Any,
-    Mapping,
-    Union,
-    Type,
-    Sequence,
     Hashable,
+    Mapping,
     Optional,
-    Callable,
+    Sequence,
+    Union,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -20,15 +19,15 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
     FrameworkHPs,
     Learner,
-    ParamOptimizerPairs,
-    Optimizer,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
     ParamType,
     ParamDictType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import clip_gradients, convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -57,28 +56,22 @@ class TorchLearner(Learner):
         self._device = None
 
     @override(Learner)
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures the optimizers for the Learner.
-
-        By default it sets up a single Adam optimizer for each sub-module in module
-        accessible via `moduel.keys()`.
-        """
-        # TODO (Kourosh): convert optimizer_config to dataclass later.
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+        module = self._module[module_id]
         lr = self._optimizer_config["lr"]
-        return [
-            (
-                self.get_parameters(self._module[key]),
-                torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
-            )
-            for key in self._module.keys()
-            if self._is_module_compatible_with_learner(self._module[key])
-        ]
+        pair: ParamOptimizerPair = (
+            self.get_parameters(module),
+            torch.optim.Adam(self.get_parameters(module), lr=lr),
+        )
+        return pair
 
     @override(Learner)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
     ) -> ParamDictType:
-        for optim in self._optim_to_param:
+        for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
         loss[self.TOTAL_LOSS_KEY].backward()
@@ -87,9 +80,25 @@ class TorchLearner(Learner):
         return grads
 
     @override(Learner)
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Postprocesses gradients depending on the optimizer config."""
+
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+        )
+
+        return gradients_dict
+
+    @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
         # make sure the parameters do not carry gradients on their own
-        for optim in self._optim_to_param:
+        for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
         # set the gradient of the parameters
@@ -97,7 +106,7 @@ class TorchLearner(Learner):
             self._params[pid].grad = grad
 
         # for each optimizer call its step function with the gradients
-        for optim in self._optim_to_param:
+        for optim in self._optimizer_parameters:
             optim.step()
 
     @override(Learner)
@@ -107,21 +116,27 @@ class TorchLearner(Learner):
         return self._module.set_state(weights)
 
     @override(Learner)
+    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        for name, optim in self._named_optimizers.items():
+            torch.save(optim.state_dict(), path / f"{name}.pt")
+
+    @override(Learner)
+    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(path)
+        if not path.exists():
+            raise ValueError(f"Directory {path} does not exist.")
+        for name, optim in self._named_optimizers.items():
+            optim.load_state_dict(torch.load(path / f"{name}.pt"))
+
+    @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
         return param
 
     @override(Learner)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return list(module.parameters())
-
-    @override(Learner)
-    def get_optimizer_obj(
-        self, module: RLModule, optimizer_cls: Type[Optimizer]
-    ) -> Optimizer:
-        # TODO (Kourosh): the abstraction should take in optimizer_config as a
-        # parameter as well.
-        lr = self._optimizer_config["lr"]
-        return optimizer_cls(module.parameters(), lr=lr)
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch):
@@ -135,14 +150,10 @@ class TorchLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         super().add_module(
             module_id=module_id,
             module_spec=module_spec,
-            set_optimizer_fn=set_optimizer_fn,
-            optimizer_cls=optimizer_cls,
         )
 
         # we need to ddpify the module that was just added to the pool
@@ -206,6 +217,23 @@ class TorchLearner(Learner):
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         return isinstance(module, nn.Module)
+
+    @override(Learner)
+    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
+        super()._check_structure_param_optim_pair(param_optim_pair)
+        params, optim = param_optim_pair
+        if not isinstance(optim, torch.optim.Optimizer):
+            raise ValueError(
+                f"The optimizer in {param_optim_pair} is not a torch.optim.Optimizer. "
+                "Please use a torch.optim.Optimizer for TorchLearner."
+            )
+        for param in params:
+            if not isinstance(param, torch.Tensor):
+                raise ValueError(
+                    f"One of the parameters {param} in this ParamOptimizerPair "
+                    f"{param_optim_pair} is not a torch.Tensor. Please use a "
+                    "torch.Tensor for TorchLearner."
+                )
 
     @override(Learner)
     def _make_module(self) -> MultiAgentRLModule:

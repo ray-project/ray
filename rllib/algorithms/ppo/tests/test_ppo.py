@@ -27,7 +27,7 @@ from ray.rllib.utils.test_utils import (
 
 
 # Fake CartPole episode of n time steps.
-FAKE_BATCH = SampleBatch(
+CARTPOLE_FAKE_BATCH = SampleBatch(
     {
         SampleBatch.OBS: np.array(
             [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
@@ -42,6 +42,34 @@ FAKE_BATCH = SampleBatch(
         SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
         SampleBatch.ACTION_DIST_INPUTS: np.array(
             [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
+        ),
+        SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+        SampleBatch.EPS_ID: np.array([0, 0, 0]),
+        SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
+    }
+)
+
+# Fake Pendulum episode of n time steps.
+PENDULUM_FAKE_BATCH = SampleBatch(
+    {
+        SampleBatch.OBS: np.array(
+            [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
+            dtype=np.float32,
+        ),
+        SampleBatch.ACTIONS: np.array([0.1, 0.2, 0.3], dtype=np.float32),
+        SampleBatch.PREV_ACTIONS: np.array([0.3, 0.4], dtype=np.float32),
+        SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+        SampleBatch.TERMINATEDS: np.array([False, False, True]),
+        SampleBatch.TRUNCATEDS: np.array([False, False, False]),
+        SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+        SampleBatch.ACTION_DIST_INPUTS: np.array(
+            [
+                [0.1, 0.0, 0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+                [1.1, 1.2, 1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
         ),
         SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
         SampleBatch.EPS_ID: np.array([0, 0, 0]),
@@ -112,6 +140,9 @@ class TestPPO(unittest.TestCase):
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+                # TODO (Kourosh): Enable when the scheduler is supported in the new
+                # Learner API stack.
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -120,6 +151,7 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
+            .rl_module(_enable_rl_module_api=False)
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -177,6 +209,9 @@ class TestPPO(unittest.TestCase):
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+                # TODO (Kourosh): Enable when the scheduler is supported in the new
+                # Learner API stack.
+                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -184,6 +219,7 @@ class TestPPO(unittest.TestCase):
                 compress_observations=True,
             )
             .callbacks(MyCallbacks)
+            .rl_module(_enable_rl_module_api=False)
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -283,7 +319,13 @@ class TestPPO(unittest.TestCase):
             trainer.stop()
 
     def test_ppo_free_log_std(self):
-        """Tests the free log std option works."""
+        """Tests the free log std option works.
+
+        This test is overfitted to the old ModelV2 stack (e.g.
+        policy.model.trainable_variables is not callable in the new stack)
+        # TODO (Kourosh) we should create a new test for the new RLModule stack.
+        """
+
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -298,7 +340,9 @@ class TestPPO(unittest.TestCase):
                     free_log_std=True,
                     vf_share_layers=True,
                 ),
+                _enable_learner_api=False,
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for fw, sess in framework_iterator(config, session=True):
@@ -331,7 +375,7 @@ class TestPPO(unittest.TestCase):
             # Check the variable is initially zero.
             init_std = get_value()
             assert init_std == 0.0, init_std
-            batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            batch = compute_gae_for_sample_batch(policy, CARTPOLE_FAKE_BATCH.copy())
             if fw == "torch":
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
@@ -342,7 +386,12 @@ class TestPPO(unittest.TestCase):
             trainer.stop()
 
     def test_ppo_loss_function(self):
-        """Tests the PPO loss function math."""
+        """Tests the PPO loss function math.
+
+        This test is overfitted to the old ModelV2 stack (e.g.
+        policy.model.trainable_variables is not callable in the new stack)
+        # TODO (Kourosh) we should create a new test for the new RLModule stack.
+        """
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -356,7 +405,9 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=True,
                 ),
+                _enable_learner_api=False,
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for fw, sess in framework_iterator(config, session=True):
@@ -378,7 +429,9 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            train_batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            train_batch = compute_gae_for_sample_batch(
+                policy, CARTPOLE_FAKE_BATCH.copy()
+            )
             if fw == "torch":
                 train_batch = policy._lazy_tensor_dict(train_batch)
 

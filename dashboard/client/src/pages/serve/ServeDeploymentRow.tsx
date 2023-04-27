@@ -1,13 +1,14 @@
 import {
   createStyles,
   IconButton,
+  Link,
   makeStyles,
   TableCell,
   TableRow,
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import {
   CodeDialogButton,
   CodeDialogButtonWithPreview,
@@ -20,6 +21,7 @@ import {
   ServeDeployment,
   ServeReplica,
 } from "../../type/serve";
+import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetricsSection";
 import { ServeReplicaLogsLink } from "./ServeReplicaDetailPage";
 
 const useStyles = makeStyles((theme) =>
@@ -49,6 +51,7 @@ export const ServeDeploymentRow = ({
   const classes = useStyles();
 
   const [expanded, setExpanded] = useState(false);
+  const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   return (
     <React.Fragment>
@@ -86,6 +89,14 @@ export const ServeDeploymentRow = ({
             code={deployment_config}
             buttonText="Deployment config"
           />
+          {metricsUrl && (
+            <React.Fragment>
+              <br />
+              <Link href={metricsUrl} target="_blank" rel="noreferrer">
+                Metrics
+              </Link>
+            </React.Fragment>
+          )}
         </TableCell>
         <TableCell align="center">
           {message ? (
@@ -127,16 +138,17 @@ export const ServeReplicaRow = ({
 }: ServeReplicaRowProps) => {
   const { replica_id, state, start_time_s } = replica;
   const { name } = deployment;
+  const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name, replica_id);
 
   return (
     <TableRow>
       <TableCell align="center"></TableCell>
       <TableCell align="center">
-        <Link
+        <RouterLink
           to={`${encodeURIComponent(name)}/${encodeURIComponent(replica_id)}`}
         >
           {replica_id}
-        </Link>
+        </RouterLink>
       </TableCell>
       <TableCell align="center">-</TableCell>
       <TableCell align="center">
@@ -144,6 +156,14 @@ export const ServeReplicaRow = ({
       </TableCell>
       <TableCell align="center">
         <ServeReplicaLogsLink replica={replica} deployment={deployment} />
+        {metricsUrl && (
+          <React.Fragment>
+            <br />
+            <Link href={metricsUrl} target="_blank" rel="noreferrer">
+              Metrics
+            </Link>
+          </React.Fragment>
+        )}
       </TableCell>
       <TableCell align="center">-</TableCell>
       <TableCell align="center">

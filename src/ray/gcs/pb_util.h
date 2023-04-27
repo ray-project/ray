@@ -26,6 +26,8 @@ namespace ray {
 namespace gcs {
 
 using ContextCase = rpc::ActorDeathCause::ContextCase;
+// Forward declaration.
+std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_cause);
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
@@ -169,17 +171,15 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
         death_cause.runtime_env_failed_context());
     error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
-    *(error_info.mutable_error_message()) =
-        death_cause.actor_unschedulable_context().error_message();
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
   } else if (death_cause.context_case() == ContextCase::kOomContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
-    *(error_info.mutable_error_message()) = death_cause.oom_context().error_message();
     error_info.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   }
+  error_info.set_error_message(GenErrorMessageFromDeathCause(death_cause));
   return error_info;
 }
 
@@ -194,6 +194,8 @@ inline std::string GenErrorMessageFromDeathCause(
     return death_cause.actor_unschedulable_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kActorDiedErrorContext) {
     return death_cause.actor_died_error_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    return death_cause.oom_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     return "Death cause not recorded.";
@@ -268,55 +270,28 @@ inline rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
   return error_info;
 }
 
-/// Get the timestamp of the task status if available.
+/// Get the worker id from the task event.
 ///
 /// \param task_event Task event.
-/// \return Timestamp of the task status change if status update available, nullopt
-/// otherwise.
-inline absl::optional<int64_t> GetTaskStatusTimeFromStateUpdates(
-    const ray::rpc::TaskStatus &task_status, const rpc::TaskStateUpdate &state_updates) {
-  switch (task_status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    if (state_updates.has_pending_args_avail_ts()) {
-      return state_updates.pending_args_avail_ts();
-    }
-    break;
+/// \return WorkerID::Nil() if worker id info not available, else the worker id.
+inline WorkerID GetWorkerID(const rpc::TaskEvents &task_event) {
+  if (task_event.has_state_updates() && task_event.state_updates().has_worker_id()) {
+    return WorkerID::FromBinary(task_event.state_updates().worker_id());
   }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    if (state_updates.has_submitted_to_worker_ts()) {
-      return state_updates.submitted_to_worker_ts();
-    }
-    break;
+  return WorkerID::Nil();
+}
+
+/// Return if the task has already terminated (finished or failed)
+///
+/// \param task_event Task event.
+/// \return True if the task has already terminated, false otherwise.
+inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_state_updates()) {
+    return false;
   }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    if (state_updates.has_pending_node_assignment_ts()) {
-      return state_updates.pending_node_assignment_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    if (state_updates.has_finished_ts()) {
-      return state_updates.finished_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    if (state_updates.has_failed_ts()) {
-      return state_updates.failed_ts();
-    }
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    if (state_updates.has_running_ts()) {
-      return state_updates.running_ts();
-    }
-    break;
-  }
-  default: {
-    UNREACHABLE;
-  }
-  }
-  return absl::nullopt;
+
+  const auto &state_updates = task_event.state_updates();
+  return state_updates.has_finished_ts() || state_updates.has_failed_ts();
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
@@ -350,6 +325,10 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
   }
   case rpc::TaskStatus::RUNNING: {
     state_updates->set_running_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::NIL: {
+    // Not status change.
     break;
   }
   default: {

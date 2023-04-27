@@ -38,7 +38,6 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
-    "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -54,11 +53,12 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinx_external_toc",
-    "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
+    "sphinx_panels",
+    "sphinx_design",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
@@ -104,12 +104,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-# Thebe configuration for launching notebook cells within the docs.
-thebe_config = {
-    "selector": "div.highlight",
-    "repository_url": "https://github.com/ray-project/ray",
-    "repository_branch": "master",
-}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -264,13 +258,8 @@ html_theme_options = {
     "use_issues_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
-    "home_page_in_toc": False,
+    "home_page_in_toc": True,
     "show_navbar_depth": 1,
-    "launch_buttons": {
-        "notebook_interface": "jupyterlab",
-        "binderhub_url": "https://mybinder.org",
-        "colab_url": "https://colab.research.google.com",
-    },
     "announcement": "<div class='topnav'></div>",
 }
 
@@ -375,7 +364,8 @@ tag_mapping = {
     "trainMlflow": "MLflow,Training",
     "trainTuneTensorflow": "TensorFlow,Training,Tuning",
     "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training"
+    "trainBenchmark": "PyTorch,Training",
+    "trainLightning": "PyTorch,Lightning,Training"
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
     # Serve, RLlib and AIR could use one.

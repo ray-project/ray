@@ -99,7 +99,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*periodical_runner=*/&pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
 }
@@ -222,10 +223,12 @@ void GcsServer::Stop() {
 
     gcs_task_manager_->Stop();
 
+    pubsub_handler_->Stop();
+    pubsub_handler_.reset();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
-    pubsub_handler_->Stop();
     kv_manager_.reset();
 
     is_stopped_ = true;
@@ -323,6 +326,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      main_service_,
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -405,20 +409,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       *function_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
-      },
-      [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
-        boost::asio::deadline_timer timer(main_service_);
-        timer.expires_from_now(delay);
-        timer.async_wait([fn](const boost::system::error_code &error) {
-          if (error != boost::asio::error::operation_aborted) {
-            fn();
-          } else {
-            RAY_LOG(WARNING)
-                << "The GCS actor metadata garbage collector timer failed to fire. This "
-                   "could old actor metadata not being properly cleaned up. For more "
-                   "information, check logs/gcs_server.err and logs/gcs_server.out";
-          }
-        });
       },
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -669,12 +659,12 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
+        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 
   // Install job event listeners.
   gcs_job_manager_->AddJobFinishedListener([this](const rpc::JobTableData &job_data) {
     const auto job_id = JobID::FromBinary(job_data.job_id());
-    gcs_actor_manager_->OnJobFinished(job_id);
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
@@ -748,7 +738,7 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
         main_service_, redis_client_->GetPrimaryContext(), []() {
-          RAY_LOG(FATAL) << "Redis failed. Shutdown GCS.";
+          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
   }

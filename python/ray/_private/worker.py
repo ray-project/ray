@@ -18,7 +18,9 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
+    IO,
     Any,
+    AnyStr,
     Callable,
     Dict,
     Generic,
@@ -69,7 +71,12 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
-from ray._private.ray_logging import global_worker_stdstream_dispatcher, setup_logger
+from ray._private.ray_logging import (
+    global_worker_stdstream_dispatcher,
+    stdout_deduplicator,
+    stderr_deduplicator,
+    setup_logger,
+)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -448,6 +455,10 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        # Opened file descriptor to stdout/stderr for this python worker.
+        self._enable_record_task_log = ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING
+        self._out_file = None
+        self._err_file = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -518,6 +529,55 @@ class Worker:
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
+
+    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
+        """Set the worker's err file where stderr is redirected to"""
+        self._err_file = err_file
+
+    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
+        """Set the worker's out file where stdout is redirected to"""
+        self._out_file = out_file
+
+    def record_task_log_start(self):
+        """Record the task log info when task starts executing"""
+        if not self._enable_record_task_log:
+            return
+
+        self.core_worker.record_task_log_start(
+            self.get_out_file_path(),
+            self.get_err_file_path(),
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
+        )
+
+    def record_task_log_end(self):
+        """Record the task log info when task finishes executing"""
+        if not self._enable_record_task_log:
+            return
+
+        self.core_worker.record_task_log_end(
+            self.get_current_out_offset(), self.get_current_err_offset()
+        )
+
+    def get_err_file_path(self) -> str:
+        """Get the err log file path"""
+        return self._err_file.name if self._err_file is not None else ""
+
+    def get_out_file_path(self) -> str:
+        """Get the out log file path"""
+        return self._out_file.name if self._out_file is not None else ""
+
+    def get_current_out_offset(self) -> int:
+        """Get the current offset of the out file if seekable, else 0"""
+        if self._out_file is not None and self._out_file.seekable():
+            return self._out_file.tell()
+        return 0
+
+    def get_current_err_offset(self) -> int:
+        """Get the current offset of the err file if seekable, else 0"""
+        if self._err_file is not None and self._err_file.seekable():
+            return self._err_file.tell()
+        return 0
 
     def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
@@ -612,7 +672,17 @@ class Worker:
                 object_ref is None
             ), "Local Mode does not support inserting with an ObjectRef"
 
-        serialized_value = self.get_serialization_context().serialize(value)
+        try:
+            serialized_value = self.get_serialization_context().serialize(value)
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -1361,10 +1431,6 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
-    # NOTE(swang): We must set the node IP address *after* we determine whether
-    # this is an existing cluster or not. For Windows and OSX, the resolved IP
-    # is localhost for new clusters and the usual public IP for existing
-    # clusters.
     if _node_ip_address is not None:
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
     raylet_ip_address = node_ip_address
@@ -1435,15 +1501,6 @@ def init(
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             storage=storage,
-            # We need to disable it if runtime env is not set.
-            # Uploading happens after core worker is created. And we should
-            # prevent default worker being created before uploading.
-            # TODO (yic): Have a separate connection to gcs client when
-            # removal redis is done. The uploading should happen before this
-            # one.
-            start_initial_python_workers_for_first_job=(
-                job_config is None or job_config.runtime_env is None
-            ),
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -1692,8 +1749,23 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    print_file = sys.stderr if data["is_err"] else sys.stdout
-    print_worker_logs(data, print_file)
+    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+
+    if data["is_err"]:
+        if should_dedup:
+            batches = stderr_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stderr
+    else:
+        if should_dedup:
+            batches = stdout_deduplicator.deduplicate(data)
+        else:
+            batches = [data]
+        sink = sys.stdout
+
+    for batch in batches:
+        print_worker_logs(batch, sink)
 
 
 # Start time of this process, used for relative time logs.
@@ -1787,6 +1859,28 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 return colorama.Style.BRIGHT + colorama.Fore.YELLOW
             else:
                 return colorama.Style.BRIGHT + colorama.Fore.CYAN
+        elif os.getenv("RAY_COLOR_PREFIX") == "1":
+            colors = [
+                # colorama.Fore.BLUE, # Too dark
+                colorama.Fore.MAGENTA,
+                colorama.Fore.CYAN,
+                colorama.Fore.GREEN,
+                # colorama.Fore.WHITE, # Too light
+                # colorama.Fore.RED,
+                colorama.Fore.LIGHTBLACK_EX,
+                colorama.Fore.LIGHTBLUE_EX,
+                # colorama.Fore.LIGHTCYAN_EX, # Too light
+                # colorama.Fore.LIGHTGREEN_EX, # Too light
+                colorama.Fore.LIGHTMAGENTA_EX,
+                # colorama.Fore.LIGHTWHITE_EX, # Too light
+                # colorama.Fore.LIGHTYELLOW_EX, # Too light
+            ]
+            pid = data.get("pid", 0)
+            try:
+                i = int(pid)
+            except ValueError:
+                i = 0
+            return colors[i % len(colors)]
         else:
             return colorama.Fore.CYAN
 
@@ -1932,6 +2026,8 @@ def connect(
     startup_token: int = 0,
     ray_debugger_external: bool = False,
     entrypoint: str = "",
+    worker_launch_time_ms: int = -1,
+    worker_launched_time_ms: int = -1,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -1953,6 +2049,12 @@ def connect(
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
+        worker_launch_time_ms: The time when the worker process for this worker
+            is launched. If the worker is not launched by raylet (e.g.,
+            driver), this must be -1 (default value).
+        worker_launched_time_ms: The time when the worker process for this worker
+            finshes launching. If the worker is not launched by raylet (e.g.,
+            driver), this must be -1 (default value).
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2117,6 +2219,8 @@ def connect(
         startup_token,
         session_name,
         "" if mode != SCRIPT_MODE else entrypoint,
+        worker_launch_time_ms,
+        worker_launched_time_ms,
     )
 
     # Notify raylet that the core worker is ready.
@@ -2197,7 +2301,7 @@ def connect(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
     )
     if tracing_hook_val is not None:
-        ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
+        ray.util.tracing.tracing_helper._enbale_tracing()
         if not getattr(ray, "__traced__", False):
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
@@ -2232,6 +2336,10 @@ def disconnect(exiting_interpreter=False):
 
         worker._session_index += 1
 
+        for leftover in stdout_deduplicator.flush():
+            print_worker_logs(leftover, sys.stdout)
+        for leftover in stderr_deduplicator.flush():
+            print_worker_logs(leftover, sys.stderr)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.

@@ -7,8 +7,9 @@ import shutil
 import sys
 import tempfile
 from typing import Dict, List, Optional, Tuple
+from contextlib import asynccontextmanager
+from asyncio import create_task, get_running_loop
 
-from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin

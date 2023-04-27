@@ -21,21 +21,6 @@ py_test(
 
 ### Ray Data
 py_test(
-    name = "quick_start",
-    size = "small",
-    srcs = ["source/data/doc_code/quick_start.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "tensor",
-    size = "small",
-    srcs = ["source/data/doc_code/tensor.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-
-py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
@@ -146,6 +131,7 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+         "source/serve/doc_code/object_detection.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -156,6 +142,7 @@ py_test_run_all_subdirectory(
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
     ],
     exclude = [],
     extra_srcs = [],
@@ -227,6 +214,67 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:ml"],
 )
 
+# --------------------------------------------------------------------
+# Test all doc/source/data/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/data/doc_code/*.py"],
+    exclude = [
+        "source/ray-air/doc_code/predictors.py",
+        "source/data/doc_code/creating_datastreams_untested.py"
+    ],
+    extra_srcs = [],
+    tags = ["exclusive", "team:core"],
+)
+
+# --------------------------------------------------------------------
+# Test all Workspace template notebooks in doc/source/templates
+# as smoke tests.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "workspace_templates",
+    srcs = glob(["source/templates/tests/*.ipynb"]),
+    visibility = ["//doc:__subpackages__"]
+)
+
+# Validate that all the paths and yamls within the templates.yaml file are valid.
+
+py_test(
+    name = "templates_directory_validation",
+    size = "small",
+    main = "source/templates/validate.py",
+    srcs = ["source/templates/validate.py"],
+    data = glob(["source/templates/**/*"]),
+    tags = ["exclusive", "team:ml"]
+)
+
+# Templates that only require CPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["source/templates/tests/many_model_training.ipynb"],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+    env = {"SMOKE_TEST": "1"},
+)
+
+# Templates that require GPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = [
+        "source/templates/tests/batch_inference.ipynb",
+        "source/templates/tests/serving_stable_diffusion.ipynb"
+    ],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
+    env = {"SMOKE_TEST": "1"},
+)
 
 # --------------
 # Run GPU tests

@@ -2,10 +2,10 @@ recomm-sys001-ppo:
     env: ray.rllib.examples.env.recommender_system_envs.RecommSys001
     run: PPO
     stop:
-        #evaluation/episode_reward_mean: 48.0
+        #evaluation/sampler_results/episode_reward_mean: 48.0
         timesteps_total: 200000
     config:
-        framework: tf
+        framework: torch
 
         metrics_num_episodes_for_smoothing: 1000
 

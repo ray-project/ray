@@ -338,6 +338,12 @@ def _init_storage(storage_uri: str, is_head: bool):
             _init_filesystem(create_valid_file=True)
 
 
+def _get_storage_uri() -> Optional[str]:
+    """Get storage API, if configured."""
+    global _storage_uri
+    return _storage_uri
+
+
 def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
     """Internal version of get_filesystem() that doesn't hit Ray client hooks.
 
@@ -357,7 +363,8 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
     if not _storage_uri:
         raise RuntimeError(
             "No storage URI has been configured for the cluster. "
-            "Specify a storage URI via `ray.init(storage=<uri>)`"
+            "Specify a storage URI via `ray.init(storage=<uri>)` or "
+            "`ray start --head --storage=<uri>`"
         )
 
     import pyarrow.fs

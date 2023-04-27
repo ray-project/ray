@@ -1,4 +1,4 @@
-import { Link, Typography } from "@material-ui/core";
+import { createStyles, Link, makeStyles, Typography } from "@material-ui/core";
 import React, { useContext } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { GlobalContext } from "../../App";
@@ -14,9 +14,19 @@ import { ServeDeployment, ServeReplica } from "../../type/serve";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
+import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
+
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    section: {
+      marginTop: theme.spacing(4),
+    },
+  }),
+);
 
 export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
+  const classes = useStyles();
 
   const { loading, application, deployment, replica, error } =
     useServeReplicaDetails(applicationName, deploymentName, replicaId);
@@ -52,6 +62,7 @@ export const ServeReplicaDetailPage = () => {
         pageInfo={{
           id: "serveReplicaDetail",
           title: replica_id,
+          pageTitle: `${replica_id} | Serve Replica`,
           path: `/serve/applications/${encodeURIComponent(
             appName,
           )}/${encodeURIComponent(deployment.name)}/${encodeURIComponent(
@@ -136,7 +147,16 @@ export const ServeReplicaDetailPage = () => {
           },
         ]}
       />
-      <CollapsibleSection title="Tasks History" startExpanded>
+      <ServeReplicaMetricsSection
+        className={classes.section}
+        deploymentName={deployment.name}
+        replicaId={replica.replica_id}
+      />
+      <CollapsibleSection
+        className={classes.section}
+        title="Tasks History"
+        startExpanded
+      >
         <TaskList actorId={replica.actor_id ? replica.actor_id : undefined} />
       </CollapsibleSection>
     </div>

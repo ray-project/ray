@@ -8,8 +8,8 @@ from transformers import AutoTokenizer
 
 
 def get_train_dataset(args, image_resolution=512):
-    """Build a Ray Dataset for fine-tuning DreamBooth model."""
-    # Load images into Ray Dataset
+    """Build a Datastream for fine-tuning DreamBooth model."""
+    # Load images into Datastream
     instance_dataset = read_images(args.instance_images_dir)
     class_dataset = read_images(args.class_images_dir)
 
@@ -81,10 +81,23 @@ def collate(batch, device, dtype):
     # of the batch.
     # During training, a batch will be chunked into 2 sub-batches for prior
     # preserving loss calculation.
-    images = torch.squeeze(torch.stack([batch["image"], batch["image_1"]]))
+
+    # batch["image"] = image1, image2
+    # batch["image_1"] = reg1, reg2
+    # After cat, we will have [image1, reg1, image2, reg]
+
+    images = torch.cat([batch["image"], batch["image_1"]], dim=0)
     images = images.to(memory_format=torch.contiguous_format).float()
 
-    prompt_ids = torch.cat([batch["prompt_ids"], batch["prompt_ids_1"]], dim=0)
+    batch_size = len(batch["prompt_ids"])
+
+    # batch["prompt_ids"] = pr1, pr2
+    # batch["prompt_ids_1"] = rr1, rr2
+    # After stack+reshape, we will have [pr1, rr1, pr2, rr2]
+
+    prompt_ids = torch.stack(
+        [batch["prompt_ids"], batch["prompt_ids_1"]], dim=1
+    ).reshape(batch_size * 2, -1)
 
     return {
         "prompt_ids": prompt_ids.to(device),  # token ids should stay int.

@@ -208,8 +208,9 @@ void RaySyncer::Connect(const std::string &node_id,
             [this, channel](const std::string &node_id, bool restart) {
               sync_reactors_.erase(node_id);
               if (restart) {
-                RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
-                              << NodeID::FromBinary(node_id);
+                RAY_LOG_EVERY_MS(INFO, 10 * 1000)
+                    << "Connection is broken. Reconnect to node: "
+                    << NodeID::FromBinary(node_id);
                 Connect(node_id, channel);
               }
             },

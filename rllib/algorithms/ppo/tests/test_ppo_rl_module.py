@@ -4,7 +4,6 @@ import unittest
 import gymnasium as gym
 import numpy as np
 import tensorflow as tf
-import torch
 import tree
 
 import ray
@@ -163,7 +162,7 @@ class TestPPO(unittest.TestCase):
             #     lambda x: x[None], convert_to_torch_tensor(state_in)
             # )
             # batch[STATE_IN] = state_in
-            batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
+            # batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
             if fwd_fn == "forward_exploration":
                 module.forward_exploration(batch)
@@ -221,13 +220,16 @@ class TestPPO(unittest.TestCase):
                 # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
-                action = convert_to_numpy(fwd_out["action_dist"].sample()[0])
+                _action = fwd_out["action_dist"].sample()
+                action = convert_to_numpy(_action[0])
+                action_logp = convert_to_numpy(fwd_out["action_dist"].logp(_action)[0])
                 new_obs, reward, terminated, truncated, _ = env.step(action)
                 new_obs = preprocessor.transform(new_obs)
                 output_batch = {
                     SampleBatch.OBS: obs,
                     SampleBatch.NEXT_OBS: new_obs,
                     SampleBatch.ACTIONS: action,
+                    SampleBatch.ACTION_LOGP: action_logp,
                     SampleBatch.REWARDS: np.array(reward),
                     SampleBatch.TERMINATEDS: np.array(terminated),
                     SampleBatch.TRUNCATEDS: np.array(truncated),

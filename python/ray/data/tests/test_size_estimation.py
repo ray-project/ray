@@ -116,7 +116,7 @@ def test_arrow_size_add_block(ray_start_regular_shared):
 
 
 def test_split_read_csv(ray_start_regular_shared, tmp_path):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.block_splitting_enabled = True
 
     def gen(name):
@@ -153,7 +153,7 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
 
 
 def test_split_read_parquet(ray_start_regular_shared, tmp_path):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.block_splitting_enabled = True
 
     def gen(name):
@@ -161,7 +161,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         ds = (
             ray.data.range(200000, parallelism=1)
             .map(lambda _: uuid.uuid4().hex)
-            .cache()
+            .materialize()
         )
         # Fully execute the operations prior to write, because with
         # parallelism=1, there is only one task; so the write operator
@@ -200,7 +200,7 @@ def test_split_map(shutdown_only, use_actors):
     if use_actors:
         kwargs = {"compute": "actors"}
     # Simple block
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.block_splitting_enabled = True
     ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE, **kwargs)
@@ -229,7 +229,7 @@ def test_split_map(shutdown_only, use_actors):
 
 def test_split_flat_map(ray_start_regular_shared):
     # Simple block
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.block_splitting_enabled = True
     ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
@@ -251,7 +251,7 @@ def test_split_flat_map(ray_start_regular_shared):
 
 def test_split_map_batches(ray_start_regular_shared):
     # Simple block
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.block_splitting_enabled = True
     ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)

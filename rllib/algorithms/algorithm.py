@@ -76,6 +76,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_LEARNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -210,8 +211,8 @@ class Algorithm(Trainable):
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = [
-        "episode_reward_mean",
-        "evaluation/episode_reward_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
         "num_env_steps_sampled",
         "num_env_steps_trained",
     ]
@@ -456,11 +457,17 @@ class Algorithm(Trainable):
         # (although their values may be nan), so that Tune does not complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
+            # TODO: Don't dump sampler results into top-level.
             "evaluation": {
                 "episode_reward_max": np.nan,
                 "episode_reward_min": np.nan,
                 "episode_reward_mean": np.nan,
-            }
+                "sampler_results": {
+                    "episode_reward_max": np.nan,
+                    "episode_reward_min": np.nan,
+                    "episode_reward_mean": np.nan,
+                },
+            },
         }
 
         super().__init__(
@@ -643,8 +650,6 @@ class Algorithm(Trainable):
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
                 num_workers=self.config.evaluation_num_workers,
-                # Don't even create a local worker if num_workers > 0.
-                local_worker=False,
                 logdir=self.logdir,
             )
 
@@ -1061,6 +1066,11 @@ class Algorithm(Trainable):
                     keep_custom_metrics=self.config.keep_per_episode_custom_metrics,
                     timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
+
+            # TODO: Don't dump sampler results into top-level.
+            if not self.config.custom_evaluation_function:
+                metrics = dict({"sampler_results": metrics}, **metrics)
+
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             # TODO: Remove this key at some point. Here for backward compatibility.
@@ -1258,10 +1268,13 @@ class Algorithm(Trainable):
                 f"{unit} done)"
             )
 
-        metrics = summarize_episodes(
+        sampler_results = summarize_episodes(
             rollout_metrics,
             keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
         )
+
+        # TODO: Don't dump sampler results into top-level.
+        metrics = dict({"sampler_results": sampler_results}, **sampler_results)
 
         metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
         metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
@@ -1301,14 +1314,14 @@ class Algorithm(Trainable):
             workers: The WorkerSet to restore. This may be Rollout or Evaluation
                 workers.
         """
+        # If `workers` is None, or
+        # 1. `workers` (WorkerSet) does not have a local worker, and
+        # 2. `self.workers` (WorkerSet used for training) does not have a local worker
+        # -> we don't have a local worker to get state from, so we can't recover
+        # remote worker in this case.
         if not workers or (
             not workers.local_worker() and not self.workers.local_worker()
         ):
-            # If workers does not exist, or
-            # 1. this WorkerSet does not have a local worker, and
-            # 2. self.workers (rollout worker set) does not have a local worker,
-            # we don't have a local worker to get state from.
-            # We can't recover remote worker in this case.
             return
 
         # This is really cheap, since probe_unhealthy_workers() is a no-op
@@ -1317,12 +1330,16 @@ class Algorithm(Trainable):
 
         if restored:
             from_worker = workers.local_worker() or self.workers.local_worker()
-            state = ray.put(from_worker.get_state())
+            # Get the state of the correct (reference) worker. E.g. The local worker
+            # of the main WorkerSet.
+            state_ref = ray.put(from_worker.get_state())
+
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
             workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state)),
+                func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
+                # Don't update the local_worker, b/c it's the one we are synching from.
                 local_worker=False,
                 timeout_seconds=self.config.worker_restore_timeout_s,
                 # Bring back actor after successful state syncing.
@@ -1861,12 +1878,12 @@ class Algorithm(Trainable):
 
         if workers is not DEPRECATED_VALUE:
             deprecation_warning(
-                old="workers",
+                old="Algorithm.add_policy(.., workers=..)",
                 help=(
-                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
-                    "and no-op now. Please do not use it anymore."
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated! "
+                    "Please do not use it anymore."
                 ),
-                error=False,
+                error=True,
             )
 
         self.workers.add_policy(
@@ -2061,6 +2078,14 @@ class Algorithm(Trainable):
                     policy_state.pkl
                 pol_2/
                     policy_state.pkl
+            learner/
+                learner_state.json
+                module_state/
+                    module_1/
+                        ...
+                optimizer_state/
+                    optimizers_module_1/
+                        ...
             rllib_checkpoint.json
             algorithm_state.pkl
 
@@ -2083,7 +2108,10 @@ class Algorithm(Trainable):
             policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
-        state["checkpoint_version"] = CHECKPOINT_VERSION
+        if self.config._enable_learner_api:
+            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
+        else:
+            state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write state (w/o policies) to disk.
         state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
@@ -2114,21 +2142,24 @@ class Algorithm(Trainable):
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
+        # if we are using the learner API, save the learner group state
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
+            self.learner_group.save_state(learner_state_dir)
+
         return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+    def load_checkpoint(self, checkpoint: str) -> None:
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
-        if isinstance(checkpoint, str):
-            checkpoint_info = get_checkpoint_info(checkpoint)
-            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info
-            )
-        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
-        else:
-            checkpoint_data = checkpoint
+
+        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint, "learner")
+            self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -2156,7 +2187,7 @@ class Algorithm(Trainable):
 
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
+        # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
         # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
         # workers to determine their CPU/GPU resource needs.
 
@@ -2580,7 +2611,6 @@ class Algorithm(Trainable):
                 # there in case they are used for evaluation purpose.
                 self.evaluation_workers.foreach_worker(
                     lambda w: w.set_state(ray.get(remote_state)),
-                    local_worker=False,
                     healthy_only=False,
                 )
         # If necessary, restore replay data as well.
@@ -3022,22 +3052,32 @@ class Algorithm(Trainable):
             NUM_ENV_STEPS_TRAINED,
         ]:
             results[c] = self._counters[c]
+        time_taken_sec = step_ctx.get_time_taken_sec()
         if self.config.count_steps_by == "agent_steps":
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_AGENT_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_AGENT_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_ENV_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_ENV_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
 
         # TODO: Backward compatibility.
+        results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
         # Process timer results.
@@ -3079,29 +3119,12 @@ class Algorithm(Trainable):
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
-    def _make_workers(
-        self,
-        *,
-        env_creator: EnvCreator,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-        policy_class: Type[Policy],
-        config: AlgorithmConfigDict,
-        num_workers: int,
-        local_worker: bool = True,
-    ) -> WorkerSet:
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            default_policy_class=policy_class,
-            config=config,
-            num_workers=num_workers,
-            local_worker=local_worker,
-            logdir=self.logdir,
-        )
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=True)
+    def _make_workers(self, *args, **kwargs):
+        pass
 
-    def validate_config(self, config) -> None:
-        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+    @Deprecated(new="AlgorithmConfig.validate()", error=False)
+    def validate_config(self, config):
         pass
 
     @staticmethod
@@ -3118,6 +3141,8 @@ COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 class TrainIterCtx:
     def __init__(self, algo: Algorithm):
         self.algo = algo
+        self.time_start = None
+        self.time_stop = None
 
     def __enter__(self):
         # Before first call to `step()`, `results` is expected to be None ->
@@ -3138,7 +3163,11 @@ class TrainIterCtx:
         return self
 
     def __exit__(self, *args):
-        pass
+        self.time_stop = time.time()
+
+    def get_time_taken_sec(self) -> float:
+        """Returns the time we spent in the context in seconds."""
+        return self.time_stop - self.time_start
 
     def should_stop(self, results):
 

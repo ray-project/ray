@@ -1,17 +1,18 @@
+import collections
 from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.util import _truncated_repr
 from ray.data.block import BatchUDF, Block, DataBatch
-from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
+from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
 def generate_map_batches_fn(
     batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
     batch_format: Optional[str] = "default",
-    prefetch_batches: int = 0,
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
@@ -19,7 +20,7 @@ def generate_map_batches_fn(
     import pandas as pd
     import pyarrow as pa
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     def fn(
         blocks: Iterator[Block],
@@ -28,12 +29,19 @@ def generate_map_batches_fn(
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-        DatasetContext._set_current(context)
+        DataContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
 
         def validate_batch(batch: Block) -> None:
             if not isinstance(
-                batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
+                batch,
+                (
+                    list,
+                    pa.Table,
+                    np.ndarray,
+                    collections.abc.Mapping,
+                    pd.core.frame.DataFrame,
+                ),
             ):
                 raise ValueError(
                     "The `fn` you passed to `map_batches` returned a value of type "
@@ -42,17 +50,30 @@ def generate_map_batches_fn(
                     "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                 )
 
-            if isinstance(batch, dict):
-                for key, value in batch.items():
-                    if not isinstance(value, np.ndarray):
+            if isinstance(batch, collections.abc.Mapping):
+                for key, value in list(batch.items()):
+                    if not isinstance(value, (np.ndarray, list)):
                         raise ValueError(
+                            f"Error validating {_truncated_repr(batch)}: "
                             "The `fn` you passed to `map_batches` returned a "
                             f"`dict`. `map_batches` expects all `dict` values "
-                            f"to be of type `numpy.ndarray`, but the value "
+                            f"to be `list` or `np.ndarray` type, but the value "
                             f"corresponding to key {key!r} is of type "
                             f"{type(value)}. To fix this issue, convert "
-                            f"the {type(value)} to a `numpy.ndarray`."
+                            f"the {type(value)} to a `np.ndarray`."
                         )
+                    if isinstance(value, list):
+                        # Try to convert list values into an numpy array via
+                        # np.array(), so users don't need to manually cast.
+                        # NOTE: we don't cast generic iterables, since types like
+                        # `str` are also Iterable.
+                        try:
+                            batch[key] = np.array(value)
+                        except Exception:
+                            raise ValueError(
+                                "Failed to convert column values to numpy array: "
+                                f"({_truncated_repr(value)})."
+                            )
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
             # Apply UDF.
@@ -93,7 +114,6 @@ def generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
             ensure_copy=not zero_copy_batch and batch_size is not None,
-            prefetch_batches=prefetch_batches,
         )
 
         for batch in formatted_batch_iter:

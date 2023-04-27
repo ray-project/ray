@@ -1,5 +1,5 @@
 import os
-from typing import DefaultDict, List, Dict
+from typing import List, Dict, DefaultDict
 
 import requests
 import pytest
@@ -10,6 +10,8 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import block_until_http_ready
 import ray.experimental.state.api as state_api
 from fastapi import FastAPI
+from ray.serve.metrics import Counter, Histogram, Gauge
+from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 
 
 @pytest.fixture
@@ -132,7 +134,7 @@ def test_http_metrics(serve_start_shutdown):
             # Trigger RayActorError
             os._exit(0)
 
-    serve.run(A.bind())
+    serve.run(A.bind(), name="app")
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
     try:
@@ -160,8 +162,8 @@ def test_http_metrics(serve_start_shutdown):
             elif "serve_num_deployment_http_error_requests" in metrics:
                 # deployment A should have error count 2
                 if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
+                    assert 'deployment="app_A"' in metrics and "2.0" in metrics
+                if 'deployment="app_A"' not in metrics or "2.0" not in metrics:
                     return False
         return True
 
@@ -179,7 +181,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     def f(*args):
         return 1 / 0
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
@@ -210,7 +212,7 @@ def test_http_metrics_fields(serve_start_shutdown):
         "serve_num_deployment_http_error_requests"
     )
     assert len(num_deployment_errors) == 1
-    assert num_deployment_errors[0]["deployment"] == "f"
+    assert num_deployment_errors[0]["deployment"] == "app_f"
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
     print("serve_num_deployment_http_error_requests working as expected.")
@@ -346,7 +348,7 @@ class TestRequestContextMetrics:
             async def app2(self):
                 return await (await self.handle2.remote())
 
-        serve.run(G.bind(g1.bind(), g2.bind()))
+        serve.run(G.bind(g1.bind(), g2.bind()), name="app")
         resp = requests.get("http://127.0.0.1:8000/api")
         assert resp.text == '"ok1"'
         resp = requests.get("http://127.0.0.1:8000/api2")
@@ -366,9 +368,193 @@ class TestRequestContextMetrics:
         requests_metrics = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_request_counter")
         )
-        assert requests_metrics["G"] == {"/api", "/api2"}
-        assert requests_metrics["g1"] == {"/api"}
-        assert requests_metrics["g2"] == {"/api2"}
+        assert requests_metrics["app_G"] == {"/api", "/api2"}
+        assert requests_metrics["app_g1"] == {"/api"}
+        assert requests_metrics["app_g2"] == {"/api2"}
+
+    def test_customer_metrics_with_context(self, serve_start_shutdown):
+        @serve.deployment
+        class Model:
+            def __init__(self):
+                self.counter = Counter(
+                    "my_counter",
+                    description="my counter metrics",
+                    tag_keys=(
+                        "my_static_tag",
+                        "my_runtime_tag",
+                    ),
+                )
+                self.counter.set_default_tags({"my_static_tag": "static_value"})
+                self.histogram = Histogram(
+                    "my_histogram",
+                    description=("my histogram "),
+                    boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                    tag_keys=(
+                        "my_static_tag",
+                        "my_runtime_tag",
+                    ),
+                )
+                self.histogram.set_default_tags({"my_static_tag": "static_value"})
+                self.gauge = Gauge(
+                    "my_gauge",
+                    description=("my_gauge"),
+                    tag_keys=(
+                        "my_static_tag",
+                        "my_runtime_tag",
+                    ),
+                )
+                self.gauge.set_default_tags({"my_static_tag": "static_value"})
+
+            def __call__(self):
+                self.counter.inc(tags={"my_runtime_tag": "100"})
+                self.histogram.observe(200, tags={"my_runtime_tag": "200"})
+                self.gauge.set(300, tags={"my_runtime_tag": "300"})
+                return [
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_tag,
+                ]
+
+        serve.run(Model.bind(), name="app", route_prefix="/app")
+        resp = requests.get("http://127.0.0.1:8000/app")
+        deployment_name, replica_tag = resp.json()
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
+            timeout=20,
+        )
+        counter_metrics = get_metric_dictionaries("my_counter")
+        assert len(counter_metrics) == 1
+        counter_metrics[0]["my_static_tag"] == "static_value"
+        counter_metrics[0]["my_runtime_tag"] == "100"
+        counter_metrics[0]["replica"] == replica_tag
+        counter_metrics[0]["deployment"] == deployment_name
+
+        gauge_metrics = get_metric_dictionaries("my_gauge")
+        assert len(counter_metrics) == 1
+        gauge_metrics[0]["my_static_tag"] == "static_value"
+        gauge_metrics[0]["my_runtime_tag"] == "300"
+        gauge_metrics[0]["replica"] == replica_tag
+        gauge_metrics[0]["deployment"] == deployment_name
+
+        histogram_metrics = get_metric_dictionaries("my_histogram_sum")
+        assert len(histogram_metrics) == 1
+        histogram_metrics[0]["my_static_tag"] == "static_value"
+        histogram_metrics[0]["my_runtime_tag"] == "200"
+        histogram_metrics[0]["replica"] == replica_tag
+        histogram_metrics[0]["deployment"] == deployment_name
+
+    @pytest.mark.parametrize("use_actor", [False, True])
+    def test_serve_metrics_outside_serve(self, use_actor, serve_start_shutdown):
+        """Make sure ray.serve.metrics work in ray actor"""
+        if use_actor:
+
+            @ray.remote
+            class MyActor:
+                def __init__(self):
+                    self.counter = Counter(
+                        "my_counter",
+                        description="my counter metrics",
+                        tag_keys=(
+                            "my_static_tag",
+                            "my_runtime_tag",
+                        ),
+                    )
+                    self.counter.set_default_tags({"my_static_tag": "static_value"})
+                    self.histogram = Histogram(
+                        "my_histogram",
+                        description=("my histogram "),
+                        boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                        tag_keys=(
+                            "my_static_tag",
+                            "my_runtime_tag",
+                        ),
+                    )
+                    self.histogram.set_default_tags({"my_static_tag": "static_value"})
+                    self.gauge = Gauge(
+                        "my_gauge",
+                        description=("my_gauge"),
+                        tag_keys=(
+                            "my_static_tag",
+                            "my_runtime_tag",
+                        ),
+                    )
+                    self.gauge.set_default_tags({"my_static_tag": "static_value"})
+
+                def test(self):
+                    self.counter.inc(tags={"my_runtime_tag": "100"})
+                    self.histogram.observe(200, tags={"my_runtime_tag": "200"})
+                    self.gauge.set(300, tags={"my_runtime_tag": "300"})
+                    return "hello"
+
+        else:
+            counter = Counter(
+                "my_counter",
+                description="my counter metrics",
+                tag_keys=(
+                    "my_static_tag",
+                    "my_runtime_tag",
+                ),
+            )
+            histogram = Histogram(
+                "my_histogram",
+                description=("my histogram "),
+                boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                tag_keys=(
+                    "my_static_tag",
+                    "my_runtime_tag",
+                ),
+            )
+            gauge = Gauge(
+                "my_gauge",
+                description=("my_gauge"),
+                tag_keys=(
+                    "my_static_tag",
+                    "my_runtime_tag",
+                ),
+            )
+
+            @ray.remote
+            def fn():
+                counter.set_default_tags({"my_static_tag": "static_value"})
+                histogram.set_default_tags({"my_static_tag": "static_value"})
+                gauge.set_default_tags({"my_static_tag": "static_value"})
+                counter.inc(tags={"my_runtime_tag": "100"})
+                histogram.observe(200, tags={"my_runtime_tag": "200"})
+                gauge.set(300, tags={"my_runtime_tag": "300"})
+                return "hello"
+
+        @serve.deployment
+        class Model:
+            def __init__(self):
+                if use_actor:
+                    self.my_actor = MyActor.remote()
+
+            async def __call__(self):
+                if use_actor:
+                    return await self.my_actor.test.remote()
+                else:
+                    return await fn.remote()
+
+        serve.run(Model.bind(), name="app", route_prefix="/app")
+        resp = requests.get("http://127.0.0.1:8000/app")
+        assert resp.text == "hello"
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
+            timeout=20,
+        )
+        counter_metrics = get_metric_dictionaries("my_counter")
+        assert len(counter_metrics) == 1
+        counter_metrics[0]["my_static_tag"] == "static_value"
+        counter_metrics[0]["my_runtime_tag"] == "100"
+
+        gauge_metrics = get_metric_dictionaries("my_gauge")
+        assert len(counter_metrics) == 1
+        gauge_metrics[0]["my_static_tag"] == "static_value"
+        gauge_metrics[0]["my_runtime_tag"] == "300"
+
+        histogram_metrics = get_metric_dictionaries("my_histogram_sum")
+        assert len(histogram_metrics) == 1
+        histogram_metrics[0]["my_static_tag"] == "static_value"
+        histogram_metrics[0]["my_runtime_tag"] == "200"
 
 
 def test_actor_summary(serve_instance):
@@ -376,11 +562,11 @@ def test_actor_summary(serve_instance):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
+        {"ServeController", "HTTPProxyActor", "ServeReplica:app_f"}
     )
 
 

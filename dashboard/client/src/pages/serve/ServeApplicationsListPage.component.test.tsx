@@ -12,7 +12,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(10);
+    expect.assertions(11);
 
     mockGetServeApplications.mockResolvedValue({
       data: {
@@ -73,5 +73,7 @@ describe("ServeApplicationsListPage", () => {
     await user.click(screen.getAllByText("View")[0]);
     await screen.findByText(/import_path: home:graph/);
     expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
+
+    expect(screen.getByText("Metrics")).toBeVisible();
   });
 });

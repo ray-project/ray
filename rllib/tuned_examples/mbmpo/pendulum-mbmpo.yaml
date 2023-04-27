@@ -2,7 +2,7 @@ pendulum-mbmpo:
     env: ray.rllib.examples.env.mbmpo_env.PendulumWrapper
     run: MBMPO
     stop:
-        episode_reward_mean: -500
+        sampler_results/episode_reward_mean: -500
         training_iteration: 50
     config:
         # Only supported in torch right now.

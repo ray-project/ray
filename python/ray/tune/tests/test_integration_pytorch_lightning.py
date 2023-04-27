@@ -118,7 +118,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
@@ -149,7 +149,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
