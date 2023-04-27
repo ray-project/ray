@@ -135,7 +135,7 @@ sphinx_tabs_disable_tab_closing = True
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
 # This is used to suppress warnings about explicit "toctree" directives.
-suppress_warnings = ["etoc.toctree"]
+suppress_warnings = ["etoc.toctree", "toc"]
 
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
@@ -186,6 +186,10 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
+    "ray-references/api/tune/doc/*",
+    "rllib/package_ref/doc/*",
+    "data/api/doc/*",
+    "tune/api/doc/*"
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
