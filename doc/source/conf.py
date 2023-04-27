@@ -376,7 +376,7 @@ suppress_loggers = {
     'sphinx.ext.autosummary': ['WARNING'],
 }
 
-suppress_records = [".*document isn't included in any toctree.*"]
+suppress_records = ['.*included in any toctree.*']
 
 # Create file with tag mappings for tags.js to use.
 with open("./_static/tag-mapping.json", "w") as f:
