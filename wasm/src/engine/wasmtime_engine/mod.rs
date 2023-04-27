@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::runtime::common_proto::TaskType;
-use crate::runtime::CallOptions;
+use crate::runtime::{CallOptions, ObjectID};
 use crate::{
     engine::{
         Hostcalls, WasmEngine, WasmFunc, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
@@ -27,7 +27,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tokio::sync::watch::error;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use wasmtime::{
     AsContextMut, Caller, Engine, FuncType, Instance, Linker, Module, Store, Val, ValType,
 };
@@ -119,7 +119,17 @@ impl WasmEngine for WasmtimeEngine {
                 .collect::<Vec<Val>>();
             let mut results = vec![Val::I32(0); func.ty(&store).results().len()];
 
-            func.call(store, &args.as_slice(), &mut results).unwrap();
+            match func.call(store, &args.as_slice(), &mut results) {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to execute function: {}, error: {:?}", func_name, e);
+                    return Err(anyhow!(
+                        "Failed to execute function: {}, error: {:?}",
+                        func_name,
+                        e
+                    ));
+                }
+            }
 
             let mut returns = Vec::new();
             for r in results.iter() {
@@ -297,6 +307,21 @@ impl WasmContext for WasmtimeContext<'_> {
         Ok(&data[off..off + len])
     }
 
+    fn get_memory_region_mut(&mut self, off: usize, len: usize) -> Result<&mut [u8]> {
+        let memory = self
+            .caller
+            .get_export("memory")
+            .unwrap()
+            .into_memory()
+            .unwrap();
+        // check memory size
+        if memory.data_size(self.caller.as_context_mut()) < off + len {
+            return Err(anyhow!("Invalid memory access"));
+        }
+        let data = memory.data_mut(self.caller.as_context_mut());
+        Ok(&mut data[off..off + len])
+    }
+
     fn get_func_ref(&mut self, func_idx: u32) -> Result<WasmFunc> {
         let func_tbl = self
             .caller
@@ -320,7 +345,7 @@ impl WasmContext for WasmtimeContext<'_> {
             .collect();
         Ok(WasmFunc {
             name: format!("{}", func_idx), // TODO: we need to get the real name
-            module: "unknown".to_string(),
+            module: "n/a".to_string(),
             params,
             results,
         })
@@ -330,17 +355,31 @@ impl WasmContext for WasmtimeContext<'_> {
         &mut self,
         remote_func_holder: &RemoteFunctionHolder,
         args: &[WasmValue],
-    ) -> Result<Vec<WasmValue>> {
+    ) -> Result<Vec<ObjectID>> {
         let call_opt = CallOptions::new();
         let invoke_spec =
             InvocationSpec::new(TaskType::NormalTask, remote_func_holder.clone(), args, None);
         let result = self.runtime.read().unwrap().call(&invoke_spec, &call_opt);
         match result {
             Ok(result) => {
-                // TODO: process result
-                Ok(vec![WasmValue::I32(0)])
+                if result.len() != 1 {
+                    return Err(anyhow!("Invalid result length"));
+                }
+                Ok(result)
             }
             Err(e) => Err(anyhow!("Failed to invoke remote function: {}", e)),
         }
+    }
+
+    fn get_object(&mut self, object_id: &ObjectID) -> Result<Vec<u8>> {
+        debug!("get_object: {:x?}", object_id);
+        let object = match self.runtime.read().unwrap().get(object_id) {
+            Ok(object) => object,
+            Err(e) => {
+                error!("Failed to get object: {}", e);
+                return Err(anyhow!("Failed to get object: {}", e));
+            }
+        };
+        Ok(object)
     }
 }

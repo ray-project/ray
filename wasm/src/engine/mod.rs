@@ -21,10 +21,11 @@ use std::sync::RwLock;
 
 use crate::engine::wasmtime_engine::WasmtimeEngine;
 use crate::runtime::InvocationSpec;
+use crate::runtime::ObjectID;
 use crate::runtime::RemoteFunctionHolder;
 use crate::{engine::wasmedge_engine::WasmEdgeEngine, runtime::RayRuntime};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
 
 pub trait WasmEngine {
     fn init(&self) -> Result<()>;
@@ -246,10 +247,12 @@ impl Hostcalls {
 
 pub trait WasmContext {
     fn get_memory_region(&mut self, off: usize, len: usize) -> Result<&[u8]>;
+    fn get_memory_region_mut(&mut self, off: usize, len: usize) -> Result<&mut [u8]>;
     fn get_func_ref(&mut self, func_idx: u32) -> Result<WasmFunc>;
     fn invoke(
         &mut self,
         remote_func: &RemoteFunctionHolder,
         args: &[WasmValue],
-    ) -> Result<Vec<WasmValue>>;
+    ) -> Result<Vec<ObjectID>>;
+    fn get_object(&mut self, object_id: &ObjectID) -> Result<Vec<u8>>;
 }

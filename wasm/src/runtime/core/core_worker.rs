@@ -18,6 +18,13 @@ use std::os::raw::c_void;
 
 // declare extern c core worker functions
 extern "C" {
+    pub fn RayLog_Info(message: *const u8, len: usize);
+    pub fn RayLog_Error(message: *const u8, len: usize);
+    pub fn RayLog_Warn(message: *const u8, len: usize);
+    pub fn RayLog_Fatal(message: *const u8, len: usize);
+    pub fn RayLog_Debug(message: *const u8, len: usize);
+
+    // core worker process
     pub fn CoreWorkerProcess_Initialize() -> i32;
     pub fn CoreWorkerProcess_Shutdown();
     pub fn CoreWorkerProcess_RunTaskExecutionLoop();

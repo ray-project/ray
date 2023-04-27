@@ -126,9 +126,11 @@ impl ObjectStore for NativeObjectStore {
                 timeout_ms,
             );
             if res != 0 {
-                return Err(anyhow!("get object failed"));
+                let msg = format!("obj store getting object failed: {:x?}", object_id.id);
+                return Err(anyhow!(msg));
             }
         }
+        data.truncate(data_len);
         Ok(data)
     }
 

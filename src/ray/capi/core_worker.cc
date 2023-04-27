@@ -45,34 +45,20 @@ typedef struct NamedRayObject {
   size_t ray_object_len;
 } NamedRayObject;
 
-typedef struct TaskExecutionInfo {
-  const void *caller_address;
-  int task_type;
-  const unsigned char *task_name;
-  size_t task_name_len;
-  const void *ray_function;
-  const Resource *required_resources;
-  size_t required_resources_len;
-  const void *args;
-  size_t args_len;
-  const unsigned char *debugger_breakpoint;
-  size_t debugger_breakpoint_len;
-  const unsigned char *serialized_retry_exception_allowlist;
-  size_t serialized_retry_exception_allowlist_len;
-  const NamedRayObject *returns;
-  size_t returns_len;
-  const NamedRayObject *dynamic_returns;
-  size_t dynamic_returns_len;
-  const void *creation_task_exception_pb_bytes;
-  bool *is_retryable_error;
-  unsigned char *is_application_error;
-  size_t *is_application_error_len;
-  const void **defined_concurrency_groups;
-  size_t defined_concurrency_groups_len;
-  const unsigned char *name_of_concurrency_group_to_execute;
-  size_t name_of_concurrency_group_to_execute_len;
-  bool is_reattempt;
-} TaskExecutionInfo;
+struct TaskExecutionInfo {
+  // function name
+  const uint8_t *func_name;
+  size_t func_name_len;
+
+  // args buffer
+  uint8_t **args_buf_list;
+  size_t args_buf_list_len;
+  size_t *args_buf_list_item_len;
+
+  // return data
+  const uint8_t *return_obj;
+  size_t return_obj_len;
+};
 // end generated from struct definitions inside task_executor.rs
 
 // execute task call back
@@ -135,7 +121,7 @@ inline int DeserializeMsgPack(uint8_t *msgbuf,
 // export c functions
 extern "C" {
 
-ExecuteTaskFunction *execute_task_function = nullptr;
+ExecuteTaskFunction *exec_task_func = nullptr;
 
 }  // extern "C"
 
@@ -145,7 +131,7 @@ Status ExecuteTask(
     ray::TaskType task_type,
     const std::string task_name,
     const RayFunction &ray_function,
-    const std::unordered_map<std::string, double> &required_resources,
+    const std::unordered_map<std::string, double> &required_resources_in,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<rpc::ObjectReference> &arg_refs,
     const std::string &debugger_breakpoint,
@@ -158,17 +144,170 @@ Status ExecuteTask(
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
     bool is_reattempt) {
-  RAY_LOG(INFO) << "ExecuteTask called";
-  if (execute_task_function == nullptr) {
-    return ray::Status::Invalid("execute_task_function is not set");
+  TaskExecutionInfo task_execution_info;
+  uint8_t return_buf[2048];
+  task_execution_info.return_obj = (const uint8_t *)return_buf;
+  task_execution_info.return_obj_len = sizeof(return_buf);
+
+  if (exec_task_func == nullptr) {
+    RAY_LOG(ERROR) << "exec_task_func is not set";
+    return ray::Status::Invalid("exec_task_func is not set");
   }
 
-  // TODO: more stuff here, we need to convert the arguments to a TaskExecutionInfo
-  execute_task_function((TaskExecutionInfo *)nullptr);
-  return ray::Status::OK();
+  RAY_LOG(INFO) << "Execute task type: " << TaskType_Name(task_type)
+                << " name:" << task_name;
+  RAY_CHECK(ray_function.GetLanguage() == ray::Language::WASM);
+  auto function_descriptor = ray_function.GetFunctionDescriptor();
+  RAY_CHECK(function_descriptor->Type() ==
+            ray::FunctionDescriptorType::kWasmFunctionDescriptor);
+  auto typed_descriptor = function_descriptor->As<ray::WasmFunctionDescriptor>();
+  std::string func_name = typed_descriptor->FunctionName();
+  std::string mod_name = typed_descriptor->ModuleName();
+  std::string cls_name = typed_descriptor->ClassName();
+  *is_retryable_error = false;
+
+  // RAY_LOG(INFO) << "Function name: " << func_name;
+  // RAY_LOG(INFO) << "Module name: " << mod_name;
+  // RAY_LOG(INFO) << "Class name: " << cls_name;
+
+  // set function name
+  task_execution_info.func_name = (const unsigned char *)func_name.c_str();
+  task_execution_info.func_name_len = func_name.size();
+
+  {
+    size_t args_size = args_buffer.size();
+
+    task_execution_info.args_buf_list_len = args_size;
+    task_execution_info.args_buf_list = (uint8_t **)malloc(sizeof(uint8_t *) * args_size);
+    RAY_CHECK(task_execution_info.args_buf_list != nullptr);
+    task_execution_info.args_buf_list_item_len =
+        (size_t *)malloc(sizeof(size_t) * args_size);
+    RAY_CHECK(task_execution_info.args_buf_list_item_len != nullptr);
+
+    for (size_t i = 0; i < args_size; i++) {
+      auto &arg = args_buffer.at(i);
+      std::string meta_str = "";
+      if (arg->GetMetadata() != nullptr) {
+        meta_str = std::string((const char *)arg->GetMetadata()->Data(),
+                               arg->GetMetadata()->Size());
+      }
+      // RAY_LOG(INFO) << "Arg " << i << " meta: " << meta_str;
+
+      const char *arg_data = nullptr;
+      size_t arg_data_size = 0;
+      if (arg->GetData()) {
+        arg_data = reinterpret_cast<const char *>(arg->GetData()->Data());
+        arg_data_size = arg->GetData()->Size();
+      }
+      char buf[2048] = {0};
+      // print hex string
+      for (size_t j = 0; j < arg_data_size; j++) {
+        char tmp[6] = {0};
+        snprintf(tmp, sizeof(tmp), "%02x ", (unsigned char)arg_data[j]);
+        strcat(buf, tmp);
+      }
+      buf[sizeof(buf) - 1] = '\0';
+      // RAY_LOG(INFO) << "Arg " << i << " data: " << buf;
+
+      // allocate memory for args_buf_list[i]
+      task_execution_info.args_buf_list[i] = (uint8_t *)malloc(arg_data_size);
+      RAY_CHECK(task_execution_info.args_buf_list[i] != nullptr);
+      task_execution_info.args_buf_list_item_len[i] = arg_data_size;
+      memcpy(task_execution_info.args_buf_list[i], arg_data, arg_data_size);
+    }
+  }
+
+  auto res = ray::Status::OK();
+  if (task_type == ray::TaskType::ACTOR_TASK) {
+    // TODO: handle actor task
+  } else if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
+    // TODO: handle actor creation task
+  } else if (task_type == ray::TaskType::NORMAL_TASK) {
+    auto val = exec_task_func(&task_execution_info);
+    if (val == 0) {
+      res = ray::Status::OK();
+    } else {
+      res = ray::Status::Invalid("exec_task_func failed");
+    }
+  } else {
+    RAY_LOG(ERROR) << "Unknown task type: " << task_type;
+    res = ray::Status::Invalid("Unknown task type");
+  }
+
+  if (task_type != ray::TaskType::ACTOR_CREATION_TASK) {
+    size_t data_size = task_execution_info.return_obj_len;
+    auto &result_id = (*returns)[0].first;
+    auto result_ptr = &(*returns)[0].second;
+    int64_t task_output_inlined_bytes = 0;
+
+    // TODO: cross lang?
+
+    size_t total = data_size;
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+        result_id,
+        total,
+        nullptr,
+        std::vector<ray::ObjectID>(),
+        &task_output_inlined_bytes,
+        result_ptr));
+
+    auto result = *result_ptr;
+    if (result != nullptr) {
+      if (result->HasData()) {
+        // TODO: cross lang??
+        memcpy(result->GetData()->Data(),
+               task_execution_info.return_obj,
+               task_execution_info.return_obj_len);
+      }
+    }
+
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+        result_id,
+        result,
+        /*generator_id=*/ObjectID::Nil()));
+  }
+
+  {
+    // clean up
+    // TODO: free args_buf_list
+
+    for (size_t i = 0; i < task_execution_info.args_buf_list_len; i++) {
+      delete[] task_execution_info.args_buf_list[i];
+    }
+
+    delete[] task_execution_info.args_buf_list;
+    delete[] task_execution_info.args_buf_list_item_len;
+  }
+
+  return res;
 }
 
 extern "C" {
+
+void RayLog_Info(const char *msg, size_t len) {
+  std::string str(msg, len);
+  RAY_LOG(INFO) << str;
+}
+
+void RayLog_Error(const char *msg, size_t len) {
+  std::string str(msg, len);
+  RAY_LOG(ERROR) << str;
+}
+
+void RayLog_Warn(const char *msg, size_t len) {
+  std::string str(msg, len);
+  RAY_LOG(WARNING) << str;
+}
+
+void RayLog_Fatal(const char *msg, size_t len) {
+  std::string str(msg, len);
+  RAY_LOG(FATAL) << str;
+}
+
+void RayLog_Debug(const char *msg, size_t len) {
+  std::string str(msg, len);
+  RAY_LOG(DEBUG) << str;
+}
 
 // -----------------  core worker process related functions -----------------
 

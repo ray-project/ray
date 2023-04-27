@@ -68,7 +68,16 @@ impl Base<ObjectID> for ObjectID {
     }
 
     fn from_binary(data: &[u8]) -> ObjectID {
-        unimplemented!()
+        if data.len() != OBJECT_ID_SIZE {
+            panic!(
+                "ObjectID::from_binary: data length {} != {}",
+                data.len(),
+                OBJECT_ID_SIZE
+            );
+        }
+        let mut obj = ObjectID::new();
+        obj.id.copy_from_slice(data);
+        obj
     }
 
     fn from_hex_string(hex: &str) -> ObjectID {

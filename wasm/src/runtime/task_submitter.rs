@@ -163,7 +163,7 @@ impl RemoteFunctionHolder {
         Self {
             module_name: func.module,
             function_name: func.name,
-            class_name: "".to_string(),
+            class_name: "n/a".to_string(),
             lang_type: Language::Wasm,
         }
     }

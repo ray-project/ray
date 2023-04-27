@@ -34,7 +34,7 @@ async fn init(
     Ok(runtime)
 }
 
-async fn run_task_loop(runtime: Box<dyn RayRuntime + Send + Sync>) -> Result<()> {
+async fn run_task_loop(runtime: &mut Box<dyn RayRuntime + Send + Sync>) -> Result<()> {
     runtime.launch_task_loop().unwrap();
     Ok(())
 }
@@ -54,8 +54,8 @@ async fn main() -> Result<()> {
     // we need to run in worker mode
     cfg.is_worker = true;
  
-    let rt = init(&cfg, &args).await.unwrap();
-    run_task_loop(rt).await.unwrap();
+    let mut rt = init(&cfg, &args).await.unwrap();
+    run_task_loop(&mut rt).await.unwrap();
 
     Ok(())
 }

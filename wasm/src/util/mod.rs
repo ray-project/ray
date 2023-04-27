@@ -14,6 +14,44 @@
 use clap::{Parser, ValueEnum};
 use std::net::UdpSocket;
 
+use crate::runtime::core_worker::{
+    RayLog_Debug, RayLog_Error, RayLog_Fatal, RayLog_Info, RayLog_Warn,
+};
+
+pub struct RayLog;
+
+impl RayLog {
+    pub fn info(msg: &str) {
+        unsafe {
+            RayLog_Info(msg.as_ptr(), msg.len());
+        }
+    }
+
+    pub fn warn(msg: &str) {
+        unsafe {
+            RayLog_Warn(msg.as_ptr(), msg.len());
+        }
+    }
+
+    pub fn error(msg: &str) {
+        unsafe {
+            RayLog_Error(msg.as_ptr(), msg.len());
+        }
+    }
+
+    pub fn fatal(msg: &str) {
+        unsafe {
+            RayLog_Fatal(msg.as_ptr(), msg.len());
+        }
+    }
+
+    pub fn debug(msg: &str) {
+        unsafe {
+            RayLog_Debug(msg.as_ptr(), msg.len());
+        }
+    }
+}
+
 pub fn get_node_ip_address(address: &str) -> String {
     // convert str to String
     let mut ip_address = address.to_string();
