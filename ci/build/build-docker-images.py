@@ -953,6 +953,7 @@ def fix_docker_images(
     The commands can be copied/pasted and executed in a shell.
 
     Example:
+
         FIX_IMAGE=ray-ml FIX_VERSION=2.3.0 python build-docker-images.py
 
     """
