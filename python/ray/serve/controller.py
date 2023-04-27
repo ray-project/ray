@@ -422,6 +422,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             previous_deployment=self.deployment_state_manager.get_deployment(name),
             is_driver_deployment=is_driver_deployment,
+            route_prefix=route_prefix,
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if
@@ -843,7 +844,7 @@ def deploy_serve_application(
             )
 
         # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix, _blocking=True)
+        serve.run(app, name=name, route_prefix=route_prefix, _blocking=False)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.

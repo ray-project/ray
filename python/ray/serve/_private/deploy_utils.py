@@ -92,6 +92,7 @@ def deploy_args_to_deployment_info(
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
+    route_prefix: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: str = None,
     **kwargs,
@@ -99,7 +100,7 @@ def deploy_args_to_deployment_info(
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.
     """
-    # remove
+
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
     version = deployment_config.version
     replica_config = ReplicaConfig.from_proto_bytes(
@@ -114,6 +115,7 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         app_name=app_name,
+        route_prefix=route_prefix,
         actor_name=deployment_name,
         version=version,
         deployment_config=deployment_config,

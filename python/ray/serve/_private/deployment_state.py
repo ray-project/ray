@@ -96,30 +96,26 @@ class DeploymentTargetState:
 
     @classmethod
     def from_deployment_info(
-        cls, prev_target_state, info: DeploymentInfo, *, deleting: bool = False
+        cls,
+        info: DeploymentInfo,
+        num_replicas_from_autoscaling: int = 1,
+        *,
+        deleting: bool = False,
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
             version = None
             autoscaling_policy = None
         else:
-            deployment_config = info.deployment_config
-            autoscaling_config = deployment_config.autoscaling_config
+            autoscaling_config = info.deployment_config.autoscaling_config
             if autoscaling_config is not None:
-                if autoscaling_config.initial_replicas is not None:
-                    deployment_config.num_replicas = autoscaling_config.initial_replicas
-                else:
-                    if prev_target_state is None:
-                        deployment_config.num_replicas = autoscaling_config.min_replicas
-                    else:
-                        deployment_config.num_replicas = (
-                            prev_target_state.info.deployment_config.num_replicas
-                        )
-                autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
+                num_replicas = num_replicas_from_autoscaling
+                autoscaling_policy = BasicAutoscalingPolicy(
+                    info.deployment_config.autoscaling_config
+                )
             else:
+                num_replicas = info.deployment_config.num_replicas
                 autoscaling_policy = None
-
-            num_replicas = info.deployment_config.num_replicas
             version = DeploymentVersion(
                 info.version,
                 deployment_config=info.deployment_config,
@@ -1169,7 +1165,7 @@ class DeploymentState:
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.from_deployment_info(
-            None, self._target_state.info, deleting=True
+            self._target_state.info, deleting=True
         )
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
@@ -1179,14 +1175,20 @@ class DeploymentState:
         )
         logger.info(f"Deleting deployment {self._name}.")
 
-    def _set_target_state(self, target_info: DeploymentInfo) -> None:
+    def _set_target_state(
+        self, target_info: DeploymentInfo, num_replicas_from_autoscaling: int = None
+    ) -> None:
         """Set the target state for the deployment to the provided info."""
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        target_state = DeploymentTargetState.from_deployment_info(
-            self._target_state, target_info
-        )
+        if num_replicas_from_autoscaling is not None:
+            target_state = DeploymentTargetState.from_deployment_info(
+                target_info, num_replicas_from_autoscaling
+            )
+        else:
+            target_state = DeploymentTargetState.from_deployment_info(target_info)
+
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
         if self._target_state.version == target_state.version:
@@ -1224,8 +1226,9 @@ class DeploymentState:
         Returns:
             bool: Whether or not the deployment is being updated.
         """
-        # Ensures this method is idempotent.
         existing_info = self._target_state.info
+
+        # Ensures this method is idempotent.
         if existing_info is not None:
             # Redeploying should not reset the deployment's start time.
             if not self._target_state.deleting:
@@ -1241,7 +1244,20 @@ class DeploymentState:
             ):
                 return False
 
-        self._set_target_state(deployment_info)
+        # Autoscaling stuff
+        autoscaling_config = deployment_info.deployment_config.autoscaling_config
+        if autoscaling_config is not None:
+            if autoscaling_config.initial_replicas is not None:
+                num_replicas = autoscaling_config.initial_replicas
+            else:
+                if existing_info is None:
+                    num_replicas = autoscaling_config.min_replicas
+                else:
+                    num_replicas = self._target_state.num_replicas
+            self._set_target_state(deployment_info, num_replicas)
+        else:
+            self._set_target_state(deployment_info)
+
         return True
 
     def autoscale(
@@ -1265,19 +1281,18 @@ class DeploymentState:
         curr_info = self._target_state.info
         autoscaling_policy = self._target_state.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-            curr_target_num_replicas=curr_info.deployment_config.num_replicas,
+            curr_target_num_replicas=self._target_state.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
         )
-        if decision_num_replicas == curr_info.deployment_config.num_replicas:
+        if decision_num_replicas == self._target_state.num_replicas:
             return
 
         new_config = copy(curr_info)
-        new_config.deployment_config.num_replicas = decision_num_replicas
         if new_config.version is None:
             new_config.version = self._target_state.version.code_version
 
-        self._set_target_state(new_config)
+        self._set_target_state(new_config, decision_num_replicas)
 
     def delete(self) -> None:
         if not self._target_state.deleting:

@@ -179,6 +179,7 @@ class DeploymentInfo:
         replica_config: ReplicaConfig,
         start_time_ms: int,
         deployer_job_id: str,
+        route_prefix: str = None,
         app_name: str = None,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
@@ -187,6 +188,7 @@ class DeploymentInfo:
         is_driver_deployment: Optional[bool] = False,
     ):
         self.app_name = app_name
+        self.route_prefix = route_prefix
         self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.

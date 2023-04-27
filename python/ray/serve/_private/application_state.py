@@ -33,7 +33,7 @@ CHECKPOINT_KEY = "serve-application-state-checkpoint"
 
 @dataclass
 class ApplicationTargetState:
-    deployment_params: Optional[Dict]
+    deployment_infos: Optional[Dict[str, DeploymentInfo]]
     deleting: bool
 
 
@@ -77,7 +77,7 @@ class ApplicationState:
             self.deployment_timestamp = time.time()
 
         self._target_state: ApplicationTargetState = ApplicationTargetState(
-            deployment_params=None, deleting=False
+            deployment_infos=None, deleting=False
         )
         self._save_checkpoint_func = save_checkpoint_func
 
@@ -86,14 +86,16 @@ class ApplicationState:
         self._target_state = checkpoint_data
 
     def _set_target_state(
-        self, deployment_params: Optional[List[Dict]] = None, deleting: bool = False
+        self,
+        deployment_infos: Optional[Dict[str, DeploymentInfo]] = None,
+        deleting: bool = False,
     ):
         if deleting:
-            target_state = ApplicationTargetState([], True)
+            target_state = ApplicationTargetState(dict(), True)
             self.status = ApplicationStatus.DELETING
         else:
-            target_state = ApplicationTargetState(deployment_params, False)
-            print("target state: status to deploying", time.time())
+            target_state = ApplicationTargetState(deployment_infos, False)
+            # print("target state: status to deploying", time.time())
             self.status = ApplicationStatus.DEPLOYING
 
         # Checkpoint ahead
@@ -113,7 +115,6 @@ class ApplicationState:
     def apply_deployment(
         self,
         deployment_name: str,
-        route_prefix: Optional[str],
         deployment_info: DeploymentInfo,
     ) -> bool:
         """
@@ -121,16 +122,14 @@ class ApplicationState:
 
         Returns: Whether the deployment is being updated.
         """
-        if route_prefix is not None:
-            assert route_prefix.startswith("/")
-
         updating = self.deployment_state_manager.deploy(
             deployment_name, deployment_info
         )
 
-        if route_prefix is not None:
-            self.route_prefix = route_prefix
-            endpoint_info = EndpointInfo(route=route_prefix)
+        if deployment_info.route_prefix is not None:
+            assert deployment_info.route_prefix.startswith("/")
+            self.route_prefix = deployment_info.route_prefix
+            endpoint_info = EndpointInfo(route=deployment_info.route_prefix)
             self._endpoint_state.update_endpoint(deployment_name, endpoint_info)
         else:
             self._endpoint_state.delete_endpoint(deployment_name)
@@ -176,14 +175,22 @@ class ApplicationState:
 
         for params in deployment_params:
             params["deployment_name"] = params.pop("name")
-        self._set_target_state(deployment_params=deployment_params)
+
+        deployment_infos = {
+            params["deployment_name"]: deploy_args_to_deployment_info(
+                app_name=self._name,
+                **params,
+            )
+            for params in deployment_params
+        }
+        self._set_target_state(deployment_infos=deployment_infos)
         return [True for _ in deployment_params]
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
         self.deploy_obj_ref = deploy_obj_ref
         self.deployment_timestamp = deployment_time
         print("status set to deploying", time.time())
-        self._set_target_state(deployment_params=None)
+        self._set_target_state(deployment_infos=None)
         self.status = ApplicationStatus.DEPLOYING
 
     def update(self):
@@ -230,18 +237,13 @@ class ApplicationState:
                         logger.warning(self.app_msg)
                         return
 
-        if self._target_state.deployment_params is None:
+        if self._target_state.deployment_infos is None:
             return
 
         # Deploy/update deployments
-        for params in self._target_state.deployment_params:
-            deployment_info = deploy_args_to_deployment_info(
-                app_name=self._name,
-                **params,
-            )
-            self.apply_deployment(
-                params["deployment_name"], params["route_prefix"], deployment_info
-            )
+        for deployment_name, info in self._target_state.deployment_infos.items():
+            # print("deployment_info", deployment_info.deployment_config)
+            self.apply_deployment(deployment_name, info)
 
         # Delete deployments
         live_deployments = self.deployment_state_manager.get_deployments_in_application(
@@ -275,11 +277,9 @@ class ApplicationState:
     @property
     def deployments(self) -> List[str]:
         """Names of all deployments in application."""
-        if self._target_state.deployment_params is None:
+        if self._target_state.deployment_infos is None:
             return []
-        return [
-            params["deployment_name"] for params in self._target_state.deployment_params
-        ]
+        return list(self._target_state.deployment_infos.keys())
 
     def get_deployment(self, name: str) -> DeploymentInfo:
         """Get deployment info for deployment by name."""

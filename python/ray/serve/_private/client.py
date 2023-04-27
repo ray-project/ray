@@ -201,8 +201,10 @@ class ServeControllerClient:
             status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
 
             if status_bytes is None:
-                time.sleep(CLIENT_POLLING_INTERVAL_S)
-                continue
+                raise RuntimeError(
+                    f"Waiting for deployment {name} to be HEALTHY, "
+                    "but deployment doesn't exist."
+                )
 
             status = DeploymentStatusInfo.from_proto(
                 DeploymentStatusInfoProto.FromString(status_bytes)
@@ -248,6 +250,20 @@ class ServeControllerClient:
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
+
+    def _wait_for_deployment_created(self, name: str, timeout_s: int = -1):
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+            status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
+
+            if status_bytes is not None:
+                break
+
+            time.sleep(0.1)
+        else:
+            raise TimeoutError(
+                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
+            )
 
     @_ensure_connected
     def deploy(
