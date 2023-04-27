@@ -4,22 +4,24 @@ Utility Classes
 Actor Pool
 ~~~~~~~~~~
 
-.. tabbed:: Python
+.. tab-set::
 
-    The ``ray.util`` module contains a utility class, ``ActorPool``.
-    This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
+    .. tab-item:: Python
 
-    .. literalinclude:: ../doc_code/actor-pool.py
+        The ``ray.util`` module contains a utility class, ``ActorPool``.
+        This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
 
-    See the :class:`package reference <ray.util.ActorPool>` for more information.
+        .. literalinclude:: ../doc_code/actor-pool.py
 
-.. tabbed:: Java
+        See the :class:`package reference <ray.util.ActorPool>` for more information.
 
-    Actor pool hasn't been implemented in Java yet.
+    .. tab-item:: Java
 
-.. tabbed:: C++
+        Actor pool hasn't been implemented in Java yet.
 
-    Actor pool hasn't been implemented in C++ yet.
+    .. tab-item:: C++
+
+        Actor pool hasn't been implemented in C++ yet.
 
 Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -7,15 +7,18 @@ pong-appo:
     env: ALE/Pong-v5
     run: APPO
     stop:
-        episode_reward_mean: 18.0
+        sampler_results/episode_reward_mean: 18.0
         timesteps_total: 5000000
     config:
         # Works for both torch and tf.
         framework: torch
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
             frameskip: 1  # no frameskip
-        vtrace: True
-        use_kl_loss: False
+            full_action_space: false
+            repeat_action_probability: 0.0  # deterministic
+        vtrace: true
+        use_kl_loss: false
         rollout_fragment_length: 50
         train_batch_size: 750
         num_workers: 32

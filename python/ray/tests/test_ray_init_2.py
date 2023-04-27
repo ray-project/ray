@@ -294,7 +294,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     node_info = ray._private.services.get_node_to_connect_for_driver(
         cluster.gcs_address, "127.0.0.3"
     )
-    assert node_info.node_manager_port == node2.node_manager_port
+    assert node_info["node_manager_port"] == node2.node_manager_port
 
 
 def test_default_resource_not_allowed_error(shutdown_only):
