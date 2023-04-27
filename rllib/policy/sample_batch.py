@@ -1529,20 +1529,13 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     concatd_data = {}
 
     for k in concated_samples[0].keys():
-        try:
-            if k == "infos":
-                concatd_data[k] = _concat_values(
-                    *[s[k] for s in concated_samples], time_major=time_major
-                )
-            else:
-                concatd_data[k] = tree.map_structure(
-                    _concat_values, *[c[k] for c in concated_samples]
-                )
-        except Exception:
-            raise ValueError(
-                f"Cannot concat data under key '{k}', b/c "
-                "sub-structures under that key don't match. "
-                f"`samples`={samples}"
+        if k == "infos":
+            concatd_data[k] = _concat_values(
+                *[s[k] for s in concated_samples], time_major=time_major
+            )
+        else:
+            concatd_data[k] = tree.map_structure(
+                _concat_values, *[c[k] for c in concated_samples]
             )
 
     # Return a new (concat'd) SampleBatch.
