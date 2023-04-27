@@ -5,12 +5,12 @@ import pathlib
 import tree  # pip install dm-tree
 from typing import (
     Any,
-    Mapping,
-    Union,
-    Optional,
     Callable,
-    Sequence,
     Hashable,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -30,6 +30,7 @@ from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
@@ -98,11 +99,27 @@ class TfLearner(Learner):
         return grads
 
     @override(Learner)
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Postprocesses gradients depending on the optimizer config."""
+
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+        )
+
+        return gradients_dict
+
+    @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
-        # only some agents have a sample batch that is passed but not others.
-        # This is probably because of the way that we are iterating over the
-        # parameters in the optim_to_param_dictionary
+        #  only some agents have a sample batch that is passed but not others.
+        #  This is probably because of the way that we are iterating over the
+        #  parameters in the optim_to_param_dictionary.
         for optim, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
@@ -115,20 +132,6 @@ class TfLearner(Learner):
                 if gradients[param_ref] is not None
             ]
             optim.apply_gradients(zip(gradient_list, variable_list))
-
-    @override(Learner)
-    def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        grad_clip = self._optimizer_config.get("grad_clip", None)
-        assert isinstance(
-            grad_clip, (int, float, type(None))
-        ), "grad_clip must be a number"
-        if grad_clip is not None:
-            gradients_dict = tf.nest.map_structure(
-                lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
-            )
-        return gradients_dict
 
     @override(Learner)
     def load_state(
