@@ -85,6 +85,7 @@ def test_many_fractional_resources(shutdown_only):
     result_ids = []
     for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
         resource_set = {"CPU": int(rand1 * 10000) / 10000}
+        print(f"{rand1} {resource_set}")
         result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
 
         resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
