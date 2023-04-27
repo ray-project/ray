@@ -60,7 +60,7 @@ class TestWildcard(TestBasic):
 
 
 def test_basic(ray_start_4_cpus):
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
 
     # Single worker basic case.
     test = TestBasic(
@@ -105,7 +105,7 @@ def test_basic(ray_start_4_cpus):
 
 
 def test_error(ray_start_4_cpus):
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
 
     # Missing required dataset.
     with pytest.raises(ValueError):
@@ -136,7 +136,7 @@ def test_error(ray_start_4_cpus):
 
 
 def test_use_stream_api_config(ray_start_4_cpus):
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
 
     # Single worker basic case.
     test = TestBasic(
@@ -160,7 +160,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
 
 
 def test_fit_transform_config(ray_start_4_cpus):
-    ds = ray.data.range_table(10)
+    ds = ray.data.range(10)
 
     def drop_odd_pandas(batch):
         return batch[batch["value"] % 2 == 0]
@@ -259,7 +259,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         return x
 
     prep = BatchMapper(rand, batch_format="pandas")
-    ds = ray.data.range_table(5, parallelism=1)
+    ds = ray.data.range(5, parallelism=1)
     test = TestStream(
         checker,
         preprocessor=prep,
@@ -275,7 +275,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         return x
 
     prep = BatchMapper(rand, batch_format="pandas")
-    ds = ray.data.range_table(5, parallelism=1)
+    ds = ray.data.range(5, parallelism=1)
 
     # Test 50% object store memory..
     def checker(shard, results):
@@ -310,7 +310,7 @@ def test_stream_transform_config(ray_start_4_cpus):
         return batch
 
     prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
-    ds = ray.data.range_table(6, parallelism=1)
+    ds = ray.data.range(6, parallelism=1)
 
     test = TestStream(
         lambda *args: None,
@@ -327,7 +327,7 @@ def test_global_shuffle(ray_start_4_cpus):
         stats = shard.stats()
         assert "RandomizeBlockOrder->RandomShuffle" in stats, stats
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     test = TestStream(
         checker,
         datasets={"train": ds},
@@ -341,7 +341,7 @@ def test_global_shuffle(ray_start_4_cpus):
         stats = shard.stats()
         assert "Stage 1 ReadRange->RandomShuffle" in stats, stats
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     test = TestBatch(
         checker,
         datasets={"train": ds},
@@ -357,7 +357,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         stats = shard.stats()
         assert "RandomizeBlockOrder: 5/5 blocks executed in" in stats, stats
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     test = TestStream(
         checker,
         datasets={"train": ds},
@@ -368,7 +368,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         stats = shard.stats()
         assert "RandomizeBlockOrder" not in stats, stats
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     test = TestStream(
         checker,
         datasets={"train": ds},
@@ -384,7 +384,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         stats = shard.stats()
         assert "RandomizeBlockOrder: 5/5 blocks executed" in stats, stats
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     test = TestBatch(
         checker,
         datasets={"train": ds},
@@ -399,7 +399,7 @@ def test_make_local_dataset_iterator(ray_start_4_cpus):
         stats = shard.stats()
         assert "RandomizeBlockOrder: 5/5 blocks executed in" in stats, stats
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     test = TestStream(
         checker,
         datasets={"train": ds},
@@ -426,7 +426,7 @@ def test_make_local_dataset_iterator(ray_start_4_cpus):
 def test_deterministic_per_epoch_preprocessor(
     ray_start_4_cpus, max_object_store_memory_fraction
 ):
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
 
     def multiply(x):
         return x * 2
@@ -477,7 +477,7 @@ def test_deterministic_per_epoch_preprocessor(
 def test_nondeterministic_per_epoch_preprocessor(
     ray_start_4_cpus, max_object_store_memory_fraction
 ):
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
 
     # Use randomized per-epoch preprocessor to check that it gets applied once
     # per epoch.
@@ -504,7 +504,7 @@ def test_nondeterministic_per_epoch_preprocessor(
 
 
 def test_validate_per_epoch_preprocessor(ray_start_4_cpus):
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
 
     def multiply(x):
         return x * 2
