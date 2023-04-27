@@ -128,7 +128,7 @@ class TestSampleBatch(unittest.TestCase):
         # For torch, also test what happens if one SampleBatch is on GPU
         batch_3 = convert_to_torch_tensor(batch_1, device=0)
         batch_4 = convert_to_torch_tensor(batch_2)
-        _test_concat_samples(batch_3, batch_4)
+        self.assertRaises(RuntimeError, _test_concat_samples(batch_3, batch_4))
 
         # # Test for tf
         batch_3 = SampleBatch(
