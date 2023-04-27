@@ -129,6 +129,9 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
 )
 
+# Whether to shutdown previous executors in the process when starting a new one.
+DEFAULT_AUTOSHUTDOWN_PREVIOUS_EXECUTORS = True
+
 
 @DeveloperAPI
 class DataContext:
@@ -168,6 +171,7 @@ class DataContext:
         use_legacy_iter_batches: bool,
         strict_mode: bool,
         enable_progress_bars: bool,
+        autoshutdown_previous_executors: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -201,6 +205,7 @@ class DataContext:
         self.use_legacy_iter_batches = use_legacy_iter_batches
         self.strict_mode = strict_mode
         self.enable_progress_bars = enable_progress_bars
+        self.autoshutdown_previous_executors = autoshutdown_previous_executors
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -250,6 +255,7 @@ class DataContext:
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     strict_mode=DEFAULT_STRICT_MODE,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
+                    autoshutdown_previous_executors=DEFAULT_AUTOSHUTDOWN_PREVIOUS_EXECUTORS,
                 )
 
             return _default_context

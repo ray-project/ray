@@ -41,6 +41,13 @@ DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 # progress bar seeming to stall for very large scale workloads.
 PROGRESS_BAR_UPDATE_INTERVAL = 50
 
+# The singleton active executor instance. This is used to shut down previous executors
+# to avoid resource leaks.
+_active_instance = None
+
+# Visible for testing.
+_num_shutdown = 0
+
 
 class StreamingExecutor(Executor, threading.Thread):
     """A streaming Datastream executor.
@@ -80,6 +87,23 @@ class StreamingExecutor(Executor, threading.Thread):
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+
+        context = DataContext.get_current()
+        global _active_instance
+
+        if _active_instance and context.autoshutdown_previous_executors:
+            logger.get_logger().info(
+                "Only one executor can run at a time per process. "
+                f"Shutting down previous executor instance {_active_instance}."
+            )
+            try:
+                _active_instance.shutdown()
+            except:
+                logger.get_logger().exception(
+                    "Erroring shutting down previous executor."
+                )
+        _active_instance = self
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
 
@@ -88,8 +112,9 @@ class StreamingExecutor(Executor, threading.Thread):
             logger.get_logger().info("Execution config: %s", self._options)
             if not self._options.verbose_progress:
                 logger.get_logger().info(
-                    "Tip: To enable per-operator progress reporting, set "
-                    "RAY_DATA_VERBOSE_PROGRESS=1."
+                    "Tip: For detailed progress reporting, run "
+                    "`ray.data.DataContext.get_current()."
+                    "execution_options.verbose_progress = True`"
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
@@ -132,9 +157,16 @@ class StreamingExecutor(Executor, threading.Thread):
         return StreamIterator(self)
 
     def shutdown(self):
+        context = DataContext.get_current()
+        global _active_instance, _num_shutdown
+
         with self._shutdown_lock:
+            logger.get_logger().info(f"Shutting down {self}.")
+            _num_shutdown += 1
             if self._shutdown:
                 return
+            if _active_instance is self:
+                _active_instance = None
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
@@ -143,7 +175,6 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            context = DataContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )
