@@ -47,12 +47,18 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
 
     initial = streaming_executor._num_shutdown
 
+    old_it = None
     for _ in range(5):
         ds = ray.data.range(100)
-        next(ds.iter_batches(batch_size=None, prefetch_batches=0))
+        new_it = ds.iter_batches(batch_size=None, prefetch_batches=0)
+        next(new_it)
+        if old_it:
+            with pytest.raises(RuntimeError):
+                list(old_it)
+        old_it = new_it
 
     final = streaming_executor._num_shutdown - initial
-    assert final == 5
+    assert final == 4
 
 
 def test_pipelined_execution(ray_start_10_cpus_shared):

@@ -98,7 +98,7 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             try:
                 _active_instance.shutdown()
-            except:
+            except Exception:
                 logger.get_logger().exception(
                     "Erroring shutting down previous executor."
                 )
@@ -140,7 +140,10 @@ class StreamingExecutor(Executor, threading.Thread):
                     # Translate the special sentinel values for MaybeRefBundle into
                     # exceptions.
                     if item is None:
-                        raise StopIteration
+                        if self._outer._shutdown:
+                            raise RuntimeError(f"{self._outer} is shutdown.")
+                        else:
+                            raise StopIteration
                     elif isinstance(item, Exception):
                         raise item
                     else:
@@ -162,9 +165,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         with self._shutdown_lock:
             logger.get_logger().info(f"Shutting down {self}.")
-            _num_shutdown += 1
             if self._shutdown:
                 return
+            _num_shutdown += 1
             if _active_instance is self:
                 _active_instance = None
             self._shutdown = True
