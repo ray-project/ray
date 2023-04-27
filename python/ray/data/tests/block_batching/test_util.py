@@ -173,6 +173,42 @@ def test_make_async_gen_multiple_threads():
     assert end_time - start_time < 9.5
 
 
+def test_make_async_gen_multiple_threads_unfinished():
+    """Tests that using multiple threads can overlap compute even more.
+    Do not finish iteration with break in the middle.
+    """
+
+    num_items = 5
+
+    def gen(base_iterator):
+        for i in base_iterator:
+            time.sleep(4)
+            yield i
+
+    def sleep_udf(item):
+        time.sleep(5)
+        return item
+
+    # All 5 items should be fetched concurrently.
+    iterator = make_async_gen(
+        base_iterator=iter(range(num_items)), fn=gen, num_workers=5
+    )
+
+    start_time = time.time()
+
+    # Only sleep for first item.
+    sleep_udf(next(iterator))
+
+    # All subsequent items should already be prefetched and should be ready.
+    for i, _ in enumerate(iterator):
+        if i > 2:
+            break
+    end_time = time.time()
+
+    # 4 second for first item, 5 seconds for udf, 0.5 seconds buffer
+    assert end_time - start_time < 9.5
+
+
 def test_calculate_ref_hits(ray_start_regular_shared):
     refs = [ray.put(0), ray.put(1)]
     hits, misses, unknowns = _calculate_ref_hits(refs)
