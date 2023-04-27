@@ -8,7 +8,6 @@ import numpy as np
 
 import ray
 from ray.data import datastream
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
 from ray.data.datastream import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
@@ -563,7 +562,7 @@ def test_split_at_indices(ray_start_regular_shared):
     )
 
 
-def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset[ArrowRow], pd.DataFrame]:
+def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset, pd.DataFrame]:
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])

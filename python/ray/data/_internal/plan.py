@@ -22,7 +22,7 @@ from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    UDF,
+    UserDefinedFunction,
     ActorPoolStrategy,
     TaskPoolStrategy,
     BlockTransform,
@@ -875,7 +875,7 @@ class OneToOneStage(Stage):
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -963,7 +963,7 @@ class OneToOneStage(Stage):
         def block_fn(
             blocks: Iterable[Block],
             ctx: TaskContext,
-            fn: UDF,
+            fn: UserDefinedFunction,
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:

@@ -8,7 +8,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
-    KeyFn,
     KeyType,
 )
 
@@ -32,7 +31,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     def __init__(
         self,
         boundaries: List[KeyType],
-        key: Optional[KeyFn],
+        key: Optional[str],
         aggs: List[AggregateFn],
     ):
         super().__init__(
@@ -46,7 +45,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: Optional[KeyFn],
+        key: Optional[str],
         aggs: List[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
@@ -69,7 +68,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
     @staticmethod
     def reduce(
-        key: Optional[KeyFn],
+        key: Optional[str],
         aggs: List[AggregateFn],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
@@ -81,7 +80,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""

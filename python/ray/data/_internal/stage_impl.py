@@ -22,7 +22,6 @@ from ray.data.block import (
     _validate_key_fn,
     Block,
     BlockPartition,
-    KeyFn,
     BlockMetadata,
     BlockAccessor,
     BlockExecStats,
@@ -316,7 +315,7 @@ def _do_zip(
 class SortStage(AllToAllStage):
     """Implementation of `Datastream.sort()`."""
 
-    def __init__(self, ds: "Datastream", key: Optional[KeyFn], descending: bool):
+    def __init__(self, ds: "Datastream", key: Optional[str], descending: bool):
         def do_sort(
             block_list,
             ctx: TaskContext,

@@ -81,7 +81,7 @@ print(cum_sum)
 import ray
 
 @ray.remote
-def consume(data: ray.data.Datastream[int]) -> int:
+def consume(data: ray.data.Datastream) -> int:
     num_batches = 0
     # Consume data in 2-record batches.
     for batch in data.iter_batches(batch_size=2):

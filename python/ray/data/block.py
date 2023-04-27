@@ -8,7 +8,6 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Generic,
     Iterator,
     List,
     Optional,
@@ -47,15 +46,9 @@ if TYPE_CHECKING:
 
 T = TypeVar("T", contravariant=True)
 U = TypeVar("U", covariant=True)
+
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
-
-# A function that extracts a concrete value from a record in a Datastream, used
-# in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
-# It can either be None (intepreted as the identity function), the name
-# of a Datastream column, or a lambda function that extracts the desired value
-# from the object.
-KeyFn = Union[None, str, Callable[[T], Any]]
 
 
 @PublicAPI
@@ -65,7 +58,7 @@ class StrictModeError(ValueError):
 
 def _validate_key_fn(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-    key: KeyFn,
+    key: Optional[str],
 ) -> None:
     """Check the key function is valid on the given schema."""
     if schema is None:
@@ -106,11 +99,12 @@ def _validate_key_fn(
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
+Block = Union[list, "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
+DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+
 
 # A class type that implements __call__.
 CallableClass = type
@@ -121,29 +115,11 @@ class _CallableClassProtocol(Protocol[T, U]):
         ...
 
 
-# A UDF on data batches.
-BatchUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[DataBatch, ...], DataBatch]
-    Callable[[DataBatch], DataBatch],
-    Callable[[DataBatch], Iterator[DataBatch]],
-    "_CallableClassProtocol",
-]
-
-# A UDF on data rows.
-RowUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[T, ...], U]
+# A user defined function passed to map, map_batches, ec.
+UserDefinedFunction = Union[
     Callable[[T], U],
-    "_CallableClassProtocol[T, U]",
-]
-
-
-FlatMapUDF = Union[
-    RowUDF,
     Callable[[T], Iterator[U]],
+    "_CallableClassProtocol",
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -284,7 +260,7 @@ class BlockMetadata:
 
 
 @DeveloperAPI
-class BlockAccessor(Generic[T]):
+class BlockAccessor:
     """Provides accessor methods for a specific block.
 
     Ideally, we wouldn't need a separate accessor classes for blocks. However,
@@ -334,7 +310,7 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
-    def select(self, columns: List[KeyFn]) -> Block:
+    def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
 
@@ -413,12 +389,12 @@ class BlockAccessor(Generic[T]):
             exec_stats=exec_stats,
         )
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         """Zip this block with another block of the same type and size."""
         raise NotImplementedError
 
     @staticmethod
-    def builder() -> "BlockBuilder[T]":
+    def builder() -> "BlockBuilder":
         """Create a builder for this block type."""
         raise NotImplementedError
 
@@ -490,30 +466,30 @@ class BlockAccessor(Generic[T]):
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
-    def sample(self, n_samples: int, key: Any) -> "Block[T]":
+    def sample(self, n_samples: int, key: Any) -> "Block":
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
     def sort_and_partition(
         self, boundaries: List[T], key: Any, descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List["Block[T]"], key: Any, descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List["Block"], key: Any, descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: KeyFn, agg: "AggregateFn"
-    ) -> Tuple[Block[U], BlockMetadata]:
+        blocks: List[Block], key: Optional[str], agg: "AggregateFn"
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
