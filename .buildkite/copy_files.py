@@ -113,6 +113,7 @@ if __name__ == "__main__":
         "logs",
         "wheels",
         "docker_login",
+        "docker_login_return",
     }
     assert "BUILDKITE_JOB_ID" in os.environ
     assert "BUILDKITE_COMMIT" in os.environ
