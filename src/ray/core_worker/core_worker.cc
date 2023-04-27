@@ -829,7 +829,6 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  std::this_thread::sleep_for(std::chrono::seconds(10));
   Disconnect(exit_type, detail);
 
   KillChildProcs();
