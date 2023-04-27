@@ -204,8 +204,9 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                     print(
                         f"WARNING: the read task size ({task_size} bytes) is larger "
                         "than the reported output size of the task "
-                        f"({block_meta.size_bytes} bytes). This may be a size reporting "
-                        "bug in the datasource being read from.")
+                        f"({block_meta.size_bytes} bytes). This may be a size "
+                        "reporting bug in the datasource being read from."
+                    )
                 block_meta.size_bytes = max(block_meta.size_bytes, task_size)
             return block_meta
 
@@ -224,7 +225,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                 )
                 for read_task in read_tasks
             ]
-         )
+        )
 
         for i in inputs._input_data:
             for b in i.blocks:

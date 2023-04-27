@@ -36,7 +36,9 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
         def prepare_read(self, parallelism, n):
             def range_(i):
                 ray.get(self.counter.increment.remote())
-                return [pd.DataFrame({"data": np.ones((n // parallelism * 1024 * 1024,))})]
+                return [
+                    pd.DataFrame({"data": np.ones((n // parallelism * 1024 * 1024,))})
+                ]
 
             sz = (n // parallelism) * 1024 * 1024 * 8
             print("Block size", sz)
