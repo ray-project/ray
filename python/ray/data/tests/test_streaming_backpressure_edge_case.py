@@ -61,8 +61,8 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.resource_limits.object_store_memory = 10e6
 
-    # 10GiB dataset.
-    ds = ray.data.read_datasource(source, n=10000, parallelism=1000)
+    # 1GiB dataset.
+    ds = ray.data.read_datasource(source, n=1000, parallelism=100)
     it = ds.iter_batches(batch_size=None, prefetch_batches=0)
     next(it)
     time.sleep(3)
@@ -70,6 +70,7 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
 
     # If backpressure is broken we'll launch 15+.
     assert launched < 5, launched
+    list(it)
 
 
 def test_streaming_backpressure_e2e(restore_data_context):
