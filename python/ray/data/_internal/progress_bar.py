@@ -1,8 +1,7 @@
 import threading
-from typing import Any, List
+from typing import Any, List, Optional
 
 import ray
-from ray._private.ray_constants import env_integer
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
@@ -14,9 +13,6 @@ try:
 except ImportError:
     tqdm = None
     needs_warning = True
-
-# Whether progress bars are enabled in this thread.
-_enabled = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
 
 # Used a signal to cancel execution.
 _canceled_threads = set()
@@ -35,9 +31,11 @@ def set_progress_bars(enabled: bool) -> bool:
     Returns:
         Whether progress bars were previously enabled.
     """
-    global _enabled
-    old_value = _enabled
-    _enabled = enabled
+    from ray.data import DataContext
+
+    ctx = DataContext.get_current()
+    old_value = ctx.enable_progress_bars
+    ctx.enable_progress_bars = enabled
     return old_value
 
 
@@ -45,9 +43,13 @@ class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
     def __init__(
-        self, name: str, total: int, position: int = 0, enabled: bool = _enabled
+        self, name: str, total: int, position: int = 0, enabled: Optional[bool] = None
     ):
         self._desc = name
+        if enabled is None:
+            from ray.data import DataContext
+
+            enabled = DataContext.get_current().enable_progress_bars
         if not enabled:
             self._bar = None
         elif tqdm:

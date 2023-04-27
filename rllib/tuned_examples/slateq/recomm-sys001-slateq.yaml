@@ -2,7 +2,7 @@ recomm-sys001-slateq:
     env: ray.rllib.examples.env.recommender_system_envs.RecommSys001
     run: SlateQ
     stop:
-        #evaluation/episode_reward_mean: 48.0
+        #evaluation/sampler_results/episode_reward_mean: 48.0
         timesteps_total: 200000
     config:
         # SlateQ only supported for torch so far.

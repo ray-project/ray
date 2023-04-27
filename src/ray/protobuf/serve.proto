@@ -150,7 +150,8 @@ message ActorNameList {
 
 message DeploymentVersion {
   string code_version = 1;
-  bytes user_config = 2;
+  DeploymentConfig deployment_config = 2;
+  string ray_actor_options = 3;
 }
 
 message ReplicaConfig {

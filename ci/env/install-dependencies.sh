@@ -233,7 +233,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade pip
+    "${python}" -m pip install --upgrade "pip<23.1"
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -407,7 +407,7 @@ install_pip_packages() {
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
+    pip install -U "statsforecast==1.5.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.

@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2317
 
 set -e
 
@@ -68,8 +69,25 @@ fi
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
-  git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
+  git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
   pushd "${TMPDIR}/release" || true
+  HEAD_COMMIT=$(git rev-parse HEAD)
+  echo "The cloned test repo has head commit of ${HEAD_COMMIT}"
+
+  # We only do this if RAY_TEST_REPO and RAY_TEST_BRANCH are pointing to ray master.
+  # Theoretically, release manager may also run into this issue when manually triggering
+  # release test runs. But cherry-picks are rare and thus it's less likely to run into
+  # this racing condition, ignoring for now.
+  if [ "${RAY_TEST_REPO}" == "https://github.com/ray-project/ray.git" ] && \
+  [[ "${PARSED_RAY_WHEELS}" == *"master"*  ]] && \
+  [ "${RAY_TEST_BRANCH-}" == "master" ] && [ -n "${RAY_COMMIT_OF_WHEEL-}" ] && \
+  [ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" ]; then
+    echo "The checked out test code doesn't match with the installed wheel. \
+This is likely due to a racing condition when a PR is landed between \
+a wheel is installed and test code is checked out."
+    echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_COMMIT_OF_WHEEL}."
+    git reset --hard "${RAY_COMMIT_OF_WHEEL}"
+  fi
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
@@ -112,7 +130,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     wait "$proc"
   }
 
-  START=`date +%s`
+  START=$(date +%s)
   set +e
 
   trap _term SIGINT SIGTERM
@@ -123,7 +141,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   EXIT_CODE=$?
 
   set -e
-  END=`date +%s`
+  END=$(date +%s)
 
   REASON=$(reason "${EXIT_CODE}")
   RUNTIME=$((END-START))
@@ -180,7 +198,7 @@ if [ -z "${NO_CLONE}" ]; then
 fi
 
 if [[ ("$REASON" == "infra error" || "$REASON" == "infra timeout") && ("$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY") ]]; then
-  exit $BUILDKITE_RETRY_CODE
+  exit "$BUILDKITE_RETRY_CODE"
 else
-  exit $EXIT_CODE
+  exit "$EXIT_CODE"
 fi

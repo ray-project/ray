@@ -43,6 +43,7 @@ const NodeDetailPage = () => {
     selectedTab,
     nodeDetail,
     msg,
+    isLoading,
     isRefreshing,
     onRefreshChange,
     raylet,
@@ -59,7 +60,7 @@ const NodeDetailPage = () => {
           path: `/cluster/nodes/${params.id}`,
         }}
       />
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title={`NODE - ${params.id}`}>
         <StatusChip
           type="node"
