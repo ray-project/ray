@@ -7,7 +7,7 @@ import {
   RiCloseCircleFill,
   RiLoader4Line,
 } from "react-icons/ri";
-import { CommonRecentCard } from "../../../components/CommonRecentCard";
+import { CommonRecentCard } from "../../../components/ListItemCard";
 import { useServeApplications } from "../../serve/hook/useServeApplications";
 
 const useStyles = makeStyles((theme) =>
@@ -143,12 +143,12 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
 
   return (
     <CommonRecentCard
-      headerTitle={"Recent Applications"}
+      headerTitle="Recent Applications"
       className={className}
       items={sortedApplicationsToRender}
-      itemEmptyTip={"No Applications yet..."}
-      footerText={"View all applications"}
-      footerLink={"/serve"}
-    ></CommonRecentCard>
+      itemEmptyTip="No Applications yet..."
+      footerText="View all applications"
+      footerLink="/serve"
+    />
   );
 };

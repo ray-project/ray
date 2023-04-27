@@ -3,6 +3,7 @@ import classNames from "classnames";
 import _ from "lodash";
 import React, { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ClassNameProps } from "../common/props";
 import {
   LinkWithArrow,
   OverviewCard,
@@ -10,20 +11,18 @@ import {
 
 type CommonRecentCardProps = {
   headerTitle: string;
-  className: string | undefined;
   items: RecentListItem[];
   itemEmptyTip: string;
   footerText: string;
   footerLink: string;
-};
+} & ClassNameProps;
 
 type RecentListItem = {
-  title: string | null;
+  title: string | undefined;
   subtitle: string;
   link: string | undefined;
   icon: ReactNode;
-  className: string | undefined;
-};
+} & ClassNameProps;
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -59,15 +58,8 @@ export const CommonRecentCard = ({
     <OverviewCard className={classNames(classes.root, className)}>
       <Typography variant="h3">{headerTitle}</Typography>
       <div className={classes.listContainer}>
-        {items.map((item) => (
-          <ListItem
-            key={item.title}
-            icon={item.icon}
-            link={item.link}
-            className={classes.listItem}
-            title={item.title}
-            subtitle={item.subtitle}
-          />
+        {items.map((item: RecentListItem) => (
+          <ListItem {...item} className={classes.listItem} />
         ))}
         {items.length === 0 && (
           <Typography variant="h4">{itemEmptyTip}</Typography>
@@ -78,7 +70,7 @@ export const CommonRecentCard = ({
   );
 };
 
-const useRecentJobListItemStyles = makeStyles((theme) =>
+const useListItemStyles = makeStyles((theme) =>
   createStyles({
     root: {
       display: "flex",
@@ -111,7 +103,7 @@ const ListItem = ({
   className,
   link,
 }: RecentListItem) => {
-  const classes = useRecentJobListItemStyles();
+  const classes = useListItemStyles();
 
   const cardContent = (
     <React.Fragment>

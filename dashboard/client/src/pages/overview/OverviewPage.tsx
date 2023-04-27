@@ -1,7 +1,6 @@
 import { createStyles, Grid, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
-import { displayPartsToString } from "typescript";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import EventTable from "../../components/EventTable";
 import {
@@ -94,19 +93,3 @@ export const OverviewPage = () => {
     </div>
   );
 };
-
-// <Grid container>
-// <Grid item xs={4}>
-//   <NodeCountCard className={classes.overviewCard} />
-// </Grid>
-// <Grid item xs={4}>
-//   <OverviewCard className={classes.root}>
-//     <NodeStatusCard cluster_status={cluster_status} />
-//   </OverviewCard>
-// </Grid>
-// <Grid item xs={4}>
-//   <OverviewCard className={classes.root}>
-//     <ResourceStatusCard cluster_status={cluster_status} />
-//   </OverviewCard>
-// </Grid>
-// </Grid>

@@ -7,7 +7,7 @@ import {
   RiCloseCircleFill,
   RiLoader4Line,
 } from "react-icons/ri";
-import { CommonRecentCard } from "../../../components/CommonRecentCard";
+import { CommonRecentCard } from "../../../components/ListItemCard";
 import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
 
