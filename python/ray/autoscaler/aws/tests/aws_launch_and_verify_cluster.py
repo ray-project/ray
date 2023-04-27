@@ -70,6 +70,8 @@ def download_ssh_key():
 
     # Download the key from the S3 bucket to a local file
     local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
+    if not os.path.exists(os.path.dirname(local_key_path)):
+        os.makedirs(os.path.dirname(local_key_path))
     s3_client.download_file(bucket_name, key_name, local_key_path)
 
     # Set permissions on the key file
