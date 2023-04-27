@@ -284,9 +284,7 @@ void CoreWorkerProcessOptions_SetTaskExecutionCallback() {
 }
 
 // set the gcs client options
-void CoreWorkerProcessOptions_SetGcsOptions() {
-  options.gcs_options = client_options;
-}
+void CoreWorkerProcessOptions_SetGcsOptions() { options.gcs_options = client_options; }
 
 // TODO: more stuff
 
@@ -468,19 +466,21 @@ int CoreWorker_SubmitActorTask(const char *actor_id,
   }
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto actor_id_ = ActorID::FromBinary(std::string(actor_id, actor_id_len));
-  auto return_refs =
+  std::vector<rpc::ObjectReference> return_refs;
+  auto status =
       core_worker.SubmitActorTask(actor_id_,
                                   *(RayFunction *)ray_function,
                                   *(std::vector<std::unique_ptr<TaskArg>> *)task_args_vec,
-                                  *(TaskOptions *)task_options);
-  if (!return_refs.has_value()) {
+                                  *(TaskOptions *)task_options,
+                                  return_refs);
+  if (!status.ok()) {
     return -1;
   }
-  if (return_refs.value().size() > 1) {
+  if (return_refs.size() > 1) {
     // TODO: we do not support multi return values now
     return -1;
   }
-  auto return_id = ObjectID::FromBinary(return_refs.value()[0].object_id());
+  auto return_id = ObjectID::FromBinary(return_refs[0].object_id());
   auto return_id_str = return_id.Binary();
   memcpy(return_id_buf, return_id_str.data(), return_id_str.size());
   *return_id_len = return_id_str.size();
@@ -724,7 +724,7 @@ int TaskArg_Vec_PushByValue(void *task_args,
   }
   // convert data and meta to LocalMemoryBuffers
   auto data_buffer =
-      std::make_shared<LocalMemoryBuffer>(data, data_len, true/* copy data */);
+      std::make_shared<LocalMemoryBuffer>(data, data_len, true /* copy data */);
   auto metadata_buffer =
       metadata ? std::make_shared<LocalMemoryBuffer>(metadata, metadata_len) : nullptr;
 
