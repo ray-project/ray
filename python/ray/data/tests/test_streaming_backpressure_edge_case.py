@@ -70,7 +70,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
 
     # If backpressure is broken we'll launch 15+.
     assert launched < 5, launched
-    list(it)
 
 
 def test_streaming_backpressure_e2e(restore_data_context):
