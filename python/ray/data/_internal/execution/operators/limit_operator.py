@@ -53,10 +53,10 @@ class LimitOperator(PhysicalOperator):
             num_rows = metadata.num_rows
             assert num_rows is not None
             if self._consumed_rows + num_rows <= self._limit:
-                self._consumed_rows += num_rows
                 out_blocks.append(block)
                 out_metadata.append(metadata)
                 self._output_metadata.append(metadata)
+                self._consumed_rows += num_rows
             else:
                 # Slice the last block.
                 def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
@@ -75,6 +75,7 @@ class LimitOperator(PhysicalOperator):
                 metadata = ray.get(metadata_ref)
                 out_metadata.append(metadata)
                 self._output_metadata.append(metadata)
+                self._consumed_rows = self._limit
                 break
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
