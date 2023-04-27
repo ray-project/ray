@@ -37,7 +37,7 @@ def test_raydp_to_spark(spark):
     ds = ray.data.range(n)
     values = [r["id"] for r in ds.take(5)]
     df = ds.to_spark(spark)
-    rows = [r.value for r in df.take(5)]
+    rows = [r.id for r in df.take(5)]
     assert values == rows
 
 
