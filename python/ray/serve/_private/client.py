@@ -168,10 +168,8 @@ class ServeControllerClient:
             status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
 
             if status_bytes is None:
-                raise RuntimeError(
-                    f"Waiting for deployment {name} to be HEALTHY, "
-                    "but deployment doesn't exist."
-                )
+                time.sleep(CLIENT_POLLING_INTERVAL_S)
+                continue
 
             status = DeploymentStatusInfo.from_proto(
                 DeploymentStatusInfoProto.FromString(status_bytes)
@@ -296,7 +294,9 @@ class ServeControllerClient:
             url = deployment["url"]
 
             if _blocking:
-                self._wait_for_deployment_healthy(deployment_name)
+                # Give time to the controller to run update
+                time.sleep(0.1)
+                self._wait_for_deployment_healthy(deployment_name, timeout_s=15)
                 self.log_deployment_ready(deployment_name, version, url, tags[i])
 
         if remove_past_deployments:

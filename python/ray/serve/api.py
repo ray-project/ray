@@ -45,6 +45,7 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
+    get_random_letters,
 )
 
 from ray.serve._private import api as _private_api
@@ -525,7 +526,7 @@ def run(
             "init_kwargs": deployment.init_kwargs,
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
-            "version": deployment._version,
+            "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,

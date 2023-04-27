@@ -40,8 +40,9 @@ class ReplicaState(str, Enum):
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
-    RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    ERRORED = "ERRORED"
     DELETING = "DELETING"
 
 
@@ -179,12 +180,14 @@ class DeploymentInfo:
         replica_config: ReplicaConfig,
         start_time_ms: int,
         deployer_job_id: str,
+        app_name: str = None,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         autoscaling_policy: Optional[AutoscalingPolicy] = None,
         is_driver_deployment: Optional[bool] = False,
     ):
+        self.app_name = app_name
         self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.

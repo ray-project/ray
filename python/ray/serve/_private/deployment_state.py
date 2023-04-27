@@ -1256,7 +1256,8 @@ class DeploymentState:
         self._set_target_state(new_config)
 
     def delete(self) -> None:
-        self._set_target_state_deleting()
+        if not self._target_state.deleting:
+            self._set_target_state_deleting()
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> int:
         """Stop or update replicas with outdated versions.
@@ -2080,6 +2081,15 @@ class DeploymentStateManager:
                 (deployment_state_info, self._deleted_deployment_metadata)
             ),
         )
+
+    def get_deployments_in_application(self, app_name: str) -> List[str]:
+        """Return list of deployment names in application."""
+        states = []
+        for name, deployment_state in self._deployment_states.items():
+            if deployment_state.target_info.app_name == app_name:
+                states.append(name)
+
+        return states
 
     def get_running_replica_infos(
         self,

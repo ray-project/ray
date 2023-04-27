@@ -210,6 +210,7 @@ enum ApplicationStatus {
   DEPLOY_FAILED = 2;
   DELETING = 3;
   NOT_STARTED = 5;
+  ERRORED = 6;
 }
 
 message ApplicationStatusInfo {

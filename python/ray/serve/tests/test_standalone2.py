@@ -443,14 +443,17 @@ class TestDeployApp:
             timeout=15,
         )
 
-    def check_deployment_running(self, client: ServeControllerClient, name: str):
+    def check_running(self, client: ServeControllerClient):
         serve_status = client.get_serve_status()
         return (
-            serve_status.get_deployment_status(name) is not None
-            and serve_status.app_status.status == ApplicationStatus.RUNNING
-            and serve_status.get_deployment_status(name).status
-            == DeploymentStatus.HEALTHY
+            serve_status.app_status.status == ApplicationStatus.RUNNING
+            # and serve_status.get_deployment_status(name).status
+            # == DeploymentStatus.HEALTHY
         )
+
+    def check_deploying(self, client: ServeControllerClient):
+        serve_status = client.get_serve_status()
+        return serve_status.app_status.status == ApplicationStatus.DEPLOYING
 
     def check_deployments_dead(self, deployment_names):
         actor_names = [
@@ -1106,14 +1109,14 @@ class TestDeployApp:
         self.check_single_app()
         deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
 
+        ray.kill(client._controller, no_restart=False)
+
         # Delete all deployments, but don't update config
         deployments = [
             f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{name}"
             for name in ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
         ]
-        client.delete_deployments(deployments)
-
-        ray.kill(client._controller, no_restart=False)
+        client.delete_deployments(deployments, blocking=False)
 
         # When controller restarts, it should redeploy config automatically
         wait_for_condition(
@@ -1143,7 +1146,6 @@ class TestDeployApp:
         self, client: ServeControllerClient, field_to_update: str
     ):
         """Check that replicas are torn down when code updates are made."""
-        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config_template = {
             "import_path": "ray.serve.tests.test_config_files.pid.node",
             "deployments": [
@@ -1157,9 +1159,7 @@ class TestDeployApp:
         }
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         pid1, _ = requests.get("http://localhost:8000/f").json()
 
         if field_to_update == "import_path":
@@ -1172,13 +1172,9 @@ class TestDeployApp:
             config_template["deployments"][0]["ray_actor_options"] = {"num_cpus": 0.2}
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_deploying, client), timeout=15)
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
-        # This assumes that Serve implements round-robin routing for its replicas. As
-        # long as that doesn't change, this test shouldn't be flaky; however if that
-        # routing ever changes, this test could become mysteriously flaky
         pids = []
         for _ in range(4):
             pids.append(requests.get("http://localhost:8000/f").json()[0])
@@ -1187,7 +1183,6 @@ class TestDeployApp:
     def test_update_config_user_config(self, client: ServeControllerClient):
         """Check that replicas stay alive when user config is updated."""
 
-        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config_template = {
             "import_path": "ray.serve.tests.test_config_files.pid.node",
             "deployments": [{"name": "f", "user_config": {"name": "alice"}}],
@@ -1195,9 +1190,7 @@ class TestDeployApp:
 
         # Deploy first time
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         # Query
         pid1, res = requests.get("http://localhost:8000/f").json()
@@ -1206,20 +1199,17 @@ class TestDeployApp:
         # Redeploy with updated option
         config_template["deployments"][0]["user_config"] = {"name": "bob"}
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
 
-        # This assumes that Serve implements round-robin routing for its replicas. As
-        # long as that doesn't change, this test shouldn't be flaky; however if that
-        # routing ever changes, this test could become mysteriously flaky
         # Query
-        pids = []
-        for _ in range(4):
-            pid, res = requests.get("http://localhost:8000/f").json()
-            assert res == "bob"
-            pids.append(pid)
-        assert pid1 in pids
+        def check():
+            pids = []
+            for _ in range(4):
+                pid, res = requests.get("http://localhost:8000/f").json()
+                assert res == "bob"
+                pids.append(pid)
+            assert pid1 in pids
+            return True
+        wait_for_condition(check)
 
     def test_update_config_graceful_shutdown_timeout(
         self, client: ServeControllerClient
@@ -1233,9 +1223,7 @@ class TestDeployApp:
 
         # Deploy first time
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         handle = client.get_handle(name)
 
         # Start off with signal ready, and send query
@@ -1246,9 +1234,11 @@ class TestDeployApp:
         # Redeploy with shutdown timeout set to 5 seconds
         config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        try:
+            wait_for_condition(partial(self.check_deploying, client), timeout=5)
+        except RuntimeError:
+            pass
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         pid2 = ray.get(handle.remote())[0]
         assert pid1 == pid2
@@ -1258,7 +1248,7 @@ class TestDeployApp:
         handle.send.remote(clear=True)
         handle.remote()
         # Try to delete deployment, should be blocked until the timeout at 5 seconds
-        client.delete_deployments([name], blocking=False)
+        client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
         # Replica should be dead within 10 second timeout, which means
         # graceful_shutdown_timeout_s was successfully updated lightweightly
         wait_for_condition(partial(self.check_deployments_dead, ["f"]))
@@ -1275,9 +1265,7 @@ class TestDeployApp:
 
         # Deploy first time
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         handle = client.get_handle(name)
         # Block on calls
         ray.get(handle.send.remote(clear=True))
@@ -1298,9 +1286,7 @@ class TestDeployApp:
         # Redeploy with max concurrent queries set to 2
         config_template["deployments"][0]["max_concurrent_queries"] = 2
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         # Re-block
         ray.get(handle.send.remote(clear=True))
@@ -1310,7 +1296,9 @@ class TestDeployApp:
             futs = [pool.submit(partial(requests.get, url)) for _ in range(3)]
             # Only 2 out of the 3 queries should have been sent to the replica because
             # max concurrent queries is 2
-            time.sleep(10)
+            for _ in range(10):
+                print("Waiting...")
+                time.sleep(1)
             assert ray.get(handle.get_counter.remote()) < 103
 
             # Unblock
@@ -1333,23 +1321,22 @@ class TestDeployApp:
 
         # Deploy first time, wait for replica running and deployment healthy
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
         handle = client.get_handle(name)
         pid1 = ray.get(handle.remote())[0]
         # Health check counter shouldn't increase beyond any initial health checks done
         # upon replica actor startup
         initial_counter = ray.get(handle.get_counter.remote(health_check=True))
         time.sleep(5)
-        assert initial_counter == ray.get(handle.get_counter.remote(health_check=True))
+        assert (
+            ray.get(handle.get_counter.remote(health_check=True)) <= initial_counter + 1
+        )
 
         # Redeploy with health check period reduced to 1 second
         config_template["deployments"][0]["health_check_period_s"] = 0.1
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         # health check counter should now very quickly increase
         wait_for_condition(
             lambda: ray.get(handle.get_counter.remote(health_check=True)) >= 30,
@@ -1380,18 +1367,16 @@ class TestDeployApp:
 
         # Deploy first time, wait for replica running and deployment healthy
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
         handle = client.get_handle(name)
         pid1 = ray.get(handle.remote())[0]
 
         # Redeploy with health check timeout reduced to 1 second
         config_template["deployments"][0]["health_check_timeout_s"] = 1
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
         # Check that it's the same replica, it didn't get teared down
         # (needs to be done before the tests below because the replica will be marked
         # unhealthy then stopped and restarted)

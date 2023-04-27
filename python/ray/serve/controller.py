@@ -392,7 +392,8 @@ class ServeController:
     def shutdown(self):
         """Shuts down the serve instance completely."""
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
-        self.deployment_state_manager.shutdown()
+        self.application_state_manager.shutdown()
+        # self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
         if self.http_state:
             self.http_state.shutdown()
@@ -842,7 +843,7 @@ def deploy_serve_application(
             )
 
         # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix)
+        serve.run(app, name=name, route_prefix=route_prefix, _blocking=True)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
