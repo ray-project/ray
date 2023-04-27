@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -65,6 +65,8 @@ class TorchVisionPreprocessor(Preprocessor):
             ``torch.Tensor`` as output.
         batched: If ``True``, apply ``transform`` to batches of shape
             :math:`(B, H, W, C)`. Otherwise, apply ``transform`` to individual images.
+        output_columns: The name of the output column for each column in `columns`
+            The length `output_columns` is expected to be the same as `columns`. If not specified, the columns are transformed in-place.
     """  # noqa: E501
 
     _is_fittable = False
@@ -74,8 +76,22 @@ class TorchVisionPreprocessor(Preprocessor):
         columns: List[str],
         transform: Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"],
         batched: bool = False,
+        output_columns: Optional[List[str]] = None,
     ):
+        if output_columns:
+            if len(output_columns) != len(columns):
+                raise ValueError(
+                    "The length of the output_columns should match the "
+                    "length of columns. Length of columns: "
+                    f"{len(columns)}. Length of output_columns: "
+                    f"{len(output_columns)}"
+                )
+
         self._columns = columns
+        self._output_columns = output_columns
+
+        if len(output_columns) != len(columns):
+            raise ValueError("The length of ")
         self._torchvision_transform = transform
         self._batched = batched
 
@@ -86,8 +102,8 @@ class TorchVisionPreprocessor(Preprocessor):
         )
 
     def _transform_numpy(
-        self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
-    ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
+        self, np_data: Dict[str, "np.ndarray"]
+    ) -> Dict[str, "np.ndarray"]:
         import torch
         from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 
@@ -115,12 +131,15 @@ class TorchVisionPreprocessor(Preprocessor):
                 [apply_torchvision_transform(array) for array in batch]
             )
 
-        if isinstance(np_data, dict):
-            outputs = np_data
-            for column in self._columns:
-                outputs[column] = transform_batch(np_data[column])
-        else:
-            outputs = transform_batch(np_data)
+        outputs = np_data
+        for i in range(len(self._columns)):
+            input_col = self._columns[i]
+            if self._output_columns is not None:
+                output_col = self._output_columns[i]
+            else:
+                output_col = self._columns[i]
+
+            outputs[output_col] = transform_batch(np_data[input_col])
 
         return outputs
 
