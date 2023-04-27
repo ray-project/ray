@@ -179,7 +179,9 @@ class TestGPUsLargeBatch(unittest.TestCase):
                 .training(
                     train_batch_size=train_batch_size,
                     num_sgd_iter=1,
-                    sgd_minibatch_size=self.sgd_minibatch_size,
+                    sgd_minibatch_size=sgd_minibatch_size,
+                )
+                .experimental(
                     # This setting makes it so that we don't load a batch of
                     # size `train_batch_size` onto the device, but only
                     # minibatches.
