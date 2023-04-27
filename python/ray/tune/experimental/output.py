@@ -11,7 +11,6 @@ import numbers
 import numpy as np
 import os
 import pandas as pd
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 import textwrap
 import time
 
@@ -24,6 +23,12 @@ except ImportError:
 
 import ray
 from ray._private.dict import unflattened_lookup
+from ray._private.thirdparty.tabulate.tabulate import (
+    tabulate,
+    TableFormat,
+    Line,
+    DataRow,
+)
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.callback import Callback
 from ray.tune.result import (
@@ -394,13 +399,28 @@ def _get_dict_as_table_data(
 
     if not upper:
         return lower
+    elif not lower:
+        return upper
 
     else:
         return upper + [[None, None]] + lower
 
 
+AIR_TABULATE_TABLEFMT = TableFormat(
+    lineabove=Line("╭", "─", "─", "╮"),
+    linebelowheader=Line("├", "─", "─", "┤"),
+    linebetweenrows=None,
+    linebelow=Line("╰", "─", "─", "╯"),
+    headerrow=DataRow("│", " ", "│"),
+    datarow=DataRow("│", " ", "│"),
+    padding=1,
+    with_header_hide=None,
+)
+
+
 def _print_dict_as_table(
     data: Dict,
+    header: Optional[str] = None,
     exclude: Optional[Collection] = None,
     division: Optional[Collection] = None,
 ):
@@ -408,7 +428,18 @@ def _print_dict_as_table(
         data=data, exclude=exclude, upper_keys=division
     )
 
-    print(tabulate(table_data, colalign=("left", "right"), tablefmt="simple"))
+    headers = ()
+    if header:
+        headers = [header, ""]
+
+    print(
+        tabulate(
+            table_data,
+            headers=headers,
+            colalign=("left", "right"),
+            tablefmt=AIR_TABULATE_TABLEFMT,
+        )
+    )
 
 
 class ProgressReporter:
@@ -717,12 +748,17 @@ class AirResultProgressCallback(Callback):
 
         if this_iter != last_result_iter or force:
             _print_dict_as_table(
-                result, exclude=BLACKLISTED_KEYS, division=AUTO_RESULT_KEYS
+                result,
+                header=f"{self._addressing_tmpl.format(trial)} result",
+                exclude=BLACKLISTED_KEYS,
+                division=AUTO_RESULT_KEYS,
             )
             self._trial_last_printed_results[trial.trial_id] = this_iter
 
     def _print_config(self, trial):
-        _print_dict_as_table(trial.config)
+        _print_dict_as_table(
+            trial.config, header=f"{self._addressing_tmpl.format(trial)} config"
+        )
 
     def on_trial_result(
         self,
