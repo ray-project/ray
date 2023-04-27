@@ -105,7 +105,7 @@ export const ServeApplicationDetailPage = () => {
             content: {
               value: Object.values(application.deployments)
                 .map(({ replicas }) => replicas.length)
-                .reduce((acc, curr) => acc + curr)
+                .reduce((acc, curr) => acc + curr, 0)
                 .toString(),
             },
           },

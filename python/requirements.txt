@@ -18,7 +18,6 @@ pyyaml
 aiosignal
 frozenlist
 requests
-virtualenv>=20.0.24, < 20.21.1
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
@@ -38,7 +37,6 @@ uvicorn
 py-spy>=0.2.0
 rich
 urllib3
-tabulate
 scikit-image
 scipy
 aiohttp>=3.7
@@ -54,6 +52,7 @@ requests
 kubernetes
 colorful
 lz4
+virtualenv>=20.0.24, < 20.21.1
 # Manually parse pandas requirement
 pandas>=1.0.5; python_version < '3.7'
 pandas>=1.3.0; python_version >= '3.7'

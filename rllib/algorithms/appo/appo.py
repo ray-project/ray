@@ -106,7 +106,13 @@ class APPOConfig(ImpalaConfig):
         self.learner_queue_timeout = 300
         self.max_sample_requests_in_flight_per_worker = 2
         self.broadcast_interval = 1
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.opt_type = "adam"
         self.lr = 0.0005
         self.lr_schedule = None
@@ -239,6 +245,8 @@ class APPOConfig(ImpalaConfig):
         )
 
 
+# Still used by one of the old checkpoints in tests.
+# Keep a shim version of this around.
 class UpdateTargetAndKL:
     def __init__(self, workers, config):
         pass
