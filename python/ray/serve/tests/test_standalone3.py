@@ -380,5 +380,43 @@ assert ray.get(handle.predict.remote(1)) == 1
     )
 
 
+def test_replica_health_metric(ray_instance):
+    """Test replica health metrics"""
+
+    @serve.deployment(num_replicas=2)
+    def f():
+        return "hello"
+
+    serve.run(f.bind())
+
+    def count_live_replica_metrics():
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        count = 0
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_deployment_replica_healthy" in metrics:
+                if "1.0" in metrics:
+                    count += 1
+        return count
+
+    wait_for_condition(
+        lambda: count_live_replica_metrics() == 2, timeout=60, retry_interval_ms=500
+    )
+
+    # Add more replicas
+    serve.run(f.options(num_replicas=10).bind())
+    wait_for_condition(
+        lambda: count_live_replica_metrics() == 10, timeout=60, retry_interval_ms=500
+    )
+
+    # delete the application
+    serve.delete("default_f")
+    wait_for_condition(
+        lambda: count_live_replica_metrics() == 0, timeout=60, retry_interval_ms=500
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
