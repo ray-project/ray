@@ -1,7 +1,7 @@
 # flake8: noqa
 from ray.rllib.utils.annotations import override
 from ray.rllib.core.models.specs.typing import SpecType
-from rllib.core.models.specs.specs_base import TensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 
 # __enabling-rlmodules-in-configs-begin__
