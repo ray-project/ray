@@ -408,13 +408,18 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
+        app_name: str = None,
     ) -> bool:
         """Deploys a deployment."""
-
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
+
+        # app_name is None for V1 API, reset it to empty string to avoid
+        # breaking metrics.
+        if app_name is None:
+            app_name = ""
 
         deployment_info = deploy_args_to_deployment_info(
             deployment_name=name,
@@ -423,6 +428,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             previous_deployment=self.deployment_state_manager.get_deployment(name),
             is_driver_deployment=is_driver_deployment,
+            app_name=app_name,
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if
@@ -431,7 +437,7 @@ class ServeController:
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix)
+            endpoint_info = EndpointInfo(route=route_prefix, app_name=app_name)
             self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
             self.endpoint_state.delete_endpoint(name)
