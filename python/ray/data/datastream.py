@@ -656,12 +656,11 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100)
+            >>> ds = ray.data.range(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column(
-            ...     "new_col", lambda df: df["value"] * 2)
+            >>> ds = ds.add_column("new_col", lambda df: df["id"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda df: 0)
+            >>> ds = ds.add_column("id", lambda df: 0)
 
         Time complexity: O(datastream size / parallelism)
 
@@ -704,12 +703,11 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100)
+            >>> ds = ray.data.range(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column(
-            ...     "new_col", lambda df: df["value"] * 2)
+            >>> ds = ds.add_column("new_col", lambda df: df["id"] * 2)
             >>> # Drop the existing "value" column.
-            >>> ds = ds.drop_columns(["value"])
+            >>> ds = ds.drop_columns(["id"])
 
 
         Time complexity: O(datastream size / parallelism)
@@ -1683,8 +1681,7 @@ class Datastream:
             >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max())
             (99,)
-            >>> ray.data.range_table(100).aggregate(
-            ...    Max("value"), Mean("value"))
+            >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
             {'max(value)': 99, 'mean(value)': 49.5}
 
         Time complexity: O(datastream size / parallelism)
@@ -1717,7 +1714,7 @@ class Datastream:
             ...     (i, i**2)
             ...     for i in range(100)]).sum(lambda x: x[1])
             328350
-            >>> ray.data.range_table(100).sum("value")
+            >>> ray.data.range(100).sum("id")
             4950
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1764,7 +1761,7 @@ class Datastream:
             ...     (i, i**2)
             ...     for i in range(100)]).min(lambda x: x[1])
             0
-            >>> ray.data.range_table(100).min("value")
+            >>> ray.data.range(100).min("id")
             0
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1811,7 +1808,7 @@ class Datastream:
             ...     (i, i**2)
             ...     for i in range(100)]).max(lambda x: x[1])
             9801
-            >>> ray.data.range_table(100).max("value")
+            >>> ray.data.range(100).max("id")
             99
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1858,7 +1855,7 @@ class Datastream:
             ...     (i, i**2)
             ...     for i in range(100)]).mean(lambda x: x[1])
             3283.5
-            >>> ray.data.range_table(100).mean("value")
+            >>> ray.data.range(100).mean("id")
             49.5
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1908,7 +1905,7 @@ class Datastream:
             ...     (i, i**2)
             ...     for i in range(100)]).std(lambda x: x[1])
             2968.1748039269296
-            >>> round(ray.data.range_table(100).std("value", ddof=0), 5)
+            >>> round(ray.data.range(100).std("id", ddof=0), 5)
             28.86607
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
