@@ -432,6 +432,9 @@ def _print_dict_as_table(
     if header:
         headers = [header, ""]
 
+    if not table_data:
+        return
+
     print(
         tabulate(
             table_data,
