@@ -373,7 +373,7 @@ tag_mapping = {
 }
 
 suppress_loggers = {
-    'sphinx.ext.autodoc': True,
+    'sphinx.ext.autosummary': ['WARNING'],
 }
 
 # Create file with tag mappings for tags.js to use.

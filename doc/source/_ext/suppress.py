@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
+# Following the discussion in:
+# https://github.com/sphinx-doc/sphinx/issues/11325
+#
 # author: picnixz
 # license: MIT
 
-r"""A filter suppressing logging records issued by a Sphinx logger.
+r"""
+A filter suppressing logging records issued by a Sphinx logger.
 
 The records are filtered according to their context (logger name and record
-level) and their formatted message. You can filter entire loggers, or individual
-records.
+level) and their formatted message.
 
 Typical usage::
 
@@ -42,6 +45,13 @@ suppress the logger declared in the :mod:`sphinx.ext.intersphinx` module).
         # suppress INFO and ERROR messages from 'sphinx.ext.autodoc'
         suppress_loggers = {'sphinx.ext.autodoc': ['INFO', 'ERROR']}
 
+.. confval:: suppress_protect = []
+
+    A list of module names that are known to contain a Sphinx logger but
+    that will never be suppressed automatically. This is typically useful
+    when an extension contains submodules declaring loggers which, when
+    imported, result in undesirable side-effects.
+
 .. confval:: suppress_records = []
 
     A list of message patterns to suppress, possibly filtered by logger.
@@ -58,10 +68,13 @@ suppress the logger declared in the :mod:`sphinx.ext.intersphinx` module).
 __all__ = ()
 
 import abc
+import importlib
 import inspect
 import itertools
 import logging
+import pkgutil
 import re
+import warnings
 from typing import TYPE_CHECKING
 
 from sphinx.util.logging import NAMESPACE, SphinxLoggerAdapter
@@ -83,7 +96,7 @@ def partition(predicate, iterable):
     return no, yes
 
 
-def not_none(value):
+def notnone(value):
     return value is not None
 
 
@@ -106,7 +119,7 @@ def _parse_levels(levels):
     if not isinstance(levels, (list, tuple)):
         if isinstance(levels, (int, str)):
             levels = [levels]
-    return list(filter(not_none, map(_normalize_level, levels)))
+    return list(filter(notnone, map(_normalize_level, levels)))
 
 
 class SphinxSuppressFilter(logging.Filter, metaclass=abc.ABCMeta):
@@ -142,8 +155,7 @@ class SphinxSuppressLogger(SphinxSuppressFilter):
     def suppressed(self, record):
         return (
             logging.Filter.filter(self, record)
-            and self.levels is ALL
-            or record.levelno in self.levels
+            and (self.levels is ALL or record.levelno in self.levels)
         )
 
 
@@ -173,8 +185,8 @@ class SphinxSuppressRecord(SphinxSuppressLogger, SphinxSuppressPatterns):
         """
         Construct a :class:`SphinxSuppressRecord` filter.
 
-        :param name: A logger's name pattern to suppress.
-        :type name: str | re.Pattern
+        :param name: A logger's name to suppress.
+        :type name: str
         :param levels: Optional logging levels to suppress.
         :type levels: bool | list[int]
         :param patterns: Optional logging messages (regex) to suppress.
@@ -191,38 +203,88 @@ class SphinxSuppressRecord(SphinxSuppressLogger, SphinxSuppressPatterns):
         )
 
 
-# event: config-inited
+### event: config-inited
+
+def _get_filters(config):
+    format_name = lambda name: f'{NAMESPACE}.{name}'
+
+    filters_by_prefix = {}
+    for name, levels in config.suppress_loggers.items():
+        prefix = format_name(name)
+        suppressor = SphinxSuppressLogger(prefix, levels)
+        filters_by_prefix.setdefault(prefix, []).append(suppressor)
+
+    is_pattern = lambda s: isinstance(s, (str, re.Pattern))
+    groups, patterns = partition(is_pattern, config.suppress_records)
+    for group in groups:  # type: tuple[str, ...]
+        prefix = format_name(group[0])
+        suppressor = SphinxSuppressRecord(prefix, True, group[1:])
+        filters_by_prefix.setdefault(prefix, []).append(suppressor)
+    # default filter
+    default_filter = SphinxSuppressPatterns(patterns)
+    return default_filter, filters_by_prefix
+
+
+def _is_sphinx_logger_adapter(obj):
+    return isinstance(obj, SphinxLoggerAdapter)
+
+
+def _update_logger_in(module, default_filter, filters_by_prefix, _cache):
+    if module.__name__ in _cache:
+        return
+
+    _cache.add(module.__name__)
+    members = inspect.getmembers(module, _is_sphinx_logger_adapter)
+    for _, adapter in members:
+        for prefix, filters in filters_by_prefix.items():
+            if adapter.logger.name.startswith(prefix):
+                for f in filters:
+                    # a logger might be imported from a module
+                    # that was not yet marked, so we only add
+                    # the filter once
+                    if f not in adapter.logger.filters:
+                        adapter.logger.addFilter(f)
+        if default_filter not in adapter.logger.filters:
+            adapter.logger.addFilter(default_filter)
+
+
 def install_supress_handlers(app, config):
     # type: (Sphinx, Config) -> None
 
-    prefix = f'{NAMESPACE}.'
-    filters = []
-    for name, levels in config.suppress_loggers.items():
-        # the real logger name is always prefixed by NAMESPACE
-        logger_name = f'{prefix}{name}'
-        suppressor = SphinxSuppressLogger(logger_name, levels)
-        filters.append(suppressor)
+    default_filter, filters_by_prefix = _get_filters(config)
+    seen = set()
 
-    is_pattern = lambda value: isinstance(value, (str, re.Pattern))
-    groups, patterns = partition(is_pattern, config.suppress_records)
-    for group in groups:  # type: tuple[str, ...]
-        name = prefix + group[0]
-        suppressor = SphinxSuppressRecord(name, True, group[1:])
-        filters.append(suppressor)
-    filters.append(SphinxSuppressPatterns(patterns))
-
-    is_sphinx_logger_adapter = lambda value: isinstance(value, SphinxLoggerAdapter)
     for extension in app.extensions.values():  # type: Extension
-        module = extension.module
-        for _, adapter in inspect.getmembers(module, is_sphinx_logger_adapter):
-            add_filter = adapter.logger.addFilter
-            for f in filters:
-                add_filter(f)
+        if extension.name in config.suppress_protect:
+            # skip the extension
+            continue
+
+        mod = extension.module
+        _update_logger_in(mod, default_filter, filters_by_prefix, seen)
+        if not hasattr(mod, '__path__'):
+            continue
+
+        # find the loggers declared in a submodule
+        mod_path, mod_prefix = mod.__path__, mod.__name__ + '.'
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', DeprecationWarning)
+            warnings.simplefilter('ignore', PendingDeprecationWarning)
+            for mod_info in pkgutil.iter_modules(mod_path, mod_prefix):
+                if mod_info.name in config.suppress_protect:
+                    # skip the module
+                    continue
+
+                try:
+                    mod = importlib.import_module(mod_info.name)
+                except ImportError:
+                    continue
+                _update_logger_in(mod, default_filter, filters_by_prefix, seen)
 
 
 def setup(app):
     # type: (Sphinx) -> dict
     app.add_config_value('suppress_loggers', {}, True)
+    app.add_config_value('suppress_protect', [], True)
     app.add_config_value('suppress_records', [], True)
     # @contract: no extension is loaded after config-inited is fired
     app.connect('config-inited', install_supress_handlers, priority=1000)
