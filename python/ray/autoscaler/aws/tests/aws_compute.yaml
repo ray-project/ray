@@ -2,7 +2,7 @@ cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
 aws:
-    IamInstanceProfile: {"Name": "anyscale-iam-role"}
+    IamInstanceProfile: {"Name": "ray-test-runner"}
 
 head_node_type:
     name: head_node
