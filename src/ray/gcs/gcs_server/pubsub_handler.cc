@@ -104,7 +104,8 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   if (sender_id.empty()) {
     sender_id = request.subscriber_id();
   }
-  RAY_LOG(INFO) << "Adding sender to subscribers: " << UniqueID::FromBinary(sender_id) << "-" << subscriber_id;
+  RAY_LOG(INFO) << "Adding sender to subscribers: " << UniqueID::FromBinary(sender_id)
+                << "-" << subscriber_id;
   auto iter = sender_to_subscribers_.find(sender_id);
   if (iter == sender_to_subscribers_.end()) {
     iter = sender_to_subscribers_.insert({sender_id, {}}).first;
@@ -139,7 +140,8 @@ void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
   }
   for (auto &subscriber_id : iter->second) {
     gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
-    RAY_LOG(INFO) << "Remove subscribe id: " << UniqueID::FromBinary(sender_id) << "-" << subscriber_id;
+    RAY_LOG(INFO) << "Remove subscribe id: " << UniqueID::FromBinary(sender_id) << "-"
+                  << subscriber_id;
   }
   sender_to_subscribers_.erase(iter);
 }
