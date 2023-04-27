@@ -1,7 +1,7 @@
 .. _transforming_datastreams:
 
 ========================
-Transforming Datastreams
+Transforming Data
 ========================
 
 Datastreams transformations take in datastreams and produce new datastreams. For example, *map_batches*
