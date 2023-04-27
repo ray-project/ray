@@ -5,6 +5,7 @@ export enum ServeApplicationStatus {
   RUNNING = "RUNNING",
   DEPLOY_FAILED = "DEPLOY_FAILED",
   DELETING = "DELETING",
+  ERRORED = "ERRORED",
 }
 
 export type ServeApplication = {

@@ -539,9 +539,9 @@ def run(
         _blocking=_blocking,
         remove_past_deployments=remove_past_deployments,
     )
-    client._wait_for_deployment_created(ingress.name)
 
     if ingress is not None:
+        client._wait_for_deployment_created(ingress.name)
         return ingress._get_handle()
 
 
