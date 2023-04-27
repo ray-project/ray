@@ -32,7 +32,6 @@
 
 import numbers
 import os
-from packaging.version import Version
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -56,6 +55,10 @@ except ImportError:
     # ABCIndexClass changed to ABCIndex in Pandas 1.3
     from pandas.core.dtypes.generic import ABCIndexClass as ABCIndex
 
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 #############################################
 # Begin patching of ExtensionArrayFormatter #
