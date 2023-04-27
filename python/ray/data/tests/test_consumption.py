@@ -1788,6 +1788,4 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
