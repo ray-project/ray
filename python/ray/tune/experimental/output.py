@@ -447,6 +447,9 @@ def _print_dict_as_table(
     if not table_data:
         return
 
+    if not table_data:
+        return
+
     print(
         tabulate(
             table_data,
