@@ -20,6 +20,10 @@ from ray._private.usage.usage_lib import (
 )
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
+from ray.serve._private.autoscaling_policy import (
+    AutoscalingPolicy,
+    BasicAutoscalingPolicy,
+)
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentInfo,
@@ -83,20 +87,38 @@ class DeploymentTargetState:
     info: Optional[DeploymentInfo]
     num_replicas: int
     version: Optional[DeploymentVersion]
+    autoscaling_policy: Optional[AutoscalingPolicy]
     deleting: bool
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
-        return cls(None, -1, None, False)
+        return cls(None, -1, None, None, False)
 
     @classmethod
     def from_deployment_info(
-        cls, info: DeploymentInfo, *, deleting: bool = False
+        cls, prev_target_state, info: DeploymentInfo, *, deleting: bool = False
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
             version = None
+            autoscaling_policy = None
         else:
+            deployment_config = info.deployment_config
+            autoscaling_config = deployment_config.autoscaling_config
+            if autoscaling_config is not None:
+                if autoscaling_config.initial_replicas is not None:
+                    deployment_config.num_replicas = autoscaling_config.initial_replicas
+                else:
+                    if prev_target_state is None:
+                        deployment_config.num_replicas = autoscaling_config.min_replicas
+                    else:
+                        deployment_config.num_replicas = (
+                            prev_target_state.info.deployment_config.num_replicas
+                        )
+                autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
+            else:
+                autoscaling_policy = None
+
             num_replicas = info.deployment_config.num_replicas
             version = DeploymentVersion(
                 info.version,
@@ -104,7 +126,7 @@ class DeploymentTargetState:
                 ray_actor_options=info.replica_config.ray_actor_options,
             )
 
-        return cls(info, num_replicas, version, deleting)
+        return cls(info, num_replicas, version, autoscaling_policy, deleting)
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -1057,13 +1079,13 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._target_state.info.autoscaling_policy is not None
+        return self._target_state.autoscaling_policy is not None
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.info.autoscaling_policy.config.look_back_period_s
+        return self._target_state.autoscaling_policy.config.look_back_period_s
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1147,7 +1169,7 @@ class DeploymentState:
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.from_deployment_info(
-            self._target_state.info, deleting=True
+            None, self._target_state.info, deleting=True
         )
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
@@ -1162,7 +1184,9 @@ class DeploymentState:
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        target_state = DeploymentTargetState.from_deployment_info(target_info)
+        target_state = DeploymentTargetState.from_deployment_info(
+            self._target_state, target_info
+        )
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
         if self._target_state.version == target_state.version:
@@ -1239,7 +1263,7 @@ class DeploymentState:
             return
 
         curr_info = self._target_state.info
-        autoscaling_policy = self._target_state.info.autoscaling_policy
+        autoscaling_policy = self._target_state.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
             curr_target_num_replicas=curr_info.deployment_config.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,

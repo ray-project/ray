@@ -2,16 +2,18 @@ from dataclasses import dataclass
 import traceback
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 from collections import Counter
 
 import ray
+from ray import cloudpickle
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.types import ObjectRef
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.common import (
     EndpointInfo,
     DeploymentStatus,
@@ -25,6 +27,8 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+CHECKPOINT_KEY = "serve-application-state-checkpoint"
 
 
 @dataclass
@@ -41,6 +45,7 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
+        save_checkpoint_func: Callable,
         deploy_obj_ref: ObjectRef = None,
         deployment_time: float = 0,
     ):
@@ -52,36 +57,58 @@ class ApplicationState:
             deploy_obj_ref: Task ObjRef of deploying application.
             deployment_time: Deployment timestamp
         """
-        if deploy_obj_ref:
-            self.status: ApplicationStatus = ApplicationStatus.DEPLOYING
-        else:
-            self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self._name = name
-        self.ready_to_be_deleted = False
+        self._endpoint_state = endpoint_state
         self.deployment_state_manager = deployment_state_manager
-        self.endpoint_state = endpoint_state
-        if deployment_time:
-            self.deployment_timestamp = deployment_time
-        else:
-            self.deployment_timestamp = time.time()
         self.deploy_obj_ref = deploy_obj_ref
         self.app_msg = ""
         self.route_prefix = None
         self.docs_path = None
+        self.ready_to_be_deleted = False
+
+        if deploy_obj_ref:
+            self.status: ApplicationStatus = ApplicationStatus.DEPLOYING
+        else:
+            self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
+
+        if deployment_time:
+            self.deployment_timestamp = deployment_time
+        else:
+            self.deployment_timestamp = time.time()
 
         self._target_state: ApplicationTargetState = ApplicationTargetState(
             deployment_params=None, deleting=False
         )
+        self._save_checkpoint_func = save_checkpoint_func
+
+    def recover_target_state_from_checkpoint(self, checkpoint_data):
+        logger.info(f"Recovering target state for app {self._name} from checkpoint.")
+        self._target_state = checkpoint_data
+
+    def _set_target_state(
+        self, deployment_params: Optional[List[Dict]] = None, deleting: bool = False
+    ):
+        if deleting:
+            target_state = ApplicationTargetState([], True)
+            self.status = ApplicationStatus.DELETING
+        else:
+            target_state = ApplicationTargetState(deployment_params, False)
+            print("target state: status to deploying", time.time())
+            self.status = ApplicationStatus.DEPLOYING
+
+        # Checkpoint ahead
+        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
+        # Set target state
+        self._target_state = target_state
 
     def _delete_deployment(self, name):
-        self.endpoint_state.delete_endpoint(name)
+        self._endpoint_state.delete_endpoint(name)
         self.deployment_state_manager.delete_deployment(name)
 
     def delete(self):
         """Delete the application"""
         logger.info(f"Deleting application '{self._name}'")
-        self._target_state = ApplicationTargetState(deployment_params=[], deleting=True)
-        self.status = ApplicationStatus.DELETING
+        self._set_target_state(deleting=True)
 
     def apply_deployment(
         self,
@@ -104,9 +131,9 @@ class ApplicationState:
         if route_prefix is not None:
             self.route_prefix = route_prefix
             endpoint_info = EndpointInfo(route=route_prefix)
-            self.endpoint_state.update_endpoint(deployment_name, endpoint_info)
+            self._endpoint_state.update_endpoint(deployment_name, endpoint_info)
         else:
-            self.endpoint_state.delete_endpoint(deployment_name)
+            self._endpoint_state.delete_endpoint(deployment_name)
 
         return updating
 
@@ -147,15 +174,17 @@ class ApplicationState:
                 "path in your application to avoid this issue."
             )
 
-        self._target_state = ApplicationTargetState(
-            deployment_params=deployment_params, deleting=False
-        )
+        for params in deployment_params:
+            params["deployment_name"] = params.pop("name")
+        self._set_target_state(deployment_params=deployment_params)
         return [True for _ in deployment_params]
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
         self.deploy_obj_ref = deploy_obj_ref
         self.deployment_timestamp = deployment_time
-        logger.info(f"application status is now deploying {time.time()}")
+        print("status set to deploying", time.time())
+        self._set_target_state(deployment_params=None)
+        self.status = ApplicationStatus.DEPLOYING
 
     def update(self):
         """Update the application status, maintain the ApplicationStatus.
@@ -204,18 +233,14 @@ class ApplicationState:
         if self._target_state.deployment_params is None:
             return
 
-        # === Reconciliation Loop ================================
         # Deploy/update deployments
         for params in self._target_state.deployment_params:
-            deployment_name = params["name"]
-            previous_deployment = self.get_deployment(deployment_name)
             deployment_info = deploy_args_to_deployment_info(
                 app_name=self._name,
-                previous_deployment=previous_deployment,
                 **params,
             )
             self.apply_deployment(
-                deployment_name, params["route_prefix"], deployment_info
+                params["deployment_name"], params["route_prefix"], deployment_info
             )
 
         # Delete deployments
@@ -239,13 +264,10 @@ class ApplicationState:
             )
             # print("deployment_statuses:", deployment_statuses)
             if deployment_statuses[DeploymentStatus.UNHEALTHY]:
-                if self.status == ApplicationStatus.DEPLOYING:
-                    self.status = ApplicationStatus.DEPLOY_FAILED
-                else:
+                if self.status == ApplicationStatus.RUNNING:
                     self.status = ApplicationStatus.ERRORED
-            elif deployment_statuses[DeploymentStatus.UPDATING]:
-                # print("application status is now DEPLOYING", time.time())
-                self.status = ApplicationStatus.DEPLOYING
+                else:
+                    self.status = ApplicationStatus.DEPLOY_FAILED
             elif deployment_statuses[DeploymentStatus.HEALTHY] == len(self.deployments):
                 # print("application status is now RUNNING", time.time())
                 self.status = ApplicationStatus.RUNNING
@@ -253,11 +275,18 @@ class ApplicationState:
     @property
     def deployments(self) -> List[str]:
         """Names of all deployments in application."""
-        return [params["name"] for params in self._target_state.deployment_params]
+        if self._target_state.deployment_params is None:
+            return []
+        return [
+            params["deployment_name"] for params in self._target_state.deployment_params
+        ]
 
     def get_deployment(self, name: str) -> DeploymentInfo:
         """Get deployment info for deployment by name."""
         return self.deployment_state_manager.get_deployment(name)
+
+    def get_checkpoint_data(self):
+        return self._target_state
 
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
@@ -289,10 +318,28 @@ class ApplicationStateManager:
         self,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
+        kv_store: KVStoreBase,
     ):
         self.deployment_state_manager = deployment_state_manager
-        self.endpoint_state = endpoint_state
-        self._application_states: Dict[str, ApplicationState] = {}
+        self._endpoint_state = endpoint_state
+        self._kv_store = kv_store
+        self._application_states: Dict[str, ApplicationState] = dict()
+        self._recover_from_checkpoint()
+
+    def _recover_from_checkpoint(self):
+        checkpoint = self._kv_store.get(CHECKPOINT_KEY)
+        if checkpoint is not None:
+            application_state_info = cloudpickle.loads(checkpoint)
+
+            for app_name, checkpoint_data in application_state_info.items():
+                app_state = ApplicationState(
+                    app_name,
+                    self.deployment_state_manager,
+                    self._endpoint_state,
+                    self._save_checkpoint_func,
+                )
+                app_state.recover_target_state_from_checkpoint(checkpoint_data)
+                self._application_states[app_name] = app_state
 
     def delete_application(self, name: str):
         """Delete application by name"""
@@ -335,7 +382,8 @@ class ApplicationStateManager:
             self._application_states[name] = ApplicationState(
                 name,
                 self.deployment_state_manager,
-                self.endpoint_state,
+                self._endpoint_state,
+                self._save_checkpoint_func,
             )
         record_extra_usage_tag(
             TagKey.SERVE_NUM_APPS, str(len(self._application_states))
@@ -424,7 +472,8 @@ class ApplicationStateManager:
             self._application_states[name] = ApplicationState(
                 name,
                 self.deployment_state_manager,
-                endpoint_state=self.endpoint_state,
+                endpoint_state=self._endpoint_state,
+                save_checkpoint_func=self._save_checkpoint_func,
                 deploy_obj_ref=deploy_obj_ref,
                 deployment_time=deployment_time,
             )
@@ -447,3 +496,24 @@ class ApplicationStateManager:
     def shutdown(self):
         for app_state in self._application_states.values():
             app_state.delete()
+
+    def _save_checkpoint_func(self, *, writeahead_checkpoints: Optional[Dict]) -> None:
+        """Write a checkpoint of all application states.
+        By default, this checkpoints the current in-memory state of each
+        deployment. However, these can be overwritten by passing
+        `writeahead_checkpoints` in order to checkpoint an update before
+        applying it to the in-memory state.
+        """
+
+        application_state_info = {
+            app_name: app_state.get_checkpoint_data()
+            for app_name, app_state in self._application_states.items()
+        }
+
+        if writeahead_checkpoints is not None:
+            application_state_info.update(writeahead_checkpoints)
+
+        self._kv_store.put(
+            CHECKPOINT_KEY,
+            cloudpickle.dumps(application_state_info),
+        )

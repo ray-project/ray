@@ -156,7 +156,7 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager, self.endpoint_state
+            self.deployment_state_manager, self.endpoint_state, self.kv_store
         )
 
         # Keep track of single-app vs multi-app
@@ -393,7 +393,7 @@ class ServeController:
         """Shuts down the serve instance completely."""
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
-        # self.deployment_state_manager.shutdown()
+        self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
         if self.http_state:
             self.http_state.shutdown()

@@ -184,7 +184,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     V2 = V1.options(func_or_class=V2, version="2")
     serve.run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(f"app_{V2.name}", timeout_s=0.1)
+        client._wait_for_application_running("app", timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     ray.kill(serve.context._global_client._controller, no_restart=False)
@@ -197,7 +197,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_deployment_healthy(f"app_{V2.name}")
+    client._wait_for_application_running("app")
     make_nonblocking_calls({"2": 2}, num_returns=2)
 
 
@@ -243,7 +243,7 @@ def test_controller_recover_initializing_actor(serve_instance):
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())
-    client._wait_for_deployment_healthy(f"app_{V1.name}")
+    client._wait_for_application_running("app")
     # Make sure the actor before controller dead is staying alive.
     assert actor_tag == get_actor_info(f"app_{V1.name}")[0]
 

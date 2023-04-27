@@ -7,7 +7,6 @@ import time
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import DeploymentInfo
 
 import ray
@@ -89,44 +88,23 @@ def get_deploy_args(
 
 
 def deploy_args_to_deployment_info(
-    # Change to deployment_name
-    name: str,
+    deployment_name: str,
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
-    previous_deployment: DeploymentInfo,
     is_driver_deployment: Optional[bool] = False,
     app_name: str = None,
-    route_prefix=None,
-    docs_path=None,
+    **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.
     """
     # remove
-    deployment_name = name
-
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
     version = deployment_config.version
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
-
-    autoscaling_config = deployment_config.autoscaling_config
-    if autoscaling_config is not None:
-        if autoscaling_config.initial_replicas is not None:
-            deployment_config.num_replicas = autoscaling_config.initial_replicas
-        else:
-            if previous_deployment is None:
-                deployment_config.num_replicas = autoscaling_config.min_replicas
-            else:
-                deployment_config.num_replicas = (
-                    previous_deployment.deployment_config.num_replicas
-                )
-
-        autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
-    else:
-        autoscaling_policy = None
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
@@ -142,7 +120,6 @@ def deploy_args_to_deployment_info(
         replica_config=replica_config,
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
-        autoscaling_policy=autoscaling_policy,
         is_driver_deployment=is_driver_deployment,
     )
 

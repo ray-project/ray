@@ -154,6 +154,39 @@ class ServeControllerClient:
                 f"Deployments still alive: {live_names}."
             )
 
+    def _wait_for_application_running(self, name: str, timeout_s: int = -1):
+        """Waits for the named application to enter "RUNNING" status.
+
+        Raises RuntimeError if the application enters the "DEPLOY_FAILED" status
+        instead.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+
+            status_bytes = ray.get(self._controller.get_serve_status.remote(name))
+            status = StatusOverview.from_proto(
+                StatusOverviewProto.FromString(status_bytes)
+            )
+
+            if status.app_status.status == ApplicationStatus.RUNNING:
+                break
+            elif status.app_status.status == ApplicationStatus.DEPLOY_FAILED:
+                raise RuntimeError(
+                    f"Deploying application {name} failed: {status.app_status.message}"
+                )
+
+            logger.debug(
+                f"Waiting for {name} to be RUNNING, current status: "
+                f"{status.app_status.status}."
+            )
+            time.sleep(CLIENT_POLLING_INTERVAL_S)
+        else:
+            raise TimeoutError(
+                f"Application {name} did not become RUNNING after {timeout_s}s."
+            )
+
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
         """Waits for the named deployment to enter "HEALTHY" status.
 
@@ -174,7 +207,6 @@ class ServeControllerClient:
             status = DeploymentStatusInfo.from_proto(
                 DeploymentStatusInfoProto.FromString(status_bytes)
             )
-
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
@@ -289,14 +321,14 @@ class ServeControllerClient:
                 self.log_deployment_update_status(deployment_name, version, updating)
             )
 
+        if _blocking:
+            self._wait_for_application_running(name, timeout_s=15)
+
         for i, deployment in enumerate(deployments):
             deployment_name = deployment["name"]
             url = deployment["url"]
 
             if _blocking:
-                # Give time to the controller to run update
-                time.sleep(0.1)
-                self._wait_for_deployment_healthy(deployment_name, timeout_s=15)
                 self.log_deployment_ready(deployment_name, version, url, tags[i])
 
         if remove_past_deployments:

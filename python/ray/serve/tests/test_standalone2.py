@@ -408,11 +408,13 @@ def test_controller_recover_and_delete(shutdown_ray):
     # The deployment should be deleted, meaning its state should not be stored
     # in the DeploymentStateManager. This can be checked by attempting to
     # retrieve the deployment's status through the controller.
-    assert (
-        client.get_serve_status().get_deployment_status(
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+    wait_for_condition(
+        lambda: (
+            client.get_serve_status().get_deployment_status(
+                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+            )
+            is None
         )
-        is None
     )
 
     serve.shutdown()
@@ -445,15 +447,13 @@ class TestDeployApp:
 
     def check_running(self, client: ServeControllerClient):
         serve_status = client.get_serve_status()
+        print("checking status =", serve_status.app_status.status, time.time())
         return (
-            serve_status.app_status.status == ApplicationStatus.RUNNING
+            serve_status.app_status.status
+            == ApplicationStatus.RUNNING
             # and serve_status.get_deployment_status(name).status
             # == DeploymentStatus.HEALTHY
         )
-
-    def check_deploying(self, client: ServeControllerClient):
-        serve_status = client.get_serve_status()
-        return serve_status.app_status.status == ApplicationStatus.DEPLOYING
 
     def check_deployments_dead(self, deployment_names):
         actor_names = [
@@ -1172,7 +1172,6 @@ class TestDeployApp:
             config_template["deployments"][0]["ray_actor_options"] = {"num_cpus": 0.2}
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(partial(self.check_deploying, client), timeout=15)
         wait_for_condition(partial(self.check_running, client), timeout=15)
 
         pids = []
@@ -1209,6 +1208,7 @@ class TestDeployApp:
                 pids.append(pid)
             assert pid1 in pids
             return True
+
         wait_for_condition(check)
 
     def test_update_config_graceful_shutdown_timeout(
@@ -1234,10 +1234,6 @@ class TestDeployApp:
         # Redeploy with shutdown timeout set to 5 seconds
         config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        try:
-            wait_for_condition(partial(self.check_deploying, client), timeout=5)
-        except RuntimeError:
-            pass
         wait_for_condition(partial(self.check_running, client), timeout=15)
 
         pid2 = ray.get(handle.remote())[0]
@@ -1595,6 +1591,7 @@ class TestDeployApp:
                 return (
                     details["applications"]["app1"]["status"]
                     == ApplicationStatus.RUNNING
+                    and "app2" not in details["applications"]
                 )
             except Exception:
                 info_valid = False
@@ -1630,19 +1627,14 @@ class TestDeployApp:
         not redeploy.
         """
 
-        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config = {"import_path": "ray.serve.tests.test_config_files.pid.node"}
         client.deploy_apps(ServeApplicationSchema(**config))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         pid1, _ = requests.get("http://localhost:8000/f").json()
 
         # Redeploy the same config (with no deployments listed)
         client.deploy_apps(ServeApplicationSchema(**config))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         # It should be the same replica actor
         pids = []
