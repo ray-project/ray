@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass
 
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
@@ -145,14 +146,6 @@ class SyncConfig:
         Note that self.syncer is omitted here; seems to have some overlap
         with existing configuration settings here in the SyncConfig class.
         """
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {

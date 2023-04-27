@@ -4495,7 +4495,7 @@ class Datastream(Generic[T]):
         ["ipywidgets", "8"],
     )
     def _tab_repr_(self):
-        from tabulate import tabulate
+        from ray._private.thirdparty.tabulate.tabulate import tabulate
         from ipywidgets import Tab, HTML
 
         metadata = {

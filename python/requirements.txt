@@ -38,7 +38,6 @@ uvicorn
 py-spy>=0.2.0
 rich
 urllib3
-tabulate
 scikit-image
 scipy
 aiohttp>=3.7
