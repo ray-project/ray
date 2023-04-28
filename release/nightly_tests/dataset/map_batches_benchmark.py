@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset, MaterializedDatastream
 
 from benchmark import Benchmark
 
@@ -22,9 +22,8 @@ def map_batches(
     is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
 
+    assert isinstance(input_ds, MaterializedDatastream)
     ds = input_ds
-    if is_eager_executed:
-        ds.cache()
 
     for _ in range(num_calls):
         ds = ds.map_batches(
@@ -34,16 +33,14 @@ def map_batches(
             compute=compute,
         )
         if is_eager_executed:
-            ds.cache()
+            ds = ds.materialize()
     return ds
 
 
 def run_map_batches_benchmark(benchmark: Benchmark):
     input_ds = ray.data.read_parquet(
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018/01"
-    )
-    lazy_input_ds = input_ds.lazy()
-    input_ds.cache()
+    ).materialize()
 
     batch_formats = ["pandas", "numpy"]
     batch_sizes = [1024, 2048, 4096, None]
@@ -52,16 +49,6 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # Test different batch_size of map_batches.
     for batch_format in batch_formats:
         for batch_size in batch_sizes:
-            # TODO(chengsu): https://github.com/ray-project/ray/issues/31108
-            # Investigate why NumPy with batch_size being 1024, took much longer
-            # to finish.
-            if (
-                batch_format == "numpy"
-                and batch_size is not None
-                and batch_size == 1024
-            ):
-                continue
-
             num_calls = 2
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-eager"
             benchmark.run(
@@ -77,7 +64,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
             benchmark.run(
                 test_name,
                 map_batches,
-                input_ds=lazy_input_ds,
+                input_ds=input_ds,
                 batch_format=batch_format,
                 batch_size=batch_size,
                 num_calls=num_calls,
@@ -113,7 +100,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
             benchmark.run(
                 test_name,
                 map_batches,
-                input_ds=lazy_input_ds,
+                input_ds=input_ds,
                 batch_format=batch_format,
                 batch_size=batch_size,
                 compute=compute,
@@ -124,7 +111,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     for current_format in ["pyarrow", "pandas"]:
         new_input_ds = input_ds.map_batches(
             lambda ds: ds, batch_format=current_format, batch_size=None
-        ).cache()
+        ).materialize()
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"map-batches-{current_format}-to-{new_format}-{batch_size}"
@@ -140,7 +127,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # Test reading multiple files.
     input_ds = ray.data.read_parquet(
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018"
-    ).cache()
+    ).materialize()
 
     for batch_format in batch_formats:
         for compute in ["tasks", "actors"]:

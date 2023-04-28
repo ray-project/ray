@@ -11,13 +11,13 @@ import {
 
 type CommonRecentCardProps = {
   headerTitle: string;
-  items: RecentListItem[];
+  items: ListItem[];
   emptyListText: string;
   footerText: string;
   footerLink: string;
 } & ClassNameProps;
 
-type RecentListItem = {
+type ListItem = {
   title: string | undefined;
   subtitle: string;
   link: string | undefined;
@@ -58,7 +58,7 @@ export const CommonRecentCard = ({
     <OverviewCard className={classNames(classes.root, className)}>
       <Typography variant="h3">{headerTitle}</Typography>
       <div className={classes.listContainer}>
-        {items.map((item: RecentListItem) => (
+        {items.map((item: ListItem) => (
           <ListItem {...item} className={classes.listItem} />
         ))}
         {items.length === 0 && (
@@ -96,13 +96,7 @@ const useListItemStyles = makeStyles((theme) =>
   }),
 );
 
-const ListItem = ({
-  icon,
-  title,
-  subtitle,
-  className,
-  link,
-}: RecentListItem) => {
+const ListItem = ({ icon, title, subtitle, className, link }: ListItem) => {
   const classes = useListItemStyles();
 
   const cardContent = (

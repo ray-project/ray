@@ -514,6 +514,7 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
             "InternalKVGcsService.grpc_server.InternalKVGet=2000000:2000000",
         )
         m.setenv("RAY_worker_register_timeout_seconds", "1")
+        m.setenv("RAY_prestart_worker_first_driver", "false")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
         script = """
@@ -697,6 +698,25 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
             ray.get(ref)
         message = str(error)
         assert raylet["NodeManagerAddress"] in message
+
+
+def test_accessing_actor_after_cluster_crashed(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        def f(self):
+            return
+
+    a = A.remote()
+
+    ray.get(a.f.remote())
+
+    ray.shutdown()
+    ray.init()
+    with pytest.raises(Exception) as exc_info:
+        ray.get(a.f.remote())
+    assert "It might be dead or it's from a different cluster" in exc_info.value.args[0]
 
 
 if __name__ == "__main__":

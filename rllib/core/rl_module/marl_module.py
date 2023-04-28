@@ -55,12 +55,9 @@ class MultiAgentRLModule(RLModule):
 
         super().__init__(config)
 
-        # self.build() will abstract the construction of rl_modules
+    def setup(self):
+        """Sets up the underlying RLModules."""
         self._rl_modules = {}
-        self.build()
-
-    def build(self):
-        """Builds the underlying RLModules."""
         self.__check_module_configs(self.config.modules)
         for module_id, module_spec in self.config.modules.items():
             self._rl_modules[module_id] = module_spec.build()
@@ -271,43 +268,44 @@ class MultiAgentRLModule(RLModule):
         for module_id, state in state_dict.items():
             self._rl_modules[module_id].set_state(state)
 
-    def save_state_to_dir(self, dir: Union[str, pathlib.Path]) -> str:
+    @override(RLModule)
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this MultiAgentRLModule to dir.
 
         Args:
-            dir: The directory to save the checkpoint to.
+            path: The path to the directory to save the checkpoint to.
 
-        Returns:
-            The path to the saved checkpoint.
         """
-        dir = pathlib.Path(dir)
-        dir.mkdir(parents=True, exist_ok=True)
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
         for module_id, module in self._rl_modules.items():
-            module.save_to_checkpoint(str(dir / module_id))
+            module.save_to_checkpoint(str(path / module_id))
 
-    def load_state_from_dir(
+    @override(RLModule)
+    def load_state(
         self,
-        dir: Union[str, pathlib.Path],
+        path: Union[str, pathlib.Path],
         modules_to_load: Optional[Set[ModuleID]] = None,
     ) -> None:
         """Loads the weights of an MultiAgentRLModule from dir.
-
-        Args:
-            dir: The directory to load the state from.
-            modules_to_load: The modules whose state is to be loaded from the dir. If
-                this is None, all modules that are checkpointed will be loaded into this
-                marl module.
 
         NOTE:
             If you want to load a module that is not already
             in this MultiAgentRLModule, you should add it to this MultiAgentRLModule
             before loading the checkpoint.
 
+        Args:
+            path: The path to the directory to load the state from.
+            modules_to_load: The modules whose state is to be loaded from the path. If
+                this is None, all modules that are checkpointed will be loaded into this
+                marl module.
+
+
         """
-        dir = pathlib.Path(dir)
+        path = pathlib.Path(path)
         if not modules_to_load:
             modules_to_load = set(self._rl_modules.keys())
-        dir.mkdir(parents=True, exist_ok=True)
+        path.mkdir(parents=True, exist_ok=True)
         for submodule_id in modules_to_load:
             if submodule_id not in self._rl_modules:
                 raise ValueError(
@@ -315,22 +313,22 @@ class MultiAgentRLModule(RLModule):
                     f"{modules_to_load} not found in this MultiAgentRLModule."
                 )
             submodule = self._rl_modules[submodule_id]
-            submodule_weights_dir = dir / submodule_id / RLMODULE_STATE_DIR_NAME
+            submodule_weights_dir = path / submodule_id / RLMODULE_STATE_DIR_NAME
             if not submodule_weights_dir.exists():
                 raise ValueError(
                     f"Submodule {submodule_id}'s module state directory: "
-                    f"{submodule_weights_dir} not found in checkpoint dir {dir}."
+                    f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
             submodule_weights_path = (
                 submodule_weights_dir / submodule._module_state_file_name()
             )
-            submodule.load_state_from_file(submodule_weights_path)
+            submodule.load_state(submodule_weights_path)
 
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(checkpoint_dir_path)
         path.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_dir(path)
+        self.save_state(path)
         self._save_module_metadata(path, MultiAgentRLModuleSpec)
 
     @classmethod
@@ -339,7 +337,7 @@ class MultiAgentRLModule(RLModule):
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
-        marl_module.load_state_from_dir(path)
+        marl_module.load_state(path)
         return marl_module
 
     def __repr__(self) -> str:
@@ -484,8 +482,12 @@ class MultiAgentRLModuleSpec:
         Returns:
             The MultiAgentRLModuleSpec.
         """
+        # we want to get the spec of the underlying unwrapped module that way we can
+        # easily reconstruct it. The only wrappers that we expect to support today are
+        # wrappers that allow us to do distributed training. Those will be added back
+        # by the learner if necessary.
         module_specs = {
-            module_id: SingleAgentRLModuleSpec.from_module(rl_module)
+            module_id: SingleAgentRLModuleSpec.from_module(rl_module.unwrapped())
             for module_id, rl_module in module._rl_modules.items()
         }
         marl_module_class = module.__class__

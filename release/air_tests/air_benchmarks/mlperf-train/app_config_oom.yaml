@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_CPU"] | default("anyscale/ray-ml:2.3.1-py37-cpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_CPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
 env_vars: {"RAY_task_oom_retries": "50", "RAY_min_memory_free_bytes": "1000000000"}
 debian_packages:
   - curl

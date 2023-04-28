@@ -1,8 +1,13 @@
+<<<<<<< HEAD
 import { Grid, makeStyles } from "@material-ui/core";
+=======
+import { Box, makeStyles, Typography } from "@material-ui/core";
+>>>>>>> upstream/master
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
+<<<<<<< HEAD
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import {
@@ -13,29 +18,47 @@ import {
   NodeStatusCard,
   ResourceStatusCard,
 } from "../../components/JobStatusCards";
+=======
+import { Section } from "../../common/Section";
+>>>>>>> upstream/master
 import Loading from "../../components/Loading";
-import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
 import ActorList from "../actor/ActorList";
+import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
 
 import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
+import { JobMetadataSection } from "./JobDetailInfoPage";
+import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
+    backgroundColor: "white",
+  },
+  section: {
+    marginBottom: theme.spacing(4),
+  },
+  autoscalerSection: {
+    flexWrap: "wrap",
+    [theme.breakpoints.up("md")]: {
+      flexWrap: "nowrap",
+    },
+  },
+  nodeCountCard: {
+    flex: "1 0 500px",
   },
 }));
 
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail();
+  const { job, msg, isLoading, params } = useJobDetail();
   const jobId = params.id;
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
@@ -46,12 +69,42 @@ export const JobDetailChartsPage = () => {
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
 
+<<<<<<< HEAD
   const { cluster_status } = useRayStatus();
+=======
+  const formatClusterStatus = (title: string, cluster_status: string) => {
+    const cluster_status_rows = cluster_status.split("\n");
+
+    return (
+      <div>
+        <Box marginBottom={2}>
+          <Typography variant="h6">{title}</Typography>
+        </Box>
+        {cluster_status_rows.map((i, key) => {
+          // Format the output.
+          // See format_info_string in util.py
+          if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
+            // Ignore separators
+            return null;
+          } else if (i.endsWith(":")) {
+            return (
+              <div key={key}>
+                <b>{i}</b>
+              </div>
+            );
+          } else {
+            return <div key={key}>{i}</div>;
+          }
+        })}
+      </div>
+    );
+  };
+>>>>>>> upstream/master
 
   if (!job) {
     return (
       <div className={classes.root}>
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
@@ -97,6 +150,7 @@ export const JobDetailChartsPage = () => {
 
   return (
     <div className={classes.root}>
+<<<<<<< HEAD
       <TitleCard title={`JOB - ${params.id}`}>
         <MetadataSection
           metadataList={[
@@ -208,35 +262,134 @@ export const JobDetailChartsPage = () => {
             setTaskTableExpanded(!taskTableExpanded);
           }}
         >
+=======
+      <JobMetadataSection job={job} />
+
+      <CollapsibleSection
+        title="Tasks/actor overview (beta)"
+        startExpanded
+        className={classes.section}
+      >
+        <Section>
+          <JobProgressBar
+            jobId={jobId}
+            job={job}
+            onClickLink={handleClickLink}
+          />
+        </Section>
+      </CollapsibleSection>
+
+      {job.type === "SUBMISSION" && (
+        <CollapsibleSection
+          title="Driver logs"
+          startExpanded
+          className={classes.section}
+        >
+          <Section>
+            <JobDriverLogs job={job} />
+          </Section>
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection
+        title="Task Timeline (beta)"
+        startExpanded
+        className={classes.section}
+      >
+        <Section>
+          <TaskTimeline jobId={jobId} />
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Autoscaler"
+        startExpanded
+        className={classes.section}
+      >
+        <Box
+          display="flex"
+          flexDirection="row"
+          gridGap={24}
+          alignItems="stretch"
+          className={classes.autoscalerSection}
+        >
+          <NodeCountCard className={classes.nodeCountCard} />
+          <Section flex="1 1 500px">
+            <Box
+              style={{
+                overflow: "hidden",
+                overflowY: "scroll",
+              }}
+              sx={{ borderRadius: "16px" }}
+              marginLeft={1}
+              marginRight={1}
+            >
+              {cluster_status?.data
+                ? formatNodeStatus(cluster_status?.data.clusterStatus)
+                : "No cluster status."}
+            </Box>
+          </Section>
+          <Section flex="1 1 500px">
+            <Box
+              style={{
+                overflow: "hidden",
+                overflowY: "scroll",
+              }}
+              sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
+              marginLeft={1}
+              marginRight={1}
+            >
+              {cluster_status?.data
+                ? formatResourcesStatus(cluster_status?.data.clusterStatus)
+                : "No cluster status."}
+            </Box>
+          </Section>
+        </Box>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        ref={taskTableRef}
+        title="Task Table"
+        expanded={taskTableExpanded}
+        onExpandButtonClick={() => {
+          setTaskTableExpanded(!taskTableExpanded);
+        }}
+        className={classes.section}
+      >
+        <Section>
+>>>>>>> upstream/master
           <TaskList
             jobId={jobId}
             filterToTaskId={taskListFilter}
             onFilterChange={handleTaskListFilterChange}
           />
-        </CollapsibleSection>
-      </TitleCard>
-      <TitleCard>
-        <CollapsibleSection
-          ref={actorTableRef}
-          title="Actors"
-          expanded={actorTableExpanded}
-          onExpandButtonClick={() => {
-            setActorTableExpanded(!actorTableExpanded);
-          }}
-        >
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        ref={actorTableRef}
+        title="Actors"
+        expanded={actorTableExpanded}
+        onExpandButtonClick={() => {
+          setActorTableExpanded(!actorTableExpanded);
+        }}
+        className={classes.section}
+      >
+        <Section>
           <ActorList
             jobId={jobId}
             filterToActorId={actorListFilter}
             onFilterChange={handleActorListFilterChange}
             detailPathPrefix="actors"
           />
-        </CollapsibleSection>
-      </TitleCard>
-      <TitleCard>
-        <CollapsibleSection title="Placement Groups">
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Placement Groups" className={classes.section}>
+        <Section>
           <PlacementGroupList jobId={jobId} />
-        </CollapsibleSection>
-      </TitleCard>
+        </Section>
+      </CollapsibleSection>
     </div>
   );
 };

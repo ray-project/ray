@@ -18,6 +18,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     def __init__(self, config: RLModuleConfig) -> None:
         super().__init__(config)
 
+    def setup(self):
         input_dim = self.config.observation_space.shape[0]
         hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
         output_dim = self.config.action_space.n
@@ -114,8 +115,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
     def __init__(self, config: MultiAgentRLModuleConfig) -> None:
         super().__init__(config)
 
-    def build(self):
-
+    def setup(self):
         module_specs = self.config.modules
         module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]

@@ -32,7 +32,7 @@ class TestTorchVisionPreprocessor:
         ],
     )
     def test_transform_images(self, transform):
-        dataset = ray.data.from_items(
+        datastream = ray.data.from_items(
             [
                 {"image": np.zeros((32, 32, 3)), "label": 0},
                 {"image": np.zeros((32, 32, 3)), "label": 1},
@@ -40,19 +40,19 @@ class TestTorchVisionPreprocessor:
         )
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
-        transformed_dataset = preprocessor.transform(dataset)
+        transformed_datastream = preprocessor.transform(datastream)
 
-        assert transformed_dataset.schema().names == ["image", "label"]
+        assert transformed_datastream.schema().names == ["image", "label"]
         transformed_images = [
-            record["image"] for record in transformed_dataset.take_all()
+            record["image"] for record in transformed_datastream.take_all()
         ]
         assert all(image.shape == (3, 32, 32) for image in transformed_images)
         assert all(image.dtype == np.double for image in transformed_images)
-        labels = {record["label"] for record in transformed_dataset.take_all()}
+        labels = {record["label"] for record in transformed_datastream.take_all()}
         assert labels == {0, 1}
 
     def test_batch_transform_images(self):
-        dataset = ray.data.from_items(
+        datastream = ray.data.from_items(
             [
                 {"image": np.zeros((32, 32, 3)), "label": 0},
                 {"image": np.zeros((32, 32, 3)), "label": 1},
@@ -70,19 +70,19 @@ class TestTorchVisionPreprocessor:
             columns=["image"], transform=transform, batched=True
         )
 
-        transformed_dataset = preprocessor.transform(dataset)
+        transformed_datastream = preprocessor.transform(datastream)
 
-        assert transformed_dataset.schema().names == ["image", "label"]
+        assert transformed_datastream.schema().names == ["image", "label"]
         transformed_images = [
-            record["image"] for record in transformed_dataset.take_all()
+            record["image"] for record in transformed_datastream.take_all()
         ]
         assert all(image.shape == (3, 64, 64) for image in transformed_images)
         assert all(image.dtype == np.double for image in transformed_images)
-        labels = {record["label"] for record in transformed_dataset.take_all()}
+        labels = {record["label"] for record in transformed_datastream.take_all()}
         assert labels == {0, 1}
 
     def test_transform_ragged_images(self):
-        dataset = ray.data.from_items(
+        datastream = ray.data.from_items(
             [
                 {"image": np.zeros((16, 16, 3)), "label": 0},
                 {"image": np.zeros((32, 32, 3)), "label": 1},
@@ -91,22 +91,22 @@ class TestTorchVisionPreprocessor:
         transform = transforms.ToTensor()
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
-        transformed_dataset = preprocessor.transform(dataset)
+        transformed_datastream = preprocessor.transform(datastream)
 
-        assert transformed_dataset.schema().names == ["image", "label"]
+        assert transformed_datastream.schema().names == ["image", "label"]
         transformed_images = [
-            record["image"] for record in transformed_dataset.take_all()
+            record["image"] for record in transformed_datastream.take_all()
         ]
         assert sorted(image.shape for image in transformed_images) == [
             (3, 16, 16),
             (3, 32, 32),
         ]
         assert all(image.dtype == np.double for image in transformed_images)
-        labels = {record["label"] for record in transformed_dataset.take_all()}
+        labels = {record["label"] for record in transformed_datastream.take_all()}
         assert labels == {0, 1}
 
     def test_invalid_transform_raises_value_error(self):
-        dataset = ray.data.from_items(
+        datastream = ray.data.from_items(
             [
                 {"image": np.zeros((32, 32, 3)), "label": 0},
                 {"image": np.zeros((32, 32, 3)), "label": 1},
@@ -118,7 +118,7 @@ class TestTorchVisionPreprocessor:
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         with pytest.raises(ValueError):
-            preprocessor.transform(dataset).cache()
+            preprocessor.transform(datastream).materialize()
 
 
 if __name__ == "__main__":

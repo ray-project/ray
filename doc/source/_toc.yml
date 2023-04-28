@@ -24,6 +24,7 @@ parts:
           - file: ray-core/examples/overview
             title: "Examples"
             sections:
+              - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
               - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
@@ -83,7 +84,7 @@ parts:
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
-      - file: data/dataset
+      - file: data/data
         title: Ray Data
         sections:
           - file: data/getting-started
@@ -94,10 +95,9 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch Training with Ray Datasets
+                title: Batch Training with Ray Data
               - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Datasets
-              - file: data/examples/advanced-pipelines
+                title: Scaling OCR with Ray Data
               - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api
@@ -128,7 +128,9 @@ parts:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
               - file: train/examples/lightning/lightning_mnist_example
-                title: "PyTorch Lightning MNIST Example"
+                title: "PyTorch Lightning Basic Example"
+              - file: train/examples/lightning/lightning_cola_advanced
+                title: "PyTorch Lightning Advanced Example"
               - file: train/examples/transformers/transformers_example
                 title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
@@ -262,10 +264,11 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:
                   - file: serve/production-guide/config
-                  - file: serve/production-guide/rest-api
+                  - file: serve/production-guide/deploy-vm
                   - file: serve/production-guide/kubernetes
                   - file: serve/production-guide/monitoring
                   - file: serve/production-guide/fault-tolerance
@@ -288,7 +291,7 @@ parts:
         title: Ray RLlib
         sections:
           - file: rllib/rllib-training
-          - file: rllib/core-concepts
+          - file: rllib/key-concepts
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
@@ -300,7 +303,9 @@ parts:
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
+              - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
+              - file: rllib/rllib-rlmodule
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli

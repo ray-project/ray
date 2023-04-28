@@ -223,10 +223,57 @@ py_test_run_all_subdirectory(
     include = ["source/data/doc_code/*.py"],
     exclude = [
         "source/ray-air/doc_code/predictors.py",
-        "source/data/doc_code/creating_datasets_untested.py"
+        "source/data/doc_code/creating_datastreams_untested.py"
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
+)
+
+# --------------------------------------------------------------------
+# Test all Workspace template notebooks in doc/source/templates
+# as smoke tests.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "workspace_templates",
+    srcs = glob(["source/templates/tests/*.ipynb"]),
+    visibility = ["//doc:__subpackages__"]
+)
+
+# Validate that all the paths and yamls within the templates.yaml file are valid.
+
+py_test(
+    name = "templates_directory_validation",
+    size = "small",
+    main = "source/templates/validate.py",
+    srcs = ["source/templates/validate.py"],
+    data = glob(["source/templates/**/*"]),
+    tags = ["exclusive", "team:ml"]
+)
+
+# Templates that only require CPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["source/templates/tests/many_model_training.ipynb"],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+    env = {"SMOKE_TEST": "1"},
+)
+
+# Templates that require GPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = [
+        "source/templates/tests/batch_inference.ipynb",
+        "source/templates/tests/serving_stable_diffusion.ipynb"
+    ],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
+    env = {"SMOKE_TEST": "1"},
 )
 
 # --------------
@@ -249,14 +296,4 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
-)
-
-py_test(
-    name = "lightning_mnist_example",
-    size = "large",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    data = ["//doc/source/train/examples/lightning:lightning_mnist_example"],
-    args = ["--path", "doc/source/train/examples/lightning/lightning_mnist_example.ipynb"]
 )
