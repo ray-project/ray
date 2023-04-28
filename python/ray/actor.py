@@ -800,13 +800,15 @@ class ActorClass:
         meta = self.__ray_metadata__
 
         # Find if async methods exist.
+        # We always have 1 async method by default
+        # __ray_async_generator_next__
         actor_has_async_methods = (
             len(
                 inspect.getmembers(
                     meta.modified_class, predicate=inspect.iscoroutinefunction
                 )
             )
-            > 0
+            > 1
         )
         is_asyncio = actor_has_async_methods
 

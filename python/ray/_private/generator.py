@@ -7,12 +7,12 @@ from ray.exceptions import RayTaskError, RayTaskStopIteration
 # @PrivateAPI
 class StreamingObjectRefGenerator:
     def __init__(
-            self,
-            session_id_object_ref: ObjectRef,
-            actor: "ray.actor.ActorHandle",
-            method_name: str,
-            is_gencoroutine: bool,
-        ):
+        self,
+        session_id_object_ref: ObjectRef,
+        actor: "ray.actor.ActorHandle",
+        method_name: str,
+        is_gencoroutine: bool,
+    ):
         # The first return value of generator actor method
         # always returns the session_id.
         self._session_id_object_ref = session_id_object_ref
