@@ -1,29 +1,12 @@
 import { createStyles, makeStyles } from "@material-ui/core";
-import classNames from "classnames";
 import _ from "lodash";
 import React from "react";
 import { JobStatusIcon } from "../../../common/JobStatus";
-import { CommonRecentCard } from "../../../components/ListItemCard";
+import { ListItemCard } from "../../../components/ListItemCard";
 import { useJobList } from "../../job/hook/useJobList";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      padding: theme.spacing(2, 3),
-    },
-    listContainer: {
-      marginTop: theme.spacing(2),
-      flex: 1,
-      overflow: "hidden",
-    },
-    listItem: {
-      "&:not(:first-child)": {
-        marginTop: theme.spacing(1),
-      },
-    },
-
     icon: {
       marginRight: theme.spacing(1),
     },
@@ -55,14 +38,13 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   });
 
   return (
-    <CommonRecentCard
+    <ListItemCard
       headerTitle="Recent jobs"
       className={className}
       items={sortedJobToRender}
       emptyListText="No jobs yet..."
       footerText="View all jobs"
       footerLink="/jobs"
-      icon={<JobStatusIcon className={classes.icon} job={job} />}
-    ></CommonRecentCard>
+    ></ListItemCard>
   );
 };

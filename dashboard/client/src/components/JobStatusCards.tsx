@@ -1,7 +1,6 @@
 import { Box, Typography } from "@material-ui/core";
 import React from "react";
 import { RayStatusResp } from "../service/status";
-import TitleCard from "./TitleCard";
 
 const formatNodeStatus = (cluster_status: string) => {
   // ==== auto scaling status
@@ -31,23 +30,21 @@ const formatClusterStatus = (title: string, cluster_status: string) => {
 
   return (
     <div>
-      <Typography variant="h6">
-        <b>{title}</b>
-      </Typography>
+      <Box marginBottom={2}>
+        <Typography variant="h6">{title}</Typography>
+      </Box>
       {cluster_status_rows.map((i, key) => {
         // Format the output.
         // See format_info_string in util.py
-        if (i.startsWith("-----") || i.startsWith("=====")) {
-          // Separator
-          return <div key={key} />;
+        if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
+          // Ignore separators
+          return null;
         } else if (i.endsWith(":")) {
           return (
             <div key={key}>
               <b>{i}</b>
             </div>
           );
-        } else if (i === "") {
-          return <br key={key} />;
         } else {
           return <div key={key}>{i}</div>;
         }
@@ -63,15 +60,13 @@ type StatusCardProps = {
 export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
   return (
     <Box
-      mb={2}
-      display="flex"
-      flexDirection="column"
-      height="300px"
       style={{
         overflow: "hidden",
         overflowY: "scroll",
       }}
       sx={{ borderRadius: "16px" }}
+      marginLeft={1}
+      marginRight={1}
     >
       {cluster_status?.data
         ? formatNodeStatus(cluster_status?.data.clusterStatus)
@@ -83,15 +78,13 @@ export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
 export const ResourceStatusCard = ({ cluster_status }: StatusCardProps) => {
   return (
     <Box
-      mb={2}
-      display="flex"
-      flexDirection="column"
-      height="300px"
       style={{
         overflow: "hidden",
         overflowY: "scroll",
       }}
       sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
+      marginLeft={1}
+      marginRight={1}
     >
       {cluster_status?.data
         ? formatResourcesStatus(cluster_status?.data.clusterStatus)

@@ -1,26 +1,13 @@
-<<<<<<< HEAD
-import { Grid, makeStyles } from "@material-ui/core";
-=======
 import { Box, makeStyles, Typography } from "@material-ui/core";
->>>>>>> upstream/master
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
-<<<<<<< HEAD
-import { DurationText } from "../../common/DurationText";
-import { formatDateFromTimeMs } from "../../common/formatUtils";
-import {
-  CpuProfilingLink,
-  CpuStackTraceLink,
-} from "../../common/ProfilingLink";
+import { Section } from "../../common/Section";
 import {
   NodeStatusCard,
   ResourceStatusCard,
 } from "../../components/JobStatusCards";
-=======
-import { Section } from "../../common/Section";
->>>>>>> upstream/master
 import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
@@ -29,7 +16,6 @@ import ActorList from "../actor/ActorList";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
-
 import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
 import { JobMetadataSection } from "./JobDetailInfoPage";
@@ -68,10 +54,31 @@ export const JobDetailChartsPage = () => {
   const [actorListFilter, setActorListFilter] = useState<string>();
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
-
-<<<<<<< HEAD
   const { cluster_status } = useRayStatus();
-=======
+
+  const formatNodeStatus = (cluster_status: string) => {
+    // ==== auto scaling status
+    // Node status
+    // ....
+    // Resources
+    // ....
+    const sections = cluster_status.split("Resources");
+    return formatClusterStatus(
+      "Node Status",
+      sections[0].split("Node status")[1],
+    );
+  };
+
+  const formatResourcesStatus = (cluster_status: string) => {
+    // ==== auto scaling status
+    // Node status
+    // ....
+    // Resources
+    // ....
+    const sections = cluster_status.split("Resources");
+    return formatClusterStatus("Resource Status", sections[1]);
+  };
+
   const formatClusterStatus = (title: string, cluster_status: string) => {
     const cluster_status_rows = cluster_status.split("\n");
 
@@ -99,7 +106,6 @@ export const JobDetailChartsPage = () => {
       </div>
     );
   };
->>>>>>> upstream/master
 
   if (!job) {
     return (
@@ -150,119 +156,6 @@ export const JobDetailChartsPage = () => {
 
   return (
     <div className={classes.root}>
-<<<<<<< HEAD
-      <TitleCard title={`JOB - ${params.id}`}>
-        <MetadataSection
-          metadataList={[
-            {
-              label: "Entrypoint",
-              content: job.entrypoint
-                ? {
-                    value: job.entrypoint,
-                    copyableValue: job.entrypoint,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Status",
-              content: <StatusChip type="job" status={job.status} />,
-            },
-            {
-              label: "Job ID",
-              content: job.job_id
-                ? {
-                    value: job.job_id,
-                    copyableValue: job.job_id,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Submission ID",
-              content: job.submission_id
-                ? {
-                    value: job.submission_id,
-                    copyableValue: job.submission_id,
-                  }
-                : {
-                    value: "-",
-                  },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
-            },
-            {
-              label: "Started at",
-              content: {
-                value: job.start_time
-                  ? formatDateFromTimeMs(job.start_time)
-                  : "-",
-              },
-            },
-            {
-              label: "Ended at",
-              content: {
-                value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
-              },
-            },
-            {
-              label: "Actions",
-              content: (
-                <div>
-                  <JobLogsLink job={job} />
-                  <br />
-                  <CpuProfilingLink
-                    pid={job.driver_info?.pid}
-                    ip={job.driver_info?.node_ip_address}
-                    type="Driver"
-                  />
-                  <br />
-                  <CpuStackTraceLink
-                    pid={job.driver_info?.pid}
-                    ip={job.driver_info?.node_ip_address}
-                    type="Driver"
-                  />
-                </div>
-              ),
-            },
-          ]}
-        />
-      </TitleCard>
-      <TitleCard title="Tasks (beta)">
-        <JobProgressBar jobId={jobId} job={job} onClickLink={handleClickLink} />
-      </TitleCard>
-      <TitleCard title="Task Timeline (beta)">
-        <TaskTimeline jobId={jobId} />
-      </TitleCard>
-      <Grid container>
-        <Grid item xs={4}>
-          <TitleCard title="">
-            <NodeStatusCard cluster_status={cluster_status} />
-          </TitleCard>
-        </Grid>
-        <Grid item xs={4}>
-          <TitleCard title="">
-            <ResourceStatusCard cluster_status={cluster_status} />
-          </TitleCard>
-        </Grid>
-      </Grid>
-      <TitleCard>
-        <CollapsibleSection
-          ref={taskTableRef}
-          title="Task Table"
-          expanded={taskTableExpanded}
-          onExpandButtonClick={() => {
-            setTaskTableExpanded(!taskTableExpanded);
-          }}
-        >
-=======
       <JobMetadataSection job={job} />
 
       <CollapsibleSection
@@ -315,34 +208,10 @@ export const JobDetailChartsPage = () => {
         >
           <NodeCountCard className={classes.nodeCountCard} />
           <Section flex="1 1 500px">
-            <Box
-              style={{
-                overflow: "hidden",
-                overflowY: "scroll",
-              }}
-              sx={{ borderRadius: "16px" }}
-              marginLeft={1}
-              marginRight={1}
-            >
-              {cluster_status?.data
-                ? formatNodeStatus(cluster_status?.data.clusterStatus)
-                : "No cluster status."}
-            </Box>
+            <NodeStatusCard cluster_status={cluster_status} />
           </Section>
           <Section flex="1 1 500px">
-            <Box
-              style={{
-                overflow: "hidden",
-                overflowY: "scroll",
-              }}
-              sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
-              marginLeft={1}
-              marginRight={1}
-            >
-              {cluster_status?.data
-                ? formatResourcesStatus(cluster_status?.data.clusterStatus)
-                : "No cluster status."}
-            </Box>
+            <ResourceStatusCard cluster_status={cluster_status} />
           </Section>
         </Box>
       </CollapsibleSection>
@@ -357,7 +226,6 @@ export const JobDetailChartsPage = () => {
         className={classes.section}
       >
         <Section>
->>>>>>> upstream/master
           <TaskList
             jobId={jobId}
             filterToTaskId={taskListFilter}

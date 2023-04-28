@@ -1,43 +1,14 @@
 import { createStyles, makeStyles } from "@material-ui/core";
-import classNames from "classnames";
 import _ from "lodash";
 import React from "react";
-import {
-  RiCheckboxCircleFill,
-  RiCloseCircleFill,
-  RiLoader4Line,
-} from "react-icons/ri";
-import { CommonRecentCard } from "../../../components/ListItemCard";
+import { ServeStatusIcon } from "../../../common/ServeStatus";
+import { ListItemCard } from "../../../components/ListItemCard";
 import { useServeApplications } from "../../serve/hook/useServeApplications";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
     icon: {
-      width: 24,
-      height: 24,
       marginRight: theme.spacing(1),
-      flex: "0 0 20px",
-    },
-    "@keyframes spinner": {
-      from: {
-        transform: "rotate(0deg)",
-      },
-      to: {
-        transform: "rotate(360deg)",
-      },
-    },
-    colorSuccess: {
-      color: theme.palette.success.main,
-    },
-    colorError: {
-      color: theme.palette.error.main,
-    },
-    iconRunning: {
-      color: "#1E88E5",
-      animationName: "$spinner",
-      animationDuration: "1000ms",
-      animationIterationCount: "infinite",
-      animationTimingFunction: "linear",
     },
   }),
 );
@@ -108,41 +79,17 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
   ).slice(0, 6);
 
   const sortedApplicationsToRender = sortedApplications.map((app) => {
-    const icon = (() => {
-      switch (app.status) {
-        case "NOT_STARTED":
-          return (
-            <RiCheckboxCircleFill
-              className={classNames(classes.icon, classes.colorSuccess)}
-            />
-          );
-        case "RUNNING":
-        case "DEPLOY_FAILED":
-          return (
-            <RiCloseCircleFill
-              className={classNames(classes.icon, classes.colorError)}
-            />
-          );
-        default:
-          return (
-            <RiLoader4Line
-              className={classNames(classes.icon, classes.iconRunning)}
-            />
-          );
-      }
-    })();
-
     return {
       title: app.name,
       subtitle: app.route_prefix,
       link: app.name ? `/serve/applications/${app.route_prefix}` : undefined,
       className: className,
-      icon: icon,
+      icon: <ServeStatusIcon className={classes.icon} app={app} />,
     };
   });
 
   return (
-    <CommonRecentCard
+    <ListItemCard
       headerTitle="Recent Applications"
       className={className}
       items={sortedApplicationsToRender}

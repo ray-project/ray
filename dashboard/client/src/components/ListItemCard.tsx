@@ -9,15 +9,15 @@ import {
   OverviewCard,
 } from "../pages/overview/cards/OverviewCard";
 
-type CommonRecentCardProps = {
+type ListItemCardProps = {
   headerTitle: string;
-  items: ListItem[];
+  items: ListItemProps[];
   emptyListText: string;
   footerText: string;
   footerLink: string;
 } & ClassNameProps;
 
-type ListItem = {
+type ListItemProps = {
   title: string | undefined;
   subtitle: string;
   link: string | undefined;
@@ -44,21 +44,21 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export const CommonRecentCard = ({
+export const ListItemCard = ({
   className,
   headerTitle,
   items,
   emptyListText: itemEmptyTip,
   footerText,
   footerLink,
-}: CommonRecentCardProps) => {
+}: ListItemCardProps) => {
   const classes = useStyles();
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>
       <Typography variant="h3">{headerTitle}</Typography>
       <div className={classes.listContainer}>
-        {items.map((item: ListItem) => (
+        {items.map((item: ListItemProps) => (
           <ListItem {...item} className={classes.listItem} />
         ))}
         {items.length === 0 && (
@@ -96,7 +96,13 @@ const useListItemStyles = makeStyles((theme) =>
   }),
 );
 
-const ListItem = ({ icon, title, subtitle, className, link }: ListItem) => {
+const ListItem = ({
+  icon,
+  title,
+  subtitle,
+  className,
+  link,
+}: ListItemProps) => {
   const classes = useListItemStyles();
 
   const cardContent = (
