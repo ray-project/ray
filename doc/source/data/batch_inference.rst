@@ -90,7 +90,7 @@ We start with very simple use cases here and build up to more complex ones in ot
 1. Loading and preprocessing data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For this quick-start guide we'll simply use very small, in-memory data sets by
+For this quick start guide we use very small, in-memory data sets by
 leveraging common Python libraries like NumPy and Pandas.
 In general, once you loaded your datasets using Ray Data, you also want to apply some preprocessing steps.
 We skip this step here for simplicity.
