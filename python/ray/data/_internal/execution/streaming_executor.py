@@ -84,7 +84,6 @@ class StreamingExecutor(Executor, threading.Thread):
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
 
-        context = DataContext.get_current()
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
 
