@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Union, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Union, Optional, Mapping
 
 import numpy as np
 
@@ -128,8 +128,13 @@ class TorchVisionPreprocessor(Preprocessor):
                 [apply_torchvision_transform(array) for array in batch]
             )
 
-        for input_col, output_col in zip(self._columns, self._output_columns):
-            data_batch[output_col] = transform_batch(data_batch[input_col])
+        if isinstance(data_batch, Mapping):
+            for input_col, output_col in zip(self._columns, self._output_columns):
+                data_batch[output_col] = transform_batch(data_batch[input_col])
+        else:
+            # TODO(ekl) deprecate this code path. Unfortunately, predictors are still
+            # sending schemaless arrays to preprocessors.
+            data_batch = transform_batch(data_batch)
 
         return data_batch
 
