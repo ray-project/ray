@@ -90,11 +90,11 @@ def test_update_app_running():
     )
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
-    app_state_manager.deployment_state_manager.set_deployment_statuses_healthy(0)
+    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(0)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
-    app_state_manager.deployment_state_manager.set_deployment_statuses_healthy(1)
+    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(1)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.RUNNING
@@ -111,7 +111,7 @@ def test_update_app_deploy_failed():
     app_state_manager.deploy_application("test_app", [{"name": "d1"}])
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
-    app_state_manager.deployment_state_manager.set_deployment_statuses_unhealthy(0)
+    app_state_manager._deployment_state_manager.set_deployment_statuses_unhealthy(0)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
@@ -152,8 +152,8 @@ def test_config_deploy_app(fail_deploy):
         app_status = app_state_manager.get_app_status("test_app")
         assert app_status.status == ApplicationStatus.DEPLOY_FAILED
     else:
-        app_state_manager.deployment_state_manager.set_deployment_statuses_healthy(0)
-        app_state_manager.deployment_state_manager.set_deployment_statuses_healthy(1)
+        app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(0)
+        app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(1)
         app_state_manager.update()
         app_status = app_state_manager.get_app_status("test_app")
         assert app_status.status == ApplicationStatus.RUNNING
@@ -173,19 +173,20 @@ def test_redeploy_same_app():
     )
     assert unused_deployments == ["d1"]
 
-    app_state_manager.deployment_state_manager.add_deployment_status(
+    app_state_manager._deployment_state_manager.add_deployment_status(
         DeploymentStatusInfo("d3", DeploymentStatus.UPDATING)
     )
-    assert app_state_manager._application_states["test_app"].deployments_to_delete == {
+    assert app_state_manager._application_states["test_app"]._deployments_to_delete == {
         "d1"
     }
 
     # After updating, the deployment should be deleted successfully, and
     # deployments_to_delete should be empty
-    app_state_manager.deployment_state_manager.delete_deployment("d1")
+    app_state_manager._deployment_state_manager.delete_deployment("d1")
     app_state_manager.update()
     assert (
-        app_state_manager._application_states["test_app"].deployments_to_delete == set()
+        app_state_manager._application_states["test_app"]._deployments_to_delete
+        == set()
     )
 
 
@@ -216,7 +217,7 @@ def test_deploy_with_renamed_app():
     app_status = app_state_manager.get_app_status("app1")
     assert app_status.status == ApplicationStatus.DEPLOYING
 
-    app_state_manager.deployment_state_manager.set_deployment_statuses_healthy(0)
+    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(0)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("app1")
     assert app_status.status == ApplicationStatus.RUNNING
@@ -234,13 +235,13 @@ def test_deploy_with_renamed_app():
     assert app_status.status == ApplicationStatus.DEPLOYING
 
     # app2 deploys before app1 finishes deleting
-    app_state_manager.deployment_state_manager.set_deployment_statuses_healthy(1)
+    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(1)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("app2")
     assert app_status.status == ApplicationStatus.RUNNING
 
     # app1 finally finishes deleting
-    app_state_manager.deployment_state_manager.delete_deployment("d1")
+    app_state_manager._deployment_state_manager.delete_deployment("d1")
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("app1")
     assert app_status.status == ApplicationStatus.NOT_STARTED

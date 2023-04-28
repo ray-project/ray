@@ -348,13 +348,13 @@ class ApplicationStateManager:
         """
         if (
             name in self._application_states
-            and self._application_states[name].deploy_obj_ref
+            and self._application_states[name]._deploy_obj_ref
         ):
             logger.info(
                 f"Received new config deployment for {name} request. Cancelling "
                 "previous request."
             )
-            ray.cancel(self._application_states[name].deploy_obj_ref)
+            ray.cancel(self._application_states[name]._deploy_obj_ref)
         if name in self._application_states:
             self._application_states[name].update_obj_ref(
                 deploy_obj_ref,
