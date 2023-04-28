@@ -250,7 +250,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
     As we've discussed in this guide, using ``map_batches`` on a class defining your model
     should be your default choice for running inference with Ray.
     For instance, if you're already using the Ray AIR framework for running your ML workflows,
-    you might want to have a look at our
+    you may want to use the
     :ref:`framework-specific batch predictor implementations<air_framework_predictors>`.
 
     To see an extension of the quick start example using an AIR
