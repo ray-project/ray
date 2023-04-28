@@ -266,7 +266,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
 
 .. _batch_inference_advanced_pytorch_example:
 
-Advanced Batch Inference Guide
+Advanced batch inference guide
 ------------------------------
 
 Having run a first example, let's have a look at a more complex setup.
