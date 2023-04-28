@@ -75,10 +75,6 @@ class StreamingExecutor(Executor, threading.Thread):
         Executor.__init__(self, options)
         threading.Thread.__init__(self, daemon=True)
 
-    def __del__(self):
-        print("DELETED")
-        self.shutdown()
-
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
     ) -> Iterator[RefBundle]:
