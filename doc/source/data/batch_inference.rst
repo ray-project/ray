@@ -37,7 +37,7 @@ To run inference workloads effectively at scale, you need to:
 
 - manage your compute infrastructure and cloud clusters
 - parallelize data processing and utilize all your cluster resources (CPUs and GPUs)
-- efficiently transferring data between cloud storage, CPUs for preprocessing, and GPUs for model inference.
+- efficiently transfer data between cloud storage, CPUs for preprocessing, and GPUs for model inference
 
 Here's a more realistic view of batch inference for modern AI applications:
 
