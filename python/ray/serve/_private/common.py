@@ -206,9 +206,12 @@ class DeploymentInfo:
 
         self.app_name = app_name
         self.route_prefix = route_prefix
-        self.autoscaling_policy = BasicAutoscalingPolicy(
-            deployment_config.autoscaling_config
-        )
+        if deployment_config.autoscaling_config is not None:
+            self.autoscaling_policy = BasicAutoscalingPolicy(
+                deployment_config.autoscaling_config
+            )
+        else:
+            self.autoscaling_policy = None
         self.autoscaled_num_replicas = autoscaled_num_replicas
 
     def __getstate__(self) -> Dict[Any, Any]:

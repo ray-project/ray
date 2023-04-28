@@ -46,18 +46,42 @@ class ApplicationState:
         self._deployment_params: List[Dict] = []
         # This set tracks old deployments that are being deleted
         self._deployments_to_delete = set()
-        self.ready_to_be_deleted = False
-        self.route_prefix = None
-        self.docs_path = None
+        self._ready_to_be_deleted = False
+        self._route_prefix = None
+        self._docs_path = None
 
         if deploy_obj_ref:
-            self.status: ApplicationStatus = ApplicationStatus.DEPLOYING
+            self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         else:
-            self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
+            self._status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         if deployment_time:
-            self.deployment_timestamp = deployment_time
+            self._deployment_timestamp = deployment_time
         else:
-            self.deployment_timestamp = time.time()
+            self._deployment_timestamp = time.time()
+
+    @property
+    def ready_to_be_deleted(self) -> bool:
+        return self._ready_to_be_deleted
+
+    @property
+    def route_prefix(self) -> bool:
+        return self._route_prefix
+
+    @property
+    def docs_path(self) -> bool:
+        return self._docs_path
+
+    @property
+    def status(self) -> bool:
+        return self._status
+
+    @property
+    def deployment_timestamp(self) -> bool:
+        return self._deployment_timestamp
+
+    @property
+    def deploy_obj_ref(self) -> bool:
+        return self._deploy_obj_ref
 
     @property
     def deployments(self) -> List[str]:
@@ -68,7 +92,7 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        self.status = ApplicationStatus.DELETING
+        self._status = ApplicationStatus.DELETING
 
     def deploy(self, deployment_params: List[Dict]) -> List[str]:
         """Deploy the application.
@@ -95,11 +119,11 @@ class ApplicationState:
         num_docs_paths = 0
         for deploy_param in deployment_params:
             if deploy_param.get("route_prefix") is not None:
-                self.route_prefix = deploy_param["route_prefix"]
+                self._route_prefix = deploy_param["route_prefix"]
                 num_route_prefixes += 1
 
             if deploy_param.get("docs_path") is not None:
-                self.docs_path = deploy_param["docs_path"]
+                self._docs_path = deploy_param["docs_path"]
                 num_docs_paths += 1
         if num_route_prefixes > 1:
             raise RayServeException(
@@ -117,13 +141,13 @@ class ApplicationState:
                 "path in your application to avoid this issue."
             )
 
-        self.status = ApplicationStatus.DEPLOYING
+        self._status = ApplicationStatus.DEPLOYING
         return cur_deployments_to_delete
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
         self._deploy_obj_ref = deploy_obj_ref
-        self.deployment_timestamp = deployment_time
-        self.status = ApplicationStatus.DEPLOYING
+        self._deployment_timestamp = deployment_time
+        self._status = ApplicationStatus.DEPLOYING
 
     def _process_terminating_deployments(self):
         """Update the tracking for all deployments being deleted
@@ -149,10 +173,10 @@ class ApplicationState:
             DELETING: Mark ready_to_be_deleted as True when all deployments are gone.
         """
 
-        if self.ready_to_be_deleted:
+        if self._ready_to_be_deleted:
             return
 
-        if self.status == ApplicationStatus.DELETING:
+        if self._status == ApplicationStatus.DELETING:
             mark_delete = True
             # Application won't be deleted until all deployments get cleaned up
             for name in self.deployments:
@@ -164,11 +188,11 @@ class ApplicationState:
                     break
             if self._deployments_to_delete:
                 mark_delete = False
-            self.ready_to_be_deleted = mark_delete
+            self._ready_to_be_deleted = mark_delete
             self._process_terminating_deployments()
             return
 
-        if self.status == ApplicationStatus.DEPLOYING:
+        if self._status == ApplicationStatus.DEPLOYING:
             if self._deploy_obj_ref:
                 finished, pending = ray.wait([self._deploy_obj_ref], timeout=0)
                 if pending:
@@ -177,7 +201,7 @@ class ApplicationState:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
                 except RayTaskError as e:
-                    self.status = ApplicationStatus.DEPLOY_FAILED
+                    self._status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                     # here because the full details of the error is not displayed
                     # properly with traceback.format_exc(). RayTaskError has its own
@@ -187,7 +211,7 @@ class ApplicationState:
                     logger.warning(self._app_msg)
                     return
                 except RuntimeEnvSetupError:
-                    self.status = ApplicationStatus.DEPLOY_FAILED
+                    self._status = ApplicationStatus.DEPLOY_FAILED
                     self._app_msg = (
                         f"Runtime env setup for app '{self._name}' "
                         f"failed:\n{traceback.format_exc()}"
@@ -201,12 +225,12 @@ class ApplicationState:
             num_health_deployments = 0
             for deployment_status in deployments_statuses:
                 if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                    self.status = ApplicationStatus.DEPLOY_FAILED
+                    self._status = ApplicationStatus.DEPLOY_FAILED
                     return
                 if deployment_status.status == DeploymentStatus.HEALTHY:
                     num_health_deployments += 1
             if num_health_deployments == len(deployments_statuses):
-                self.status = ApplicationStatus.RUNNING
+                self._status = ApplicationStatus.RUNNING
 
             self._process_terminating_deployments()
 
@@ -217,9 +241,9 @@ class ApplicationState:
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
         return ApplicationStatusInfo(
-            self.status,
+            self._status,
             message=self._app_msg,
-            deployment_timestamp=self.deployment_timestamp,
+            deployment_timestamp=self._deployment_timestamp,
         )
 
     def list_deployment_details(self) -> Dict[str, DeploymentDetails]:
@@ -348,13 +372,13 @@ class ApplicationStateManager:
         """
         if (
             name in self._application_states
-            and self._application_states[name]._deploy_obj_ref
+            and self._application_states[name].deploy_obj_ref
         ):
             logger.info(
                 f"Received new config deployment for {name} request. Cancelling "
                 "previous request."
             )
-            ray.cancel(self._application_states[name]._deploy_obj_ref)
+            ray.cancel(self._application_states[name].deploy_obj_ref)
         if name in self._application_states:
             self._application_states[name].update_obj_ref(
                 deploy_obj_ref,
