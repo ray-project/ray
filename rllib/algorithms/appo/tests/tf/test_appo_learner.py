@@ -114,6 +114,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
+            .framework(eager_tracing=True)
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=frag_length,
@@ -134,7 +135,7 @@ class TestAPPOTfLearner(unittest.TestCase):
             )
             .exploration(exploration_config={})
         )
-        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
+        for _ in framework_iterator(config, "tf2"):
             algo = config.build()
             # Call train while results aren't returned because this is
             # a asynchronous trainer and results are returned asynchronously.
