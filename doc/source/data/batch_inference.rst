@@ -195,7 +195,7 @@ Below you find examples for PyTorch, TensorFlow, and HuggingFace.
 Once you have your Ray Datastream ``ds`` and your predictor class, you can use
 :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` to get predictions.
 ``map_batches`` takes your predictor class as an argument and allows you to specify
-``compute`` resources by defining the :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy`.
+``compute`` resources by defining the :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
 In the example below, we use two CPUs to run inference in parallel and then print the results.
 We cover resource allocation in more detail in :ref:`the configuration section of this guide<batch_inference_config>`.
 
@@ -471,7 +471,7 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
   format. If converting a simple dataset to Pandas DataFrame batches, a single-column
   dataframe with the column ``"__value__"`` will be created.
 
-  .. literalinclude:: ../data/doc_code/batch_formats.py
+  .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
     :start-after: __simple_pandas_start__
     :end-before: __simple_pandas_end__
@@ -493,7 +493,7 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
   * **Simple datasets**: Each batch will be a single NumPy ndarray, where Ray Data will
     attempt to convert each list-batch to an ndarray.
 
-  .. literalinclude:: ../data/doc_code/batch_formats.py
+  .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
     :start-after: __simple_numpy_start__
     :end-before: __simple_numpy_end__
@@ -504,7 +504,7 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
     If converting a simple dataset to Arrow Table batches, a single-column table
     with the column ``"__value__"`` will be created.
 
-    .. literalinclude:: ../data/doc_code/batch_formats.py
+    .. literalinclude:: ./doc_code/batch_formats.py
         :language: python
         :start-after: __simple_pyarrow_start__
         :end-before: __simple_pyarrow_end__
@@ -541,9 +541,9 @@ as follows:
     zero-copy convertible from an Arrow table.
 
     .. literalinclude:: ./doc_code/transforming_datastreams.py
-      :language: python
-      :start-after: __writing_default_udfs_tabular_begin__
-      :end-before: __writing_default_udfs_tabular_end__
+        :language: python
+        :start-after: __writing_default_udfs_tabular_begin__
+        :end-before: __writing_default_udfs_tabular_end__
 
 .. tabbed:: Tensor data (single-column)
 
@@ -552,18 +552,18 @@ as follows:
     containing the single tensor column for this batch.
 
     .. literalinclude:: ./doc_code/transforming_datastreams.py
-      :language: python
-      :start-after: __writing_default_udfs_tensor_begin__
-      :end-before: __writing_default_udfs_tensor_end__
+        :language: python
+        :start-after: __writing_default_udfs_tensor_begin__
+        :end-before: __writing_default_udfs_tensor_end__
 
 .. tabbed:: Simple data
 
     Each batch will be a Python list.
 
     .. literalinclude:: ./doc_code/transforming_datastreams.py
-      :language: python
-      :start-after: __writing_default_udfs_list_begin__
-      :end-before: __writing_default_udfs_list_end__
+        :language: python
+        :start-after: __writing_default_udfs_list_begin__
+        :end-before: __writing_default_udfs_list_end__
 
 
 .. seealso::
