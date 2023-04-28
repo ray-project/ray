@@ -134,7 +134,7 @@ def _update_env_seed_if_necessary(
 
     NOTE: this may not work with remote environments (issue #18154).
     """
-    if not seed:
+    if seed is None:
         return
 
     # A single RL job is unlikely to have more than 10K

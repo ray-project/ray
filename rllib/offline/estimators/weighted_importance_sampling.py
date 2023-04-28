@@ -155,6 +155,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         updated_ds = dataset.map_batches(
             compute_is_weights,
             batch_size=batch_size,
+            batch_format="pandas",
             fn_kwargs={
                 "policy_state": self.policy.get_state(),
                 "estimator_class": self.__class__,

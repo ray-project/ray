@@ -158,7 +158,10 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
 
     predict_dataset = ray.data.range(9)
     predictions = predict_dataset.map_batches(
-        TorchScorer, batch_size=3, batch_format="pandas", compute="actors"
+        TorchScorer,
+        batch_size=3,
+        batch_format="pandas",
+        compute=ray.data.ActorPoolStrategy(),
     )
     assert predictions.count() == 3
 

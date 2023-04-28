@@ -13,7 +13,7 @@ from ray.data.tests.test_operators import _mul2_transform
 from ray.data.tests.conftest import *  # noqa
 
 
-SMALL_STR = "hello" * 12
+SMALL_STR = "hello" * 120
 
 
 def test_resource_utils(ray_start_10_cpus_shared):
@@ -97,7 +97,7 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(128, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(1280, rel=0.5), usage
 
 
 def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
@@ -119,20 +119,20 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert usage.cpu == 0, usage
     assert usage.gpu == 0, usage
     # Queued bundles (in bundler) still count against object storage usage.
-    assert usage.object_store_memory == pytest.approx(80, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(800, rel=0.5), usage
     op.add_input(input_op.get_next(), 0)
     usage = op.current_resource_usage()
     # No tasks submitted yet due to bundling.
     assert usage.cpu == 0, usage
     assert usage.gpu == 0, usage
     # Queued bundles (in bundler) still count against object storage usage.
-    assert usage.object_store_memory == pytest.approx(160, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(1600, rel=0.5), usage
     op.add_input(input_op.get_next(), 0)
     usage = op.current_resource_usage()
     # Task has now been submitted since we've met the minimum bundle size.
     assert usage.cpu == 1, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(240, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(2400, rel=0.5), usage
 
 
 def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
@@ -163,13 +163,13 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
         assert usage.cpu == 2, usage
         assert usage.gpu == 0, usage
         # Queued bundles still count against object store usage.
-        assert usage.object_store_memory == pytest.approx((i + 1) * 80, rel=0.5), usage
+        assert usage.object_store_memory == pytest.approx((i + 1) * 800, rel=0.5), usage
     # Pool is still idle while waiting for actors to start.
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
     # Queued bundles still count against object store usage.
-    assert usage.object_store_memory == pytest.approx(320, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
     # Wait for actors to start.
     work_refs = op.get_work_refs()
@@ -189,7 +189,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
     # Now that tasks have been submitted, object store memory is accounted for.
-    assert usage.object_store_memory == pytest.approx(256, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(2560, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
     op.inputs_done()
@@ -206,7 +206,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     usage = op.current_resource_usage()
     assert usage.cpu == 0, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(550, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(5500, rel=0.5), usage
 
     # Consume task outputs.
     while op.has_next():
@@ -248,13 +248,13 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         assert usage.cpu == 2, usage
         assert usage.gpu == 0, usage
         # Queued bundles still count against object store usage.
-        assert usage.object_store_memory == pytest.approx((i + 1) * 80, rel=0.5), usage
+        assert usage.object_store_memory == pytest.approx((i + 1) * 800, rel=0.5), usage
     # Pool is still idle while waiting for actors to start.
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
     # Queued bundles still count against object store usage.
-    assert usage.object_store_memory == pytest.approx(320, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
     # Wait for actors to start.
     work_refs = op.get_work_refs()
@@ -273,7 +273,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(320, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
     op.inputs_done()
@@ -290,7 +290,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     usage = op.current_resource_usage()
     assert usage.cpu == 0, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(550, rel=0.5), usage
+    assert usage.object_store_memory == pytest.approx(5500, rel=0.5), usage
 
     # Consume task outputs.
     while op.has_next():

@@ -18,6 +18,7 @@ DEFAULT_BLACKLIST = [
     "opencensus",
     "prometheus_client",
     "smart_open",
+    "virtualenv",
     "torch",
     "tensorflow",
     "jax",

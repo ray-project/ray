@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    Mapping,
 )
 from uuid import uuid4
 
@@ -36,6 +37,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
@@ -81,24 +83,25 @@ from ray.data._internal.stage_impl import (
     RandomShuffleStage,
     ZipStage,
     SortStage,
+    LimitStage,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
+from ray.data._internal.split import _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
+    STRICT_MODE_EXPLANATION,
     _apply_strict_mode_batch_format,
-    BatchUDF,
+    _apply_strict_mode_batch_size,
+    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
     DataBatch,
-    FlatMapUDF,
-    KeyFn,
-    RowUDF,
+    StrictModeError,
     T,
     U,
     _validate_key_fn,
@@ -108,7 +111,6 @@ from ray.data.context import (
     WARN_PREFIX,
     OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
-    DEFAULT_BATCH_SIZE,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -127,7 +129,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -151,7 +152,7 @@ if TYPE_CHECKING:
     import torch.utils.data
 
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedData
+    from ray.data.grouped_data import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -167,13 +168,12 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 
 @PublicAPI
-class Datastream(Generic[T]):
+class Datastream:
     """A Datastream is a distributed data collection for data loading and processing.
 
-    Datastreams are distributed streams that produce ``ObjectRef[Block]`` outputs,
-    where each block holds an ordered collection of items, representing a shard of the
-    overall data collection. The block can be either a ``pyarrow.Table``, or Python
-    list. The block also determines the unit of parallelism.
+    Datastreams are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
+    where each block holds data in Arrow format, representing a shard of the overall
+    data collection. The block also determines the unit of parallelism.
 
     Datastreams can be created in multiple ways: from synthetic data via ``range_*()``
     APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
@@ -210,31 +210,26 @@ class Datastream(Generic[T]):
     Examples:
         >>> import ray
         >>> ds = ray.data.range(1000)
-        >>> # Transform in parallel with map_batches().
-        >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+        >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
+        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})
         MapBatches(<lambda>)
-        +- Datastream(num_blocks=17, num_rows=1000, schema=<class 'int'>)
-        >>> # Compute maximum
-        >>> ds.max()
+        +- Datastream(num_blocks=17, num_rows=1000, schema={id: int64})
+        >>> # Compute the maximum.
+        >>> ds.max("id")
         999
-        >>> # Group the data.
-        >>> ds.groupby(lambda x: x % 3).count()
-        Aggregate
-        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Shuffle this datastream randomly.
         >>> ds.random_shuffle()
         RandomShuffle
-        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
-        >>> ds.sort()
+        >>> ds.sort("id")
         Sort
-        +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
 
     Both unexecuted and materialized Datastreams can be passed between Ray tasks and
-    actors without incurring a copy. Datastream supports conversion to/from several more
-    featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and are also
-    compatible with distributed
-    TensorFlow / PyTorch.
+    actors without incurring a copy. Datastream supports conversion to/from several
+    more featureful dataframe libraries (e.g., Spark, Dask, Modin, MARS), and are also
+    compatible with distributed TensorFlow / PyTorch.
     """
 
     def __init__(
@@ -252,6 +247,9 @@ class Datastream(Generic[T]):
         assert isinstance(plan, ExecutionPlan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
+        if ray.util.log_once("strict_mode_explanation"):
+            logger.warning(STRICT_MODE_EXPLANATION)
+
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
@@ -268,8 +266,8 @@ class Datastream(Generic[T]):
 
     @staticmethod
     def copy(
-        ds: "Datastream[T]", _deep_copy: bool = False, _as: Optional[type] = None
-    ) -> "Datastream[T]":
+        ds: "Datastream", _deep_copy: bool = False, _as: Optional[type] = None
+    ) -> "Datastream":
         if not _as:
             _as = Datastream
         if _deep_copy:
@@ -279,11 +277,11 @@ class Datastream(Generic[T]):
 
     def map(
         self,
-        fn: RowUDF[T, U],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[U]":
+    ) -> "Datastream":
         """Apply the given function to each record of this datastream.
 
         Note that mapping individual records can be quite slow. Consider using
@@ -293,9 +291,10 @@ class Datastream(Generic[T]):
             >>> import ray
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
-            >>> ds.map(lambda x: x * 2)
+            >>> # The function goes from record (Dict[str, Any]) to record.
+            >>> ds.map(lambda record: {"id": record["id"] * 2})
             Map
-            +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
@@ -313,9 +312,8 @@ class Datastream(Generic[T]):
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute=ActorPoolStrategy(size=8) the transform will be applied on a
             >>> # pool of 8 Ray actors, each allocated 1 GPU by Ray.
-            >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map(CachedModel, # doctest: +SKIP
-            ...        compute=ActorPoolStrategy(size=8),
+            ...        compute=ray.data.ActorPoolStrategy(size=8),
             ...        num_gpus=1)
 
         Time complexity: O(datastream size / parallelism)
@@ -324,7 +322,7 @@ class Datastream(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            compute: The compute strategy, either "tasks" (default) to use Ray
+            compute: The compute strategy, either None (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
@@ -383,10 +381,10 @@ class Datastream(Generic[T]):
 
     def map_batches(
         self,
-        fn: BatchUDF,
+        fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Optional[Union[int, Literal["default"]]] = "default",
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_size: Union[int, None, Literal["default"]] = "default",
+        compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -394,26 +392,14 @@ class Datastream(Generic[T]):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ) -> "Datastream[Any]":
+    ) -> "Datastream":
         """Apply the given function to batches of data.
 
         This applies the ``fn`` in parallel with map tasks, with each task handling
-        a block or a bundle of blocks of the datastream. Each batch is executed serially
-        at Ray level (at lower level, the processing of the batch is usually
-        vectorized).
-
-        Batches are represented as dataframes, ndarrays, or lists. The default batch
-        type is determined by your datastream's schema. To determine the default batch
-        type, call :meth:`~Datastream.default_batch_format`. Alternatively, set the batch
-        type with ``batch_format``.
+        a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
 
         To learn more about writing functions for :meth:`~Datastream.map_batches`, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
-
-        .. tip::
-            If you have a small number of big blocks, it may limit parallelism. You may
-            consider increasing the number of blocks via ``.repartition()`` before
-            applying ``.map_batches()``.
+        :ref:`writing user-defined functions <transform_datastreams_writing_udfs>`.
 
         .. tip::
             If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
@@ -434,54 +420,32 @@ class Datastream(Generic[T]):
 
         Examples:
 
-            >>> import pandas as pd
+            >>> import numpy as np
             >>> import ray
-            >>> df = pd.DataFrame({
-            ...     "name": ["Luna", "Rory", "Scout"],
-            ...     "age": [4, 14, 9]
-            ... })
-            >>> ds = ray.data.from_pandas(df)
+            >>> ds = ray.data.from_items([
+            ...     {"name": "Luna", "age": 4},
+            ...     {"name": "Rory", "age": 14},
+            ...     {"name": "Scout", "age": 9},
+            ... ])
             >>> ds  # doctest: +SKIP
             MaterializedDatastream(
-                num_blocks=1,
+                num_blocks=3,
                 num_rows=3,
-                schema={name: object, age: int64}
+                schema={name: string, age: int64}
             )
 
-            Call :meth:`.default_batch_format` to determine the default batch
-            type.
+            Here ``fn`` returns the same batch type as the input, but your ``fn`` can
+            also return a different batch type (e.g., pd.DataFrame). Read more about
+            :ref:`user-defined function output types <transform_datastreams_batch_output_types>`.
 
-            >>> ds.default_batch_format()
-            <class 'pandas.core.frame.DataFrame'>
-
-            .. tip::
-
-                Datastreams created from tabular data like Arrow tables and Parquet files
-                yield ``pd.DataFrame`` batches.
-
-            Once you know the batch type, define a function that transforms batches
-            of data. ``ds.map_batches`` applies the function in parallel.
-
-            >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
+            >>> from typing import Dict
+            >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             ...     batch["age_in_dog_years"] = 7 * batch["age"]
             ...     return batch
             >>> ds = ds.map_batches(map_fn)
             >>> ds
             MapBatches(map_fn)
-            +- Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
-
-            Your ``fn`` can return a different type than the input type. To learn more
-            about supported output types, read
-            :ref:`user-defined function output types <transform_datasets_batch_output_types>`.
-
-            >>> from typing import List
-            >>> def map_fn(batch: pd.DataFrame) -> List[int]:
-            ...     return list(batch["age_in_dog_years"])
-            >>> ds = ds.map_batches(map_fn)
-            >>> ds
-            MapBatches(map_fn)
-            +- MapBatches(map_fn)
-               +- Datastream(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            +- Datastream(num_blocks=3, num_rows=3, schema={name: string, age: int64})
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -493,7 +457,6 @@ class Datastream(Generic[T]):
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
 
-            >>> from ray.data import ActorPoolStrategy
             >>> init_large_model = ... # doctest: +SKIP
             >>> class CachedModel:
             ...    def __init__(self):
@@ -503,7 +466,7 @@ class Datastream(Generic[T]):
             >>> ds.map_batches( # doctest: +SKIP
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
-            ...     compute=ActorPoolStrategy(size=8), # doctest: +SKIP
+            ...     compute=ray.data.ActorPoolStrategy(size=8), # doctest: +SKIP
             ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
@@ -512,15 +475,14 @@ class Datastream(Generic[T]):
             returning a very large output batch, ``fn`` can instead yield the
             output batch in chunks.
 
-            >>> from typing import Iterator
-            >>> def map_fn_with_large_output(batch: List[int]) -> Iterator[List[int]]:
+            >>> def map_fn_with_large_output(batch):
             ...     for i in range(3):
-            ...         yield batch * 100
+            ...         yield {"large_output": np.ones((100, 1000))}
             >>> ds = ray.data.from_items([1])
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Datastream(num_blocks=1, num_rows=1, schema=<class 'int'>)
+            +- Datastream(num_blocks=1, num_rows=1, schema={item: int64})
 
 
         Args:
@@ -538,12 +500,10 @@ class Datastream(Generic[T]):
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None to return
-                the underlying block exactly as is with no additional formatting.
-                The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or ``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -553,7 +513,7 @@ class Datastream(Generic[T]):
                 If ``fn`` mutates its input, this will need to be ``False`` in order to
                 avoid "assignment destination is read-only" or "buffer source array is
                 read-only" errors. Default is ``False``. See
-                :ref:`batch format docs <transform_datasets_batch_formats>` for details
+                :ref:`batch format docs <transform_datastreams_batch_formats>` for details
                 on which format conversion always require a copy.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
@@ -572,9 +532,6 @@ class Datastream(Generic[T]):
 
             :meth:`~Datastream.iter_batches`
                 Call this function to iterate over batches of data.
-
-            :meth:`~Datastream.default_batch_format`
-                Call this function to determine the default batch type.
 
             :meth:`~Datastream.flat_map`:
                 Call this method to create new records from existing ones. Unlike
@@ -596,13 +553,15 @@ class Datastream(Generic[T]):
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
         target_block_size = None
-        if batch_size == "default":
-            batch_size = DEFAULT_BATCH_SIZE
-        elif batch_size is not None:
+        if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
             target_block_size = batch_size
+
+        batch_size = _apply_strict_mode_batch_size(
+            batch_size, use_gpu="num_gpus" in ray_remote_args
+        )
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
@@ -693,7 +652,7 @@ class Datastream(Generic[T]):
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Add the given column to the datastream.
 
         This is only supported for datastreams convertible to pandas format.
@@ -702,12 +661,11 @@ class Datastream(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100)
+            >>> ds = ray.data.range(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column(
-            ...     "new_col", lambda df: df["value"] * 2)
+            >>> ds = ds.add_column("new_col", lambda df: df["id"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda df: 0)
+            >>> ds = ds.add_column("id", lambda df: 0)
 
         Time complexity: O(datastream size / parallelism)
 
@@ -745,17 +703,16 @@ class Datastream(Generic[T]):
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "Datastream[U]":
+    ) -> "Datastream":
         """Drop one or more columns from the datastream.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100)
+            >>> ds = ray.data.range(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column(
-            ...     "new_col", lambda df: df["value"] * 2)
+            >>> ds = ds.add_column("new_col", lambda df: df["id"] * 2)
             >>> # Drop the existing "value" column.
-            >>> ds = ds.drop_columns(["value"])
+            >>> ds = ds.drop_columns(["id"])
 
 
         Time complexity: O(datastream size / parallelism)
@@ -785,7 +742,7 @@ class Datastream(Generic[T]):
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Select one or more columns from the datastream.
 
         All input columns used to select need to be in the schema of the datastream.
@@ -820,6 +777,7 @@ class Datastream(Generic[T]):
         """  # noqa: E501
         return self.map_batches(
             lambda batch: BlockAccessor.for_block(batch).select(columns=cols),
+            batch_format="pandas",
             zero_copy_batch=True,
             compute=compute,
             **ray_remote_args,
@@ -827,11 +785,11 @@ class Datastream(Generic[T]):
 
     def flat_map(
         self,
-        fn: FlatMapUDF[T, U],
+        fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[U]":
+    ) -> "Datastream":
         """Apply the given function to each record and then flatten results.
 
         Consider using ``.map_batches()`` for better performance (the batch size can be
@@ -840,9 +798,9 @@ class Datastream(Generic[T]):
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
+            >>> ds.flat_map(lambda x: [{"id": 1}, {"id": 2}, {"id": 4}])
             FlatMap
-            +- Datastream(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
 
         Time complexity: O(datastream size / parallelism)
 
@@ -901,11 +859,11 @@ class Datastream(Generic[T]):
 
     def filter(
         self,
-        fn: RowUDF[T, U],
+        fn: UserDefinedFunction[Dict[str, Any], bool],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Filter out records that do not satisfy the given predicate.
 
         Consider using ``.map_batches()`` for better performance (you can implement
@@ -914,9 +872,9 @@ class Datastream(Generic[T]):
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.filter(lambda x: x % 2 == 0)
+            >>> ds.filter(lambda x: x["id"] % 2 == 0)
             Filter
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema={id: int64})
 
         Time complexity: O(datastream size / parallelism)
 
@@ -962,7 +920,7 @@ class Datastream(Generic[T]):
 
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Datastream[T]":
+    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Datastream":
         """Repartition the datastream into exactly this number of blocks.
 
         After repartitioning, all blocks in the returned datastream will have
@@ -1007,7 +965,7 @@ class Datastream(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Randomly shuffle the elements of this datastream.
 
         Examples:
@@ -1016,11 +974,11 @@ class Datastream(Generic[T]):
             >>> # Shuffle this datastream randomly.
             >>> ds.random_shuffle()
             RandomShuffle
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema={id: int64})
             >>> # Shuffle this datastream with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
             RandomShuffle
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- Datastream(num_blocks=..., num_rows=100, schema={id: int64})
 
         Time complexity: O(datastream size / parallelism)
 
@@ -1053,7 +1011,7 @@ class Datastream(Generic[T]):
         self,
         *,
         seed: Optional[int] = None,
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Randomly shuffle the blocks of this datastream.
 
         Examples:
@@ -1085,7 +1043,7 @@ class Datastream(Generic[T]):
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
-    ) -> "Datastream[T]":
+    ) -> "Datastream":
         """Randomly samples a fraction of the elements of this datastream.
 
         Note that the exact number of elements returned is not guaranteed,
@@ -1134,7 +1092,7 @@ class Datastream(Generic[T]):
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        return self.map_batches(process_batch)
+        return self.map_batches(process_batch, batch_format=None)
 
     @ConsumptionAPI
     def streaming_split(
@@ -1208,7 +1166,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
-    ) -> List["MaterializedDatastream[T]"]:
+    ) -> List["MaterializedDatastream"]:
         """Materialize and split the datastream into ``n`` disjoint pieces.
 
         This returns a list of MaterializedDatastreams that can be passed to Ray tasks
@@ -1411,19 +1369,19 @@ class Datastream(Generic[T]):
         ]
 
     @ConsumptionAPI
-    def split_at_indices(self, indices: List[int]) -> List["MaterializedDatastream[T]"]:
+    def split_at_indices(self, indices: List[int]) -> List["MaterializedDatastream"]:
         """Materialize and split the datastream at the given indices (like np.split).
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_at_indices([2, 5])
-            >>> d1.take()
-            [0, 1]
-            >>> d2.take()
-            [2, 3, 4]
-            >>> d3.take()
-            [5, 6, 7, 8, 9]
+            >>> d1.take_batch()
+            {'id': array([0, 1])}
+            >>> d2.take_batch()
+            {'id': array([2, 3, 4])}
+            >>> d3.take_batch()
+            {'id': array([5, 6, 7, 8, 9])}
 
         Time complexity: O(num splits)
 
@@ -1476,7 +1434,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def split_proportionately(
         self, proportions: List[float]
-    ) -> List["MaterializedDatastream[T]"]:
+    ) -> List["MaterializedDatastream"]:
         """Materialize and split the datastream using proportions.
 
         A common use case for this would be splitting the datastream into train
@@ -1494,12 +1452,12 @@ class Datastream(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
-            >>> d1.take()
-            [0, 1]
-            >>> d2.take()
-            [2, 3, 4, 5, 6]
-            >>> d3.take()
-            [7, 8, 9]
+            >>> d1.take_batch()
+            {'id': array([0, 1])}
+            >>> d2.take_batch()
+            {'id': array([2, 3, 4, 5, 6])}
+            >>> d3.take_batch()
+            {'id': array([7, 8, 9])}
 
         Time complexity: O(num splits)
 
@@ -1549,7 +1507,7 @@ class Datastream(Generic[T]):
         *,
         shuffle: bool = False,
         seed: Optional[int] = None,
-    ) -> Tuple["MaterializedDatastream[T]", "MaterializedDatastream[T]"]:
+    ) -> Tuple["MaterializedDatastream", "MaterializedDatastream"]:
         """Materialize and split the datastream into train and test subsets.
 
         Examples:
@@ -1557,10 +1515,10 @@ class Datastream(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(8)
             >>> train, test = ds.train_test_split(test_size=0.25)
-            >>> train.take()
-            [0, 1, 2, 3, 4, 5]
-            >>> test.take()
-            [6, 7]
+            >>> train.take_batch()
+            {'id': array([0, 1, 2, 3, 4, 5])}
+            >>> test.take_batch()
+            {'id': array([6, 7])}
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -1601,7 +1559,7 @@ class Datastream(Generic[T]):
             return ds.split_at_indices([ds_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Datastream[T]"]) -> "Datastream[T]":
+    def union(self, *other: List["Datastream"]) -> "Datastream":
         """Materialize and combine this datastream with others of the same type.
 
         The order of the blocks in the datastreams is preserved, as is the
@@ -1690,16 +1648,12 @@ class Datastream(Generic[T]):
             self._lazy,
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedData[T]":
+    def groupby(self, key: Optional[str]) -> "GroupedData":
         """Group the datastream by the key function or column name.
 
         Examples:
             >>> import ray
-            >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            Aggregate
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
-            >>> # Group by an Arrow table column and aggregate.
+            >>> # Group by a table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
@@ -1709,13 +1663,12 @@ class Datastream(Generic[T]):
         Time complexity: O(datastream size * log(datastream size / parallelism))
 
         Args:
-            key: A key function or Arrow column name. If this is None, the
-                grouping is global.
+            key: A column name. If this is None, the grouping is global.
 
         Returns:
             A lazy GroupedData that can be aggregated later.
         """
-        from ray.data.grouped_dataset import GroupedData
+        from ray.data.grouped_data import GroupedData
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
@@ -1725,17 +1678,14 @@ class Datastream(Generic[T]):
         return GroupedData(self, key)
 
     @ConsumptionAPI
-    def aggregate(self, *aggs: AggregateFn) -> U:
+    def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate the entire datastream as one group.
 
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max())
-            (99,)
-            >>> ray.data.range_table(100).aggregate(
-            ...    Max("value"), Mean("value"))
-            {'max(value)': 99, 'mean(value)': 49.5}
+            >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
+            {'max(id)': 99, 'mean(id)': 49.5}
 
         Time complexity: O(datastream size / parallelism)
 
@@ -1747,8 +1697,7 @@ class Datastream(Generic[T]):
             a tuple of ``(agg1, agg2, ...)`` where each tuple element is
             the corresponding aggregation result.
             If the input datastream is an Arrow datastream then the output is
-            an ``ArrowRow`` where each column is the corresponding
-            aggregation result.
+            an dict where each column is the corresponding aggregation result.
             If the datastream is empty, return ``None``.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
@@ -1756,19 +1705,13 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def sum(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute sum over entire datastream.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).sum()
-            4950
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).sum(lambda x: x[1])
-            328350
-            >>> ray.data.range_table(100).sum("value")
+            >>> ray.data.range(100).sum("id")
             4950
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1776,13 +1719,7 @@ class Datastream(Generic[T]):
             {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
-            on: The data subset on which to compute the sum.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar sum of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise sum of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the sum; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1792,22 +1729,13 @@ class Datastream(Generic[T]):
         Returns:
             The sum result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the sum of all rows,
-            - ``on=callable``: a scalar representing the sum of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(sum_1, ..., sum_n)`` representing the sum of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ArrowRow containing the column-wise sum of all
+            - ``on=None``: a dict containing the column-wise sum of all
               columns,
             - ``on="col"``: a scalar representing the sum of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``dict``
               containing the column-wise sum of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1818,19 +1746,13 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def min(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute minimum over entire datastream.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).min()
-            0
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).min(lambda x: x[1])
-            0
-            >>> ray.data.range_table(100).min("value")
+            >>> ray.data.range(100).min("id")
             0
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1838,13 +1760,7 @@ class Datastream(Generic[T]):
             {'min(A)': 0, 'min(B)': 0}
 
         Args:
-            on: The data subset on which to compute the min.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar min of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise min of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the min; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1854,22 +1770,13 @@ class Datastream(Generic[T]):
         Returns:
             The min result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the min of all rows,
-            - ``on=callable``: a scalar representing the min of the outputs
-              of the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(min_1, ..., min_n)`` representing the min of the outputs
-              of the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise min of
+            - ``on=None``: an dict containing the column-wise min of
               all columns,
             - ``on="col"``: a scalar representing the min of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise min of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1880,19 +1787,13 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def max(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute maximum over entire datastream.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).max()
-            99
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).max(lambda x: x[1])
-            9801
-            >>> ray.data.range_table(100).max("value")
+            >>> ray.data.range(100).max("id")
             99
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1900,13 +1801,7 @@ class Datastream(Generic[T]):
             {'max(A)': 99, 'max(B)': 9801}
 
         Args:
-            on: The data subset on which to compute the max.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar max of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise max of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the max; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1916,22 +1811,13 @@ class Datastream(Generic[T]):
         Returns:
             The max result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the max of all rows,
-            - ``on=callable``: a scalar representing the max of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(max_1, ..., max_n)`` representing the max of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise max of
+            - ``on=None``: an dict containing the column-wise max of
               all columns,
             - ``on="col"``: a scalar representing the max of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise max of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -1942,19 +1828,13 @@ class Datastream(Generic[T]):
 
     @ConsumptionAPI
     def mean(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute mean over entire datastream.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).mean()
-            49.5
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).mean(lambda x: x[1])
-            3283.5
-            >>> ray.data.range_table(100).mean("value")
+            >>> ray.data.range(100).mean("id")
             49.5
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -1962,13 +1842,7 @@ class Datastream(Generic[T]):
             {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
-            on: The data subset on which to compute the mean.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar mean of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise mean of all columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the mean; if ``False``,
                 if a null value is encountered, the output will be None.
@@ -1978,22 +1852,13 @@ class Datastream(Generic[T]):
         Returns:
             The mean result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the mean of all rows,
-            - ``on=callable``: a scalar representing the mean of the outputs
-              of the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(mean_1, ..., mean_n)`` representing the mean of the outputs
-              of the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise mean of
+            - ``on=None``: an dict containing the column-wise mean of
               all columns,
             - ``on="col"``: a scalar representing the mean of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise mean of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -2005,21 +1870,15 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def std(
         self,
-        on: Optional[Union[KeyFn, List[KeyFn]]] = None,
+        on: Optional[Union[str, List[str]]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-    ) -> U:
+    ) -> Union[Any, Dict[str, Any]]:
         """Compute standard deviation over entire datastream.
 
         Examples:
             >>> import ray
-            >>> round(ray.data.range(100).std(), 5)
-            29.01149
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).std(lambda x: x[1])
-            2968.1748039269296
-            >>> round(ray.data.range_table(100).std("value", ddof=0), 5)
+            >>> round(ray.data.range(100).std("id", ddof=0), 5)
             28.86607
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
@@ -2035,13 +1894,7 @@ class Datastream(Generic[T]):
             https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
-            on: The data subset on which to compute the std.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to return a scalar std of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise std of all columns.
+            on: a column name or a list of column names to aggregate.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
@@ -2053,22 +1906,13 @@ class Datastream(Generic[T]):
         Returns:
             The standard deviation result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a scalar representing the std of all rows,
-            - ``on=callable``: a scalar representing the std of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(std_1, ..., std_n)`` representing the std of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an ``ArrowRow`` containing the column-wise std of
+            - ``on=None``: an dict containing the column-wise std of
               all columns,
             - ``on="col"``: a scalar representing the std of all items in
               column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+            - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise std of the provided columns.
 
             If the datastream is empty, all values are null, or any value is null
@@ -2077,39 +1921,23 @@ class Datastream(Generic[T]):
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(
-        self, key: Optional[KeyFn] = None, descending: bool = False
-    ) -> "Datastream[T]":
-        # TODO ds.sort(lambda ...) fails with:
-        #  Callable key '<function <lambda> at 0x1b07a4cb0>' requires
-        #  datastream format to be 'simple', was 'arrow'.
-        #  How do I create something "simple" here?
+    def sort(self, key: Optional[str] = None, descending: bool = False) -> "Datastream":
         """Sort the datastream by the specified key column or key function.
 
         Examples:
             >>> import ray
-            >>> # Sort using the entire record as the key.
-            >>> ds = ray.data.range(100)
-            >>> ds.sort()
-            Sort
-            +- Datastream(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
             Sort
             +- Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
-            >>> # Sort by a key function.
-            >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
         Time complexity: O(datastream size * log(datastream size / parallelism))
 
         Args:
-            key:
-                - For Arrow tables, key must be a single column name.
-                - For datastreams of Python objects, key can be either a lambda
-                  function that returns a comparison key to sort by, or None
-                  to sort by the original value.
+            key: The column to sort by. To sort by multiple columns, use a map function
+                to generate the sort column beforehand.
             descending: Whether to sort in descending order.
 
         Returns:
@@ -2128,11 +1956,10 @@ class Datastream(Generic[T]):
             logical_plan = LogicalPlan(op)
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
-    def zip(self, other: "Datastream[U]") -> "Datastream[(T, U)]":
+    def zip(self, other: "Datastream") -> "Datastream":
         """Materialize and zip this datastream with the elements of another.
 
-        The datastreams must have the same number of rows. For tabular datastreams, the
-        datastreams will be concatenated horizontally; namely, their column sets will be
+        The datastreams must have the same number of rows. Their column sets will be
         merged, and any duplicate column names disambiguated with _1, _2, etc. suffixes.
 
         .. note::
@@ -2146,9 +1973,9 @@ class Datastream(Generic[T]):
         Examples:
             >>> import ray
             >>> ds1 = ray.data.range(5)
-            >>> ds2 = ray.data.range(5, parallelism=2).map(lambda x: x + 1)
-            >>> ds1.zip(ds2).take()
-            [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
+            >>> ds2 = ray.data.range(5)
+            >>> ds1.zip(ds2).take_batch()
+            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])}
 
         Time complexity: O(datastream size / parallelism)
 
@@ -2156,13 +1983,9 @@ class Datastream(Generic[T]):
             other: The datastream to zip with on the right hand side.
 
         Returns:
-            If the inputs are simple datastreams, this returns a ``Datastream``
-            containing (k, v) pairs, where k comes from the first datastream and v
-            comes from the second.
-            If the inputs are tabular datastreams, this returns a ``Datastream``
-            containing the columns of the second datastream concatenated horizontally
-            with the columns of the first datastream, with duplicate column names
-            disambiguated with _1, _2, etc. suffixes.
+            A ``Datastream`` containing the columns of the second datastream
+            concatenated horizontally with the columns of the first datastream,
+            with duplicate column names disambiguated with _1, _2, etc. suffixes.
         """
 
         plan = self._plan.with_stage(ZipStage(other))
@@ -2175,7 +1998,7 @@ class Datastream(Generic[T]):
         return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI
-    def limit(self, limit: int) -> "Datastream[T]":
+    def limit(self, limit: int) -> "Datastream":
         """Materialize and truncate the datastream to the first ``limit`` records.
 
         Contrary to :meth`.take`, this will not move any data to the caller's
@@ -2185,8 +2008,8 @@ class Datastream(Generic[T]):
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.limit(100).map(lambda x: x * 2).take()
-            [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38]
+            >>> ds.limit(5).take_batch()
+            {'id': array([0, 1, 2, 3, 4])}
 
         Time complexity: O(limit specified)
 
@@ -2196,40 +2019,12 @@ class Datastream(Generic[T]):
         Returns:
             The truncated datastream.
         """
-        start_time = time.perf_counter()
-        # Truncate the block list to the minimum number of blocks that contains at least
-        # `limit` rows.
-        block_list = self._plan.execute().truncate_by_rows(limit)
-        blocks, metadata, _, _ = _split_at_index(block_list, limit)
-        split_duration = time.perf_counter() - start_time
-        meta_for_stats = [
-            BlockMetadata(
-                num_rows=m.num_rows,
-                size_bytes=m.size_bytes,
-                schema=m.schema,
-                input_files=m.input_files,
-                exec_stats=None,
-            )
-            for m in metadata
-        ]
-        datastream_stats = DatastreamStats(
-            stages={"Limit": meta_for_stats},
-            parent=self._plan.stats(),
-        )
-        datastream_stats.time_total_s = split_duration
-        return Datastream(
-            ExecutionPlan(
-                BlockList(
-                    blocks,
-                    metadata,
-                    owned_by_consumer=block_list._owned_by_consumer,
-                ),
-                datastream_stats,
-                run_by_consumer=block_list._owned_by_consumer,
-            ),
-            self._epoch,
-            self._lazy,
-        )
+        plan = self._plan.with_stage(LimitStage(limit))
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Limit(logical_plan.dag, limit=limit)
+            logical_plan = LogicalPlan(op)
+        return Datastream(plan, self._epoch, self._lazy, logical_plan)
 
     @ConsumptionAPI(pattern="Time complexity:")
     def take_batch(
@@ -2249,12 +2044,10 @@ class Datastream(Generic[T]):
         Args:
             batch_size: The max number of records to return.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
-                to return the underlying block exactly as is with no additional
-                formatting. The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or ``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
 
         Returns:
             A batch of up to ``batch_size`` records from the datastream.
@@ -2275,7 +2068,7 @@ class Datastream(Generic[T]):
         return res
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def take(self, limit: int = 20) -> List[T]:
+    def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` records from the datastream.
 
         This will move up to ``limit`` records to the caller's machine; if
@@ -2304,7 +2097,7 @@ class Datastream(Generic[T]):
         return output
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def take_all(self, limit: Optional[int] = None) -> List[T]:
+    def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the records in the datastream.
 
         This will move the entire datastream to the caller's machine; if the
@@ -2377,13 +2170,8 @@ class Datastream(Generic[T]):
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
-    def schema(
-        self, fetch_if_missing: bool = True
-    ) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the datastream.
-
-        For datastream of Arrow records, this will return the Arrow schema.
-        For datastream of Python objects, this returns their Python type.
 
         Time complexity: O(1)
 
@@ -2393,13 +2181,16 @@ class Datastream(Generic[T]):
                 Default is True.
 
         Returns:
-            The Python type or Arrow schema of the records, or None if the
+            The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
         ctx = DataContext.get_current()
         base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if ctx.strict_mode:
-            return Schema(base_schema)
+            if base_schema:
+                return Schema(base_schema)
+            else:
+                return None
         else:
             return base_schema
 
@@ -2464,7 +2255,7 @@ class Datastream(Generic[T]):
     ) -> None:
         """Write the datastream to parquet.
 
-        This is only supported for datastream convertible to Arrow records.
+        This is only supported for datastreams convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
         Unless a custom block path provider is given, the format of the output
@@ -2779,7 +2570,7 @@ class Datastream(Generic[T]):
         self,
         path: str,
         *,
-        column: str = TENSOR_COLUMN_NAME,
+        column: Optional[str] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2807,8 +2598,7 @@ class Datastream(Generic[T]):
             path: The path to the destination root directory, where npy
                 files will be written to.
             column: The name of the table column that contains the tensor to
-                be written. The default is ``"__value__"``, the column name that
-                Datastream uses for storing tensors in single-column tables.
+                be written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: Try to create all directories in destination path
                 if True. Does nothing if all directories already exist.
@@ -2818,6 +2608,14 @@ class Datastream(Generic[T]):
                 write each datastream block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        context = DataContext.get_current()
+        if context.strict_mode and not column:
+            raise StrictModeError(
+                "In strict mode, the column must be specified "
+                "(e.g., `write_numpy(column='data')`)."
+            )
+        column = column or TENSOR_COLUMN_NAME
+
         self.write_datasource(
             NumpyDatasource(),
             ray_remote_args=ray_remote_args,
@@ -2848,7 +2646,7 @@ class Datastream(Generic[T]):
             Currently, this supports only a subset of the pyarrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
             types will fail on type checking. See all the supported types at:
-            https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+            https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
 
         .. note::
             The records will be inserted into MongoDB as new documents. If a record has
@@ -2892,7 +2690,7 @@ class Datastream(Generic[T]):
     @ConsumptionAPI
     def write_datasource(
         self,
-        datasource: Datasource[T],
+        datasource: Datasource,
         *,
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
@@ -2938,7 +2736,7 @@ class Datastream(Generic[T]):
                 OneToOneStage(
                     "Write",
                     write_fn_wrapper,
-                    "tasks",
+                    TaskPoolStrategy(),
                     ray_remote_args,
                     fn=lambda x: x,
                 )
@@ -3026,12 +2824,8 @@ class Datastream(Generic[T]):
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
         """Return a local row iterator over the datastream.
-
-        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
-        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
-        iterator.  If the datastream is not tabular, the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -3085,12 +2879,10 @@ class Datastream(Generic[T]):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
-                to return the underlying block exactly as is with no additional
-                formatting. The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or ``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -3644,6 +3436,8 @@ class Datastream(Generic[T]):
         refs = self.to_pandas_refs()
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
         schema = self.schema()
+        if isinstance(schema, Schema):
+            schema = schema.base_schema  # Backwards compat with non strict mode.
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
@@ -3692,8 +3486,11 @@ class Datastream(Generic[T]):
         """
         import raydp
 
+        schema = self.schema()
+        if isinstance(schema, Schema):
+            schema = schema.base_schema  # Backwards compat with non strict mode.
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_internal_block_refs()
+            spark, schema, self.get_internal_block_refs()
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -3796,6 +3593,8 @@ class Datastream(Generic[T]):
         # Schema is safe to call since we have already triggered execution with
         # get_internal_block_refs.
         schema = self.schema(fetch_if_missing=True)
+        if isinstance(schema, Schema):
+            schema = schema.base_schema  # Backwards compat with non strict mode.
         if isinstance(schema, pa.Schema):
             # Zero-copy path.
             return blocks
@@ -3834,7 +3633,7 @@ class Datastream(Generic[T]):
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
     @ConsumptionAPI
-    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
+    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by looping over this datastream.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
@@ -3846,15 +3645,13 @@ class Datastream(Generic[T]):
 
         Examples:
             >>> import ray
+            >>> ds = ray.data.range(5, parallelism=1)
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ray.data.range(5, parallelism=1).repeat().take()
-            [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...]
-            >>> # Can apply transformations to the pipeline.
-            >>> ray.data.range(5, parallelism=1).repeat().map(lambda x: -x).take()
-            [0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...]
+            >>> ds.repeat().take_batch()
+            {'id': array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
             >>> # Can shuffle each epoch (datastream) in the pipeline.
-            >>> ray.data.range(5).repeat().random_shuffle().take() # doctest: +SKIP
-            [2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...]
+            >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
+            {'id': array([2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...])}
 
         Args:
             times: The number of times to loop over this datastream, or None
@@ -3884,7 +3681,7 @@ class Datastream(Generic[T]):
                 self._blocks = blocks
                 self._i = 0
 
-            def __next__(self) -> Callable[[], "Datastream[T]"]:
+            def __next__(self) -> Callable[[], "Datastream"]:
                 if times and self._i >= times:
                     raise StopIteration
                 epoch = self._i
@@ -3928,7 +3725,7 @@ class Datastream(Generic[T]):
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
-    ) -> "DatasetPipeline[T]":
+    ) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -4004,7 +3801,7 @@ class Datastream(Generic[T]):
                 self._splits = splits.copy()
                 self._epoch = epoch
 
-            def __next__(self) -> "Datastream[T]":
+            def __next__(self) -> "Datastream":
                 if not self._splits:
                     raise StopIteration
 
@@ -4119,7 +3916,7 @@ class Datastream(Generic[T]):
         return pipe
 
     @Deprecated(message="Use `Datastream.materialize()` instead.")
-    def fully_executed(self) -> "MaterializedDatastream[T]":
+    def fully_executed(self) -> "MaterializedDatastream":
         logger.warning(
             "Deprecation warning: use Datastream.materialize() instead of "
             "fully_executed()."
@@ -4139,7 +3936,7 @@ class Datastream(Generic[T]):
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def materialize(self) -> "MaterializedDatastream[T]":
+    def materialize(self) -> "MaterializedDatastream":
         """Execute and materialize this datastream into object store memory.
 
         This can be used to read all blocks into memory. By default, Datastream
@@ -4188,7 +3985,7 @@ class Datastream(Generic[T]):
         message="Datastream is lazy by default, so this conversion call is no longer "
         "needed and this API will be removed in a future release"
     )
-    def lazy(self) -> "Datastream[T]":
+    def lazy(self) -> "Datastream":
         """Enable lazy evaluation.
 
         Datastream is lazy by default, so this is only useful for datastreams created
@@ -4298,7 +4095,7 @@ class Datastream(Generic[T]):
         """
         return pickle.loads(serialized_ds)
 
-    def _divide(self, block_idx: int) -> ("Datastream[T]", "Datastream[T]"):
+    def _divide(self, block_idx: int) -> ("Datastream", "Datastream"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
         l_ds = Datastream(
@@ -4317,70 +4114,14 @@ class Datastream(Generic[T]):
         )
         return l_ds, r_ds
 
-    @ConsumptionAPI(if_more_than_read=True, datasource_metadata="schema")
+    @Deprecated(message="The batch format is no longer exposed as a public API.")
     def default_batch_format(self) -> Type:
-        """Return this datastream's default batch format.
+        context = DataContext.get_current()
+        if context.strict_mode:
+            raise StrictModeError(
+                "default_batch_format() is not allowed in strict mode"
+            )
 
-        The default batch format describes what batches of data look like. To learn more
-        about batch formats, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
-
-        Examples:
-
-            If your datastream represents a list of Python objects, then the default batch
-            format is ``list``.
-
-            >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema=<class 'int'>)
-            >>> ds.default_batch_format()
-            <class 'list'>
-            >>> next(ds.iter_batches(batch_size=4))
-            [0, 1, 2, 3]
-
-            If your datastream contains a single ``numpy.ndarray``
-            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
-            the default batch format is ``np.ndarray``. For more information on tensor
-            formats, read the :ref:`tensor support guide <datasets_tensor_support>`.
-
-            >>> ds = ray.data.range_tensor(100)
-            >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=20, num_rows=100, schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)})
-            >>> ds.default_batch_format()
-            <class 'numpy.ndarray'>
-            >>> next(ds.iter_batches(batch_size=4))
-            array([[0],
-                   [1],
-                   [2],
-                   [3]])
-
-            If your datastream represents tabular data and doesn't only consist of a
-            ``__value__`` tensor column (such as is created by
-            :meth:`ray.data.from_numpy`), then the default batch format is
-            ``pd.DataFrame``.
-
-            >>> import pandas as pd
-            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
-            >>> ds = ray.data.from_pandas(df)
-            >>> ds  # doctest: +SKIP
-            Datastream(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
-            >>> ds.default_batch_format()
-            <class 'pandas.core.frame.DataFrame'>
-            >>> next(ds.iter_batches(batch_size=4))
-              foo  bar
-            0   a    0
-            1   b    1
-
-        .. seealso::
-
-            :meth:`~Datastream.map_batches`
-                Call this function to transform batches of data.
-
-            :meth:`~Datastream.iter_batches`
-                Call this function to iterate over batches of data.
-
-        """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
 
@@ -4395,21 +4136,12 @@ class Datastream(Generic[T]):
                 return np.ndarray
             return pd.DataFrame
 
-    @ConsumptionAPI(
-        if_more_than_read=True,
-        datasource_metadata="schema",
-        pattern="for the first block.",
-        insert_after=True,
-    )
-    @Deprecated(message="`dataset_format` is deprecated for streaming execution.")
+    @Deprecated(message="The dataset format is no longer exposed as a public API.")
     def dataset_format(self) -> BlockFormat:
-        """The format of the datastream's underlying data blocks. Possible values
-        are: "arrow", "pandas" and "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
         context = DataContext.get_current()
+        if context.strict_mode:
+            raise StrictModeError("dataset_format() is not allowed in strict mode")
+
         if context.use_streaming_executor:
             raise DeprecationWarning(
                 "`dataset_format` is deprecated for streaming execution. To use "
@@ -4440,7 +4172,7 @@ class Datastream(Generic[T]):
         return BlockFormat.SIMPLE
 
     def _aggregate_on(
-        self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
+        self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
     ):
         """Helper for aggregating on a particular subset of the datastream.
 
@@ -4455,7 +4187,7 @@ class Datastream(Generic[T]):
     def _build_multicolumn_aggs(
         self,
         agg_cls: type,
-        on: Optional[Union[KeyFn, List[KeyFn]]],
+        on: Optional[Union[str, List[str]]],
         ignore_nulls: bool,
         *args,
         skip_cols: Optional[List[str]] = None,
@@ -4477,7 +4209,7 @@ class Datastream(Generic[T]):
             on = [on]
         return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
 
-    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+    def _aggregate_result(self, result: Union[Tuple, Mapping]) -> U:
         if result is not None and len(result) == 1:
             if isinstance(result, tuple):
                 return result[0]
@@ -4508,7 +4240,7 @@ class Datastream(Generic[T]):
         ["ipywidgets", "8"],
     )
     def _tab_repr_(self):
-        from tabulate import tabulate
+        from ray._private.thirdparty.tabulate.tabulate import tabulate
         from ipywidgets import Tab, HTML
 
         metadata = {
@@ -4578,7 +4310,7 @@ class Datastream(Generic[T]):
         raise TypeError(
             "`Datastream` objects aren't iterable. To iterate records, call "
             "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
-            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
+            "https://docs.ray.io/en/latest/data/consuming-datastreams.html."
         )
 
     def _block_num_rows(self) -> List[int]:
@@ -4646,6 +4378,10 @@ class Datastream(Generic[T]):
         self._logical_plan = state["logical_plan"]
         self._current_executor = None
 
+    def __del__(self):
+        if self._current_executor and ray is not None and ray.is_initialized():
+            self._current_executor.shutdown()
+
 
 # Backwards compatibility alias.
 Dataset = Datastream
@@ -4666,8 +4402,11 @@ class MaterializedDatastream(Datastream, Generic[T]):
 @PublicAPI(stability="beta")
 class Schema:
     """Datastream schema.
+
     Attributes:
         names: List of column names of this Datastream.
+        types: List of Arrow types of the Datastream. Note that the "object" type is
+            not Arrow compatible and hence will be returned as `object`.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
@@ -4679,10 +4418,42 @@ class Schema:
         """Lists the columns of this Datastream."""
         return self.base_schema.names
 
+    @property
+    def types(self) -> List[Union[Literal[object], "pyarrow.DataType"]]:
+        """Lists the types of this Datastream in Arrow format
+
+        For non-Arrow compatible types, we return "object".
+        """
+        import pyarrow as pa
+        from ray.data.extensions import TensorDtype, ArrowTensorType
+
+        if isinstance(self.base_schema, pa.lib.Schema):
+            return list(self.base_schema.types)
+
+        arrow_types = []
+        for dtype in self.base_schema.types:
+            if isinstance(dtype, TensorDtype):
+                # Manually convert our Pandas tensor extension type to Arrow.
+                arrow_types.append(
+                    ArrowTensorType(
+                        shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
+                    )
+                )
+            else:
+                try:
+                    arrow_types.append(pa.from_numpy_dtype(dtype))
+                except pa.ArrowNotImplementedError:
+                    arrow_types.append(object)
+                except Exception:
+                    logger.exception(f"Error converting dtype {dtype} to Arrow.")
+                    arrow_types.append(None)
+        return arrow_types
+
+    def __eq__(self, other):
+        return isinstance(other, Schema) and other.base_schema == self.base_schema
+
     def __str__(self):
-        # TODO(ekl) we should canonicalize Pandas vs Pyarrow dtypes, which will be
-        # possible one we support Python objects in Arrow via an extension type.
-        return f"Schema({dict(zip(self.base_schema.names, self.base_schema.types))})"
+        return f"Schema({dict(zip(self.names, self.types))})"
 
     def __repr__(self):
         return str(self)

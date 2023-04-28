@@ -2,7 +2,7 @@ multi-agent-cartpole-appo:
     env: ray.rllib.examples.env.multi_agent.MultiAgentCartPole
     run: APPO
     stop:
-        episode_reward_mean: 600  # 600 / 4 (==num_agents) = 150
+        sampler_results/episode_reward_mean: 600  # 600 / 4 (==num_agents) = 150
         timesteps_total: 200000
     config:
         # Works for both torch and tf.

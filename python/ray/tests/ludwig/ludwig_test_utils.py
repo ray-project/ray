@@ -521,7 +521,7 @@ def create_data_set_to_use(data_format, raw_data):
 
     # support for writing to a fwf dataset based on this stackoverflow posting:
     # https://stackoverflow.com/questions/16490261/python-pandas-write-dataframe-to-fixed-width-file-to-fwf
-    from tabulate import tabulate
+    from ray._private.thirdparty.tabulate.tabulate import tabulate
 
     def to_fwf(df, fname):
         content = tabulate(df.values.tolist(), list(df.columns), tablefmt="plain")

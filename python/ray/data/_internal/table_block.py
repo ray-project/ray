@@ -1,5 +1,5 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+from typing import Dict, Iterator, List, Union, Any, TypeVar, Mapping, TYPE_CHECKING
 
 import numpy as np
 
@@ -22,7 +22,7 @@ T = TypeVar("T")
 MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
 
-class TableBlockBuilder(BlockBuilder[T]):
+class TableBlockBuilder(BlockBuilder):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
@@ -175,12 +175,15 @@ class TableBlockAccessor(BlockAccessor):
         return self._table
 
     def is_tensor_wrapper(self) -> bool:
-        ctx = ray.data.DatasetContext.get_current()
+        ctx = ray.data.DataContext.get_current()
         if ctx.strict_mode:
             return False
         return _is_tensor_schema(self.column_names())
 
-    def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        ctx = ray.data.DataContext.get_current()
         outer = self
 
         class Iter:
@@ -193,15 +196,23 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    return outer._get_row(self._cur)
+                    row = outer._get_row(self._cur)
+                    if (
+                        public_row_format
+                        and ctx.strict_mode
+                        and isinstance(row, TableRow)
+                    ):
+                        return row.as_pydict()
+                    else:
+                        return row
                 raise StopIteration
 
         return Iter()
 
-    def _zip(self, acc: BlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "Block":
         raise NotImplementedError
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
             raise ValueError(

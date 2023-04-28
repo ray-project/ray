@@ -1,5 +1,5 @@
 import os
-from typing import List, Union
+from typing import List
 
 import pandas as pd
 import pyarrow as pa
@@ -13,7 +13,6 @@ from fsspec.implementations.http import HTTPFileSystem
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import (
@@ -24,6 +23,7 @@ from ray.data.datasource import (
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 from typing import Iterable
@@ -82,17 +82,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
 
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
-
-    # Zero-copy.
-    df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_table(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
-    )
-    assert df.equals(dfds)
-
-    # Conversion.
-    df = pd.DataFrame({"value": list(range(n))})
+    df = pd.DataFrame({"id": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
@@ -105,7 +95,7 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(list(BlockAccessor.for_block(b).iter_rows()))
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
     out = sorted(out)
     assert out == list(range(10)), out
 
@@ -203,7 +193,7 @@ def test_from_tf(ray_start_regular_shared):
 
     ray_dataset = ray.data.from_tf(tf_dataset)
 
-    actual_data = ray_dataset.take_all()
+    actual_data = extract_values("item", ray_dataset.take_all())
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
@@ -219,11 +209,11 @@ def test_from_torch(shutdown_only, tmp_path):
 
     ray_dataset = ray.data.from_torch(torch_dataset)
 
-    actual_data = list(ray_dataset.take_all())
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
 
-class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
+class NodeLoggerOutputDatasource(Datasource):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
     def __init__(self):
@@ -329,13 +319,8 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_get_read_tasks(ray_start_cluster):
-    ray.shutdown()
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-    cluster.wait_for_nodes()
-    ray.init(cluster.address)
+def test_get_read_tasks(shutdown_only):
+    ray.init()
 
     head_node_id = ray.get_runtime_context().get_node_id()
 
@@ -346,9 +331,7 @@ def test_get_read_tasks(ray_start_cluster):
     def verify_get_read_tasks():
         from ray.experimental.state.api import list_tasks
 
-        task_states = list_tasks(
-            address=cluster.address, filters=[("name", "=", "_get_read_tasks")]
-        )
+        task_states = list_tasks(filters=[("name", "=", "_get_read_tasks")])
         # Verify only one task being executed on same node.
         assert len(task_states) == 1
         assert task_states[0]["name"] == "_get_read_tasks"
