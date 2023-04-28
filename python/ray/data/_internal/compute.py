@@ -10,14 +10,13 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    BatchUDF,
+    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    RowUDF,
     StrictModeError,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
@@ -37,14 +36,11 @@ BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
-    # Callable[[Block, BatchUDF, ...], Iterable[Block]],
+    # Callable[[Block, UserDefinedFunction, ...], Iterable[Block]],
     Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, UserDefinedFunction], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
-
-# UDF on a batch or row.
-UDF = Union[BatchUDF, RowUDF]
 
 
 @DeveloperAPI
@@ -69,7 +65,7 @@ class TaskPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -277,7 +273,7 @@ class ActorPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -531,7 +527,7 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 def _map_block_split(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
@@ -559,7 +555,7 @@ def _map_block_split(
 def _map_block_nosplit(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,

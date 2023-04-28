@@ -75,7 +75,7 @@ ds = ds.repartition(10)
 def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
     return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
-transformed_ds = ds.map_batches(transform_batch)
+transformed_ds = ds.map_batches(transform_batch, batch_format="pandas")
 # Datastream(num_blocks=10, num_rows=3,
 #         schema={sepal.length: float64, sepal.width: float64,
 #                 petal.length: float64, petal.width: float64, variety: object})

@@ -64,7 +64,7 @@ def generate_random_tfrecords(
         features = {k: v for (k, v) in features.items() if len(v) > 0}
         return pa.table(features)
 
-    ds = ray.data.range(num_rows).map_batches(generate_features)
+    ds = ray.data.range(num_rows).map_batches(generate_features, batch_format="pandas")
     tfrecords_dir = tempfile.mkdtemp()
     ds.write_tfrecords(tfrecords_dir)
     return tfrecords_dir

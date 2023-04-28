@@ -21,7 +21,6 @@ from typing import (
 import numpy as np
 
 from ray.air._internal.remote_storage import _is_local_windows_path
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
@@ -190,7 +189,7 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
+class FileBasedDatasource(Datasource):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed

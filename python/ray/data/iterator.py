@@ -11,11 +11,10 @@ from typing import (
     Tuple,
     Union,
     Iterator,
-    Mapping,
 )
 
 from ray.types import ObjectRef
-from ray.data.block import BlockAccessor, Block, BlockMetadata, DataBatch, T
+from ray.data.block import BlockAccessor, Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.util.annotations import PublicAPI
 from ray.data._internal.block_batching import batch_block_refs
@@ -24,11 +23,10 @@ from ray.data._internal.stats import DatastreamStats
 from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
-    import pyarrow
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.data.datastream import TensorFlowTensorBatchType
+    from ray.data.datastream import TensorFlowTensorBatchType, Schema
 
 
 def _is_tensor_datastream(schema) -> bool:
@@ -40,7 +38,7 @@ def _is_tensor_datastream(schema) -> bool:
 
 @PublicAPI(stability="beta")
 class DataIterator(abc.ABC):
-    """An iterator for reading items from a :class:`~Datastream` or
+    """An iterator for reading records from a :class:`~Datastream` or
     :class:`~DatasetPipeline`.
 
     For Datastreams, each iteration call represents a complete read of all items in the
@@ -56,13 +54,9 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        Datastream(num_blocks=5, num_rows=5, schema={id: int64})
         >>> ds.iterator()
-        DataIterator(Datastream(num_blocks=5, num_rows=5, schema=<class 'int'>))
-        >>> ds = ds.repeat(); ds
-        DatasetPipeline(num_windows=inf, num_stages=2)
-        >>> ds.iterator()
-        DataIterator(DatasetPipeline(num_windows=inf, num_stages=2))
+        DataIterator(Datastream(num_blocks=5, num_rows=5, schema={id: int64}))
 
     .. tip::
         For debugging purposes, use
@@ -125,14 +119,11 @@ class DataIterator(abc.ABC):
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            batch_format: The format in which to return each batch.
-                Specify "default" to use the default block format (promoting
-                tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None to return
-                the underlying block exactly as is with no additional formatting.
-                The default is "default".
+            batch_format: Specify ``"default"`` to use the default block format
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or ``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -200,7 +191,7 @@ class DataIterator(abc.ABC):
         if stats:
             stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, Mapping]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
         """Return a local row iterator over the datastream.
 
         If the datastream is a tabular datastream (Arrow/Pandas blocks), dicts
@@ -233,7 +224,7 @@ class DataIterator(abc.ABC):
 
         for batch in self.iter_batches(**iter_batch_args):
             batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows():
+            for row in batch.iter_rows(public_row_format=True):
                 yield row
 
     @abc.abstractmethod
@@ -242,7 +233,7 @@ class DataIterator(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self) -> "Schema":
         """Return the schema of the datastream iterated over."""
         raise NotImplementedError
 

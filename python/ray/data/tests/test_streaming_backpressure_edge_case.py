@@ -79,12 +79,12 @@ def test_streaming_backpressure_e2e(restore_data_context):
     class TestSlow:
         def __call__(self, df: np.ndarray):
             time.sleep(2)
-            return np.random.randn(1, 20, 1024, 1024)
+            return {"id": np.random.randn(1, 20, 1024, 1024)}
 
     class TestFast:
         def __call__(self, df: np.ndarray):
             time.sleep(0.5)
-            return np.random.randn(1, 20, 1024, 1024)
+            return {"id": np.random.randn(1, 20, 1024, 1024)}
 
     ctx = ray.init(object_store_memory=4e9)
     ds = ray.data.range_tensor(20, shape=(3, 1024, 1024), parallelism=20)

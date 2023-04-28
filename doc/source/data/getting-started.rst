@@ -63,7 +63,7 @@ transform datastreams. Ray executes transformations in parallel for performance.
     def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
         return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
 
-    transformed_ds = datastream.map_batches(transform_batch)
+    transformed_ds = datastream.map_batches(transform_batch, batch_format="pandas")
     print(transformed_ds)
 
 .. testoutput::
@@ -103,12 +103,11 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
         .. testoutput::
             :options: +NORMALIZE_WHITESPACE
 
-               sepal length (cm)  ...  target
-            0                5.2  ...       1
-            1                5.4  ...       1
-            2                4.9  ...       2
-
-            [3 rows x 5 columns]
+            {'sepal length (cm)': array([5.2, 5.4, 4.9]),
+             'sepal width (cm)': array([2.7, 3. , 2.5]),
+             'petal length (cm)': array([3.9, 4.5, 4.5]),
+             'petal width (cm)': array([1.4, 1.5, 1.7]),
+             'target': array([1, 1, 2])}
 
     .. tab-item:: Tasks
 

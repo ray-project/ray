@@ -20,6 +20,7 @@ from ray.data.datasource import (
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -43,7 +44,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy_refs([ray.put(arr) for arr in arrs])
     else:
         ds = ray.data.from_numpy(arrs)
-    values = np.stack(ds.take(8))
+    values = np.stack(extract_values("data", ds.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
@@ -53,7 +54,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy_refs(ray.put(arr1))
     else:
         ds = ray.data.from_numpy(arr1)
-    values = np.stack(ds.take(4))
+    values = np.stack(extract_values("data", ds.take(4)))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
@@ -62,7 +63,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
 def test_from_numpy_variable_shaped(ray_start_regular_shared):
     arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
     ds = ray.data.from_numpy(arr)
-    values = np.array(ds.take(2), dtype=object)
+    values = np.array(extract_values("data", ds.take(2)), dtype=object)
 
     def recursive_to_list(a):
         if not isinstance(a, (list, np.ndarray)):
@@ -75,19 +76,14 @@ def test_from_numpy_variable_shaped(ray_start_regular_shared):
 
 
 def test_to_numpy_refs(ray_start_regular_shared):
-    # Simple Dataset
-    ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.arange(0, 10))
-
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
+    arr = np.concatenate(extract_values("data", ray.get(ds.to_numpy_refs())))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
-    ds = ray.data.range_table(10)
-    arr = np.concatenate([t["value"] for t in ray.get(ds.to_numpy_refs())])
+    ds = ray.data.range(10)
+    arr = np.concatenate([t["id"] for t in ray.get(ds.to_numpy_refs())])
     np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Test multi-column Arrow dataset.
@@ -119,16 +115,18 @@ def test_to_numpy_refs(ray_start_regular_shared):
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.range_tensor(10, parallelism=2)
-    ds.write_numpy(data_path, filesystem=fs)
+    ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Datastream(\n"
         "   num_blocks=2,\n"
         "   num_rows=?,\n"
-        "   schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)}\n"
+        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
     )
-    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
+    np.testing.assert_equal(
+        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
+    )
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -140,10 +138,12 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         "Datastream(\n"
         "   num_blocks=1,\n"
         "   num_rows=10,\n"
-        "   schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)}\n"
+        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
     )
-    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
+    np.testing.assert_equal(
+        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
+    )
 
     # Add a file with a non-matching file extension. This file should be ignored.
     with open(os.path.join(path, "foo.txt"), "w") as f:
@@ -156,10 +156,10 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
         "Datastream(\n"
         "   num_blocks=1,\n"
         "   num_rows=10,\n"
-        "   schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)}\n"
+        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
     )
-    assert [v.item() for v in ds.take(2)] == [0, 1]
+    assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
@@ -194,10 +194,12 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
         "Datastream(\n"
         "   num_blocks=1,\n"
         "   num_rows=10,\n"
-        "   schema={__value__: numpy.ndarray(shape=(1,), dtype=int64)}\n"
+        "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
         ")"
     )
-    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
+    np.testing.assert_equal(
+        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
+    )
 
     with pytest.raises(NotImplementedError):
         ray.data.read_binary_files(
@@ -252,9 +254,9 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{__value__: numpy.ndarray(shape=(2,), dtype=int8)}",
+            schema="{data: numpy.ndarray(shape=(2,), dtype=int8)}",
             sorted_values=f"[[{val_str}]]",
-            ds_take_transform_fn=lambda taken: [taken],
+            ds_take_transform_fn=lambda taken: [extract_values("data", taken)],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
         )
         assert ray.get(kept_file_counter.get.remote()) == 2
@@ -274,7 +276,7 @@ def test_numpy_read_partitioned_with_filter(
 def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
-    ds.write_numpy(data_path, filesystem=fs)
+    ds.write_numpy(data_path, filesystem=fs, column="data")
     file_path1 = os.path.join(data_path, "data_000000.npy")
     file_path2 = os.path.join(data_path, "data_000001.npy")
     if endpoint_url is None:
@@ -291,7 +293,7 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    np.testing.assert_equal(ds.take(1), [np.array([0])])
+    np.testing.assert_equal(extract_values("data", ds.take(1)), [np.array([0])])
 
 
 @pytest.mark.parametrize(
@@ -312,7 +314,10 @@ def test_numpy_write_block_path_provider(
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(
-        data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        data_path,
+        filesystem=fs,
+        block_path_provider=test_block_write_path_provider,
+        column="data",
     )
     file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
     file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
@@ -330,7 +335,7 @@ def test_numpy_write_block_path_provider(
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    np.testing.assert_equal(ds.take(1), [np.array([0])])
+    np.testing.assert_equal(extract_values("data", ds.take(1)), [np.array([0])])
 
 
 if __name__ == "__main__":
