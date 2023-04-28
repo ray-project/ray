@@ -17,7 +17,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
 
-class RandomIntRowDatasource(Datasource[ArrowRow]):
+class RandomIntRowDatasource(Datasource):
     """An example datasource that generates rows with random int64 columns.
 
     Examples:

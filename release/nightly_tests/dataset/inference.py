@@ -58,7 +58,7 @@ def get_paths(bucket, path, max_files=100 * 1000):
 
 def preprocess(batch):
     preprocessor = Preprocessor()
-    return preprocessor(batch)
+    return {"bytes": preprocessor(batch["bytes"])}
 
 
 infer_initialized = False
