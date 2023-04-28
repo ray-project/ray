@@ -187,7 +187,6 @@ class DeploymentInfo:
         is_driver_deployment: Optional[bool] = False,
         app_name: Optional[str] = None,
         route_prefix: str = None,
-        autoscaled_num_replicas: Optional[int] = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -212,7 +211,10 @@ class DeploymentInfo:
             )
         else:
             self.autoscaling_policy = None
-        self.autoscaled_num_replicas = autoscaled_num_replicas
+        # Num replicas decided by the autoscaling policy. This is mutually exclusive
+        # from deployment_config.num_replicas. This value is updated through
+        # set_autoscaled_num_replicas()
+        self.autoscaled_num_replicas = None
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
