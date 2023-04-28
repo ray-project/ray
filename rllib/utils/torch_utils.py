@@ -232,6 +232,37 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
 
 @PublicAPI
+def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
+    """Creates a copy of `x` and makes deep copies torch.Tensors in x.
+
+    Also moves the copied tensors to the specified device (if not None).
+
+    Note if an object in x is not a torch.Tensor, it will be shallow-copied.
+
+    Args:
+        x : Any (possibly nested) struct possibly containing torch.Tensors.
+        device : The device to move the tensors to.
+
+    Returns:
+        Any: A new struct with the same structure as `x`, but with all
+            torch.Tensors deep-copied and moved to the specified device.
+
+    """
+
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return (
+                torch.clone(item.detach())
+                if device is None
+                else item.detach().to(device)
+            )
+        else:
+            return item
+
+    return tree.map_structure(mapping, x)
+
+
+@PublicAPI
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 
