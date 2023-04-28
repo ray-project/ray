@@ -35,7 +35,7 @@ import pandas as pd
 import numpy as np
 
 # Start with a tabular base datastream.
-ds = ray.data.range_table(1000)
+ds = ray.data.range(1000)
 
 # Create a single TensorArray column.
 def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
