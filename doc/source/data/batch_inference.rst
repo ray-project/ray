@@ -309,7 +309,7 @@ as a running example to illustrate advanced concepts of batch processing with Ra
             :classes: btn-link btn-block stretched-link
 
 
-Loading your data with Ray Data
+Loading data with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the quick start guide we glossed over the details of loading data with Ray Data.
