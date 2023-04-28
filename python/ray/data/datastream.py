@@ -210,18 +210,18 @@ class Datastream:
         >>> import ray
         >>> ds = ray.data.range(1000)
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
-        >>> ds = ds.map_batches(lambda batch: {"id": batch["id"] * 2})
+        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})
         MapBatches(<lambda>)
         +- Datastream(num_blocks=17, num_rows=1000, schema={id: int64})
         >>> # Compute the maximum.
         >>> ds.max("id")
         999
         >>> # Shuffle this datastream randomly.
-        >>> ds = ds.random_shuffle()
+        >>> ds.random_shuffle()
         RandomShuffle
         +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
-        >>> ds = ds.sort("id")
+        >>> ds.sort("id")
         Sort
         +- Datastream(num_blocks=..., num_rows=1000, schema={id: int64})
 
@@ -418,7 +418,6 @@ class Datastream:
 
             >>> import numpy as np
             >>> import ray
-            >>> from typing import Dict
             >>> ds = ray.data.from_items([
             ...     {"name": "Luna", "age": 4},
             ...     {"name": "Rory", "age": 14},
@@ -435,6 +434,7 @@ class Datastream:
             also return a different batch type (e.g., pd.DataFrame). Read more about
             :ref:`user-defined function output types <transform_datastreams_batch_output_types>`.
 
+            >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             ...     batch["age_in_dog_years"] = 7 * batch["age"]
             ...     return batch
@@ -1683,7 +1683,7 @@ class Datastream:
             >>> ray.data.range(100).aggregate(Max("id"))
             (99,)
             >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
-            {'max(value)': 99, 'mean(value)': 49.5}
+            {'max(id)': 99, 'mean(id)': 49.5}
 
         Time complexity: O(datastream size / parallelism)
 
@@ -1973,7 +1973,7 @@ class Datastream:
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
             >>> ds1.zip(ds2).take_batch()
-            {'i'": array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])},
+            {'id": array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])},
 
         Time complexity: O(datastream size / parallelism)
 
