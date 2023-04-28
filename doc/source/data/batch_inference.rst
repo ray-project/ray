@@ -92,7 +92,7 @@ We start with very simple use cases here and build up to more complex ones in ot
 
 For this quick start guide we use very small, in-memory data sets by
 leveraging common Python libraries like NumPy and Pandas.
-In general, once you loaded your datasets using Ray Data, you also want to apply some preprocessing steps.
+In general, once you load your datasets using Ray Data, you also want to apply some preprocessing steps.
 We skip this step here for simplicity.
 In any case, the result of this step is a Ray Datastream ``ds`` that we can use to run inference on.
 
