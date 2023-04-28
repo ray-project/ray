@@ -106,7 +106,7 @@ In any case, the result of this step is a Ray Datastream ``ds`` that we can use 
     .. group-tab:: HuggingFace
 
         Create a Pandas
-        DataFrame with text data that we'd like to run a GPT-2 model on.
+        DataFrame with text data to run a GPT-2 model on.
 
         .. literalinclude:: ./doc_code/hf_quick_start.py
             :language: python
