@@ -388,7 +388,7 @@ class TuneController(_TuneControllerBase):
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
-            # logger.debug("Waiting for actor manager to clean up final state")
+            logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
 
         logger.debug("Force cleanup of remaining actors")
@@ -542,7 +542,7 @@ class TuneController(_TuneControllerBase):
         """
         logger.debug(f"Trying to schedule new ACTOR for trial {trial}")
 
-        self._set_trial_status(trial, Trial.PENDING)
+        assert trial.status == Trial.PENDING
 
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
