@@ -8,7 +8,6 @@ import {
   RiLoader4Line,
 } from "react-icons/ri";
 import { CommonRecentCard } from "../../../components/ListItemCard";
-import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
 
 const useStyles = makeStyles((theme) =>
@@ -96,7 +95,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
     })();
 
     return {
-      title: job.job_id ?? job.submission_id,
+      title: job.job_id ?? job.submission_id ?? undefined,
       subtitle: job.entrypoint,
       link:
         job.job_id !== null && job.job_id !== ""
@@ -109,12 +108,12 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
 
   return (
     <CommonRecentCard
-      headerTitle={"Recent jobs"}
+      headerTitle="Recent jobs"
       className={className}
       items={sortedJobToRender}
-      itemEmptyTip={"No jobs yet..."}
-      footerText={"View all jobs"}
-      footerLink={"/jobs"}
+      emptyListText="No jobs yet..."
+      footerText="View all jobs"
+      footerLink="/jobs"
     ></CommonRecentCard>
   );
 };

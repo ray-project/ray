@@ -12,7 +12,7 @@ import {
 type CommonRecentCardProps = {
   headerTitle: string;
   items: RecentListItem[];
-  itemEmptyTip: string;
+  emptyListText: string;
   footerText: string;
   footerLink: string;
 } & ClassNameProps;
@@ -48,7 +48,7 @@ export const CommonRecentCard = ({
   className,
   headerTitle,
   items,
-  itemEmptyTip,
+  emptyListText: itemEmptyTip,
   footerText,
   footerLink,
 }: CommonRecentCardProps) => {

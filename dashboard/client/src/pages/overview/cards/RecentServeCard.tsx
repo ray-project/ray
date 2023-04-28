@@ -146,7 +146,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
       headerTitle="Recent Applications"
       className={className}
       items={sortedApplicationsToRender}
-      itemEmptyTip="No Applications yet..."
+      emptyListText="No Applications yet..."
       footerText="View all applications"
       footerLink="/serve"
     />
