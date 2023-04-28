@@ -6033,7 +6033,7 @@
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
-  working_dir: ../python/ray/autoscaler/gcp/
+  working_dir: ../python/ray/autoscaler/
 
   stable: true
 
@@ -6043,12 +6043,12 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: tests/aws_config.yaml
-    cluster_compute: tests/aws_compute.yaml
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
 
   run:
     timeout: 1200
-    script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py gcp/example-minimal.yaml
     type: sdk_command
 
   variations:
@@ -6056,6 +6056,3 @@
     - __suffix__: gce
       env: gce
       frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: distributed_gce.yaml
