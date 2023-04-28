@@ -453,6 +453,9 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
 def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = strict_mode
+
     stats = BlockExecStats.builder()
     if strict_mode:
         block = BlockAccessor.batch_to_block({"data": ndarray})
