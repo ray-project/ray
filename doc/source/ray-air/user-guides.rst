@@ -19,7 +19,6 @@ AIR User Guides
 
         +++
         .. button-ref:: /ray-air/preprocessors
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
@@ -32,7 +31,6 @@ AIR User Guides
 
         +++
         .. button-ref:: trainers
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
@@ -45,7 +43,6 @@ AIR User Guides
 
         +++
         .. button-ref:: air-ingest
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
@@ -58,7 +55,6 @@ AIR User Guides
 
         +++
         .. button-ref:: /ray-air/tuner
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
@@ -71,7 +67,6 @@ AIR User Guides
 
         +++
         .. button-ref:: predictors
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
@@ -84,7 +79,6 @@ AIR User Guides
 
         +++
         .. button-ref:: /ray-air/examples/serving_guide
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
@@ -97,7 +91,6 @@ AIR User Guides
 
         +++
         .. button-ref:: air-deployment
-            :ref-type: doc
             :color: primary
             :outline:
             :expand:
