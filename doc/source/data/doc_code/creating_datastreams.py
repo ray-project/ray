@@ -415,7 +415,7 @@ import PIL.Image
 ds = ray.data.read_binary_files("example://mnist_subset_partitioned/0/1.png")
 # -> Datastream(num_blocks=1, num_rows=1, schema=<class 'bytes'>)
 
-ds = ds.map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L")))
+ds = ds.map(lambda bytes_: {"images": np.asarray(PIL.Image.open(BytesIO(bytes_["bytes"])).convert("L"))})
 # -> Datastream(
 #        num_blocks=1,
 #        num_rows=1,
