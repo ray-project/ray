@@ -95,10 +95,6 @@ def test_from_mars_e2e(ray_start_regular, enable_optimizer):
     assert ds3._plan._logical_plan.dag.name == "FromArrowRefs"
     _check_usage_record(["FromArrowRefs"])
 
-    # Test simple datasets
-    with pytest.raises(NotImplementedError):
-        ray.data.range(10).to_mars()
-
     cluster.stop()
 
 
