@@ -2825,7 +2825,7 @@ class Datastream(Generic[T]):
             Currently, this supports only a subset of the pyarrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
             types will fail on type checking. See all the supported types at:
-            https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+            https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
 
         .. note::
             The records will be inserted into MongoDB as new documents. If a record has
@@ -4495,7 +4495,7 @@ class Datastream(Generic[T]):
         ["ipywidgets", "8"],
     )
     def _tab_repr_(self):
-        from tabulate import tabulate
+        from ray._private.thirdparty.tabulate.tabulate import tabulate
         from ipywidgets import Tab, HTML
 
         metadata = {
@@ -4632,6 +4632,10 @@ class Datastream(Generic[T]):
         self._lazy = state["lazy"]
         self._logical_plan = state["logical_plan"]
         self._current_executor = None
+
+    def __del__(self):
+        if self._current_executor and ray is not None and ray.is_initialized():
+            self._current_executor.shutdown()
 
 
 # Backwards compatibility alias.
