@@ -335,6 +335,7 @@ install_pip_packages() {
     install_linters
 
     requirements_files+=("${WORKSPACE_DIR}/doc/requirements-doc.txt")
+    requirements_files+=("${WORKSPACE_DIR}/doc/requirements-rtd.txt")
   fi
 
   # Additional default doc testing dependencies.

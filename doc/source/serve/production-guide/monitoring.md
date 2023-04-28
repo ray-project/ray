@@ -243,32 +243,39 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * replica
        * route
+       * application
      - The number of queries that have been processed in this replica.
    * - ``serve_deployment_error_counter`` [**]
      - * deployment
        * replica
        * route
+       * application
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts`` [**]
      - * deployment
        * replica
+       * application
      - The number of times this replica has been restarted due to failure.
    * - ``serve_deployment_replica_healthy``
      - * deployment
        * replica
+       * application
      - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
    * - ``serve_deployment_processing_latency_ms`` [**]
      - * deployment
        * replica
        * route
+       * application
      - The latency for queries to be processed.
    * - ``serve_replica_processing_queries`` [**]
      - * deployment
        * replica
+       * application
      - The current number of queries being processed.
    * - ``serve_num_http_requests`` [*]
      - * route
        * method
+       * application
      - The number of HTTP requests processed.
    * - ``serve_num_http_error_requests`` [*]
      - * route
@@ -278,11 +285,13 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_num_router_requests`` [*]
      - * deployment
        * route
+       * application
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
+       * application
      - The number of requests processed by this ServeHandle.
    * - ``serve_deployment_queued_queries`` [*]
      - * deployment
@@ -293,9 +302,12 @@ The following metrics are exposed by Ray Serve:
        * error_code
        * method
        * route
+       * application
      - The number of non-200 HTTP responses returned by each deployment.
    * - ``serve_http_request_latency_ms`` [*]
      - * route
+       * application
+
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
 ```
 [*] - only available when using HTTP calls
