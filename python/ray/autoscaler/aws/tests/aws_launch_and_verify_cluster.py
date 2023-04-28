@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import time
+import yaml
 from pathlib import Path
 
 import boto3
@@ -145,7 +146,7 @@ def run_ray_commands(cluster_config, retries):
     cleanup_cluster(cluster_config)
 
     print("======================================")
-    print("Finished executing script.")
+    print("Finished executing script successfully.")
 
 
 if __name__ == "__main__":
@@ -156,5 +157,20 @@ if __name__ == "__main__":
     print(f"Using cluster configuration file: {cluster_config}")
     print(f"Number of retries for 'verify ray is running' step: {retries}")
 
-    download_ssh_key()
+    config_yaml = yaml.safe_load(cluster_config.read_text())
+    provider_type = config_yaml.get("provider", {}).get("type")
+    if provider_type == "aws":
+        download_ssh_key()
+    elif provider_type == "gcp":
+        print("======================================")
+        print("GCP provider detected. Skipping ssh key download step.")
+        print("Injecting GCP project 'anyscale-oss-ci' into cluster config provider->project_id")
+        config_yaml["provider"]["project_id"] = "anyscale-oss-ci"
+        cluster_config.write_text(yaml.dump(config_yaml))
+    else:
+        print("======================================")
+        print("Provider type not recognized. Exiting script.")
+        sys.exit(1)
+
+
     run_ray_commands(cluster_config, retries)
