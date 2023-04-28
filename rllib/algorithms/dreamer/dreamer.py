@@ -77,7 +77,13 @@ class DreamerConfig(AlgorithmConfig):
         self.td_model_lr = 6e-4
         self.actor_lr = 8e-5
         self.critic_lr = 8e-5
+
         self.grad_clip = 100.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.lambda_ = 0.95
         self.dreamer_train_iters = 100
         self.batch_size = 50

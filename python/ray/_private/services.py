@@ -1038,10 +1038,12 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    node_ip_address: str,
     temp_dir: str,
     logdir: str,
     session_dir: str,
     port: Optional[int] = None,
+    dashboard_grpc_port: Optional[int] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1060,6 +1062,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
         session_dir: The session directory under temp_dir.
@@ -1067,6 +1070,8 @@ def start_api_server(
         logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
+        dashboard_grpc_port: The port which the dashboard listens for
+            gRPC on. Defaults to a random, available port.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1132,6 +1137,7 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--node-ip-address={node_ip_address}",
         ]
 
         if not redirect_logging:
@@ -1157,6 +1163,9 @@ def start_api_server(
             # loaded although dashboard is disabled. Fix it.
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
+
+        if dashboard_grpc_port is not None:
+            command.append(f"--grpc-port={dashboard_grpc_port}")
 
         process_info = start_ray_process(
             command,
