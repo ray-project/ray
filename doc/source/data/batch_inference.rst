@@ -253,7 +253,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
     you might want to have a look at our
     :ref:`framework-specific batch predictor implementations<air_framework_predictors>`.
 
-    If you want to see an extension of our quickstart example using an AIR
+    To see an extension of the quick start example using an AIR
     ``HuggingFacePredictor``, see the following example:
 
     .. dropdown:: Batch inference example with HuggingFace and Ray AIR
