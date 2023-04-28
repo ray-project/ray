@@ -7,7 +7,7 @@ Running Batch Inference with Ray
 
     In this tutorial you'll learn what batch inference is, why you might want to use
     Ray for it, and how to use Ray effectively for this task.
-    If you are familiar with the basics of inference tasks, you can jump straight into
+    If you are familiar with the basics of inference tasks, jump straight to
     the code of our :ref:`quickstart section <batch_inference_quickstart>` or our
     :ref:`advanced guide<batch_inference_advanced_pytorch_example>`.
 
