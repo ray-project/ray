@@ -20,16 +20,16 @@ Ray Data Glossary
             >>> # Datastream is executed by streaming executor by default, which doesn't
             >>> # preserve the order, so we explicitly set it here.
             >>> ray.data.context.DataContext.get_current().execution_options.preserve_order = True
-            >>> datastream = ray.data.range_table(10)
+            >>> datastream = ray.data.range(10)
             >>> next(iter(datastream.iter_batches(batch_format="numpy", batch_size=5)))
-            {'value': array([0, 1, 2, 3, 4])}
+            {'id': array([0, 1, 2, 3, 4])}
             >>> next(iter(datastream.iter_batches(batch_format="pandas", batch_size=5)))
-               value
-            0      0
-            1      1
-            2      2
-            3      3
-            4      4
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
 
         To learn more about batch formats, read
         :ref:`UDF Input Batch Formats <transform_datastreams_batch_formats>`.
@@ -106,7 +106,7 @@ Ray Data Glossary
 
             >>> import ray
             >>> ray.data.from_items(["spam", "ham", "eggs"])
-            MaterializedDatastream(num_blocks=3, num_rows=3, schema=<class 'str'>)
+            MaterializedDatastream(num_blocks=3, num_rows=3, schema={item: string})
 
     Tensor Datastream
         A Datastream that represents a collection of ndarrays.
@@ -121,7 +121,7 @@ Ray Data Glossary
             MaterializedDatastream(
                num_blocks=1,
                num_rows=100,
-               schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=double)}
+               schema={data: numpy.ndarray(shape=(32, 32, 3), dtype=double)}
             )
 
     Tabular Datastream

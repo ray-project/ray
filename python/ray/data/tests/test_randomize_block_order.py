@@ -14,6 +14,7 @@ from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBl
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.planner.planner import Planner
+from ray.data.tests.util import extract_values
 
 
 def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
@@ -112,7 +113,20 @@ def test_randomize_block_order_after_repartition():
 def test_randomize_blocks_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(12, parallelism=4)
     ds = ds.randomize_block_order(seed=0)
-    assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
+    assert extract_values("id", ds.take_all()) == [
+        6,
+        7,
+        8,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        9,
+        10,
+        11,
+    ], ds
 
 
 def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
