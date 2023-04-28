@@ -42,6 +42,20 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     return output
 
 
+def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
+    from ray.data._internal.execution import streaming_executor
+
+    initial = streaming_executor._num_shutdown
+
+    for _ in range(5):
+        ds = ray.data.range(100)
+        it = ds.iter_batches(batch_size=None, prefetch_batches=0)
+        next(it)
+
+    final = streaming_executor._num_shutdown - initial
+    assert final == 4
+
+
 def test_pipelined_execution(ray_start_10_cpus_shared):
     executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
     inputs = make_ref_bundles([[x] for x in range(20)])

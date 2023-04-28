@@ -4633,6 +4633,10 @@ class Datastream(Generic[T]):
         self._logical_plan = state["logical_plan"]
         self._current_executor = None
 
+    def __del__(self):
+        if self._current_executor and ray is not None and ray.is_initialized():
+            self._current_executor.shutdown()
+
 
 # Backwards compatibility alias.
 Dataset = Datastream
