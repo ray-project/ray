@@ -3,7 +3,7 @@
 Running Batch Inference with Ray
 ================================
 
-.. seealso::
+.. note::
 
     In this tutorial you'll learn what batch inference is, why you might want to use
     Ray for it, and how to use Ray effectively for this task.
