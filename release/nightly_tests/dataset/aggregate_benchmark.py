@@ -2,7 +2,7 @@ from typing import Tuple
 
 import ray
 from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
-from ray.data.block import Block, KeyFn
+from ray.data.block import Block
 from ray.data.datastream import Dataset
 import pyarrow.compute as pac
 
@@ -102,7 +102,7 @@ def h2oai_q8(ds: Dataset) -> Dataset:
         return (value1, value2)
 
     class Top2(_AggregateOnKeyBase):
-        def __init__(self, on: KeyFn):
+        def __init__(self, on):
             self._set_key_fn(on)
             super().__init__(
                 init=lambda _: (float("-inf"), float("-inf")),
