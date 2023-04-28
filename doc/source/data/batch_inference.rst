@@ -48,7 +48,7 @@ Here's a realistic view of batch inference for modern AI applications:
 Why use Ray for batch inference?
 ---------------------------------
 
-There are many good reasons to use Ray for batch inference today, even if your current
+There are reasons to use Ray for batch inference, even if your current
 use case does not require scaling yet:
 
 1. **Faster and Cheaper for modern Deep Learning Applications**: Ray is built for
