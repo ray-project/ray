@@ -269,7 +269,6 @@ We cover resource allocation in more detail in :ref:`the configuration section o
 Advanced batch inference guide
 ------------------------------
 
-Having run a first example, let's have a look at a more complex setup.
  Let's use batch inference on a pre-trained PyTorch model for image classification
 to illustrate advanced concepts of batch processing with Ray.
 
