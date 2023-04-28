@@ -61,9 +61,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
                 if len(module_batch) == 0:
                     raise ValueError(
-                        f"The batch for module_id {module_id} is empty. "
+                        f"The batch for module_id {module_id} is empty! "
                         "This will create an infinite loop because we need to cover "
-                        "the same number of samples for each module_id. "
+                        "the same number of samples for each module_id."
                     )
                 s = self._start[module_id]  # start
                 n_steps = self._minibatch_size

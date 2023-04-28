@@ -85,7 +85,7 @@ class VTraceLoss:
             config: Algorithm config dict.
         """
 
-        # Compute vtrace on the CPU for better perf.
+        # Compute vtrace on the CPU for better performance.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_action_log_probs=behaviour_action_logp,
