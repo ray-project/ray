@@ -99,19 +99,29 @@ def test_process_completed_tasks():
     o2.get_work_refs = MagicMock(return_value=[sleep_ref, done_ref])
     o2.notify_work_completed = MagicMock()
     o2.inputs_done = MagicMock()
+    o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
     o2.inputs_done.assert_not_called()
+    o1.all_dependents_complete.assert_not_called()
 
     # Test input finalization.
     o2.get_work_refs = MagicMock(return_value=[done_ref])
     o2.notify_work_completed = MagicMock()
     o2.inputs_done = MagicMock()
+    o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
     o2.inputs_done.assert_called_once()
+    o1.all_dependents_complete.assert_not_called()
+
+    # Test dependents completed.
+    o2.need_more_inputs = MagicMock(return_value=False)
+    o1.all_dependents_complete = MagicMock()
+    process_completed_tasks(topo)
+    o1.all_dependents_complete.assert_called_once()
 
 
 def test_select_operator_to_run():
