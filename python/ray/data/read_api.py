@@ -240,29 +240,8 @@ def range(n: int, *, parallelism: int = -1) -> Datastream:
     )
 
 
-@PublicAPI
+@Deprecated
 def range_table(n: int, *, parallelism: int = -1) -> Datastream:
-    """Create a tabular stream from a range of integers [0..n).
-
-    Examples:
-        >>> import ray
-        >>> ds = ray.data.range_table(1000) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=1000, schema={value: int64})
-        >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
-        [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
-
-    This is similar to range(), but uses Arrow tables to hold the integers
-    in Arrow records. The datastream elements take the form {"value": N}.
-
-    Args:
-        n: The upper bound of the range of integer records.
-        parallelism: The amount of parallelism to use for the datastream.
-            Parallelism may be limited by the number of items.
-
-    Returns:
-        Datastream producing the integers as Arrow records.
-    """
     ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         raise DeprecationWarning(

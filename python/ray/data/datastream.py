@@ -1680,7 +1680,7 @@ class Datastream:
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max())
+            >>> ray.data.range(100).aggregate(Max("id"))
             (99,)
             >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
             {'max(value)': 99, 'mean(value)': 49.5}
