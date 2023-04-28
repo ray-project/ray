@@ -7,7 +7,7 @@ class BlockBuilder(Generic[T]):
     """A builder class for blocks."""
 
     @staticmethod
-    def for_block(block: Block) -> "BlockBuilder[T]":
+    def for_block(block: Block) -> "BlockBuilder":
         return BlockAccessor.for_block(block).builder()
 
     def add(self, item: T) -> None:

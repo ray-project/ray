@@ -766,13 +766,14 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--log-dir={log_dir}",
         f"--gcs-address={address_info['gcs_address']}",
         f"--session-dir={session_dir}",
+        "--node-ip-address=127.0.0.1",
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
-    p = subprocess.Popen(dashboard_cmd)
-    p.wait(5)
+    dashboard_process = subprocess.Popen(dashboard_cmd)
+    dashboard_process.wait(5)
 
     dashboard_cmd.append("--port-retries=10")
-    subprocess.Popen(dashboard_cmd)
+    conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
 
     timeout_seconds = 10
     start_time = time.time()
@@ -792,6 +793,10 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
+    dashboard_process.kill()
+    conflicting_dashboard_process.kill()
+    dashboard_process.wait()
+    conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
@@ -984,15 +989,17 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
 def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(
-        "127.0.0.1",
-        8265,
-        1,
-        "127.0.0.1:6379",
-        str(tmpdir),
-        str(tmpdir),
-        str(tmpdir),
-        False,
-        True,
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        grpc_port=0,
+        log_dir=str(tmpdir),
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=False,
+        serve_frontend=True,
     )
 
     # Test basic.

@@ -23,8 +23,8 @@ ds.take(5)
 # fmt: off
 # __gen_synth_tabular_range_begin__
 # Create a Datastream of Arrow records.
-ds = ray.data.range_table(10000)
-# -> Datastream(num_blocks=200, num_rows=10000, schema={value: int64})
+ds = ray.data.range(10000)
+# -> Datastream(num_blocks=200, num_rows=10000, schema={id: int64})
 
 ds.take(5)
 # -> [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}, {'value': 4}]
@@ -415,7 +415,7 @@ import PIL.Image
 ds = ray.data.read_binary_files("example://mnist_subset_partitioned/0/1.png")
 # -> Datastream(num_blocks=1, num_rows=1, schema=<class 'bytes'>)
 
-ds = ds.map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L")))
+ds = ds.map(lambda bytes_: {"images": np.asarray(PIL.Image.open(BytesIO(bytes_["bytes"])).convert("L"))})
 # -> Datastream(
 #        num_blocks=1,
 #        num_rows=1,

@@ -1,7 +1,7 @@
 import os
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 import gymnasium as gym
 import numpy as np
@@ -32,11 +32,18 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
+# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
+#  Replaced with `clip_gradients()`.
 @PublicAPI
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
+
+    Note: This function does NOT perform an analogous operation as
+    tf.clip_by_global_norm. It merely clips by norm (per gradient tensor) and
+    then computes the global norm across all given tensors (but without clipping
+    by that global norm).
 
     Args:
         policy: The TorchPolicy, which calculated `loss`.
@@ -81,6 +88,58 @@ def apply_grad_clipping(
 @Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
     pass
+
+
+@PublicAPI
+def clip_gradients(
+    gradients_dict: Dict[str, "torch.Tensor"],
+    *,
+    grad_clip: Optional[float] = None,
+    grad_clip_by: str = "value",
+) -> None:
+    """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
+
+    Changes the provided gradient dict in place.
+
+    Args:
+        gradients_dict: The gradients dict, mapping str to gradient tensors.
+        grad_clip: The value to clip with. The way gradients are clipped is defined
+            by the `grad_clip_by` arg (see below).
+        grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+    """
+    # No clipping, return.
+    if grad_clip is None:
+        return
+
+    # Clip by value (each gradient individually).
+    if grad_clip_by == "value":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = torch.clip(v, -grad_clip, grad_clip)
+
+    # Clip by L2-norm (per gradient tensor).
+    elif grad_clip_by == "norm":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = nn.utils.clip_grad_norm_(v, grad_clip)
+
+    # Clip by global L2-norm (across all gradient tensors).
+    else:
+        assert grad_clip_by == "global_norm"
+
+        # Compute the global L2-norm of all the gradient tensors.
+        grad_tensors = gradients_dict.values()
+        total_l2_norm = 0.0
+        for tensor in grad_tensors:
+            # `.norm()` is the square root of the sum of all squares.
+            # We need to "undo" the square root b/c we want to compute the global
+            # norm afterwards -> `** 2`.
+            total_l2_norm += tensor.norm(2) ** 2
+        # Now we do the square root.
+        total_l2_norm = torch.sqrt(total_l2_norm)
+
+        # Clip all the gradients.
+        if total_l2_norm > grad_clip:
+            for tensor in grad_tensors:
+                tensor.mul_(grad_clip / total_l2_norm)
 
 
 @PublicAPI
@@ -168,6 +227,37 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
             tensor = tensor.float()
 
         return tensor if device is None else tensor.to(device)
+
+    return tree.map_structure(mapping, x)
+
+
+@PublicAPI
+def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
+    """Creates a copy of `x` and makes deep copies torch.Tensors in x.
+
+    Also moves the copied tensors to the specified device (if not None).
+
+    Note if an object in x is not a torch.Tensor, it will be shallow-copied.
+
+    Args:
+        x : Any (possibly nested) struct possibly containing torch.Tensors.
+        device : The device to move the tensors to.
+
+    Returns:
+        Any: A new struct with the same structure as `x`, but with all
+            torch.Tensors deep-copied and moved to the specified device.
+
+    """
+
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return (
+                torch.clone(item.detach())
+                if device is None
+                else item.detach().to(device)
+            )
+        else:
+            return item
 
     return tree.map_structure(mapping, x)
 

@@ -1,7 +1,7 @@
-from typing import Any, Callable, Generic, List, Tuple, Union, Optional
+from typing import List, Tuple, Union, Optional
 
 from ray.data._internal import sort
-from ray.data._internal.compute import CallableClass, ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -25,10 +25,8 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
-    KeyFn,
     KeyType,
-    T,
-    U,
+    UserDefinedFunction,
 )
 from ray.data.context import DataContext
 from ray.data.datastream import DataBatch, Datastream
@@ -42,7 +40,7 @@ class _GroupbyOp(ShuffleOp):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         """Partition the block and combine rows with the same key."""
@@ -66,7 +64,7 @@ class _GroupbyOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
@@ -79,7 +77,7 @@ class _GroupbyOp(ShuffleOp):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
@@ -118,13 +116,13 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 
 @PublicAPI
-class GroupedData(Generic[T]):
+class GroupedData:
     """Represents a grouped datastream created by calling ``Datastream.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, datastream: Datastream[T], key: KeyFn):
+    def __init__(self, datastream: Datastream, key: str):
         """Construct a datastream grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -139,45 +137,15 @@ class GroupedData(Generic[T]):
             f"key={self._key!r})"
         )
 
-    def aggregate(self, *aggs: AggregateFn) -> Datastream[U]:
+    def aggregate(self, *aggs: AggregateFn) -> Datastream:
         """Implements an accumulator-based aggregation.
-
-        Examples:
-
-            .. testcode::
-
-                import ray
-                from ray.data.aggregate import AggregateFn
-                ds = ray.data.range(100)
-                grouped_ds = ds.groupby(lambda x: x % 3)
-                result = grouped_ds.aggregate(AggregateFn(
-                    init=lambda k: [],
-                    accumulate_row=lambda a, r: a + [r],
-                    merge=lambda a1, a2: a1 + a2,
-                    finalize=lambda a: sorted(a)
-                ))
-                result.show()
-
-            .. testoutput::
-
-                (0, [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, \
-51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99])
-                (1, [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46, 49, \
-52, 55, 58, 61, 64, 67, 70, 73, 76, 79, 82, 85, 88, 91, 94, 97])
-                (2, [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50, \
-53, 56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86, 89, 92, 95, 98])
-
 
         Args:
             aggs: Aggregations to do.
 
         Returns:
-            If the input datastream is simple datastream then the output is a simple
-            datastream of ``(k, v_1, ..., v_n)`` tuples where ``k`` is the groupby
-            key and ``v_i`` is the result of the ith given aggregation.
-            If the input datastream is an Arrow datastream then the output is an
-            Arrow datastream of ``n + 1`` columns where the first column is the
-            groupby key and the second through ``n + 1`` columns are the
+            The output is an datastream of ``n + 1`` columns where the first column
+            is the groupby key and the second through ``n + 1`` columns are the
             results of the aggregations.
             If groupby key is ``None`` then the key part of return is omitted.
         """
@@ -249,7 +217,7 @@ class GroupedData(Generic[T]):
     def _aggregate_on(
         self,
         agg_cls: type,
-        on: Union[KeyFn, List[KeyFn]],
+        on: Union[str, List[str]],
         ignore_nulls: bool,
         *args,
         **kwargs,
@@ -257,7 +225,7 @@ class GroupedData(Generic[T]):
         """Helper for aggregating on a particular subset of the datastream.
 
         This validates the `on` argument, and converts a list of column names
-        or lambdas to a multi-aggregation. A null `on` results in a
+        to a multi-aggregation. A null `on` results in a
         multi-aggregation on all columns for an Arrow Datastream, and a single
         aggregation on the entire row for a simple Datastream.
         """
@@ -268,14 +236,12 @@ class GroupedData(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
+        fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         **ray_remote_args,
-    ) -> "Datastream[Any]":
-        # TODO AttributeError: 'GroupedData' object has no attribute 'map_groups'
-        #  in the example below.
+    ) -> "Datastream":
         """Apply the given function to each group of records of this datastream.
 
         While map_groups() is very flexible, note that it comes with downsides:
@@ -290,11 +256,6 @@ class GroupedData(Generic[T]):
             >>> import ray
             >>> import pandas as pd
             >>> import numpy as np
-            >>> # Get median per group. Note that median is not an associative
-            >>> # function so cannot be computed with aggregate().
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.groupby(lambda x: x % 3).map_groups( # doctest: +SKIP
-            ...     lambda x: [np.median(x)])
             >>> # Get first value per group.
             >>> ds = ray.data.from_items([ # doctest: +SKIP
             ...     {"group": 1, "value": 1},
@@ -302,7 +263,7 @@ class GroupedData(Generic[T]):
             ...     {"group": 2, "value": 3},
             ...     {"group": 2, "value": 4}])
             >>> ds.groupby("group").map_groups( # doctest: +SKIP
-            ...     lambda g: [g["value"][0]])
+            ...     lambda g: {"result": np.array([g["value"][0]])})
 
             >>> # Return multiple records per group (dataframe in, dataframe out).
             >>> df = pd.DataFrame(
@@ -326,12 +287,10 @@ class GroupedData(Generic[T]):
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
             batch_format: Specify ``"default"`` to use the default block format
-                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
-                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
-                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None
-                to return the underlying block exactly as is with no additional
-                formatting. The default is "default".
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
+                select ``pyarrow.Table``, or ``"numpy"`` to select
+                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                exactly as is with no additional formatting.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -395,38 +354,35 @@ class GroupedData(Generic[T]):
             **ray_remote_args,
         )
 
-    def count(self) -> Datastream[U]:
+    def count(self) -> Datastream:
         """Compute count aggregation.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
             ...     "A").count() # doctest: +SKIP
 
         Returns:
-            A simple datastream of ``(k, v)`` pairs or an Arrow datastream of
-            ``[k, v]`` columns where ``k`` is the groupby key and ``v`` is the
-            number of rows with that key.
+            A datastream of ``[k, v]`` columns where ``k`` is the groupby key and
+            ``v`` is the number of rows with that key.
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self.aggregate(Count())
 
     def sum(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+    ) -> Datastream:
         r"""Compute grouped sum aggregation.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).groupby(lambda x: x % 3).sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i % 3, i, i**2) # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_table(100).groupby("value").sum() # doctest: +SKIP
+            >>> ray.data.range(100).groupby("id").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -434,13 +390,7 @@ class GroupedData(Generic[T]):
             ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
-            on: The data subset on which to compute the sum.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to take a sum of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to do a column-wise sum of all
-                  columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the sum; if ``False``,
                 if a null value is encountered, the output will be null.
@@ -450,21 +400,12 @@ class GroupedData(Generic[T]):
         Returns:
             The sum result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a simple datastream of ``(k, sum)`` tuples where ``k``
-              is the groupby key and ``sum`` is sum of all rows in that group.
-            - ``on=[callable_1, ..., callable_n]``: a simple datastream of
-              ``(k, sum_1, ..., sum_n)`` tuples where ``k`` is the groupby key
-              and ``sum_i`` is sum of the outputs of the ith callable called on
-              each row in that group.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an Arrow datastream containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise sum column for each original column
               in the datastream.
-            - ``on=["col_1", ..., "col_n"]``: an Arrow datastream of ``n + 1``
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -473,19 +414,13 @@ class GroupedData(Generic[T]):
         return self._aggregate_on(Sum, on, ignore_nulls)
 
     def min(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+    ) -> Datastream:
         """Compute grouped min aggregation.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
-            ...     .min(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_table(100).groupby("value").min() # doctest: +SKIP
+            >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -493,13 +428,7 @@ class GroupedData(Generic[T]):
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
-            on: The data subset on which to compute the min.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to take a min of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to do a column-wise min of all
-                  columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the min; if ``False``,
                 if a null value is encountered, the output will be null.
@@ -509,21 +438,12 @@ class GroupedData(Generic[T]):
         Returns:
             The min result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a simple datastream of ``(k, min)`` tuples where ``k``
-              is the groupby key and min is min of all rows in that group.
-            - ``on=[callable_1, ..., callable_n]``: a simple datastream of
-              ``(k, min_1, ..., min_n)`` tuples where ``k`` is the groupby key
-              and ``min_i`` is min of the outputs of the ith callable called on
-              each row in that group.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an Arrow datastream containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise min column for each original column in
               the datastream.
-            - ``on=["col_1", ..., "col_n"]``: an Arrow datastream of ``n + 1``
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -532,19 +452,13 @@ class GroupedData(Generic[T]):
         return self._aggregate_on(Min, on, ignore_nulls)
 
     def max(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+    ) -> Datastream:
         """Compute grouped max aggregation.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
-            ...     .max(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_table(100).groupby("value").max() # doctest: +SKIP
+            >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -552,13 +466,7 @@ class GroupedData(Generic[T]):
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
-            on: The data subset on which to compute the max.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to take a max of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to do a column-wise max of all
-                  columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the max; if ``False``,
                 if a null value is encountered, the output will be null.
@@ -568,21 +476,12 @@ class GroupedData(Generic[T]):
         Returns:
             The max result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a simple datastream of ``(k, max)`` tuples where ``k``
-              is the groupby key and ``max`` is max of all rows in that group.
-            - ``on=[callable_1, ..., callable_n]``: a simple datastream of
-              ``(k, max_1, ..., max_n)`` tuples where ``k`` is the groupby key
-              and ``max_i`` is max of the outputs of the ith callable called on
-              each row in that group.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an Arrow datastream containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise max column for each original column in
               the datastream.
-            - ``on=["col_1", ..., "col_n"]``: an Arrow datastream of ``n + 1``
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -591,19 +490,13 @@ class GroupedData(Generic[T]):
         return self._aggregate_on(Max, on, ignore_nulls)
 
     def mean(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
-    ) -> Datastream[U]:
+        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+    ) -> Datastream:
         """Compute grouped mean aggregation.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).groupby(lambda x: x % 3).mean() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
-            ...     .mean(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_table(100).groupby("value").mean() # doctest: +SKIP
+            >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -611,13 +504,7 @@ class GroupedData(Generic[T]):
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
-            on: The data subset on which to compute the mean.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to take a mean of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to do a column-wise mean of all
-                  columns.
+            on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the mean; if ``False``,
                 if a null value is encountered, the output will be null.
@@ -627,22 +514,12 @@ class GroupedData(Generic[T]):
         Returns:
             The mean result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a simple datastream of ``(k, mean)`` tuples where ``k``
-              is the groupby key and ``mean`` is mean of all rows in that
-              group.
-            - ``on=[callable_1, ..., callable_n]``: a simple datastream of
-              ``(k, mean_1, ..., mean_n)`` tuples where ``k`` is the groupby
-              key and ``mean_i`` is mean of the outputs of the ith callable
-              called on each row in that group.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an Arrow datastream containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise mean column for each original column
               in the datastream.
-            - ``on=["col_1", ..., "col_n"]``: an Arrow datastream of ``n + 1``
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -652,21 +529,15 @@ class GroupedData(Generic[T]):
 
     def std(
         self,
-        on: Union[KeyFn, List[KeyFn]] = None,
+        on: Union[str, List[str]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-    ) -> Datastream[U]:
+    ) -> Datastream:
         """Compute grouped standard deviation aggregation.
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).groupby(lambda x: x % 3).std() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
-            ...     .std(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_table(100).groupby("value").std(ddof=0) # doctest: +SKIP
+            >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -682,13 +553,7 @@ class GroupedData(Generic[T]):
         https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
-            on: The data subset on which to compute the std.
-
-                - For a simple datastream: it can be a callable or a list thereof,
-                  and the default is to take a std of all rows.
-                - For an Arrow datastream: it can be a column name or a list
-                  thereof, and the default is to do a column-wise std of all
-                  columns.
+            on: a column name or a list of column names to aggregate.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
@@ -700,21 +565,12 @@ class GroupedData(Generic[T]):
         Returns:
             The standard deviation result.
 
-            For a simple datastream, the output is:
+            For different values of ``on``, the return varies:
 
-            - ``on=None``: a simple datastream of ``(k, std)`` tuples where ``k``
-              is the groupby key and ``std`` is std of all rows in that group.
-            - ``on=[callable_1, ..., callable_n]``: a simple datastream of
-              ``(k, std_1, ..., std_n)`` tuples where ``k`` is the groupby key
-              and ``std_i`` is std of the outputs of the ith callable called on
-              each row in that group.
-
-            For an Arrow datastream, the output is:
-
-            - ``on=None``: an Arrow datastream containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise std column for each original column in
               the datastream.
-            - ``on=["col_1", ..., "col_n"]``: an Arrow datastream of ``n + 1``
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 

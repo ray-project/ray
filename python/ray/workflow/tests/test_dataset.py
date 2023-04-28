@@ -18,17 +18,17 @@ def gen_dataset_1():
 
 @ray.remote
 def gen_dataset_2():
-    return ray.data.range_table(1000)
+    return ray.data.range(1000)
 
 
 @ray.remote
 def transform_dataset(in_data):
-    return in_data.map(lambda x: x * 2)
+    return in_data.map(lambda x: {"id": x["id"] * 2})
 
 
 @ray.remote
 def transform_dataset_1(in_data):
-    return in_data.map(lambda r: {"v2": r["value"] * 2})
+    return in_data.map(lambda r: {"v2": r["id"] * 2})
 
 
 @ray.remote

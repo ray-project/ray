@@ -3,7 +3,7 @@ apex-breakoutnoframeskip-v5:
     run: APEX
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 100.0
+        sampler_results/episode_reward_mean: 100.0
         timesteps_total: 12000000
     stop:
         time_total_s: 7200

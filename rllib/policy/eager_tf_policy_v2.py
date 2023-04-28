@@ -98,7 +98,7 @@ class EagerTFPolicyV2(Policy):
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
         # TODO(jungong): clean up after all policies are migrated to new sub-class
-        # implementation.
+        #  implementation.
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
@@ -864,8 +864,6 @@ class EagerTFPolicyV2(Policy):
                 dist_inputs = None
 
             elif is_overridden(self.action_sampler_fn):
-                dist_inputs = None
-                state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
                     input_dict[SampleBatch.OBS],
@@ -875,7 +873,6 @@ class EagerTFPolicyV2(Policy):
                 )
             else:
                 if is_overridden(self.action_distribution_fn):
-
                     # Try new action_distribution_fn signature, supporting
                     # state_batches and seq_lens.
                     (

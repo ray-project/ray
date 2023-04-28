@@ -36,7 +36,7 @@ REMOTE_SCALING_CONFIGS = {
 
 LOCAL_SCALING_CONFIGS = {
     "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=1),
 }
 
 
@@ -45,6 +45,17 @@ LOCAL_SCALING_CONFIGS = {
 @ray.remote(num_gpus=1)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
+        if fw == "torch":
+            import torch
+
+            torch.manual_seed(0)
+        elif fw == "tf":
+            import tensorflow as tf
+
+            # this is done by rllib already inside of the policy class, but we need to
+            # do it here for testing purposes
+            tf.compat.v1.enable_eager_execution()
+            tf.random.set_seed(0)
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         lr = 1e-3
@@ -71,13 +82,25 @@ class RemoteTrainingHelper:
 
         # make the state of the learner and the local learner_group identical
         local_learner.set_state(learner_group.get_state())
+        # learner_group.set_state(learner_group.get_state())
+        check(local_learner.get_state(), learner_group.get_state())
 
         # do another update
         batch = reader.next()
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
         )
-        check(local_learner.update(ma_batch), learner_group.update(ma_batch))
+        # the optimizer state is not initialized fully until the first time that
+        # training is completed. A call to get state before that won't contain the
+        # optimizer state. So we do a dummy update here to initialize the optimizer
+        local_learner.update(ma_batch)
+        learner_group.update(ma_batch)
+
+        check(local_learner.get_state(), learner_group.get_state())
+        local_learner_results = local_learner.update(ma_batch)
+        learner_group_results = learner_group.update(ma_batch)
+
+        check(local_learner_results, learner_group_results)
 
         check(local_learner.get_state(), learner_group.get_state())
 
@@ -138,8 +161,8 @@ class TestLearnerGroup(unittest.TestCase):
 
             self.assertLess(min_loss, 0.57)
 
-            # make sure the learner_group resources are freed up so that we don't
-            # autoscale
+            # Make sure the learner_group resources are freed up so that we don't
+            # autoscale.
             learner_group.shutdown()
             del learner_group
 

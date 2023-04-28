@@ -4,14 +4,14 @@ from typing import Any
 import numpy as np
 
 import ray
-from ray.data.block import Block, DataBatch, T, BlockAccessor
+from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.data._internal.arrow_block import ArrowRow, ArrowBlockBuilder
 from ray.data._internal.pandas_block import PandasRow, PandasBlockBuilder
 
 
-class DelegatingBlockBuilder(BlockBuilder[T]):
+class DelegatingBlockBuilder(BlockBuilder):
     def __init__(self):
         self._builder = None
         self._empty_block = None

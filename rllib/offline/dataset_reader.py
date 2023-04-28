@@ -246,7 +246,7 @@ class DatasetReader(InputReader):
         ret = []
         count = 0
         while count < self.batch_size:
-            d = next(self._iter).as_pydict()
+            d = next(self._iter)
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
             count += d.count
