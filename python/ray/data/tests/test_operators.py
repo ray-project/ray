@@ -1,4 +1,5 @@
 import collections
+import pandas as pd
 import random
 import pytest
 import numpy as np
@@ -33,12 +34,12 @@ from ray._private.test_utils import wait_for_condition
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
     for block, _ in bundle.blocks:
-        output_list.append(ray.get(block))
+        output_list.append(list(ray.get(block)["id"]))
 
 
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
     for block in block_iter:
-        yield [b * 2 for b in block]
+        yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
 
 
 def _take_outputs(op: PhysicalOperator) -> List[Any]:
@@ -234,7 +235,7 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
             ref = op.get_next()
             assert ref.owns_blocks, ref
             for block, _ in ref.blocks:
-                output_splits[ref.output_split_idx].extend(ray.get(block))
+                output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
     op.inputs_done()
     if equal:
         for i in range(3):
@@ -267,7 +268,7 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
         ref = op.get_next()
         assert ref.owns_blocks, ref
         for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(ray.get(block))
+            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
     if equal:
         actual = [len(output_splits[i]) for i in range(3)]
         expected = [num_inputs // 3] * 3
@@ -281,13 +282,16 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     op = OutputSplitter(input_op, 2, equal=False, locality_hints=["node1", "node2"])
 
     def get_fake_loc(item):
+        assert isinstance(item, int), item
         if item in [0, 1, 4, 5, 8]:
             return "node1"
         else:
             return "node2"
 
     def get_bundle_loc(bundle):
-        return get_fake_loc(ray.get(bundle.blocks[0][0])[0])
+        block = ray.get(bundle.blocks[0][0])
+        fval = list(block["id"])[0]
+        return get_fake_loc(fval)
 
     op._get_location = get_bundle_loc
 
@@ -301,7 +305,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
         ref = op.get_next()
         assert ref.owns_blocks, ref
         for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(ray.get(block))
+            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
 
     total = 0
     for i in range(2):
@@ -532,6 +536,38 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
         op.start(ExecutionOptions())
 
 
+def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
+    """Tests that ActorPoolMapOperator refuses input when actors are pending."""
+
+    def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
+        time.sleep(999)
+
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    compute_strategy = ActorPoolStrategy(size=1)
+
+    op = MapOperator.create(
+        _sleep,
+        input_op=input_op,
+        init_fn=lambda: 0,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+
+    op.start(ExecutionOptions())
+
+    # Cannot add input until actor has started.
+    assert not op.should_add_input()
+    for ref in op.get_work_refs():
+        op.notify_work_completed(ref)
+    assert op.should_add_input()
+
+    # Can accept up to four inputs per actor by default.
+    for _ in range(4):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    assert not op.should_add_input()
+
+
 @pytest.mark.parametrize(
     "compute,expected",
     [
@@ -555,7 +591,7 @@ def test_map_operator_pool_delegation(compute, expected):
 def _get_bundles(bundle: RefBundle):
     output = []
     for block, _ in bundle.blocks:
-        output.extend(ray.get(block))
+        output.extend(list(ray.get(block)["id"]))
     return output
 
 
@@ -640,7 +676,7 @@ def test_block_ref_bundler_uniform(
         i
         for bundle in out_bundles
         for block, _ in bundle.blocks
-        for i in ray.get(block)
+        for i in list(ray.get(block)["id"])
     ]
     assert flat_out == list(range(n))
 

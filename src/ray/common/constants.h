@@ -17,6 +17,9 @@
 #include <limits.h>
 #include <stdint.h>
 
+/// The precision of fractional resource quantity.
+constexpr int kResourceUnitScaling = 10000;
+
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 28;
 

@@ -284,6 +284,8 @@ install_npm_project() {
 build_dashboard_front_end() {
   if [ "${OSTYPE}" = msys ]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
+  elif [ "${NO_DASHBOARD-}" = "1" ]; then
+    echo "Skipping dashboard build"
   else
     (
       cd ray/dashboard/client
@@ -308,7 +310,8 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
+      FAST=True make develop
       pip install datasets==2.0.0
       RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
@@ -555,7 +558,7 @@ lint_bazel_pytest() {
     # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
     # - converts the xml to json
     # - feeds the json into pytest_checker.py
-    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python scripts/pytest_checker.py
+    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python ci/lint/pytest_checker.py
   done
 }
 
@@ -793,20 +796,8 @@ run_minimal_test() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
   # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
 
-  # Todo: Make compatible with python 3.9/3.10
-  if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
-    # shellcheck disable=SC2086
-    bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
-  fi
-
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_serve_ray_minimal
   # shellcheck disable=SC2086

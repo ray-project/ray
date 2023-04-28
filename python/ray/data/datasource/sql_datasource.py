@@ -2,7 +2,6 @@ import math
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Iterable, List, Optional
 
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 from ray.util.annotations import PublicAPI
@@ -23,7 +22,7 @@ def _cursor_to_block(cursor) -> Block:
 
 
 @PublicAPI(stability="alpha")
-class SQLDatasource(Datasource[ArrowRow]):
+class SQLDatasource(Datasource):
     def __init__(self, connection_factory: Callable[[], Connection]):
         self.connection_factory = connection_factory
 

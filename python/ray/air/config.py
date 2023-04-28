@@ -1,4 +1,5 @@
 import copy
+import logging
 import os
 import warnings
 from collections import defaultdict
@@ -16,6 +17,8 @@ from typing import (
     Tuple,
 )
 
+from ray._private.storage import _get_storage_uri
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
@@ -39,6 +42,9 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
@@ -545,14 +551,6 @@ class FailureConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self):
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {
@@ -633,14 +631,6 @@ class CheckpointConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         if self.num_to_keep is None:
             num_to_keep_repr = "All"
         else:
@@ -800,6 +790,14 @@ class RunConfig:
             )
             self.local_dir = None
 
+        if not remote_path:
+            remote_path = _get_storage_uri()
+            if remote_path:
+                logger.info(
+                    "Using configured Ray storage URI as storage path: "
+                    f"{remote_path}"
+                )
+
         if remote_path:
             self.storage_path = remote_path
             if local_path:
@@ -827,14 +825,6 @@ class RunConfig:
         )
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         reprs = []
         if self.failure_config is not None:
             reprs.append(

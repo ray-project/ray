@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict
 
 import numpy as np
 
-from ray.air.constants import TENSOR_COLUMN_NAME
+import ray
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from typing import Optional
@@ -39,7 +39,13 @@ class NumpyDatasource(FileBasedDatasource):
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        return BlockAccessor.batch_to_block(np.load(buf, allow_pickle=True))
+        ctx = ray.data.DataContext.get_current()
+        if ctx.strict_mode:
+            return BlockAccessor.batch_to_block(
+                {"data": np.load(buf, allow_pickle=True)}
+            )
+        else:
+            return BlockAccessor.batch_to_block(np.load(buf, allow_pickle=True))
 
     def _convert_block_to_tabular_block(
         self, block: Block, column_name: Optional[str] = None
@@ -48,7 +54,6 @@ class NumpyDatasource(FileBasedDatasource):
             column_name = self._COLUMN_NAME
 
         column_names = block.column_names
-        assert column_names[0] == TENSOR_COLUMN_NAME
         column_names[0] = column_name
         return block.rename_columns(column_names)
 

@@ -7,7 +7,6 @@ import time
 import traceback
 from collections import deque
 from enum import Enum
-from functools import partial
 from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
@@ -57,6 +56,10 @@ ENV_VARS_TO_PROPAGATE = {
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
     "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SECURITY_TOKEN",
+    "AWS_SESSION_TOKEN",
 }
 
 
@@ -946,13 +949,6 @@ class RayTrialExecutor:
                     dir_or_data=value,
                     storage_mode=storage,
                     metrics=result,
-                    local_to_remote_path_fn=partial(
-                        TrainableUtil.get_remote_storage_path,
-                        logdir=trial.local_path,
-                        remote_checkpoint_dir=trial.remote_path,
-                    )
-                    if trial.uses_cloud_checkpointing
-                    else None,
                 )
                 trial.saving_to = checkpoint
                 self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)

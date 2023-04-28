@@ -76,37 +76,40 @@ class HandleOptions:
 
 @PublicAPI(stability="beta")
 class RayServeHandle:
-    """A handle to a service deployment.
+    """A handle used to make requests from one deployment to another.
 
-    Invoking this deployment with .remote is equivalent to pinging
-    an HTTP deployment.
+    This is used to compose multiple deployments in a single application by binding
+    them together when building the application. For example:
 
-    Example:
-        >>> import ray
-        >>> serve_client = ... # doctest: +SKIP
-        >>> handle = serve_client.get_handle("my_deployment") # doctest: +SKIP
-        >>> handle # doctest: +SKIP
-        RayServeSyncHandle(deployment_name="my_deployment")
-        >>> my_request_content = ... # doctest: +SKIP
-        >>> handle.remote(my_request_content) # doctest: +SKIP
-        ObjectRef(...)
-        >>> ray.get(handle.remote(...)) # doctest: +SKIP
-        # result
-        >>> let_it_crash_request = ... # doctest: +SKIP
-        >>> ray.get(handle.remote(let_it_crash_request)) # doctest: +SKIP
-        # raises RayTaskError Exception
-        >>> async_handle = serve_client.get_handle( # doctest: +SKIP
-        ...     "my_deployment", sync=False)
-        >>> async_handle  # doctest: +SKIP
-        RayServeHandle(deployment="my_deployment")
-        >>> await async_handle.remote(my_request_content) # doctest: +SKIP
-        ObjectRef(...)
-        >>> ray.get(await async_handle.remote(...)) # doctest: +SKIP
-        # result
-        >>> ray.get( # doctest: +SKIP
-        ...     await async_handle.remote(let_it_crash_request)
-        ... )
-        # raises RayTaskError Exception
+    .. code-block:: python
+
+        import ray
+        from ray import serve
+        from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+
+        @serve.deployment
+        class Downstream:
+            def __init__(self, message: str):
+                self._message = message
+
+        def __call__(self, name: str) -> str:
+            return self._message + name
+
+        @serve.deployment
+        class Ingress:
+            def __init__(self, handle: RayServeHandle):
+                self._handle = handle
+
+            async def __call__(self, name: str) -> str:
+                obj_ref: ray.ObjectRef = await self._handle.remote(name)
+                return await obj_ref
+
+        app = Ingress.bind(Downstream.bind("Hello "))
+        handle: RayServeSyncHandle = serve.run(app)
+
+        # Prints "Hello Mr. Magoo"
+        print(ray.get(handle.remote("Mr. Magoo")))
+
     """
 
     def __init__(
@@ -130,7 +133,7 @@ class RayServeHandle:
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment", "route"),
+            tag_keys=("handle", "deployment", "route", "application"),
         )
         self.request_counter.set_default_tags(
             {"handle": self.handle_tag, "deployment": self.deployment_name}
@@ -173,28 +176,23 @@ class RayServeHandle:
             self._pusher.join()
 
     @property
-    def is_polling(self) -> bool:
+    def _is_polling(self) -> bool:
         """Whether this handle is actively polling for replica updates."""
         return self.router.long_poll_client.is_running
 
     @property
-    def is_same_loop(self) -> bool:
+    def _is_same_loop(self) -> bool:
         """Whether the caller's asyncio loop is the same loop for handle.
 
         This is only useful for async handles.
         """
         return get_or_create_event_loop() == self.router._event_loop
 
-    def options(
+    def _options(
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
-        """Set options for this handle.
-
-        Args:
-            method_name: The method to invoke.
-        """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
             key: value
@@ -212,6 +210,24 @@ class RayServeHandle:
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
+    def options(
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+    ) -> "RayServeHandle":
+        """Set options for this handle and return an updated copy of it.
+
+        Example:
+
+        .. code-block:: python
+
+            # The following two lines are equivalent:
+            obj_ref = await handle.other_method.remote(*args)
+            obj_ref = await handle.options(method_name="other_method").remote(*args)
+
+        """
+        return self._options(method_name=method_name)
+
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
@@ -220,26 +236,31 @@ class RayServeHandle:
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
             route=_request_context.route,
+            app_name=_request_context.app_name,
         )
-        self.request_counter.inc(tags={"route": _request_context.route})
+        self.request_counter.inc(
+            tags={
+                "route": _request_context.route,
+                "application": _request_context.app_name,
+            }
+        )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
     @_wrap_into_async_task
-    async def remote(self, *args, **kwargs):
-        """Issue an asynchronous request to the deployment.
+    async def remote(self, *args, **kwargs) -> asyncio.Task:
+        """Issue an asynchronous request to the __call__ method of the deployment.
 
-        Returns a Ray ObjectRef whose results can be waited for or retrieved
-        using ray.wait or ray.get (or ``await object_ref``), respectively.
+        Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
+        points to the final result of the request.
 
-        Returns:
-            ray.ObjectRef
-        Args:
-            request_data(dict, Any): If it's a dictionary, the data will be
-                available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.body()``.
-            ``**kwargs``: All keyword arguments will be available in
-                ``request.query_params``.
+        The final result can be retrieved by `await`ing the ObjectRef. Example:
+
+        .. code-block:: python
+
+            obj_ref = await handle.remote(*args)
+            result = await obj_ref
+
         """
         return await self._remote(
             self.deployment_name, self.handle_options, args, kwargs
@@ -271,8 +292,32 @@ class RayServeHandle:
 
 @PublicAPI(stability="beta")
 class RayServeSyncHandle(RayServeHandle):
+    """A handle used to make requests to the ingress deployment of an application.
+
+    This is returned by `serve.run` and can be used to invoke the application from
+    Python rather than over HTTP. For example:
+
+    .. code-block:: python
+
+        import ray
+        from ray import serve
+        from ray.serve.handle import RayServeSyncHandle
+
+        @serve.deployment
+        class Ingress:
+            def __call__(self, name: str) -> str:
+                return f"Hello {name}"
+
+        app = Ingress.bind()
+        handle: RayServeSyncHandle = serve.run(app)
+
+        # Prints "Hello Mr. Magoo"
+        print(ray.get(handle.remote("Mr. Magoo")))
+
+    """
+
     @property
-    def is_same_loop(self) -> bool:
+    def _is_same_loop(self) -> bool:
         # NOTE(simon): For sync handle, the caller doesn't have to be in the
         # same loop as the handle's loop, so we always return True here.
         return True
@@ -285,22 +330,35 @@ class RayServeSyncHandle(RayServeHandle):
             event_loop=_create_or_get_async_loop_in_thread(),
         )
 
-    def remote(self, *args, **kwargs):
-        """Issue an asynchronous request to the deployment.
+    def options(
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+    ) -> "RayServeSyncHandle":
+        """Set options for this handle and return an updated copy of it.
+
+        Example:
+
+        .. code-block:: python
+
+            # The following two lines are equivalent:
+            obj_ref = handle.other_method.remote(*args)
+            obj_ref = handle.options(method_name="other_method").remote(*args)
+
+        """
+        return self._options(method_name=method_name)
+
+    def remote(self, *args, **kwargs) -> ray.ObjectRef:
+        """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
-        using ray.wait or ray.get (or ``await object_ref``), respectively.
+        using ray.wait or ray.get, respectively.
 
-        Returns:
-            ray.ObjectRef
-        Args:
-            request_data(dict, Any): If it's a dictionary, the data will be
-                available in ``request.json()`` or ``request.form()``.
-                If it's a Starlette Request object, it will be passed in to the
-                handler directly, unmodified. Otherwise, the data will be
-                available in ``request.data``.
-            ``**kwargs``: All keyword arguments will be available in
-                ``request.args``.
+        .. code-block:: python
+
+            obj_ref = handle.remote(*args)
+            result = ray.get(obj_ref)
+
         """
         coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
@@ -334,7 +392,7 @@ class RayServeDeploymentHandle:
         # requirement of serve.start; Thus handle is fulfilled at runtime.
         self.handle: RayServeHandle = None
 
-    def options(self, *, method_name: str):
+    def options(self, *, method_name: str) -> "RayServeDeploymentHandle":
         return self.__class__(
             self.deployment_name, HandleOptions(method_name=method_name)
         )

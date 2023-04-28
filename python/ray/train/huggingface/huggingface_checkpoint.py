@@ -18,5 +18,5 @@ class HuggingFaceCheckpoint(TransformersCheckpoint):
 
 
 __all__ = [
-    "TransformersCheckpoint",
+    "HuggingFaceCheckpoint",
 ]

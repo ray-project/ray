@@ -3,7 +3,7 @@ cartpole-ppo:
     run: PPO
     num_samples: 3
     stop:
-        episode_reward_mean: 200
+        sampler_results/episode_reward_mean: 200
         time_total_s: 180
     config:
         # Works for both torch and tf.

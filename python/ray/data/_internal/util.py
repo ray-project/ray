@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
     import pyarrow
     import pandas
-    from ray.data._internal.arrow_block import ArrowRow
     from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
@@ -251,6 +250,14 @@ def _is_tensor_schema(column_names: List[str]):
     return column_names == [TENSOR_COLUMN_NAME]
 
 
+def _truncated_repr(obj: Any) -> str:
+    """Utility to return a truncated object representation for error messages."""
+    msg = str(obj)
+    if len(msg) > 200:
+        msg = msg[:200] + "..."
+    return msg
+
+
 def _insert_doc_at_pattern(
     obj,
     *,
@@ -428,7 +435,7 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
@@ -443,11 +450,14 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     )
 
 
-def ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block(ndarray)
+    if strict_mode:
+        block = BlockAccessor.batch_to_block({"data": ndarray})
+    else:
+        block = BlockAccessor.batch_to_block(ndarray)
     metadata = BlockAccessor.for_block(block).get_metadata(
         input_files=None, exec_stats=stats.build()
     )

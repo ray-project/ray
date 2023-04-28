@@ -129,7 +129,7 @@ def test_fit_twice(mocked_warn):
     scaler.fit(ds)
     assert scaler.stats_ == {"min(B)": 1, "max(B)": 5, "min(C)": 1, "max(C)": 1}
 
-    ds = ds.map_batches(lambda x: x * 2)
+    ds = ds.map_batches(lambda x: {k: v * 2 for k, v in x.items()})
     # Fit again
     scaler.fit(ds)
     # Assert that the fitted state is corresponding to the second ds.
@@ -182,7 +182,7 @@ def test_transform_config(pipeline):
 
 
 def test_pipeline_fail():
-    ds = ray.data.range_table(5).window(blocks_per_window=1).repeat(1)
+    ds = ray.data.range(5).window(blocks_per_window=1).repeat(1)
 
     class FittablePreprocessor(Preprocessor):
         _is_fittable = True
@@ -234,7 +234,7 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
     if pipeline:
         patcher = patch.object(ray.data.dataset_pipeline.DatasetPipeline, "map_batches")
     else:
-        patcher = patch.object(ray.data.dataset.Datastream, "map_batches")
+        patcher = patch.object(ray.data.datastream.Datastream, "map_batches")
 
     with patcher as mock_map_batches:
         _apply_transform(with_pandas, ds)
