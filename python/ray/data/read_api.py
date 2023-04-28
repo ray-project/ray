@@ -116,9 +116,9 @@ def from_items(
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        MaterializedDatastream(num_blocks=5, num_rows=5, schema=<class 'int'>)
-        >>> ds.take(2) # doctest: +SKIP
-        [1, 2]
+        MaterializedDatastream(num_blocks=5, num_rows=5, schema={item: int64})
+        >>> ds.take_batch(2) # doctest: +SKIP
+        {"item": array([1, 2])}
 
     Args:
         items: List of local Python objects.
@@ -1910,9 +1910,9 @@ def from_torch(
         >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
         >>> ds = ray.data.from_torch(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Datastream(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
+        Datastream(num_blocks=200, num_rows=60000, schema={item: object})
         >>> ds.take(1)  # doctest: +SKIP
-        [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
+        {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)}
 
     Args:
         dataset: A Torch dataset.
