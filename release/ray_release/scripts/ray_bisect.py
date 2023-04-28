@@ -3,7 +3,7 @@ import subprocess
 import os
 import json
 import time
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -27,11 +27,21 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "capacity, but reduce the bisect duration"
     ),
 )
+@click.option(
+    "--run-per-commit",
+    default=1,
+    type=int,
+    help=(
+        "The number of time we run test on the same commit, to account for test "
+        "flakiness. Commit passes only when it passes on all runs"
+    ),
+)
 def main(
     test_name: str,
     passing_commit: str,
     failing_commit: str,
-    concurrency: Optional[int] = 1,
+    concurrency: int = 1,
+    run_per_commit: int = 1,
 ) -> None:
     if concurrency <= 0:
         raise ValueError(
@@ -46,11 +56,16 @@ def main(
         )
         return
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
-    blamed_commit = _bisect(test, commit_lists, concurrency)
+    blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
 
 
-def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
+def _bisect(
+    test: Test,
+    commit_list: List[str],
+    concurrency: int,
+    run_per_commit: int,
+) -> str:
     while len(commit_list) > 2:
         logger.info(
             f"Bisecting between {len(commit_list)} commits: "
@@ -63,11 +78,13 @@ def _bisect(test: Test, commit_list: List[str], concurrency: int) -> str:
             # on the previously run revision
             idx = min(max(idx, 1), len(commit_list) - 2)
             idx_to_commit[idx] = commit_list[idx]
-        outcomes = _run_test(test, set(idx_to_commit.values()))
+        outcomes = _run_test(test, set(idx_to_commit.values()), run_per_commit)
         passing_idx = 0
         failing_idx = len(commit_list) - 1
         for idx, commit in idx_to_commit.items():
-            is_passing = outcomes[commit] == "passed"
+            is_passing = all(
+                outcome == "passed" for outcome in outcomes[commit].values()
+            )
             if is_passing and idx > passing_idx:
                 passing_idx = idx
             if not is_passing and idx < failing_idx:
@@ -92,58 +109,67 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
 
 
-def _run_test(test: Test, commits: Set[str]) -> Dict[str, str]:
+def _run_test(test: Test, commits: Set[str], run_per_commit: int) -> Dict[str, str]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
-        _trigger_test_run(test, commit)
-    return _obtain_test_result(commits)
+        _trigger_test_run(test, commit, run_per_commit)
+    return _obtain_test_result(commits, run_per_commit)
 
 
-def _trigger_test_run(test: Test, commit: str) -> None:
+def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
         commit,
         timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
     )
-    step = get_step(
-        test,
-        ray_wheels=ray_wheels_url,
-        env={
-            "RAY_COMMIT_OF_WHEEL": commit,
-        },
-    )
-    step["label"] = f'{test["name"]}:{commit[:7]}'
-    step["key"] = commit
-    pipeline = subprocess.Popen(
-        ["echo", json.dumps({"steps": [step]})], stdout=subprocess.PIPE
-    )
-    subprocess.check_output(
-        ["buildkite-agent", "pipeline", "upload"], stdin=pipeline.stdout
-    )
-    pipeline.stdout.close()
+    for run in range(run_per_commit):
+        step = get_step(
+            test,
+            ray_wheels=ray_wheels_url,
+            env={
+                "RAY_COMMIT_OF_WHEEL": commit,
+            },
+        )
+        step["label"] = f'{test["name"]}:{commit[:7]}-{run}'
+        step["key"] = f"{commit}-{run}"
+        pipeline = subprocess.Popen(
+            ["echo", json.dumps({"steps": [step]})], stdout=subprocess.PIPE
+        )
+        subprocess.check_output(
+            ["buildkite-agent", "pipeline", "upload"], stdin=pipeline.stdout
+        )
+        pipeline.stdout.close()
 
 
-def _obtain_test_result(buildkite_step_keys: List[str]) -> Dict[str, str]:
+def _obtain_test_result(commits: Set[str], run_per_commit: int) -> Dict[str, str]:
     outcomes = {}
     wait = 5
     total_wait = 0
     while True:
         logger.info(f"... waiting for test result ...({total_wait} seconds)")
-        for key in buildkite_step_keys:
-            if key in outcomes:
+        for commit in commits:
+            if commit in outcomes and len(outcomes[commit]) == run_per_commit:
                 continue
-            outcome = subprocess.check_output(
-                [
-                    "buildkite-agent",
-                    "step",
-                    "get",
-                    "outcome",
-                    "--step",
-                    key,
-                ]
-            ).decode("utf-8")
-            if outcome:
-                outcomes[key] = outcome
-        if len(outcomes) == len(buildkite_step_keys):
+            for run in range(run_per_commit):
+                outcome = subprocess.check_output(
+                    [
+                        "buildkite-agent",
+                        "step",
+                        "get",
+                        "outcome",
+                        "--step",
+                        f"{commit}-{run}",
+                    ]
+                ).decode("utf-8")
+                if not outcome:
+                    continue
+                if commit not in outcomes:
+                    outcomes[commit] = {}
+                outcomes[commit][run] = outcome
+        all_commit_finished = len(outcomes) == len(commits)
+        per_commit_finished = all(
+            len(outcome) == run_per_commit for outcome in outcomes.values()
+        )
+        if all_commit_finished and per_commit_finished:
             break
         time.sleep(wait)
         total_wait = total_wait + wait

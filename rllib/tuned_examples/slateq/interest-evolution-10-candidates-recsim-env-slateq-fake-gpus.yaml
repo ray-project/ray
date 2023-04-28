@@ -2,7 +2,7 @@ interest-evolution-recsim-env-slateq:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 160.0
+        sampler_results/episode_reward_mean: 160.0
         timesteps_total: 100000
     config:
         framework: torch
