@@ -6,7 +6,6 @@ from typing import Any, List, Dict, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.autoscaling_policy import AutoscalingPolicy
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -179,12 +178,15 @@ class DeploymentInfo:
         replica_config: ReplicaConfig,
         start_time_ms: int,
         deployer_job_id: str,
+        route_prefix: str = None,
+        app_name: str = None,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        autoscaling_policy: Optional[AutoscalingPolicy] = None,
         is_driver_deployment: Optional[bool] = False,
     ):
+        self.app_name = app_name
+        self.route_prefix = route_prefix
         self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
@@ -194,7 +196,6 @@ class DeploymentInfo:
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
-        self.autoscaling_policy = autoscaling_policy
 
         # ephermal state
         self._cached_actor_def = None

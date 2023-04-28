@@ -20,6 +20,10 @@ from ray._private.usage.usage_lib import (
 )
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
+from ray.serve._private.autoscaling_policy import (
+    AutoscalingPolicy,
+    BasicAutoscalingPolicy,
+)
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentInfo,
@@ -83,28 +87,42 @@ class DeploymentTargetState:
     info: Optional[DeploymentInfo]
     num_replicas: int
     version: Optional[DeploymentVersion]
+    autoscaling_policy: Optional[AutoscalingPolicy]
     deleting: bool
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
-        return cls(None, -1, None, False)
+        return cls(None, -1, None, None, False)
 
     @classmethod
     def from_deployment_info(
-        cls, info: DeploymentInfo, *, deleting: bool = False
+        cls,
+        info: DeploymentInfo,
+        autoscaled_num_replicas: int = 1,
+        *,
+        deleting: bool = False,
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
             version = None
+            autoscaling_policy = None
         else:
-            num_replicas = info.deployment_config.num_replicas
+            autoscaling_config = info.deployment_config.autoscaling_config
+            if autoscaling_config is not None:
+                num_replicas = autoscaled_num_replicas
+                autoscaling_policy = BasicAutoscalingPolicy(
+                    info.deployment_config.autoscaling_config
+                )
+            else:
+                num_replicas = info.deployment_config.num_replicas
+                autoscaling_policy = None
             version = DeploymentVersion(
                 info.version,
                 deployment_config=info.deployment_config,
                 ray_actor_options=info.replica_config.ray_actor_options,
             )
 
-        return cls(info, num_replicas, version, deleting)
+        return cls(info, num_replicas, version, autoscaling_policy, deleting)
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -1057,13 +1075,13 @@ class DeploymentState:
         """
         Check if the deployment is under autoscaling
         """
-        return self._target_state.info.autoscaling_policy is not None
+        return self._target_state.autoscaling_policy is not None
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.info.autoscaling_policy.config.look_back_period_s
+        return self._target_state.autoscaling_policy.config.look_back_period_s
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1157,12 +1175,19 @@ class DeploymentState:
         )
         logger.info(f"Deleting deployment {self._name}.")
 
-    def _set_target_state(self, target_info: DeploymentInfo) -> None:
+    def _set_target_state(
+        self, target_info: DeploymentInfo, autoscaled_num_replicas: int = None
+    ) -> None:
         """Set the target state for the deployment to the provided info."""
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        target_state = DeploymentTargetState.from_deployment_info(target_info)
+        if autoscaled_num_replicas is not None:
+            target_state = DeploymentTargetState.from_deployment_info(
+                target_info, autoscaled_num_replicas
+            )
+        else:
+            target_state = DeploymentTargetState.from_deployment_info(target_info)
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
         if self._target_state.version == target_state.version:
@@ -1217,7 +1242,19 @@ class DeploymentState:
             ):
                 return False
 
-        self._set_target_state(deployment_info)
+        # Autoscaling stuff
+        autoscaling_config = deployment_info.deployment_config.autoscaling_config
+        if autoscaling_config is not None:
+            if autoscaling_config.initial_replicas is not None:
+                num_replicas = autoscaling_config.initial_replicas
+            else:
+                if existing_info is None:
+                    num_replicas = autoscaling_config.min_replicas
+                else:
+                    num_replicas = self._target_state.num_replicas
+            self._set_target_state(deployment_info, num_replicas)
+        else:
+            self._set_target_state(deployment_info)
         return True
 
     def autoscale(
@@ -1239,21 +1276,20 @@ class DeploymentState:
             return
 
         curr_info = self._target_state.info
-        autoscaling_policy = self._target_state.info.autoscaling_policy
+        autoscaling_policy = self._target_state.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-            curr_target_num_replicas=curr_info.deployment_config.num_replicas,
+            curr_target_num_replicas=self._target_state.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
         )
-        if decision_num_replicas == curr_info.deployment_config.num_replicas:
+        if decision_num_replicas == self._target_state.num_replicas:
             return
 
         new_config = copy(curr_info)
-        new_config.deployment_config.num_replicas = decision_num_replicas
         if new_config.version is None:
             new_config.version = self._target_state.version.code_version
 
-        self._set_target_state(new_config)
+        self._set_target_state(new_config, decision_num_replicas)
 
     def delete(self) -> None:
         self._set_target_state_deleting()
@@ -2175,6 +2211,15 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
+
+    def get_deployments_in_application(self, app_name: str) -> List[str]:
+        """Return list of deployment names in application."""
+        states = []
+        for name, deployment_state in self._deployment_states.items():
+            if deployment_state.target_info.app_name == app_name:
+                states.append(name)
+
+        return states
 
     def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the
