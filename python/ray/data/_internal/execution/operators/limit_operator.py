@@ -38,18 +38,14 @@ class LimitOperator(PhysicalOperator):
         if self._num_outputs_total is not None:
             self._num_outputs_total = min(self._num_outputs_total, limit)
         super().__init__(self._name, [input_op])
+        if self._limit <= 0:
+            self.inputs_done()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
 
     def need_more_inputs(self) -> bool:
         return not self._limit_reached()
-
-    def completed(self) -> bool:
-        if self._limit_reached():
-            return not self.has_next()
-        else:
-            return super().completed()
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -91,6 +87,8 @@ class LimitOperator(PhysicalOperator):
             owns_blocks=refs.owns_blocks,
         )
         self._buffer.append(out_refs)
+        if self._limit_reached():
+            self.inputs_done()
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0

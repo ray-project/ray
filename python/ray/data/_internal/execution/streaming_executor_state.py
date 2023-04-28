@@ -349,7 +349,7 @@ def process_completed_tasks(topology: Topology) -> None:
 
     # Traverse the topology in reverse topological order.
     # For each op, if all of its downstream operators don't need any more inputs,
-    # call outputs_done() to close the op.
+    # call outputs_done() to complete the op.
     for op, op_state in reversed(topology.items()):
         if op_state.outputs_done_called:
             continue
