@@ -35,11 +35,11 @@ class Translator:
 # __model_end__
 
 # __model_deploy_start__
-translator = Translator.bind()
+translator_app = Translator.bind()
 # __model_deploy_end__
 
-translator = Translator.options(ray_actor_options={}).bind()
-serve.run(translator)
+translator_app = Translator.options(ray_actor_options={}).bind()
+serve.run(translator_app)
 
 # __client_function_start__
 # File name: model_client.py

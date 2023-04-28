@@ -14,6 +14,10 @@ from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_ME
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -444,7 +448,10 @@ def test_get_status(ray_start_stop):
 
     deployment_statuses = serve_status["deployment_statuses"]
     assert len(deployment_statuses) == 2
-    expected_deployment_names = {"f", "BasicDriver"}
+    expected_deployment_names = {
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}BasicDriver",
+    }
     for deployment_status in deployment_statuses:
         assert deployment_status["name"] in expected_deployment_names
         expected_deployment_names.remove(deployment_status["name"])
@@ -460,7 +467,21 @@ def test_get_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
-def test_get_serve_instance_details(ray_start_stop):
+@pytest.mark.parametrize(
+    "f_deployment_options",
+    [
+        {"name": "f", "ray_actor_options": {"num_cpus": 0.2}},
+        {
+            "name": "f",
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "initial_replicas": 3,
+                "max_replicas": 10,
+            },
+        },
+    ],
+)
+def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
@@ -474,12 +495,7 @@ def test_get_serve_instance_details(ray_start_stop):
                 "name": "app1",
                 "route_prefix": "/app1",
                 "import_path": world_import_path,
-                "deployments": [
-                    {
-                        "name": "f",
-                        "ray_actor_options": {"num_cpus": 0.2},
-                    },
-                ],
+                "deployments": [f_deployment_options],
             },
             {
                 "name": "app2",
@@ -553,7 +569,11 @@ def test_get_serve_instance_details(ray_start_stop):
             assert "route_prefix" not in deployment.deployment_config.dict(
                 exclude_unset=True
             )
-            assert len(deployment.replicas) == deployment.deployment_config.num_replicas
+            if isinstance(deployment.deployment_config.num_replicas, int):
+                assert (
+                    len(deployment.replicas)
+                    == deployment.deployment_config.num_replicas
+                )
 
             for replica in deployment.replicas:
                 assert replica.state == ReplicaState.RUNNING
@@ -692,7 +712,10 @@ def test_serve_namespace(ray_start_stop):
     serve_status = client.get_serve_status()
     assert (
         len(serve_status.deployment_statuses) == 2
-        and serve_status.get_deployment_status("f") is not None
+        and serve_status.get_deployment_status(
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+        )
+        is not None
     )
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")

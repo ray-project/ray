@@ -465,7 +465,7 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
         max_concurrent_trials=2,
         local_dir=str(tmp_path),
         name=exp_name,
-        sync_config=tune.SyncConfig(upload_dir=f"file://{tmp_target}"),
+        storage_path=f"file://{tmp_target}",
         trial_dirname_creator=lambda t: str(t.config.get("id")),
         checkpoint_freq=1,
     )
@@ -546,9 +546,8 @@ def test_artifact_syncing_with_actor_reuse(
             max_concurrent_trials=2,
             local_dir=str(local_dir),
             name=exp_name,
-            sync_config=tune.SyncConfig(
-                upload_dir=f"file://{tmp_target}", sync_artifacts=True
-            ),
+            storage_path=f"file://{tmp_target}",
+            sync_config=tune.SyncConfig(sync_artifacts=True),
             trial_dirname_creator=lambda t: str(t.config.get("id")),
             checkpoint_freq=1,
         )

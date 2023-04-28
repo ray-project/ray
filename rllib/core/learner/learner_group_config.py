@@ -114,7 +114,7 @@ class LearnerGroupConfig:
     def resources(
         self,
         num_learner_workers: Optional[int] = NotProvided,
-        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_learner_worker: Optional[int] = NotProvided,
         num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
     ) -> "LearnerGroupConfig":

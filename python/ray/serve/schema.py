@@ -15,6 +15,7 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def _route_prefix_format(cls, v):
@@ -116,7 +117,14 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 
         for uri in uris:
             if uri is not None:
-                parse_uri(uri)
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "runtime_envs in the Serve config support only "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
+                    )
 
         return v
 
@@ -264,12 +272,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     codepath)
     """
 
-    return DeploymentSchema(
+    schema = DeploymentSchema(
         name=name,
-        num_replicas=info.deployment_config.num_replicas,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
         user_config=info.deployment_config.user_config,
-        autoscaling_config=info.deployment_config.autoscaling_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
         ),
@@ -279,6 +285,13 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         ray_actor_options=info.replica_config.ray_actor_options,
         is_driver_deployment=info.is_driver_deployment,
     )
+
+    if info.deployment_config.autoscaling_config is not None:
+        schema.autoscaling_config = info.deployment_config.autoscaling_config
+    else:
+        schema.num_replicas = info.deployment_config.num_replicas
+
+    return schema
 
 
 @PublicAPI(stability="beta")
@@ -292,9 +305,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     """
 
     name: str = Field(
-        # TODO(cindy): eventually we should set the default app name to a non-empty
-        # string and forbid empty app names.
-        default="",
+        default=SERVE_DEFAULT_APP_NAME,
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -345,7 +356,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     deployments: List[DeploymentSchema] = Field(
         default=[],
-        description=("Deployment options that override options specified in the code."),
+        description="Deployment options that override options specified in the code.",
+    )
+    args: Dict = Field(
+        default={},
+        description="Arguments that will be passed to the application builder.",
     )
 
     @validator("runtime_env")
@@ -361,7 +376,14 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         for uri in uris:
             if uri is not None:
-                parse_uri(uri)
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "runtime_envs in the Serve config support only "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
+                    )
 
         return v
 

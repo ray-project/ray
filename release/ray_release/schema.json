@@ -24,7 +24,6 @@
 				"python": {
 					"type": "string",
 					"enum": [
-						"3.6",
 						"3.7",
 						"3.8",
 						"3.9"
@@ -108,14 +107,6 @@
 						"job",
 						"client",
 						"anyscale_job"
-					]
-				},
-				"file_manager": {
-					"type": "string",
-					"enum": [
-						"sdk",
-						"client",
-						"job"
 					]
 				},
 				"wait_for_nodes": {

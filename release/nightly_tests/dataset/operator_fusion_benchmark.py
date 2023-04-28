@@ -9,7 +9,7 @@ import numpy as np
 
 import ray
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext, DEFAULT_TARGET_MAX_BLOCK_SIZE
+from ray.data.context import DataContext, DEFAULT_TARGET_MAX_BLOCK_SIZE
 from ray.data.datasource import Datasource, ReadTask, Reader
 
 
@@ -77,7 +77,7 @@ def make_ds(
     num_columns: int,
     ops_spec: List[Dict[str, Any]],
     target_max_block_size: int,
-) -> ray.data.Dataset:
+) -> ray.data.Datastream:
     ds = ray.data.read_datasource(
         BlockDatasource(),
         num_blocks_per_task=num_blocks_per_task,
@@ -96,7 +96,7 @@ def make_ds(
     return ds
 
 
-def execute_ds(ds: ray.data.Dataset):
+def execute_ds(ds: ray.data.Datastream):
     ds = ds.fully_executed()
 
 
@@ -152,7 +152,7 @@ if __name__ == "__main__":
 
     ray.init()
 
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.target_max_block_size = target_max_block_size
     if args.disable_optimizer:
         ctx.optimizer_enabled = False

@@ -77,8 +77,8 @@ struct NodeManagerConfig {
   std::vector<int> worker_ports;
   /// The soft limit of the number of workers.
   int num_workers_soft_limit;
-  /// Number of initial Python workers for the first job.
-  int num_initial_python_workers_for_first_job;
+  /// Number of initial Python workers to start when raylet starts.
+  int num_prestart_python_workers;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
@@ -826,9 +826,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
-
-  /// Resource message updated
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resource_message_udpated_;
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;

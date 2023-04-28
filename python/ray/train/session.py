@@ -6,7 +6,7 @@ from ray.air.checkpoint import Checkpoint
 
 if TYPE_CHECKING:
     # avoid circular import
-    from ray.data import DatasetIterator
+    from ray.data import DataIterator
     from ray.train._internal.session import _TrainSession
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -76,12 +76,12 @@ class _TrainSessionImpl(Session):
     def get_dataset_shard(
         self,
         dataset_name: Optional[str] = None,
-    ) -> Optional["DatasetIterator"]:
+    ) -> Optional["DataIterator"]:
         shard = self._session.dataset_shard
         if shard is None:
             warnings.warn(
                 "No dataset passed in. Returning None. Make sure to "
-                "pass in a Ray Dataset to Trainer.run to use this "
+                "pass in a Datastream to Trainer.run to use this "
                 "function."
             )
         elif isinstance(shard, dict):

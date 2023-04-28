@@ -5,7 +5,7 @@
 #    run: ARS
 #    # Minimum reward and total ts (in given time_total_s) to pass this test.
 #    pass_criteria:
-#        episode_reward_mean: 100.0
+#        sampler_results/episode_reward_mean: 100.0
 #        timesteps_total: 2000000
 #    stop:
 #        time_total_s: 2000
@@ -29,7 +29,7 @@
 #    run: DDPPO
 #    # Minimum reward and total ts (in given time_total_s) to pass this test.
 #    pass_criteria:
-#        episode_reward_mean: 50.0
+#        sampler_results/episode_reward_mean: 50.0
 #        timesteps_total: 10000000
 #    stop:
 #        time_total_s: 3600
