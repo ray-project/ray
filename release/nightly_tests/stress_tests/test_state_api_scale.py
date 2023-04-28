@@ -262,7 +262,7 @@ def test_large_log_file(log_file_size_byte: int):
                 log_file_size_byte -= n
 
             sys.stdout.flush()
-            return ctx.hexdigest(), ray.get_runtime_context().node_id.hex()
+            return ctx.hexdigest(), ray.get_runtime_context().get_node_id()
 
     actor = LogActor.remote()
     expected_hash, node_id = ray.get(
