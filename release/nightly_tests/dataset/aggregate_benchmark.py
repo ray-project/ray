@@ -73,7 +73,7 @@ def h2oai_q6(ds: Dataset) -> Dataset:
 
 def h2oai_q7(ds: Dataset) -> Dataset:
     ds = ds.groupby("id3").aggregate(Max("v1"), Min("v2"))
-    ds = ds.map_batches(lambda df: df.assign(result=df["max(v1)"] - df["min(v2)"]))
+    ds = ds.map_batches(lambda df: df.assign(result=df["max(v1)"] - df["min(v2)"]), batch_format="pandas")
     return ds
 
 

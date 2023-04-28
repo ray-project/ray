@@ -123,7 +123,7 @@ if __name__ == "__main__":
         "--ops-spec",
         type=str,
         default=(
-            '[{"op": "map_batches", "batch_size": 1024, "batch_format": "default"}]'
+            '[{"op": "map_batches", "batch_size": 1024, "batch_format": "pandas"}]'
         ),
     )
     parser.add_argument("--target-max-block-size", type=int, default=None)
