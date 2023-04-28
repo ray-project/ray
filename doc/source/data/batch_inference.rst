@@ -33,7 +33,7 @@ more and more pre-trained models become available.
 And while batch inference looks simple at the surface, it can be challenging to do right in production.
 For instance, your data batches can be excessively large, too slow to process sequentially,
 or might need custom preprocessing before being fed into your models.
-To run inference workloads effectively at scale, you need to
+To run inference workloads effectively at scale, you need to:
 
 - manage your compute infrastructure and cloud clusters
 - parallelize data processing and utilize all your cluster resources (CPUs & GPUs)
