@@ -12,15 +12,11 @@ class JobConfig:
     Args:
 
         jvm_options: The jvm options for java workers of the job.
-
-    Attributes:
-        jvm_options: The jvm options for java workers of the job.
         code_search_path: A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
-        runtime_env: A runtime environment dictionary (see
-            ``runtime_env.py`` for detailed documentation).
-        client_job: A boolean represent the source of the job.
+        runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
+        metadata:
         default_actor_lifetime: The default value of actor lifetime.
         py_driver_sys_path: A list of directories that
             specify the search path for python workers.
@@ -31,7 +27,6 @@ class JobConfig:
         jvm_options: Optional[List[str]] = None,
         code_search_path: Optional[List[str]] = None,
         runtime_env: Optional[dict] = None,
-        client_job: bool = False,
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
@@ -47,7 +42,7 @@ class JobConfig:
         assert isinstance(self.code_search_path, (list, tuple)), (
             f"The type of code search path is incorrect: " f"{type(code_search_path)}"
         )
-        self.client_job = client_job
+        self.client_job = False
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
