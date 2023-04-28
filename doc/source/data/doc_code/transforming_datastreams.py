@@ -249,7 +249,7 @@ class ModelUDF:
         df["output"] = self.model(df)
         return df
 
-ds.map_batches(ModelUDF, compute="actors").show(2)
+ds.map_batches(ModelUDF, compute=ray.data.ActorPoolStrategy(size=2)).show(2)
 # -> {'sepal.length': 7.0, 'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
 #     'variety': 'Versicolor', 'output': True}
 # -> {'sepal.length': 6.4, 'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,

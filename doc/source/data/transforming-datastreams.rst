@@ -444,7 +444,7 @@ Compute Strategy
 
 Datastreams transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
 or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
-used (with ``compute="tasks"``). For transformations that require expensive setup,
+used. For transformations that require expensive setup,
 it's preferrable to use Ray actors, which are stateful and allow setup to be reused
 for efficiency. For a fixed-size actor pool, specify ``compute=ActorPoolStrategy(size=n)``.
 For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size=m, max_size=n)``.
