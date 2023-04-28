@@ -48,10 +48,6 @@
 #    # run the actual release test.
 #    type: anyscale_job
 #
-#    # File manager to use to transfer files to and from the cluster.
-#    # Can be any of [sdk, job].
-#    file_manager: job
-#
 #    # If you want to wait for nodes to be ready, you can specify this here:
 #    wait_for_nodes:
 #      # Number of nodes
