@@ -38,7 +38,10 @@ def test_load_from_path():
 
         # Train one epoch and save a checkpoint
         trainer = pl.Trainer(
-            max_epochs=1, enable_progress_bar=False, enable_checkpointing=False
+            max_epochs=1,
+            accelerator="cpu",
+            enable_progress_bar=False,
+            enable_checkpointing=False,
         )
         trainer.fit(model=model, train_dataloaders=dataloader)
         ckpt_path = f"{tmpdir}/random_checkpoint_name.ckpt"
@@ -75,7 +78,10 @@ def test_from_directory():
 
         # Train one epoch and save a checkpoint
         trainer = pl.Trainer(
-            max_epochs=1, enable_progress_bar=False, enable_checkpointing=False
+            max_epochs=1,
+            accelerator="cpu",
+            enable_progress_bar=False,
+            enable_checkpointing=False,
         )
         trainer.fit(model=model, train_dataloaders=dataloader)
         trainer.save_checkpoint(f"{tmpdir}/{MODEL_KEY}")

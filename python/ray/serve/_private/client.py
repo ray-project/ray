@@ -275,6 +275,7 @@ class ServeControllerClient:
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
+                    app_name=name,
                 )
             )
 

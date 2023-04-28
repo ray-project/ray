@@ -2,11 +2,11 @@ import logging
 import pathlib
 from typing import (
     Any,
-    Mapping,
-    Union,
-    Sequence,
     Hashable,
+    Mapping,
     Optional,
+    Sequence,
+    Union,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -27,7 +27,7 @@ from ray.rllib.core.learner.learner import (
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import clip_gradients, convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -78,6 +78,22 @@ class TorchLearner(Learner):
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
+
+    @override(Learner)
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Postprocesses gradients depending on the optimizer config."""
+
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+        )
+
+        return gradients_dict
 
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
