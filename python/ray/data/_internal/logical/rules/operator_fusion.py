@@ -1,11 +1,18 @@
-from typing import Iterator
+from typing import Iterator, List, Tuple
+from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
+from ray.data._internal.stats import StatsDict
 
 from ray.data.block import Block
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import is_task_compute, CallableClass, get_compute
-from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.interfaces import (
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
+)
 from ray.data._internal.logical.interfaces import Rule, PhysicalPlan
+from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
@@ -56,8 +63,12 @@ class OperatorFusionRule(Rule):
         from ray.data._internal.logical.operators.map_operator import AbstractMap
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 
-        # We only support fusing MapOperators.
-        if not isinstance(down_op, MapOperator) or not isinstance(up_op, MapOperator):
+        # We currently only support fusing for the following cases:
+        # - MapOperator -> MapOperator
+        # - MapOperator -> AllToAllOperator
+        if not isinstance(down_op, (MapOperator, AllToAllOperator)) or not isinstance(
+            up_op, MapOperator
+        ):
             return False
 
         down_logical_op = self._op_map[down_op]
@@ -68,17 +79,20 @@ class OperatorFusionRule(Rule):
         if not down_logical_op._input_dependencies:
             return False
 
-        # We only support fusing AbstractMap -> AbstractMap operators.
-        if not isinstance(down_logical_op, AbstractMap) or not isinstance(
-            up_logical_op, AbstractMap
-        ):
+        # We currently only support fusing for the following cases:
+        # - AbstractMap -> AbstractMap
+        # - AbstractAllToAll -> AbstractMap
+        if not isinstance(
+            down_logical_op, (AbstractMap, AbstractAllToAll)
+        ) or not isinstance(up_logical_op, AbstractMap):
             return False
 
         # Allow fusing tasks->actors if the resources are compatible (read->map), but
         # not the other way around. The latter (downstream op) will be used as the
         # compute if fused.
         if (
-            is_task_compute(down_logical_op._compute)
+            isinstance(down_logical_op, AbstractUDFMap)
+            and is_task_compute(down_logical_op._compute)
             and isinstance(up_logical_op, AbstractUDFMap)
             and get_compute(up_logical_op._compute)
             != get_compute(down_logical_op._compute)
@@ -129,32 +143,48 @@ class OperatorFusionRule(Rule):
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
 
-        # Merge target block sizes.
-        down_target_block_size = down_logical_op._target_block_size
-        up_target_block_size = (
-            up_logical_op._target_block_size
-            if isinstance(up_logical_op, AbstractUDFMap)
-            else None
-        )
-        if down_target_block_size is not None and up_target_block_size is not None:
-            target_block_size = max(down_target_block_size, up_target_block_size)
-        elif up_target_block_size is not None:
-            target_block_size = up_target_block_size
-        else:
-            target_block_size = down_target_block_size
+        compute = None
+        target_block_size = None
+        transform_fn = None
 
         # Fuse transformation functions.
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        def transform_fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
+        def transform_fn_map_map(
+            blocks: Iterator[Block], ctx: TaskContext
+        ) -> Iterator[Block]:
             blocks = up_transform_fn(blocks, ctx)
             # TODO(Clark): Add zero-copy batching between transform functions.
             return down_transform_fn(blocks, ctx)
 
-        # We take the downstream op's compute in case we're fusing upstream tasks with a
-        # downstream actor pool (e.g. read->map).
-        compute = get_compute(down_logical_op._compute)
+        def transform_fn_map_alltoall(
+            blocks: List[RefBundle], ctx: TaskContext
+        ) -> Tuple[List[RefBundle], StatsDict]:
+            ctx.map_transform_fn = up_transform_fn
+            return down_transform_fn(blocks, ctx)
+
+        if isinstance(down_logical_op, AbstractUDFMap):
+            # Merge target block sizes.
+            down_target_block_size = down_logical_op._target_block_size
+            up_target_block_size = (
+                up_logical_op._target_block_size
+                if isinstance(up_logical_op, AbstractUDFMap)
+                else None
+            )
+            if down_target_block_size is not None and up_target_block_size is not None:
+                target_block_size = max(down_target_block_size, up_target_block_size)
+            elif up_target_block_size is not None:
+                target_block_size = up_target_block_size
+            else:
+                target_block_size = down_target_block_size
+            transform_fn = transform_fn_map_map
+            # We take the downstream op's compute in case we're fusing upstream tasks with a
+            # downstream actor pool (e.g. read->map).
+            compute = get_compute(down_logical_op._compute)
+        elif isinstance(down_logical_op, AbstractAllToAll):
+            transform_fn = transform_fn_map_alltoall
+
         ray_remote_args = down_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies

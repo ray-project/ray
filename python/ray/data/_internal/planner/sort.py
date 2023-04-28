@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -41,6 +41,10 @@ def generate_sort_fn(
             return (blocks, {})
         unified_schema = unify_block_metadata_schema(metadata)
         _validate_key_fn(unified_schema, key)
+
+        map_transform_fn: Optional[AllToAllTransformFn] = ctx.map_transform_fn
+        if map_transform_fn:
+            blocks = map_transform_fn(blocks)
 
         if isinstance(key, str):
             key = [(key, "descending" if descending else "ascending")]

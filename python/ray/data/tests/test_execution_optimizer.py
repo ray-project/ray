@@ -602,6 +602,17 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
+def test_read_map_batches_operator_fusion_with_all_to_all_operator(
+    ray_start_regular_shared, enable_optimizer
+):
+    ds = ray.data.range(10)
+    ds = ds.map_batches(lambda batch: [x + 1 for x in batch])
+    ds = ds.sort()
+    assert ds.take_all() == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert "DoRead->MapBatches->Sort" in ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "Sort"])
+
+
 def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(10, parallelism=2)
     ds = ds.filter(lambda x: x % 2 == 0)

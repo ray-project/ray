@@ -204,6 +204,8 @@ class OpState:
             try:
                 # Non-split output case.
                 if output_split_idx is None:
+                    if not self.outqueue:
+                        return None
                     return self.outqueue.popleft()
 
                 # Scan the queue and look for outputs tagged for the given index.
