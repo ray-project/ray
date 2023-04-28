@@ -5,7 +5,7 @@ long-term-satisfaction-recsim-env-slateq:
         # Random baseline rewards:
         # num_candidates=20; slate_size=2; resample=true: ~951
         # num_candidates=50; slate_size=3; resample=true: ~946
-        evaluation/episode_reward_mean: 1000.0
+        evaluation/sampler_results/episode_reward_mean: 1000.0
         timesteps_total: 200000
     config:
         # Works for both tf and torch.

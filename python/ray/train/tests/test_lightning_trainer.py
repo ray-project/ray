@@ -74,7 +74,7 @@ def test_trainer_with_native_dataloader(
 
     config_builder = (
         LightningConfigBuilder()
-        .module(LinearModule, input_dim=32, output_dim=4)
+        .module(LinearModule, input_dim=32, output_dim=4, strategy=strategy)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
         .strategy(strategy)
     )
@@ -124,7 +124,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy, accelerator):
 
     lightning_config = (
         LightningConfigBuilder()
-        .module(cls=LinearModule, input_dim=32, output_dim=4)
+        .module(cls=LinearModule, input_dim=32, output_dim=4, strategy=strategy)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
         .strategy(strategy)
         .build()

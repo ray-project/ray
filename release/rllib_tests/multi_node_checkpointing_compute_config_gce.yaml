@@ -1,0 +1,17 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs:
+    - us-west1-b
+
+max_workers: 3
+
+head_node_type:
+    name: head_node
+    instance_type: n2-standard-8 # m5.2xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: n1-standard-4-nvidia-tesla-t4-1 # g4dn.xlarge
+      min_workers: 2
+      max_workers: 2
+      use_spot: false
