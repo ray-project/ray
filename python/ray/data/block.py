@@ -17,6 +17,7 @@ from typing import (
 )
 
 import numpy as np
+import colorama
 
 import ray
 from ray import ObjectRefGenerator
@@ -50,10 +51,21 @@ U = TypeVar("U", covariant=True)
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
+STRICT_MODE_EXPLANATION = (
+    colorama.Fore.YELLOW
+    + "[IMPORTANT]: Ray Data strict mode is on by default in Ray 2.5. When in strict "
+    "mode, data schemas are required, standalone Python "
+    "objects are no longer supported, and the default batch format changes to `numpy` "
+    "from `pandas`. To disable strict mode temporarily, set the environment variable "
+    "RAY_DATA_STRICT_MODE=0 on all cluster processes. Strict mode will not be "
+    "possible to disable in future releases." + colorama.Style.RESET_ALL
+)
+
 
 @PublicAPI
 class StrictModeError(ValueError):
-    pass
+    def __init__(self, message: str):
+        super().__init__(message + "\n\n" + STRICT_MODE_EXPLANATION)
 
 
 def _validate_key_fn(

@@ -92,6 +92,7 @@ from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
+    STRICT_MODE_EXPLANATION,
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
     UserDefinedFunction,
@@ -245,6 +246,9 @@ class Datastream:
         """
         assert isinstance(plan, ExecutionPlan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
+
+        if ray.util.log_once("strict_mode_explanation"):
+            logger.warning(STRICT_MODE_EXPLANATION)
 
         self._plan = plan
         self._uuid = uuid4().hex
