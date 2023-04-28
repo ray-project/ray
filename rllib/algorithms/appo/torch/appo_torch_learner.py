@@ -43,34 +43,34 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=self._hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self._hps.recurrent_seq_len,
-            drop_last=self._hps.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=self._hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self._hps.recurrent_seq_len,
-            drop_last=self._hps.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         old_actions_logp_time_major = make_time_major(
             old_target_policy_actions_logp,
-            trajectory_len=self._hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self._hps.recurrent_seq_len,
-            drop_last=self._hps.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=self._hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self._hps.recurrent_seq_len,
-            drop_last=self._hps.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=self._hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self._hps.recurrent_seq_len,
-            drop_last=self._hps.vtrace_drop_last_ts,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
+            drop_last=self.hps.vtrace_drop_last_ts,
         )
 
         # the discount factor that is used should be gamma except for timesteps where
@@ -80,11 +80,11 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             -
             make_time_major(
                 batch[SampleBatch.TERMINATEDS],
-                trajectory_len=self._hps.rollout_frag_or_episode_len,
-                recurrent_seq_len=self._hps.recurrent_seq_len,
-                drop_last=self._hps.vtrace_drop_last_ts,
+                trajectory_len=self.hps.rollout_frag_or_episode_len,
+                recurrent_seq_len=self.hps.recurrent_seq_len,
+                drop_last=self.hps.vtrace_drop_last_ts,
             ).float()
-        ) * self._hps.discount_factor
+        ) * self.hps.discount_factor
 
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=old_actions_logp_time_major,
@@ -93,8 +93,8 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self._hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self._hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
         )
 
         # The policy gradients loss.
@@ -112,11 +112,11 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
         surrogate_loss = torch.minimum(
             pg_advantages * logp_ratio,
             pg_advantages * torch.clip(
-                logp_ratio, 1 - self._hps.clip_param, 1 + self._hps.clip_param
+                logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param
             ),
         )
 
-        if self._hps.use_kl_loss:
+        if self.hps.use_kl_loss:
             action_kl = old_target_policy_dist.kl(target_policy_dist)
             mean_kl_loss = torch.mean(action_kl)
         else:
@@ -133,8 +133,8 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
         # The summed weighted loss.
         total_loss = (
             mean_pi_loss
-            + (mean_vf_loss * self._hps.vf_loss_coeff)
-            + (mean_entropy_loss * self._hps.entropy_coeff)
+            + (mean_vf_loss * self.hps.vf_loss_coeff)
+            + (mean_entropy_loss * self.hps.entropy_coeff)
             + (mean_kl_loss * self.kl_coeffs[module_id])
         )
 
@@ -161,7 +161,7 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
         for target_network, current_network in target_current_network_pairs:
             current_state_dict = current_network.state_dict()
             new_state_dict = {
-                k: self._hps.tau * current_state_dict[k] + (1 - self._hps.tau) * v
+                k: self.hps.tau * current_state_dict[k] + (1 - self.hps.tau) * v
                 for k, v in target_network.state_dict().items()
             }
             target_network.load_state_dict(new_state_dict)
