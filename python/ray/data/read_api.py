@@ -272,17 +272,15 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
         Datastream(
             num_blocks=...,
             num_rows=1000,
-            schema={__value__: numpy.ndarray(shape=(2, 2), dtype=int64)}
-        )
+            schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
                 [0, 0]]),
-        array([[2, 2],
+         array([[2, 2],
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The datastream elements take the form
-    {"__value__": array(N, shape=shape)}.
+    type. The datastream elements take the form {"data": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.

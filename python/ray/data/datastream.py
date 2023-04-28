@@ -425,7 +425,7 @@ class Datastream:
             ... ])
             >>> ds  # doctest: +SKIP
             MaterializedDatastream(
-                num_blocks=1,
+                num_blocks=3,
                 num_rows=3,
                 schema={name: string, age: int64}
             )
@@ -441,7 +441,7 @@ class Datastream:
             >>> ds = ds.map_batches(map_fn)
             >>> ds
             MapBatches(map_fn)
-            +- Datastream(num_blocks=1, num_rows=3, schema={name: string, age: int64})
+            +- Datastream(num_blocks=3, num_rows=3, schema={name: string, age: int64})
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -1971,7 +1971,7 @@ class Datastream:
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
             >>> ds1.zip(ds2).take_batch()
-            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])},
+            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])}
 
         Time complexity: O(datastream size / parallelism)
 
