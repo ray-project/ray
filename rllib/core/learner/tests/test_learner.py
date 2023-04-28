@@ -87,7 +87,7 @@ class TestLearner(unittest.TestCase):
             # made this a configurable hparam to avoid information leakage in tests
             # where we need to know what the learning rate is.
             optimizer_config={"lr": 1e-3},
-            learner_scaling_config=LearnerGroupScalingConfig(),
+            learner_group_scaling_config=LearnerGroupScalingConfig(),
             framework_hyperparameters=FrameworkHyperparameters(eager_tracing=True),
         )
 
