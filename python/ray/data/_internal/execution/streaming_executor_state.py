@@ -121,7 +121,7 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
-        self.outputs_done_called = False
+        self.dependents_completed_called = False
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -351,14 +351,14 @@ def process_completed_tasks(topology: Topology) -> None:
     # For each op, if all of its downstream operators don't need any more inputs,
     # call all_dependents_complete() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-        if op_state.outputs_done_called:
+        if op_state.dependents_completed_called:
             continue
-        outputs_done = len(op.output_dependencies) > 0 and all(
+        dependents_completed = len(op.output_dependencies) > 0 and all(
             not dep.need_more_inputs() for dep in op.output_dependencies
         )
-        if outputs_done:
+        if dependents_completed:
             op.all_dependents_complete()
-            op_state.outputs_done_called = True
+            op_state.dependents_completed_called = True
 
 
 def select_operator_to_run(
