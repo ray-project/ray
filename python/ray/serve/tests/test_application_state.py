@@ -83,18 +83,19 @@ def test_create_app():
 
 def test_update_app_running():
     """Test DEPLOYING -> RUNNING"""
-    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(deployment_state_manager)
     app_state_manager.deploy_application(
         "test_app",
         [{"name": "d1"}, {"name": "d2"}],
     )
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
-    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(0)
+    deployment_state_manager.set_deployment_statuses_healthy(0)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
-    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(1)
+    deployment_state_manager.set_deployment_statuses_healthy(1)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.RUNNING
@@ -107,11 +108,12 @@ def test_update_app_running():
 
 def test_update_app_deploy_failed():
     """Test DEPLOYING -> DEPLOY_FAILED"""
-    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(deployment_state_manager)
     app_state_manager.deploy_application("test_app", [{"name": "d1"}])
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
-    app_state_manager._deployment_state_manager.set_deployment_statuses_unhealthy(0)
+    deployment_state_manager.set_deployment_statuses_unhealthy(0)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
@@ -136,7 +138,8 @@ def test_config_deploy_app(fail_deploy):
             raise Exception("fail!")
 
     object_ref = task.remote()
-    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(deployment_state_manager)
     app_state_manager.create_application_state("test_app", object_ref)
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
@@ -152,8 +155,8 @@ def test_config_deploy_app(fail_deploy):
         app_status = app_state_manager.get_app_status("test_app")
         assert app_status.status == ApplicationStatus.DEPLOY_FAILED
     else:
-        app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(0)
-        app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(1)
+        deployment_state_manager.set_deployment_statuses_healthy(0)
+        deployment_state_manager.set_deployment_statuses_healthy(1)
         app_state_manager.update()
         app_status = app_state_manager.get_app_status("test_app")
         assert app_status.status == ApplicationStatus.RUNNING
@@ -162,7 +165,8 @@ def test_config_deploy_app(fail_deploy):
 def test_redeploy_same_app():
     """Test deploying the same app with different deploy_params."""
 
-    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(deployment_state_manager)
     app_state_manager.deploy_application("test_app", [{"name": "d1"}, {"name": "d2"}])
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
@@ -173,7 +177,7 @@ def test_redeploy_same_app():
     )
     assert unused_deployments == ["d1"]
 
-    app_state_manager._deployment_state_manager.add_deployment_status(
+    deployment_state_manager.add_deployment_status(
         DeploymentStatusInfo("d3", DeploymentStatus.UPDATING)
     )
     assert app_state_manager._application_states["test_app"]._deployments_to_delete == {
@@ -182,7 +186,7 @@ def test_redeploy_same_app():
 
     # After updating, the deployment should be deleted successfully, and
     # deployments_to_delete should be empty
-    app_state_manager._deployment_state_manager.delete_deployment("d1")
+    deployment_state_manager.delete_deployment("d1")
     app_state_manager.update()
     assert (
         app_state_manager._application_states["test_app"]._deployments_to_delete
@@ -208,7 +212,8 @@ def test_deploy_with_renamed_app():
     Test that an application deploys successfully when there is a route prefix conflict
     with an old app running on the cluster.
     """
-    app_state_manager = ApplicationStateManager(MockDeploymentStateManager())
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(deployment_state_manager)
 
     # deploy app1
     app_state_manager.deploy_application(
@@ -217,7 +222,7 @@ def test_deploy_with_renamed_app():
     app_status = app_state_manager.get_app_status("app1")
     assert app_status.status == ApplicationStatus.DEPLOYING
 
-    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(0)
+    deployment_state_manager.set_deployment_statuses_healthy(0)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("app1")
     assert app_status.status == ApplicationStatus.RUNNING
@@ -235,13 +240,13 @@ def test_deploy_with_renamed_app():
     assert app_status.status == ApplicationStatus.DEPLOYING
 
     # app2 deploys before app1 finishes deleting
-    app_state_manager._deployment_state_manager.set_deployment_statuses_healthy(1)
+    deployment_state_manager.set_deployment_statuses_healthy(1)
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("app2")
     assert app_status.status == ApplicationStatus.RUNNING
 
     # app1 finally finishes deleting
-    app_state_manager._deployment_state_manager.delete_deployment("d1")
+    deployment_state_manager.delete_deployment("d1")
     app_state_manager.update()
     app_status = app_state_manager.get_app_status("app1")
     assert app_status.status == ApplicationStatus.NOT_STARTED
