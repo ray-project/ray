@@ -45,6 +45,8 @@ provider:
     # Whether to allow node reuse. If set to False, nodes will be terminated
     # instead of stopped.
     cache_stopped_nodes: True # If not present, the default is True.
+    key_pair:
+        key_name: aws-cluster-launcher-test
 
 # How Ray will authenticate with newly launched nodes.
 auth:
