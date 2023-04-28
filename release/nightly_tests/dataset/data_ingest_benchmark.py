@@ -149,7 +149,11 @@ def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
     ]
-    p = ds.window(bytes_per_window=40 * GiB).repeat().map_batches(lambda df: df * 2, batch_format="pandas")
+    p = (
+        ds.window(bytes_per_window=40 * GiB)
+        .repeat()
+        .map_batches(lambda df: df * 2, batch_format="pandas")
+    )
     splits = p.split(num_workers, equal=True, locality_hints=consumers)
     future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
     ray.get(future)
