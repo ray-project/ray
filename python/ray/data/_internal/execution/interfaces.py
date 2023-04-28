@@ -281,7 +281,7 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._outputs_complete = False
+        self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
@@ -298,7 +298,7 @@ class PhysicalOperator(Operator):
             self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
-        ) or self._outputs_complete
+        ) or self._dependents_complete
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatastreamStats."""
@@ -380,12 +380,12 @@ class PhysicalOperator(Operator):
         """
         self._inputs_complete = True
 
-    def outputs_done(self) -> None:
+    def all_dependents_complete(self) -> None:
         """Called when all downstream operators have completed().
 
         After this is called, the operator is marked as completed.
         """
-        self._outputs_complete = True
+        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
