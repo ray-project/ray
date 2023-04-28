@@ -134,7 +134,7 @@ def test_sort_arrow_with_empty_blocks(
             [{"A": (x % 3), "B": x} for x in range(3)], parallelism=3
         )
         ds = ds.filter(lambda r: r["A"] == 0)
-        assert [row for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
+        assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
         # Test empty dataset.
         ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
@@ -202,7 +202,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
     ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in range(3)], parallelism=3)
     ds = ds.filter(lambda r: r["A"] == 0)
-    assert [row for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
+    assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
     # Test empty dataset.
     ds = ray.data.range(10).filter(lambda r: r["id"] > 10)

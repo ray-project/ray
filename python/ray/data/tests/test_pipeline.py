@@ -437,7 +437,7 @@ def test_iter_batches_batch_across_windows(ray_start_regular_shared):
     # 3 windows, each containing 3 blocks, each containing 3 rows.
     pipe = ray.data.range(27, parallelism=9).window(blocks_per_window=3)
     # 4-row batches, with batches spanning both blocks and windows.
-    batches = [b for b in pipe.iter_batches(batch_size=4, batch_format="pandas")]
+    batches = list(pipe.iter_batches(batch_size=4, batch_format="pandas"))
     assert len(batches) == 7, batches
     assert all(len(e) == 4 for e in batches[:-1])
     assert len(batches[-1]) == 3

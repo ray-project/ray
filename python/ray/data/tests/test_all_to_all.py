@@ -88,14 +88,14 @@ def test_zip_pandas(ray_start_regular_shared):
     ds = ds1.zip(ds2)
     assert ds.count() == 2
     assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
-    result = [r for r in ds.take()]
+    result = list(ds.take())
     assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
 
     ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds3)
     assert ds.count() == 2
     assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
-    result = [r for r in ds.take()]
+    result = list(ds.take())
     assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
 
 
@@ -105,14 +105,14 @@ def test_zip_arrow(ray_start_regular_shared):
     ds = ds1.zip(ds2)
     assert ds.count() == 5
     assert "{id: int64, a: int64, b: int64}" in str(ds)
-    result = [r for r in ds.take()]
+    result = list(ds.take())
     assert result[0] == {"id": 0, "a": 1, "b": 2}
 
     # Test duplicate column names.
     ds = ds1.zip(ds1).zip(ds1)
     assert ds.count() == 5
     assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
-    result = [r for r in ds.take()]
+    result = list(ds.take())
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
 
 
@@ -276,7 +276,7 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
         ),
     )
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "foo": 49.5, "foo_2": 49.5},
         {"A": 1, "foo": 49.0, "foo_2": 49.0},
         {"A": 2, "foo": 50.0, "foo_2": 50.0},
@@ -305,7 +305,7 @@ def test_groupby_tabular_count(
         ds = _to_pandas(ds)
     agg_ds = ds.groupby("A").count()
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "count()": 34},
         {"A": 1, "count()": 33},
         {"A": 2, "count()": 33},
@@ -335,7 +335,7 @@ def test_groupby_tabular_sum(
 
     agg_ds = ds.groupby("A").sum("B")
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "sum(B)": 1683},
         {"A": 1, "sum(B)": 1617},
         {"A": 2, "sum(B)": 1650},
@@ -350,7 +350,7 @@ def test_groupby_tabular_sum(
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.sum("B")
     assert nan_agg_ds.count() == 3
-    assert [row for row in nan_agg_ds.sort("A").iter_rows()] == [
+    assert list(nan_agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "sum(B)": 1683},
         {"A": 1, "sum(B)": 1617},
         {"A": 2, "sum(B)": 1650},
@@ -449,7 +449,7 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 
     agg_ds = ds.groupby("A").min("B")
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "min(B)": 0},
         {"A": 1, "min(B)": 1},
         {"A": 2, "min(B)": 2},
@@ -464,7 +464,7 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.min("B")
     assert nan_agg_ds.count() == 3
-    assert [row for row in nan_agg_ds.sort("A").iter_rows()] == [
+    assert list(nan_agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "min(B)": 0},
         {"A": 1, "min(B)": 1},
         {"A": 2, "min(B)": 2},
@@ -523,7 +523,7 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 
     agg_ds = ds.groupby("A").max("B")
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "max(B)": 99},
         {"A": 1, "max(B)": 97},
         {"A": 2, "max(B)": 98},
@@ -538,7 +538,7 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.max("B")
     assert nan_agg_ds.count() == 3
-    assert [row for row in nan_agg_ds.sort("A").iter_rows()] == [
+    assert list(nan_agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "max(B)": 99},
         {"A": 1, "max(B)": 97},
         {"A": 2, "max(B)": 98},
@@ -597,7 +597,7 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 
     agg_ds = ds.groupby("A").mean("B")
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "mean(B)": 49.5},
         {"A": 1, "mean(B)": 49.0},
         {"A": 2, "mean(B)": 50.0},
@@ -612,7 +612,7 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.mean("B")
     assert nan_agg_ds.count() == 3
-    assert [row for row in nan_agg_ds.sort("A").iter_rows()] == [
+    assert list(nan_agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "mean(B)": 49.5},
         {"A": 1, "mean(B)": 49.0},
         {"A": 2, "mean(B)": 50.0},
@@ -725,7 +725,7 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
         ray.data.from_pandas(df).repartition(num_parts).groupby("A").mean(["B", "C"])
     )
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "mean(B)": 49.5, "mean(C)": 99.0},
         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0},
@@ -735,7 +735,7 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
     # groupby keys.
     agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").mean()
     assert agg_ds.count() == 3
-    assert [row for row in agg_ds.sort("A").iter_rows()] == [
+    assert list(agg_ds.sort("A").iter_rows()) == [
         {"A": 0, "mean(B)": 49.5, "mean(C)": 99.0},
         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0},
