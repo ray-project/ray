@@ -1,10 +1,9 @@
-import io
 import os
 import time
 import subprocess
 import tempfile
 from collections import deque
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -12,7 +11,6 @@ from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     HaJobStates,
 )
-from anyscale.controllers.job_controller import JobController, terminal_state
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -36,6 +34,7 @@ job_status_to_return_code = {
     HaJobStates.BROKEN: -2,
     HaJobStates.TERMINATED: -3,
 }
+terminal_state = set(job_status_to_return_code.keys())
 
 
 class AnyscaleJobManager:
@@ -262,7 +261,7 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
-    def _get_ray_error_logs(self) -> Optional[str]:
+    def _get_ray_logs(self) -> Tuple[Optional[str], Optional[str]]:
         """
         Obtain any ray logs that contain keywords that indicate a crash, such as
         ERROR or Traceback
@@ -285,10 +284,12 @@ class AnyscaleJobManager:
         except Exception as e:
             logger.log(f"Failed to download logs from anyscale {e}")
             return None
-        return AnyscaleJobManager._find_ray_error_logs(tmpdir)
+        return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
 
     @staticmethod
-    def _find_ray_error_logs(tmpdir: str) -> Optional[str]:
+    def _find_job_driver_and_ray_error_logs(
+        tmpdir: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
         # Ignored some ray files that do not crash ray despite having exceptions
         ignored_ray_files = [
             "monitor.log",
@@ -296,6 +297,7 @@ class AnyscaleJobManager:
             "event_JOBS.log",
         ]
         error_output = None
+        job_driver_output = None
         matched_pattern_count = 0
         for root, _, files in os.walk(tmpdir):
             for file in files:
@@ -303,13 +305,18 @@ class AnyscaleJobManager:
                     continue
                 with open(os.path.join(root, file)) as lines:
                     output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
-                    # favor error logs that match with the most number of error patterns
+                    # job-driver logs
+                    if file.startswith("job-driver-"):
+                        job_driver_output = output
+                        continue
+                    # ray error logs, favor those that match with the most number of
+                    # error patterns
                     if (
                         len([error for error in ERROR_LOG_PATTERNS if error in output])
                         > matched_pattern_count
                     ):
                         error_output = output
-        return error_output
+        return job_driver_output, error_output
 
     def get_last_logs(self):
         if not self.job_id:
@@ -320,25 +327,13 @@ class AnyscaleJobManager:
         if self._last_logs:
             return self._last_logs
 
-        # TODO: replace with an actual API call.
         def _get_logs():
-            buf = io.StringIO()
-            with open(os.devnull, "w") as devnull:
-                with redirect_stdout(buf), redirect_stderr(devnull):
-                    job_controller = JobController()
-                    job_controller.logs(
-                        job_id=self.job_id,
-                        should_follow=False,
-                    )
-                    print("", flush=True)
-            output = buf.getvalue().strip()
-            # Many of Ray components have their separated logs (e.g. dashboard,
-            # gcs_server, etc.), so the interesting errors are not always in the
-            # job logs. If the job has no logs, check other ray logs for error patterns.
-            if "### Starting ###" not in output:
-                output = self._get_ray_error_logs()
-            assert output, "No logs fetched"
-            return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
+            job_driver_log, ray_error_log = self._get_ray_logs()
+            assert job_driver_log or ray_error_log, "No logs fetched"
+            if job_driver_log:
+                return job_driver_log
+            else:
+                return ray_error_log
 
         ret = exponential_backoff_retry(
             _get_logs,

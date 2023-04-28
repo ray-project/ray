@@ -475,10 +475,10 @@ class LearnerGroup:
         if not path.exists():
             raise ValueError(f"Path {path} does not exist.")
         path = str(path.absolute())
-        assert len(self._workers) == self._worker_manager.num_healthy_actors()
         if self.is_local:
             self._learner.load_state(path)
         else:
+            assert len(self._workers) == self._worker_manager.num_healthy_actors()
             head_node_ip = socket.gethostbyname(socket.gethostname())
             workers = self._worker_manager.healthy_actor_ids()
 

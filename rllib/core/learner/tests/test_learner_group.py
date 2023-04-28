@@ -138,8 +138,8 @@ class TestLearnerGroup(unittest.TestCase):
 
             self.assertLess(min_loss, 0.57)
 
-            # make sure the learner_group resources are freed up so that we don't
-            # autoscale
+            # Make sure the learner_group resources are freed up so that we don't
+            # autoscale.
             learner_group.shutdown()
             del learner_group
 

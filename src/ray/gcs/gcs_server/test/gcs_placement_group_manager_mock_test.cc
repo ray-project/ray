@@ -33,6 +33,8 @@ namespace gcs {
 
 class GcsPlacementGroupManagerMockTest : public Test {
  public:
+  GcsPlacementGroupManagerMockTest() : cluster_resource_manager_(io_context_) {}
+
   void SetUp() override {
     store_client_ = std::make_shared<MockStoreClient>();
     gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
@@ -50,6 +52,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
+  instrumented_io_context io_context_;
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -57,7 +60,6 @@ class GcsPlacementGroupManagerMockTest : public Test {
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
-  instrumented_io_context io_context_;
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
