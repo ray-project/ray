@@ -135,7 +135,7 @@ In any case, the result of this step is a Ray Datastream ``ds`` that we can use 
             :start-after: __tf_quickstart_load_start__
             :end-before: __tf_quickstart_load_end__
 
-2. Setting up your Model
+2. Setting up your model
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Next, you want to set up your model for inference, by defining a predictor.
