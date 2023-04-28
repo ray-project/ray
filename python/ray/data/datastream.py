@@ -418,6 +418,7 @@ class Datastream:
 
             >>> import numpy as np
             >>> import ray
+            >>> from typing import Dict
             >>> ds = ray.data.from_items([
             ...     {"name": "Luna", "age": 4},
             ...     {"name": "Rory", "age": 14},
@@ -1372,11 +1373,11 @@ class Datastream:
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_at_indices([2, 5])
             >>> d1.take_batch()
-            {"id": array([0, 1])}
+            {'id': array([0, 1])}
             >>> d2.take_batch()
-            {"id": array([2, 3, 4])}
+            {'id': array([2, 3, 4])}
             >>> d3.take_batch()
-            {"id": array([5, 6, 7, 8, 9])}
+            {'id': array([5, 6, 7, 8, 9])}
 
         Time complexity: O(num splits)
 
@@ -1448,11 +1449,11 @@ class Datastream:
             >>> ds = ray.data.range(10)
             >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
             >>> d1.take_batch()
-            {"id": array([0, 1])}
+            {'id': array([0, 1])}
             >>> d2.take_batch()
-            {"id": array([2, 3, 4, 5, 6])}
+            {'id': array([2, 3, 4, 5, 6])}
             >>> d3.take_batch()
-            {"id": array([7, 8, 9])}
+            {'id': array([7, 8, 9])}
 
         Time complexity: O(num splits)
 
@@ -1511,9 +1512,9 @@ class Datastream:
             >>> ds = ray.data.range(8)
             >>> train, test = ds.train_test_split(test_size=0.25)
             >>> train.take_batch()
-            {"id": array([0, 1, 2, 3, 4, 5])}
+            {'id': array([0, 1, 2, 3, 4, 5])}
             >>> test.take_batch()
-            {"id": array([6, 7])}
+            {'id': array([6, 7])}
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -1708,12 +1709,6 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).sum()
-            4950
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).sum(lambda x: x[1])
-            328350
             >>> ray.data.range(100).sum("id")
             4950
             >>> ray.data.from_items([
@@ -1755,12 +1750,6 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).min()
-            0
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).min(lambda x: x[1])
-            0
             >>> ray.data.range(100).min("id")
             0
             >>> ray.data.from_items([
@@ -1802,12 +1791,6 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).max()
-            99
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).max(lambda x: x[1])
-            9801
             >>> ray.data.range(100).max("id")
             99
             >>> ray.data.from_items([
@@ -1849,12 +1832,6 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).mean()
-            49.5
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).mean(lambda x: x[1])
-            3283.5
             >>> ray.data.range(100).mean("id")
             49.5
             >>> ray.data.from_items([
@@ -1899,12 +1876,6 @@ class Datastream:
 
         Examples:
             >>> import ray
-            >>> round(ray.data.range(100).std(), 5)
-            29.01149
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).std(lambda x: x[1])
-            2968.1748039269296
             >>> round(ray.data.range(100).std("id", ddof=0), 5)
             28.86607
             >>> ray.data.from_items([
@@ -2002,7 +1973,7 @@ class Datastream:
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
             >>> ds1.zip(ds2).take_batch()
-            {"id": array([0, 1, 2, 3, 4]), "id_1": array([0, 1, 2, 3, 4])},
+            {'i'": array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])},
 
         Time complexity: O(datastream size / parallelism)
 
@@ -2036,7 +2007,7 @@ class Datastream:
             >>> import ray
             >>> ds = ray.data.range(1000)
             >>> ds.limit(5).take_batch()
-            {"id": array([0, 1, 2, 3, 4])}
+            {'id': array([0, 1, 2, 3, 4])}
 
         Time complexity: O(limit specified)
 
@@ -3675,13 +3646,10 @@ class Datastream:
             >>> ds = ray.data.range(5, parallelism=1)
             >>> # Infinite pipeline of numbers [0, 5)
             >>> ds.repeat().take_batch()
-            {"id": array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
-            >>> # Can apply transformations to the pipeline.
-            >>> ds.repeat().map(lambda x: -x).take_batch()
-            {"id": array([0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...])}
+            {'id': array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
             >>> # Can shuffle each epoch (datastream) in the pipeline.
             >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
-            {"id": array([2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...])}
+            {'id': array([2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...])}
 
         Args:
             times: The number of times to loop over this datastream, or None

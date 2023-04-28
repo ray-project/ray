@@ -56,7 +56,7 @@ class DataIterator(abc.ABC):
         >>> ds
         Datastream(num_blocks=5, num_rows=5, schema={id: int64})
         >>> ds.iterator()
-        DataIterator(Datastream(num_blocks=5, num_rows=5, schema={id: int64})
+        DataIterator(Datastream(num_blocks=5, num_rows=5, schema={id: int64}))
 
     .. tip::
         For debugging purposes, use

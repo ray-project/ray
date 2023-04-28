@@ -975,7 +975,7 @@ def read_csv(
 
         >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: + SKIP
         >>> ds.take(1)  # doctest: + SKIP
-        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, ``read_csv`` reads all files from file paths. If you want to filter
         files by file extensions, set the ``partition_filter`` parameter.
