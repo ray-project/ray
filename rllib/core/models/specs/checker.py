@@ -1,14 +1,28 @@
-from collections import abc
 import functools
+import logging
+from collections import abc
+import sys
 from typing import Union, Mapping, Any, Callable
 
-from ray.util.annotations import DeveloperAPI
-
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.util.annotations import DeveloperAPI
 
+logger = logging.getLogger(__name__)
+
+
+class SpecCheckedException(Exception):
+    """Encapsulates an exception that has been raised by a spec checked function.
+
+    This is useful in cases of multiple layers of nested spec-checked functions so
+    that the outer function does not attempt to retry with a spec check.
+    """
+    def __init__(self):
+        super().__init__(f"Exception raised by spec-checked function. This means "
+                         f"that RLlib tried checked the inputs of this function "
+                         f"before executing it, but the function itself still failed.")
 
 @DeveloperAPI
 def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
@@ -173,6 +187,7 @@ def _validate(
 def check_input_specs(
     input_specs: str,
     *,
+    only_check_on_retry: bool = True,
     filter: bool = False,
     cache: bool = False,
 ):
@@ -210,6 +225,9 @@ def check_input_specs(
             string in input_specs and returns the `SpecDict`, `Spec`, or simply the
             `Type` that the `input_data` should comply with. It can also be None or
             empty list / dict to enforce no input spec.
+        only_check_on_retry: If True, the spec will not be checked. Only if the
+            decorated method raises an Exception, we check the spec to provide a more
+            informative error message.
         filter: If True, and `input_data` is a nested dict the `input_data` will be
             filtered by its corresponding spec tree structure and then passed into the
             implemented function to make sure user is not confounded with unnecessary
@@ -232,27 +250,52 @@ def check_input_specs(
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
 
-            checked_data = input_data
-            if input_specs:
-                spec = getattr(self, input_specs, "___NOT_FOUND___")
-                if spec == "___NOT_FOUND___":
-                    raise ValueError(f"object {self} has no attribute {input_specs}.")
-                if spec is not None:
-                    spec = convert_to_canonical_format(spec)
-                    checked_data = _validate(
-                        cls_instance=self,
-                        method=func,
-                        data=input_data,
-                        spec=spec,
-                        filter=filter,
-                        tag="input",
+            func_successfully_executed = False
+
+            if only_check_on_retry:
+                # Attempt to run the function without spec checking
+                try:
+                    output_data = func(self, input_data, **kwargs)
+                    func_successfully_executed = True
+                except SpecCheckedException as e:
+                    # If a spec checked execution somewhere inside func failed
+                    # already, we don't need to check the spec again but can re-raise.
+                    raise e
+                except Exception as e:
+                    logger.warning(
+                        f"Exception {str(e)} raised on function call without checkin "
+                        f"input specs. RLlib will now attempt to check the spec "
+                        f"before calling the function again."
                     )
 
-                    if filter and isinstance(checked_data, NestedDict):
-                        # filtering should happen regardless of cache
-                        checked_data = checked_data.filter(spec)
+            # If the function was not executed successfully yet, because of a failed
+            # attempt or because only_check_on_retry is False, we need to check the
+            # spec.
+            if not func_successfully_executed:
+                try:
+                    checked_data = input_data
+                    if input_specs:
+                        spec = getattr(self, input_specs, "___NOT_FOUND___")
+                        if spec == "___NOT_FOUND___":
+                            raise ValueError(f"object {self} has no attribute {input_specs}.")
+                        if spec is not None:
+                            spec = convert_to_canonical_format(spec)
+                            checked_data = _validate(
+                                cls_instance=self,
+                                method=func,
+                                data=input_data,
+                                spec=spec,
+                                filter=filter,
+                                tag="input",
+                            )
 
-            output_data = func(self, checked_data, **kwargs)
+                            if filter and isinstance(checked_data, NestedDict):
+                                # filtering should happen regardless of cache
+                                checked_data = checked_data.filter(spec)
+
+                    output_data = func(self, checked_data, **kwargs)
+                except Exception as e:
+                    raise SpecCheckedException from e
 
             if cache and func.__name__ not in self.__checked_input_specs_cache__:
                 self.__checked_input_specs_cache__[func.__name__] = True
@@ -321,9 +364,11 @@ def check_output_specs(
             output_data = func(self, input_data, **kwargs)
 
             if output_specs:
-                spec = getattr(self, output_specs, "___NOT_FOUND___")
-                if spec == "___NOT_FOUND___":
+                if hasattr(self, output_specs):
+                    spec = getattr(self, output_specs)
+                else:
                     raise ValueError(f"object {self} has no attribute {output_specs}.")
+
                 if spec is not None:
                     spec = convert_to_canonical_format(spec)
                     _validate(
