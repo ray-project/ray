@@ -603,6 +603,31 @@ def test_status_constructor_error(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_package_unavailable_in_controller(ray_start_stop):
+    """Test that exceptions raised from packages that are installed on deployment actors
+    but not on controller is serialized and surfaced properly.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "sqlalchemy.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        status_response = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        serve_status = yaml.safe_load(status_response)
+        return (
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "some_wrong_url" in serve_status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status_multi_app(ray_start_stop):
     """Deploys a multi-app config file and checks their status."""
     # Check that `serve status` works even if no Serve app is running

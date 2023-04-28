@@ -7,6 +7,7 @@ import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
+import traceback
 
 import starlette.responses
 
@@ -236,21 +237,26 @@ def create_replica_wrapper(name: str):
         ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            await self._initialize_replica()
+            try:
+                await self._initialize_replica()
+                metadata = await self.reconfigure(deployment_config)
 
-            metadata = await self.reconfigure(deployment_config)
-
-            # A new replica should not be considered healthy until it passes an
-            # initial health check. If an initial health check fails, consider
-            # it an initialization failure.
-            await self.check_health()
-            return metadata
+                # A new replica should not be considered healthy until it passes an
+                # initial health check. If an initial health check fails, consider
+                # it an initialization failure.
+                await self.check_health()
+                return metadata
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def reconfigure(
             self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            await self.replica.reconfigure(deployment_config)
-            return await self.get_metadata()
+            try:
+                await self.replica.reconfigure(deployment_config)
+                return await self.get_metadata()
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def get_metadata(
             self,
