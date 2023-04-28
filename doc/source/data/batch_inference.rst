@@ -72,7 +72,6 @@ Install Ray with the data processing library, Ray Data:
     pip install ray[data]
 
 Running batch inference is conceptually easy and requires three steps:
-that we'll walk through in this guide:
 
 1. Load your data into a Ray ``Datastream`` and optionally apply any preprocessing you need.
 2. Define your model for inference.
