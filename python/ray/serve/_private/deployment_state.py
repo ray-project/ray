@@ -98,7 +98,7 @@ class DeploymentTargetState:
     def from_deployment_info(
         cls,
         info: DeploymentInfo,
-        autoscaled_num_replicas: int = 1,
+        autoscaled_num_replicas: int = None,
         *,
         deleting: bool = False,
     ) -> "DeploymentTargetState":
@@ -108,11 +108,14 @@ class DeploymentTargetState:
             autoscaling_policy = None
         else:
             autoscaling_config = info.deployment_config.autoscaling_config
+            # If autoscaling config is not none, num replicas should be decided based on
+            # the autoscaling policy and passed in as autoscaled_num_replicas
             if autoscaling_config is not None:
                 num_replicas = autoscaled_num_replicas
                 autoscaling_policy = BasicAutoscalingPolicy(
                     info.deployment_config.autoscaling_config
                 )
+            # Otherwise, set to num_replicas specified in the deployment config
             else:
                 num_replicas = info.deployment_config.num_replicas
                 autoscaling_policy = None
@@ -1189,12 +1192,9 @@ class DeploymentState:
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        if autoscaled_num_replicas is not None:
-            target_state = DeploymentTargetState.from_deployment_info(
-                target_info, autoscaled_num_replicas
-            )
-        else:
-            target_state = DeploymentTargetState.from_deployment_info(target_info)
+        target_state = DeploymentTargetState.from_deployment_info(
+            target_info, autoscaled_num_replicas
+        )
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
         if self._target_state.version == target_state.version:
@@ -1249,7 +1249,7 @@ class DeploymentState:
             ):
                 return False
 
-        # Autoscaling stuff
+        # If autoscaling config is not none, decide initial num replicas
         autoscaling_config = deployment_info.deployment_config.autoscaling_config
         if autoscaling_config is not None:
             if autoscaling_config.initial_replicas is not None:
