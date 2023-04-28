@@ -54,7 +54,7 @@ use case does not require scaling yet:
 1. **Faster and Cheaper for modern Deep Learning Applications**: Ray is built for
     complex workloads and supports loading and preprocessing data with CPUs and model inference on GPUs.
 2. **Cloud, framework, and data format agnostic**: Ray Data works on any cloud provider or
-    any ML framework (like PyTorch and Tensorflow) and does not require a particular file format.
+    or ML framework (like PyTorch and Tensorflow), and does not require a particular file format.
 3. **Out of the box scaling**: The same code that works on one machine also runs on a
     large cluster without any changes.
 4. **Python first** You can express your inference job directly in Python instead of
