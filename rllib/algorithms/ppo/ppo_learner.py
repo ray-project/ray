@@ -6,12 +6,18 @@ from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_variable
+from ray.rllib.utils.typing import TensorType
 
 
 @dataclass
 class PPOLearnerHyperparameters(LearnerHyperparameters):
-    """Hyperparameters for the PPOLearner sub-classes (framework specific)."""
+    """Hyperparameters for the PPOLearner sub-classes (framework specific).
+
+    These should never be set directly by the user. Instead, use the PPOConfig
+    class to configure your algorithm.
+    See `ray.rllib.algorithms.ppo.ppo::PPOConfig::training()` for more details on the
+    individual properties.
+    """
 
     kl_coeff: float = None
     kl_target: float = None
@@ -45,18 +51,11 @@ class PPOLearner(Learner):
         if self.hps.lr_schedule:
             raise ValueError("lr_schedule is not supported in Learner yet")
 
-        # TODO (Kourosh): We can still use mix-ins in the new design. Do we want that?
-        #  Most likely not. I rather be specific about everything. kl_coeff is a
-        #  none-gradient based update which we can define here and add as update with
-        #  additional_update() method.
-
         # We need to make sure that the kl_coeff is a framework tensor that is
         # registered as part of the graph so that upon update the graph can be updated
-        # (e.g. in TF with eager tracing)
+        # (e.g. in TF with eager tracing).
         self.curr_kl_coeff_val = self.hps.kl_coeff
-        self.curr_kl_coeff = get_variable(
-            self.hps.kl_coeff, framework=self.framework, torch_tensor=True
-        )
+        self.curr_kl_coeff = self._get_kl_variable(self.hps.kl_coeff)
 
     @override(Learner)
     def additional_update_per_module(
@@ -83,6 +82,17 @@ class PPOLearner(Learner):
             self.lr_scheduler.update(timestep)
 
         return results
+
+    @abc.abstractmethod
+    def _get_kl_variable(self, value: float) -> TensorType:
+        """Returns the kl_coeff (framework specific) tensor variable.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-class.
+
+        Args:
+            value: The initial value for the kl_coeff variable.
+        """
 
     @abc.abstractmethod
     def _set_kl_coeff(self, value: float) -> None:

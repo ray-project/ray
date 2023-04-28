@@ -57,7 +57,7 @@ class TorchLearner(Learner):
             **kwargs,
         )
 
-        # will be set during build
+        # Will be set during build.
         self._device = None
 
     @override(Learner)

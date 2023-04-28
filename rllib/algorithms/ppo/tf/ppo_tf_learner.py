@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Any, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -109,6 +109,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
             "entropy_coeff": self.hps.entropy_coeff,
             "cur_kl_coeff": self.curr_kl_coeff,
         }
+
+    @override(PPOLearner)
+    def _get_kl_variable(self, value: float) -> Any:
+        return tf.Variable(value, trainable=False, dtype=tf.float32)
 
     @override(PPOLearner)
     def _set_kl_coeff(self, value: float) -> None:

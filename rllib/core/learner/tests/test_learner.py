@@ -6,11 +6,9 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.core.learner.learner import Learner, FrameworkHPs
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner import Learner, FrameworkHyperparameters
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -90,7 +88,7 @@ class TestLearner(unittest.TestCase):
             # where we need to know what the learning rate is.
             optimizer_config={"lr": 1e-3},
             learner_scaling_config=LearnerGroupScalingConfig(),
-            framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+            framework_hyperparameters=FrameworkHyperparameters(eager_tracing=True),
         )
 
         learner.build()

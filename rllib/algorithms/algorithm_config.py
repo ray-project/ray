@@ -321,7 +321,7 @@ class AlgorithmConfig(_Config):
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
-        self.learner_class = None
+        self._learner_class = None
         self._enable_learner_api = False
 
         # `self.callbacks()`
@@ -1692,7 +1692,7 @@ class AlgorithmConfig(_Config):
         if _enable_learner_api is not NotProvided:
             self._enable_learner_api = _enable_learner_api
         if learner_class is not NotProvided:
-            self.learner_class = learner_class
+            self._learner_class = learner_class
 
         return self
 
@@ -2530,6 +2530,20 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    @property
+    def learner_class(self) -> Type["Learner"]:
+        """Returns the Learner sub-class to use by this Algorithm.
+
+        Either
+        a) User sets a specific learner class via calling `.training(learner_class=...)`
+        b) User leaves learner class unset (None) and the AlgorithmConfig itself
+        figures out the actual learner class by calling its own
+        `.get_default_learner_class()` method.
+        """
+        return self._learner_class or self.get_default_learner_class()
+
+    # TODO: Make rollout_fragment_length as read-only property and replace the current
+    #  self.rollout_fragment_length a private variable.
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
@@ -2565,6 +2579,8 @@ class AlgorithmConfig(_Config):
         else:
             return self.rollout_fragment_length
 
+    # TODO: Make evaluation_config as read-only property and replace the current
+    #  self.evaluation_config a private variable.
     def get_evaluation_config_object(
         self,
     ) -> Optional["AlgorithmConfig"]:
@@ -2858,6 +2874,8 @@ class AlgorithmConfig(_Config):
 
         return policies, is_policy_to_train
 
+    # TODO: Move this to those algorithms that really need this, which is currently
+    #  only A2C and PG.
     def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
         """Detects mismatches for `train_batch_size` vs `rollout_fragment_length`.
 
@@ -3109,14 +3127,14 @@ class AlgorithmConfig(_Config):
             LearnerGroupConfig()
             .module(module_spec)
             .learner(
-                learner_class=self.learner_class or self.get_default_learner_class(),
+                learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={
                     "lr": self.lr,
                     "grad_clip": self.grad_clip,
                     "grad_clip_by": self.grad_clip_by,
                 },
-                learner_hps=self.get_learner_hyperparameters(),
+                learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,

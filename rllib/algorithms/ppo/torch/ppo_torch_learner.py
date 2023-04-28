@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Any, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -105,6 +105,15 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             "entropy_coeff": self.hps.entropy_coeff,
             "cur_kl_coeff": self.curr_kl_coeff,
         }
+
+    @override(PPOLearner)
+    def _get_kl_variable(self, value: float) -> Any:
+        return torch.tensor(
+            value,
+            trainable=False,
+            device=self._device,
+            dtype=torch.float32,
+        )
 
     @override(PPOLearner)
     def _set_kl_coeff(self, value: float):
