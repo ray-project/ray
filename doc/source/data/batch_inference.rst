@@ -115,7 +115,7 @@ In any case, the result of this step is a Ray Datastream ``ds`` that we can use 
 
     .. group-tab:: PyTorch
 
-        For the PyTorch example of this guide, we'll create a NumPy array with 100
+        Create a NumPy array with 100
         entries, which represents the input to a feed-forward neural network.
 
         .. literalinclude:: ./doc_code/pytorch_quick_start.py
