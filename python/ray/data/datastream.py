@@ -422,7 +422,7 @@ class Datastream:
             ...     {"name": "Luna", "age": 4},
             ...     {"name": "Rory", "age": 14},
             ...     {"name": "Scout", "age": 9},
-            ...])
+            ... ])
             >>> ds  # doctest: +SKIP
             MaterializedDatastream(
                 num_blocks=1,
@@ -1680,8 +1680,6 @@ class Datastream:
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max("id"))
-            (99,)
             >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
             {'max(id)': 99, 'mean(id)': 49.5}
 
@@ -1973,7 +1971,7 @@ class Datastream:
             >>> ds1 = ray.data.range(5)
             >>> ds2 = ray.data.range(5)
             >>> ds1.zip(ds2).take_batch()
-            {'id": array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])},
+            {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])},
 
         Time complexity: O(datastream size / parallelism)
 
