@@ -37,7 +37,7 @@ def main(bucket):
         checkpoint_freq_s=6,  # Once every 6 seconds (once per result)
         checkpoint_size_b=int(2 * 1000**2),  # 2 MB
         checkpoint_num_files=8,
-        keep_checkpoints_num=1,
+        keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
         storage_path=bucket,
     )
