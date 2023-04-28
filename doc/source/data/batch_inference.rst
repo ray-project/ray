@@ -271,7 +271,7 @@ Advanced batch inference guide
 
 Having run a first example, let's have a look at a more complex setup.
  Let's use batch inference on a pre-trained PyTorch model for image classification
-as a running example to illustrate advanced concepts of batch processing with Ray.
+to illustrate advanced concepts of batch processing with Ray.
 
 
 .. important::
