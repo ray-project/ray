@@ -89,7 +89,7 @@ We start with very simple use cases here and build up to more complex ones in ot
     demanding model setups, additional postprocessing, or other customizations.
     We'll cover these advanced use cases in the next sections.
 
-1. Loading and Preprocessing Data
+1. Loading and preprocessing data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For this quick-start guide we'll simply use very small, in-memory data sets by
