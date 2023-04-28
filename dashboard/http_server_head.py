@@ -9,10 +9,7 @@ import time
 from ray._private.utils import get_or_create_event_loop
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils

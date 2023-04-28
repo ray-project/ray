@@ -4,10 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 import accelerate
 
