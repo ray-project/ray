@@ -39,7 +39,11 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     into the result_queue, we would effectively double the memory needed
     on the client to handle the put.
     """
-    total_size = len(req.put.data)
+    # When accessing a protobuf field, deserialization is performed, which will
+    # generate a copy. So we need to avoid accessing the `data` field multiple
+    # times in the loop
+    request_data = req.put.data
+    total_size = len(request_data)
     assert total_size > 0, "Cannot chunk object with missing data"
     if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
         "client_object_put_size_warning"
@@ -55,10 +59,6 @@ def chunk_put(req: ray_client_pb2.DataRequest):
             UserWarning,
         )
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
-    # When accessing a protobuf field, deserialization is performed, which will
-    # generate a copy. So we need to avoid accessing the `data` field multiple
-    # times in the loop
-    request_data = req.put.data
     for chunk_id in range(0, total_chunks):
         start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
         end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
@@ -81,13 +81,13 @@ def chunk_task(req: ray_client_pb2.DataRequest):
     into the result_queue, we would effectively double the memory needed
     on the client to handle the task.
     """
-    total_size = len(req.task.data)
-    assert total_size > 0, "Cannot chunk object with missing data"
-    total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
     # When accessing a protobuf field, deserialization is performed, which will
     # generate a copy. So we need to avoid accessing the `data` field multiple
     # times in the loop
     request_data = req.task.data
+    total_size = len(request_data)
+    assert total_size > 0, "Cannot chunk object with missing data"
+    total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
     for chunk_id in range(0, total_chunks):
         start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
         end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
