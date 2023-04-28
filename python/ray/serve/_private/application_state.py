@@ -1,5 +1,5 @@
 import traceback
-from typing import Dict, List
+from typing import Dict, List, Optional
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.deployment_state import DeploymentStateManager
@@ -64,23 +64,23 @@ class ApplicationState:
         return self._ready_to_be_deleted
 
     @property
-    def route_prefix(self) -> bool:
+    def route_prefix(self) -> Optional[str]:
         return self._route_prefix
 
     @property
-    def docs_path(self) -> bool:
+    def docs_path(self) -> Optional[str]:
         return self._docs_path
 
     @property
-    def status(self) -> bool:
+    def status(self) -> ApplicationStatus:
         return self._status
 
     @property
-    def deployment_timestamp(self) -> bool:
+    def deployment_timestamp(self) -> int:
         return self._deployment_timestamp
 
     @property
-    def deploy_obj_ref(self) -> bool:
+    def deploy_obj_ref(self) -> Optional[ObjectRef]:
         return self._deploy_obj_ref
 
     @property
