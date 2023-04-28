@@ -572,10 +572,13 @@ class TuneController(_TuneControllerBase):
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
-            raise _AbortTrialExecution(
+            exception = _AbortTrialExecution(
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
+            self._schedule_trial_stop(trial, exception=exception)
+            return
+
         _actor_cls = self._class_cache.get(trainable_cls)
 
         trial.set_location(_Location())
@@ -854,7 +857,7 @@ class TuneController(_TuneControllerBase):
             raise exception
         else:
             if self._print_trial_errors:
-                logger.error("Trial task failed", exc_info=exception)
+                logger.error(f"Trial task failed for trial {trial}", exc_info=exception)
             self._process_trial_failure(trial, exception=exception)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):

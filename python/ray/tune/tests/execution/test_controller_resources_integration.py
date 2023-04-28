@@ -68,8 +68,6 @@ def test_resource_parallelism_single(
     while not runner.is_finished():
         runner.step()
 
-    runner.cleanup()
-
     assert snapshot.max_running_trials() == 1
     assert snapshot.all_trials_are_terminated()
 
@@ -100,8 +98,6 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 
     while not runner.is_finished():
         runner.step()
-
-    runner.cleanup()
 
     assert snapshot.max_running_trials() == 2
     assert snapshot.all_trials_are_terminated()
@@ -138,8 +134,6 @@ def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     # test_trial_runner.py::TrialRunnerTest::testMultiStepRun2
     with pytest.raises(TuneError):
         runner.step()
-
-    runner.cleanup()
 
     assert snapshot.all_trials_are_terminated()
     assert all(t.last_result["training_iteration"] == 5 for t in runner.get_trials())
@@ -202,7 +196,6 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     assert runner._actor_manager.get_live_actors_resources().get("CPU") == 4
 
     runner.step()
-    runner.cleanup()
 
 
 @pytest.mark.parametrize(
@@ -257,8 +250,6 @@ def test_queue_filling(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     status_count = Counter(t.status for t in runner.get_trials())
     assert status_count.get(Trial.RUNNING) == 2
     assert status_count.get(Trial.PENDING) == 1
-
-    runner.cleanup()
 
 
 if __name__ == "__main__":
