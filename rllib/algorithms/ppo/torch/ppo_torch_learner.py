@@ -1,5 +1,5 @@
 import logging
-from typing import Mapping
+from typing import Any, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -30,10 +30,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # agent based learning rate scheduler, we may want to use module_id to get the
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
-
-        # make sure all the coefficients are on the same device as the model
-        if self.kl_coeff.device != self._device:
-            self.kl_coeff = self.kl_coeff.to(self._device)
 
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
@@ -111,5 +107,18 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         }
 
     @override(PPOLearner)
+    def _get_kl_variable(self, value: float) -> Any:
+        return torch.tensor(
+            value,
+            requires_grad=False,
+            device=self._device,
+            dtype=torch.float32,
+        )
+
+    @override(PPOLearner)
     def _set_kl_coeff(self, value: float):
-        self.kl_coeff.data = torch.tensor(value, device=self.kl_coeff.device)
+        self.curr_kl_coeff.data = torch.tensor(
+            value,
+            dtype=torch.float32,
+            device=self.curr_kl_coeff.device,
+        )

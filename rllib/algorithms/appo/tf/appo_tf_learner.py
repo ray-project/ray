@@ -191,8 +191,8 @@ class APPOTfLearner(TfLearner, AppoLearner):
             sampled_kl = sampled_kls[module_id]
             # Update the current KL value based on the recently measured value.
             # Increase.
-            if sampled_kl > 2.0 * self.kl_target:
+            if sampled_kl > 2.0 * self.hps.kl_target:
                 self.kl_coeffs[module_id].assign(self.kl_coeffs[module_id] * 1.5)
             # Decrease.
-            elif sampled_kl < 0.5 * self.kl_target:
+            elif sampled_kl < 0.5 * self.hps.kl_target:
                 self.kl_coeffs[module_id].assign(self.kl_coeffs[module_id] * 0.5)
