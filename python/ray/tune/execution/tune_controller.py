@@ -437,6 +437,7 @@ class TuneController(_TuneControllerBase):
                 and trial_to_run not in self._trial_to_actor
             ):
                 logger.debug(f"Staging trial to run: {trial_to_run}")
+                self._set_trial_status(trial_to_run, Trial.PENDING)
                 self._staged_trials.add(trial_to_run)
                 self._actor_cache.increase_max(trial_to_run.placement_group_factory)
                 # schedule_trial_actor also potentially uses cached actors
@@ -460,7 +461,7 @@ class TuneController(_TuneControllerBase):
                 # If the trial is part of the list, but not of the set,
                 # we just ignore it. Removing it from the list on status
                 # change is too expensive.
-                if trial not in (self._pending_trials | self._paused_trials):
+                if trial not in self._pending_trials:
                     continue
 
                 if trial in self._trial_to_actor:
@@ -541,7 +542,7 @@ class TuneController(_TuneControllerBase):
         """
         logger.debug(f"Trying to schedule new ACTOR for trial {trial}")
 
-        self._set_trial_status(trial, Trial.PENDING)
+        assert trial.status == Trial.PENDING
 
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication

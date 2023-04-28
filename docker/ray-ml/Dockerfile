@@ -40,5 +40,7 @@ RUN sudo apt-get update \
         requirements*.txt \
     && sudo apt-get clean
 
+RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
+
 # Make sure tfp is installed correctly and matches tf version.
 RUN python -c "import tensorflow_probability"
