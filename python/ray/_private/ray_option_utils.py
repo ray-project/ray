@@ -77,7 +77,7 @@ def _validate_resource_quantity(name, quantity):
     ):
         return (
             f"The precision of the fractional quantity of resource {name}"
-            f" cannot go beyond 0.0001 {quantity}"
+            " cannot go beyond 0.0001"
         )
     return None
 
