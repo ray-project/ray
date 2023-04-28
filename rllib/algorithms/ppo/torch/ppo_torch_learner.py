@@ -110,7 +110,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
     def _get_kl_variable(self, value: float) -> Any:
         return torch.tensor(
             value,
-            trainable=False,
+            requires_grad=False,
             device=self._device,
             dtype=torch.float32,
         )
