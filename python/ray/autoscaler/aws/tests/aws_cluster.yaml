@@ -16,4 +16,3 @@ available_node_types:
         resources: {}
         node_config:
             InstanceType: t3.large
-            IamInstanceProfile: {"Name": "ray-test-runner"}
