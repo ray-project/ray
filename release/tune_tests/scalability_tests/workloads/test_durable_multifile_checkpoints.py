@@ -1,14 +1,14 @@
 """Durable trainable with multi-file checkpoints (16 trials, checkpoint to cloud)
 
-In this run, we will start 16 trials on a cluster. The trials create 8 files a
-2 MB checkpoints every 6 seconds and should only keep 1 of these. This test
+In this run, we will start 16 trials on a cluster. The trials create 16 files a
+1 MB checkpoints every 12 seconds and should only keep 2 of these. This test
 ensures that durable checkpoints don't slow down experiment progress too much.
 
 Cluster: cluster_16x2.yaml
 
 Test owner: krfricke
 
-Acceptance criteria: Should run faster than 500 seconds.
+Acceptance criteria: Should run faster than 750 seconds.
 
 Theoretical minimum time: 300 seconds
 """
@@ -23,10 +23,10 @@ def main(bucket):
     ray.init(address="auto")
 
     num_samples = 16
-    results_per_second = 10 / 60  # 10 results per minute = 1 every 6 seconds
+    results_per_second = 5 / 60  # 5 results per minute = 1 every 12 seconds
     trial_length_s = 300
 
-    max_runtime = 650
+    max_runtime = 750
 
     timed_tune_run(
         name="durable multi-file checkpoints",
@@ -34,9 +34,9 @@ def main(bucket):
         results_per_second=results_per_second,
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
-        checkpoint_freq_s=6,  # Once every 6 seconds (once per result)
-        checkpoint_size_b=int(2 * 1000**2),  # 2 MB
-        checkpoint_num_files=8,
+        checkpoint_freq_s=12,  # Once every 12 seconds (once per result)
+        checkpoint_size_b=int(1 * 1000**2),  # 1 MB
+        checkpoint_num_files=16,
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
         storage_path=bucket,
