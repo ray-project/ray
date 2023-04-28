@@ -65,7 +65,6 @@ use case does not require scaling yet:
 Quick Start
 -----------
 
-To get started with batch inference with Ray, the first thing you need to do is
 install Ray together with its data processing library Ray Data:
 
 .. code-block:: bash
