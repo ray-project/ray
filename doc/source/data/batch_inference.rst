@@ -194,7 +194,6 @@ Below you find examples for PyTorch, TensorFlow, and HuggingFace.
 
 Once you have your Ray Datastream ``ds`` and your predictor class, you can use
 ``ds.map_batches(...)`` to get predictions.
-Mapping batches this way is the recommended way to run inference with Ray, but there are also other options.
 ``map_batches`` takes your predictor class as an argument and allows you to specify
 ``compute`` resources by defining a so-called ``ActorPoolStrategy``.
 In the example below, we use two CPUs to run inference in parallel and then print the results.
