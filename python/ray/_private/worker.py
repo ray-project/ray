@@ -32,6 +32,7 @@ from typing import (
     TypeVar,
     Union,
     overload,
+    Generator,
 )
 from urllib.parse import urlparse
 
@@ -462,7 +463,28 @@ class Worker:
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
-        self.generator_cache = {}
+        self._generator_cache_lock = threading.Lock()
+        self._generator_cache = {}
+
+    def generator_cache_update(self, session_id: str, generator: Generator):
+        with self._generator_cache_lock:
+            self._generator_cache[session_id] = generator
+
+    def generator_cache_del(self, session_id: str):
+        with self._generator_cache_lock:
+            if session_id in self._generator_cache:
+                del self._generator_cache[session_id]
+
+    def generator_cache_exists(self, session_id: str):
+        with self._generator_cache_lock:
+            return session_id in self._generator_cache
+
+    def generator_cache_get(self, session_id: str):
+        with self._generator_cache_lock:
+            if session_id in self._generator_cache:
+                return self._generator_cache[session_id]
+            else:
+                return None
 
     @property
     def connected(self):

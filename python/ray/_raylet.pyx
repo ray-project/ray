@@ -2539,6 +2539,7 @@ cdef class CoreWorker:
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
+                                         method_meta.method_types,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)

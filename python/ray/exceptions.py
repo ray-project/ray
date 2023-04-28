@@ -19,10 +19,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 import setproctitle
 
 
-class RayTaskStopIteration(Exception):
-    pass
-
-
 @PublicAPI
 class RayError(Exception):
     """Super class of all ray exception types."""
@@ -66,6 +62,18 @@ class CrossLanguageError(RayError):
                 ray_exception.formatted_exception_string,
             )
         )
+
+
+# @PrivateAPI
+class RayTaskStopIteration(Exception):
+    """Exception that indicates the generator has raised StopIteration
+
+    This method is used because right now if you raise
+    StopIteration of StopAsyncIteration, and catch them using try/except
+    there's the unexpected segfault from Python.
+    """
+
+    pass
 
 
 @PublicAPI

@@ -521,7 +521,8 @@ def _inject_tracing_into_class(_cls):
             continue
 
         if inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method):
-            # Skip it for now.
+            # TODO(sang): Make this method not change the original signature
+            # of the method.
             continue
 
         # Don't decorate the __del__ magic method.

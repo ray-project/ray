@@ -1,5 +1,8 @@
+import asyncio
+import signal
 import pytest
 import numpy as np
+import os
 import sys
 import time
 from unittest.mock import Mock
@@ -10,6 +13,9 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
+from ray._private.generator import StreamingObjectRefGenerator
+from ray.experimental.state.api import list_objects
+from ray._private.test_utils import wait_for_condition
 
 
 def test_generator_oom(ray_start_regular):
@@ -607,9 +613,322 @@ def test_ray_client(call_ray_start_shared, store_in_plasma):
             assert ray.get(ref)[0] == i
 
 
-if __name__ == "__main__":
-    import os
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_actor_streaming_generator(shutdown_only, store_in_plasma):
+    ray.init()
 
+    @ray.remote
+    class Actor:
+        def f(self, ref):
+            for i in range(3):
+                yield i
+
+        async def async_f(self, ref):
+            for i in range(3):
+                yield i
+
+        def g(self):
+            return 3
+
+        def get_generator_cache(self):
+            return len(ray.worker.global_worker._generator_cache)
+
+    a = Actor.remote()
+    if store_in_plasma:
+        arr = np.random.rand(5 * 1024 * 1024)
+    else:
+        arr = 3
+
+    def verify_sync_task_executor():
+        generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        # Verify it works with next.
+        assert isinstance(generator, StreamingObjectRefGenerator)
+        assert next(generator) == 0
+        assert next(generator) == 1
+        assert next(generator) == 2
+        with pytest.raises(StopIteration):
+            next(generator)
+
+        # Verify it works with for.
+        generator = a.f.options(num_returns="streaming").remote(ray.put(3))
+        for index, i in enumerate(generator):
+            assert index == i
+
+    def verify_async_task_executor():
+        # Verify it works with next.
+        generator = a.async_f.options(num_returns="streaming").remote(ray.put(arr))
+        assert isinstance(generator, StreamingObjectRefGenerator)
+        assert next(generator) == 0
+        assert next(generator) == 1
+        assert next(generator) == 2
+
+        # Verify it works with for.
+        generator = a.f.options(num_returns="streaming").remote(ray.put(3))
+        for index, i in enumerate(generator):
+            assert index == i
+
+    async def verify_sync_task_async_generator():
+        # Verify anext
+        async_generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        assert isinstance(async_generator, StreamingObjectRefGenerator)
+        assert await async_generator.__anext__() == 0
+        assert await async_generator.__anext__() == 1
+        assert await async_generator.__anext__() == 2
+
+        # Verify async for.
+        async_generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        expected = 0
+        async for value in async_generator:
+            assert expected == value
+            expected += 1
+
+    async def verify_async_task_async_generator():
+        async_generator = a.async_f.options(num_returns="streaming").remote(
+            ray.put(arr)
+        )
+        assert isinstance(async_generator, StreamingObjectRefGenerator)
+        assert await async_generator.__anext__() == 0
+        assert await async_generator.__anext__() == 1
+        assert await async_generator.__anext__() == 2
+
+        # Verify async for.
+        async_generator = a.async_f.options(num_returns="streaming").remote(
+            ray.put(arr)
+        )
+        expected = 0
+        async for value in async_generator:
+            assert expected == value
+            expected += 1
+
+    def verify_generator_gc():
+        b = ray.put(arr)
+        g = a.f.options(num_returns="streaming").remote(b)
+        obj_id = b.hex()
+
+        def wait_obj_created():
+            objs = list_objects(filters=[("object_id", "=", obj_id)])
+            assert objs[0].object_id == obj_id
+            return True
+
+        wait_for_condition(wait_obj_created)
+
+        del b
+        assert next(g) == 0
+        assert ray.get(a.get_generator_cache.remote()) == 1
+        print("Clean GC before generator is terminated.")
+        del g
+
+        def wait_obj_created():
+            objs = list_objects(
+                filters=[
+                    ("object_id", "=", obj_id),
+                    ("reference_type", "=", "USED_BY_PENDING_TASK"),
+                ]
+            )
+            assert len(objs) == 0
+            return True
+
+        wait_for_condition(wait_obj_created)
+        assert ray.get(a.get_generator_cache.remote()) == 0
+
+    def verify_generator_gc_unexpected():
+        # NOT WORKING YET.
+        # Test when the owner is unexpectedly killed,
+        # the generator is properly cleaned up.
+        a = Actor.options(lifetime="detached").remote()
+
+        @ray.remote
+        class GeneratorRunner:
+            def __init__(self, a):
+                self.g = None
+                self.a = a
+
+            def getpid(self):
+                return os.getpid()
+
+            def run(self):
+                self.g = self.a.f.options(num_returns="streaming").remote(1)
+                assert next(self.g) == 0
+                return True
+
+        generator_runner = GeneratorRunner.remote(a)
+        pid = ray.get(generator_runner.getpid.remote())
+        ray.get(generator_runner.run.remote())
+
+        assert ray.get(a.get_generator_cache.remote()) == 1
+
+        print("Kill the owner unexpectdly")
+        os.kill(pid, signal.SIGKILL)
+
+        def verify():
+            assert ray.get(a.get_generator_cache.remote()) == 0
+            return True
+
+        wait_for_condition(verify)
+
+    verify_sync_task_executor()
+    verify_async_task_executor()
+    asyncio.run(verify_sync_task_async_generator())
+    asyncio.run(verify_async_task_async_generator())
+    verify_generator_gc()
+    # verify_generator_gc_unexpected()
+
+
+def test_streaming_generator_exception(shutdown_only):
+    # Verify the exceptions are correctly raised.
+    # Also verify the followup next will raise StopIteration.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise ValueError
+            yield 1  # noqa
+
+        async def async_f(self):
+            raise ValueError
+            yield 1  # noqa
+
+    a = Actor.remote()
+    g = a.f.options(num_returns="streaming").remote()
+    with pytest.raises(ValueError):
+        next(g)
+
+    with pytest.raises(StopIteration):
+        next(g)
+
+    with pytest.raises(StopIteration):
+        next(g)
+
+    g = a.async_f.options(num_returns="streaming").remote()
+    with pytest.raises(ValueError):
+        next(g)
+
+    with pytest.raises(StopIteration):
+        next(g)
+
+    with pytest.raises(StopIteration):
+        next(g)
+
+
+def test_threaded_actor_generator(shutdown_only):
+    ray.init()
+
+    @ray.remote(max_concurrency=10)
+    class Actor:
+        def f(self):
+            for _ in range(30):
+                time.sleep(0.1)
+                yield np.ones(1024 * 1024)
+
+        def gced(self):
+            return len(ray.worker.global_worker._generator_cache)
+
+    @ray.remote(max_concurrency=10)
+    class AsyncActor:
+        async def f(self):
+            for _ in range(30):
+                await asyncio.sleep(0.1)
+                yield np.ones(1024 * 1024)
+
+        def gced(self):
+            return len(ray.worker.global_worker._generator_cache)
+
+    async def main():
+        a = Actor.remote()
+        asy = AsyncActor.remote()
+
+        async def run():
+            async for i in a.f.options(num_returns="streaming").remote():
+                print(i)
+
+        async def run2():
+            async for i in asy.f.options(num_returns="streaming").remote():
+                print(i)
+
+        coroutines = [run() for _ in range(10)]
+        coroutines += [run2() for _ in range(10)]
+
+        await asyncio.gather(*coroutines)
+
+        def verify():
+            assert ray.get(a.gced.remote()) == 0
+            assert ray.get(asy.gced.remote()) == 0
+
+        wait_for_condition(verify)
+
+    asyncio.run(main())
+
+
+def test_generator_dist_chain(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
+    ray.init()
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote
+    class ChainActor:
+        def __init__(self, child=None):
+            self.child = child
+
+        def get_data(self):
+            if not self.child:
+                for _ in range(10):
+                    time.sleep(0.1)
+                    yield np.ones(5 * 1024 * 1024)
+            else:
+                for data in self.child.get_data.options(
+                    num_returns="streaming"
+                ).remote():
+                    yield data
+
+    chain_actor = ChainActor.remote()
+    chain_actor_2 = ChainActor.remote(chain_actor)
+    chain_actor_3 = ChainActor.remote(chain_actor_2)
+    chain_actor_4 = ChainActor.remote(chain_actor_3)
+
+    for i in chain_actor_4.get_data.options(num_returns="streaming").remote():
+        np.array_equal(np.ones(5 * 1024 * 1024), i)
+    summary = ray._private.internal_api.memory_summary(stats_only=True)
+    assert "Spilled" not in summary, summary
+
+
+def test_generator_dist_all_gather(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
+    ray.init()
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self, child=None):
+            self.child = child
+
+        def get_data(self):
+            for _ in range(10):
+                time.sleep(0.1)
+                yield np.ones(5 * 1024 * 1024)
+
+    async def all_gather():
+        actor = Actor.remote()
+        async for i in actor.get_data.options(num_returns="streaming").remote():
+            np.array_equal(np.ones(5 * 1024 * 1024), i)
+
+    async def main():
+        await asyncio.gather(all_gather(), all_gather(), all_gather(), all_gather())
+
+    asyncio.run(main())
+    summary = ray._private.internal_api.memory_summary(stats_only=True)
+    assert "Spilled" not in summary, summary
+
+
+if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
