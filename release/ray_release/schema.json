@@ -109,14 +109,6 @@
 						"anyscale_job"
 					]
 				},
-				"file_manager": {
-					"type": "string",
-					"enum": [
-						"sdk",
-						"client",
-						"job"
-					]
-				},
 				"wait_for_nodes": {
 					"$ref": "#/definitions/WaitForNodes"
 				},

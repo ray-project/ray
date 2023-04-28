@@ -39,7 +39,7 @@ Datastream uses Ray tasks to read data from remote storage in parallel. Each rea
 
 You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying datastream.
 
-For an in-depth guide on creating datastreams, read :ref:`Creating Datastreams <creating_datastreams>`.
+For an in-depth guide on creating datastreams, read :ref:`Loading Data <creating_datastreams>`.
 
 Transforming Data
 =================
@@ -56,7 +56,7 @@ pool of Ray actors. This allows you to cache expensive state initialization
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For an in-depth guide on transforming datastreams, read :ref:`Transforming Datastreams <transforming_datastreams>`.
+For an in-depth guide on transforming datastreams, read :ref:`Transforming Data <transforming_datastreams>`.
 
 Shuffling Data
 ==============

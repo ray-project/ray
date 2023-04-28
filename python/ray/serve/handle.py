@@ -133,7 +133,7 @@ class RayServeHandle:
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment", "route"),
+            tag_keys=("handle", "deployment", "route", "application"),
         )
         self.request_counter.set_default_tags(
             {"handle": self.handle_tag, "deployment": self.deployment_name}
@@ -236,8 +236,14 @@ class RayServeHandle:
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
             route=_request_context.route,
+            app_name=_request_context.app_name,
         )
-        self.request_counter.inc(tags={"route": _request_context.route})
+        self.request_counter.inc(
+            tags={
+                "route": _request_context.route,
+                "application": _request_context.app_name,
+            }
+        )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
