@@ -1170,9 +1170,7 @@ class DeploymentState:
         )
         logger.info(f"Deleting deployment {self._name}.")
 
-    def _set_target_state(
-        self, target_info: DeploymentInfo, autoscaled_num_replicas: int = None
-    ) -> None:
+    def _set_target_state(self, target_info: DeploymentInfo) -> None:
         """Set the target state for the deployment to the provided info."""
 
         # We must write ahead the target state in case of GCS failure (we don't
