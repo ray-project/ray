@@ -188,7 +188,7 @@ Below you find examples for PyTorch, TensorFlow, and HuggingFace.
                 <2> The ``__call__`` method runs inference on a batch of data.
 
 
-3. Getting Predictions with Ray Data
+3. Getting predictions with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Once you have your Ray Datastream ``ds`` and your predictor class, you can use
