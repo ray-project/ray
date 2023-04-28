@@ -65,7 +65,7 @@ use case does not require scaling yet:
 Quick Start
 -----------
 
-install Ray together with its data processing library Ray Data:
+Install Ray with the data processing library, Ray Data:
 
 .. code-block:: bash
 
