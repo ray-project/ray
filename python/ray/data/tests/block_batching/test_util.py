@@ -1,3 +1,4 @@
+import threading
 import pytest
 import time
 
@@ -7,6 +8,7 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.block_batching.util import (
+    Queue,
     _calculate_ref_hits,
     make_async_gen,
     blocks_to_batches,
@@ -207,6 +209,50 @@ def test_make_async_gen_multiple_threads_unfinished():
 
     # 4 second for first item, 5 seconds for udf, 0.5 seconds buffer
     assert end_time - start_time < 9.5
+
+
+def test_queue():
+    queue = Queue(5)
+    num_producers = 10
+    num_producers_finished = 0
+    num_items = 20
+
+    def execute_computation():
+        for item in range(num_items):
+            if queue.put(item):
+                # Return early when it's instructed to do so.
+                break
+        # Put -1 as indicator of thread being finished.
+        queue.put(-1)
+
+    # Use separate threads as producers.
+    threads = [
+        threading.Thread(target=execute_computation, daemon=True)
+        for _ in range(num_producers)
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for i in range(num_producers * num_items):
+        item = queue.get()
+        if item == -1:
+            num_producers_finished += 1
+        if i > num_producers * num_items / 2:
+            num_producers_alive = num_producers - num_producers_finished
+            # Check there are some alive producers.
+            assert num_producers_alive > 0, num_producers_alive
+            # Release the alive producers.
+            queue.release(num_producers_alive)
+            # Consume the remaining items in queue.
+            while queue.qsize() > 0:
+                queue.get()
+            break
+
+    # Sleep 5 seconds to allow producer threads to exit.
+    time.sleep(5)
+    # Then check the queue is still empty.
+    assert queue.qsize() == 0
 
 
 def test_calculate_ref_hits(ray_start_regular_shared):

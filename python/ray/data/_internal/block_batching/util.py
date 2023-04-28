@@ -230,37 +230,7 @@ def make_async_gen(
         def __init__(self, thread_index: int):
             self.thread_index = thread_index
 
-    queue_size = 1
-    # The output queue shared across multiple threads.
-    output_queue = deque()
-    # The boolean varilable to indicate whether threads should exit.
-    threads_exit = False
-    # The semaphore for producer threads to add output batches to queue.
-    producer_semaphore = threading.Semaphore(queue_size)
-    # The semaphore for consumer thread (main thread) to get output batches from queue.
-    consumer_semaphore = threading.Semaphore(0)
-    # The mutex lock to guard access of `output_queue` and `threads_exit`.
-    mutex = threading.Lock()
-
-    # Put one item into `output_queue`. Block if queue is full.
-    # Return True if the thread should exit.
-    def put_to_queue(item: Any) -> bool:
-        producer_semaphore.acquire()
-        with mutex:
-            if threads_exit:
-                return True
-            else:
-                output_queue.append(item)
-        consumer_semaphore.release()
-        return False
-
-    # Get one item from `output_queue`. Block if queue is empty.
-    def get_from_queue() -> Any:
-        consumer_semaphore.acquire()
-        with mutex:
-            next_item = output_queue.popleft()
-        producer_semaphore.release()
-        return next_item
+    output_queue = Queue(1)
 
     # Because pulling from the base iterator cannot happen concurrently,
     # we must execute the expensive computation in a separate step which
@@ -268,12 +238,12 @@ def make_async_gen(
     def execute_computation(thread_index: int):
         try:
             for item in fn(thread_safe_generator):
-                if put_to_queue(item):
+                if output_queue.put(item):
                     # Return early when it's instructed to do so.
                     return
-            put_to_queue(Sentinel(thread_index))
+            output_queue.put(Sentinel(thread_index))
         except Exception as e:
-            put_to_queue(e)
+            output_queue.put(e)
 
     # Use separate threads to produce output batches.
     threads = [
@@ -288,7 +258,7 @@ def make_async_gen(
     num_threads_finished = 0
     try:
         while True:
-            next_item = get_from_queue()
+            next_item = output_queue.get()
             if isinstance(next_item, Exception):
                 raise next_item
             if isinstance(next_item, Sentinel):
@@ -303,13 +273,9 @@ def make_async_gen(
         # This is to avoid these daemon threads hanging there with holding batches in
         # memory, which can cause GRAM OOM easily. This can happen when caller breaks
         # in the middle of iteration.
-        with mutex:
-            threads_exit = True
-        while num_threads_finished < num_workers:
-            # NOTE: After Python 3.9+, empty_semaphore.release(n) can be used to
-            # release all threads at once.
-            producer_semaphore.release()
-            num_threads_finished += 1
+        num_threads_alive = num_workers - num_threads_finished
+        if num_threads_alive > 0:
+            output_queue.release(num_threads_alive)
 
 
 PREFETCHER_ACTOR_NAMESPACE = "ray.datastream"
@@ -352,3 +318,66 @@ class _BlockPretcher:
 
     def prefetch(self, *blocks) -> None:
         pass
+
+
+class Queue:
+    """A thread-safe queue implementation for multiple producers and consumers.
+
+    Provide `release()` to exit producer threads cooperatively for resource release.
+    """
+
+    def __init__(self, queue_size: int):
+        # The queue shared across multiple producer threads.
+        self._queue = deque()
+        # The boolean varilable to indicate whether producer threads should exit.
+        self._threads_exit = False
+        # The semaphore for producer threads to put item into queue.
+        self._producer_semaphore = threading.Semaphore(queue_size)
+        # The semaphore for consumer threads to get item from queue.
+        self._consumer_semaphore = threading.Semaphore(0)
+        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
+        self._mutex = threading.Lock()
+
+    def put(self, item: Any) -> bool:
+        """Put an item into the queue.
+
+        Block if necessary until a free slot is available in queue.
+        This method is called by producer threads.
+
+        Returns:
+            True if the caller thread should exit immediately.
+        """
+        self._producer_semaphore.acquire()
+        with self._mutex:
+            if self._threads_exit:
+                return True
+            else:
+                self._queue.append(item)
+        self._consumer_semaphore.release()
+        return False
+
+    def get(self) -> Any:
+        """Remove and return an item from the queue.
+
+        Block if necessary until an item is available in queue.
+        This method is called by consumer threads.
+        """
+        self._consumer_semaphore.acquire()
+        with self._mutex:
+            next_item = self._queue.popleft()
+        self._producer_semaphore.release()
+        return next_item
+
+    def release(self, num_threads: int):
+        """Release `num_threads` of producers so they would exit cooperatively."""
+        with self._mutex:
+            self._threads_exit = True
+        for _ in range(num_threads):
+            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
+            # release all threads at once.
+            self._producer_semaphore.release()
+
+    def qsize(self):
+        """Return the size of the queue."""
+        with self._mutex:
+            return len(self._queue)
