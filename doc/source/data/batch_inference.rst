@@ -57,7 +57,7 @@ use case does not require scaling yet:
     or ML framework (like PyTorch and Tensorflow), and does not require a particular file format.
 3. **Out of the box scaling**: The same code that works on one machine also runs on a
     large cluster without any changes.
-4. **Python first** You can express your inference job directly in Python instead of
+4. **Python first**: You can express your inference job directly in Python instead of
     YAML files or other formats.
 
 .. _batch_inference_quickstart:
