@@ -167,7 +167,7 @@ def test_fit_transform_config(ray_start_4_cpus):
 
     def drop_odd_numpy(batch):
         arr = batch["id"]
-        return arr[arr % 2 == 0]
+        return {"id": arr[arr % 2 == 0]}
 
     prep_pandas = BatchMapper(drop_odd_pandas, batch_format="pandas")
     prep_numpy = BatchMapper(drop_odd_numpy, batch_format="numpy")
