@@ -23,7 +23,7 @@ def gen_dataset_2():
 
 @ray.remote
 def transform_dataset(in_data):
-    return in_data.map(lambda x: x * 2)
+    return in_data.map(lambda x: {"id": x["id"] * 2})
 
 
 @ray.remote
