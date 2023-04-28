@@ -19,6 +19,7 @@ and use cases. You can filter these examples by the following categories:
         <div type="button" class="tag btn btn-outline-primary">PyTorch</div>
         <div type="button" class="tag btn btn-outline-primary">TensorFlow</div>
         <div type="button" class="tag btn btn-outline-primary">HuggingFace</div>
+        <div type="button" class="tag btn btn-outline-primary">Lightning</div>
         <div type="button" class="tag btn btn-outline-primary">Horovod</div>
         <div type="button" class="tag btn btn-outline-primary">MLflow</div>
 
@@ -107,6 +108,15 @@ Ray Train Examples Using Loggers & Callbacks
         :type: ref
         :text: Logging Training Runs with MLflow
         :classes: btn-link btn-block stretched-link trainMlflow
+
+    ---
+    :img-top: /images/pytorch_lightning_small.png
+
+    +++
+    .. link-button:: lightning_experiment_tracking
+        :type: ref
+        :text: Use LightningTrainer with Wandb, CometML, MLFlow, and Tensorboard
+        :classes: btn-link btn-block stretched-link trackLightning
 
 
 Ray Train & Tune Integration Examples
