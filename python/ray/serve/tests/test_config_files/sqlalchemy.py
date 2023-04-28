@@ -1,7 +1,6 @@
 from ray import serve
 
-# TestDeployment should be deployed with a runtime env that installs pip dependencies
-# PyMySQL and sqlalchemy.
+
 @serve.deployment
 class TestDeployment:
     def __init__(self):
