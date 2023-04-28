@@ -16,7 +16,7 @@ from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock import TrialStatusSnapshot, TrialStatusSnapshotTaker
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def ray_start_4_cpus_2_gpus_extra():
     address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
     yield address_info

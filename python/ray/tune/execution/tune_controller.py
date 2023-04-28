@@ -68,11 +68,11 @@ class TuneController(_TuneControllerBase):
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
     ):
         if resource_manager_factory:
-            self._resource_manager = resource_manager_factory()
+            resource_manager = resource_manager_factory()
         else:
-            self._resource_manager = PlacementGroupResourceManager()
+            resource_manager = PlacementGroupResourceManager()
 
-        self._actor_manager = RayActorManager(resource_manager=self._resource_manager)
+        self._actor_manager = RayActorManager(resource_manager=resource_manager)
 
         self._class_cache = _class_cache
 
@@ -1138,7 +1138,6 @@ class TuneController(_TuneControllerBase):
     def __getstate__(self):
         state = super().__getstate__()
         for exclude in [
-            "_resource_manager",
             "_actor_manager",
             "_class_cache",
             "_resource_updater",

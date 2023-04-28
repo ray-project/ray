@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 
 import pytest
 import sys
@@ -15,7 +16,7 @@ from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.execution.utils import BudgetResourceManager
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def ray_start_4_cpus_2_gpus_extra():
     address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
     yield address_info
@@ -125,9 +126,9 @@ def test_failure_recovery(
         num_failures = max_failures + 1
         assert trials[0].num_failures == num_failures
         # search alg receives on_complete, so only after the max failures
-        # have been exhausted. Thus it only has errored_trials if the
+        # have been exhausted. Thus, it only has errored_trials if the
         # trial fails even in the last try.
-        assert len(scheduler.errored_trials) == 1
+        assert len(searchalg.errored_trials) == 1
         # search alg receives on_error, so every failure is registered.
         assert len(scheduler.errored_trials) == num_failures
     else:
@@ -136,7 +137,59 @@ def test_failure_recovery(
         assert len(searchalg.errored_trials) == 0
         assert len(scheduler.errored_trials) == 1
 
-    runner.cleanup()
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.parametrize("fail_fast", [True, TuneController.RAISE])
+def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fast):
+    """Test fail_fast feature.
+
+    If fail_fast=True, after the first failure, all other trials should be terminated
+    (because we end the experiment).
+
+    If fail_fast=RAISE, after the first failure, we should raise an error.
+
+    Legacy test: test_trial_runner_2.py::TrialRunnerTest::testFailFast
+    Legacy test: test_trial_runner_2.py::TrialRunnerTest::testFailFastRaise
+    """
+
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(), fail_fast=fail_fast
+    )
+    kwargs = {
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
+        "max_failures": 0,
+        "config": {
+            "mock_error": True,
+            "persistent_error": True,
+        },
+    }
+    runner.add_trial(Trial("__fake", **kwargs))
+    runner.add_trial(Trial("__fake", **kwargs))
+    trials = runner.get_trials()
+
+    if fail_fast == TuneController.RAISE:
+        with pytest.raises(Exception):
+            while not runner.is_finished():
+                runner.step()
+        runner.cleanup()
+        return
+    else:
+        while not runner.is_finished():
+            runner.step()
+
+    status_count = Counter(t.status for t in trials)
+
+    # One trial failed
+    assert status_count.get(Trial.ERROR) == 1
+    # The other one was pre-empted
+    assert status_count.get(Trial.TERMINATED) == 1
+
+    # Controller finished
+    with pytest.raises(TuneError):
+        runner.step()
 
 
 if __name__ == "__main__":
