@@ -312,7 +312,7 @@ as a running example to illustrate advanced concepts of batch processing with Ra
 Loading your data with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the quickstart guide we glossed over the details of loading data with Ray Data.
+In the quick start guide we glossed over the details of loading data with Ray Data.
 Your data might be stored in a variety of formats, and you might want to load it from different sources.
 Ray data is designed to be flexible and supports much of what you need out of the box.
 The :ref:`guide to creating datasets <creating_datasets>` is the ultimate resource
