@@ -163,10 +163,10 @@ def test_fit_transform_config(ray_start_4_cpus):
     ds = ray.data.range(10)
 
     def drop_odd_pandas(batch):
-        return batch[batch["value"] % 2 == 0]
+        return batch[batch["id"] % 2 == 0]
 
     def drop_odd_numpy(batch):
-        arr = batch["value"]
+        arr = batch["id"]
         return arr[arr % 2 == 0]
 
     prep_pandas = BatchMapper(drop_odd_pandas, batch_format="pandas")
@@ -232,7 +232,7 @@ class TestStream(DataParallelTrainer):
         for _ in range(2):
             result = []
             for batch in data_shard.iter_batches():
-                for row in batch["value"]:
+                for row in batch["id"]:
                     result.append(row)
             results.append(result)
         check_results_fn(data_shard, results)
@@ -255,7 +255,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         assert "Stage 1 ReadRange->BatchMapper: 1/1 blocks executed " in stats, stats
 
     def rand(x):
-        x["value"] = x["value"].multiply(x["value"])
+        x["id"] = x["id"].multiply(x["id"])
         return x
 
     prep = BatchMapper(rand, batch_format="pandas")
@@ -271,7 +271,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
 
 def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
     def rand(x):
-        x["value"] = [random.random() for _ in range(len(x))]
+        x["id"] = [random.random() for _ in range(len(x))]
         return x
 
     prep = BatchMapper(rand, batch_format="pandas")
@@ -305,8 +305,8 @@ def test_stream_transform_config(ray_start_4_cpus):
 
     def check_batch(batch):
         assert isinstance(batch, dict)
-        assert isinstance(batch["value"], np.ndarray)
-        assert len(batch["value"]) == batch_size
+        assert isinstance(batch["id"], np.ndarray)
+        assert len(batch["id"]) == batch_size
         return batch
 
     prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
