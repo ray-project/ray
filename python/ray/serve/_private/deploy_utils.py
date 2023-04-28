@@ -26,6 +26,7 @@ def get_deploy_args(
     route_prefix: Optional[str] = None,
     is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
+    app_name: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -82,6 +83,7 @@ def get_deploy_args(
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
+        "app_name": app_name,
     }
 
     return controller_deploy_args
@@ -94,7 +96,7 @@ def deploy_args_to_deployment_info(
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
     is_driver_deployment: Optional[bool] = False,
-    app_name: str = None,
+    app_name: Optional[str] = None,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.
@@ -105,22 +107,6 @@ def deploy_args_to_deployment_info(
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
-
-    # autoscaling_config = deployment_config.autoscaling_config
-    # if autoscaling_config is not None:
-    #     if autoscaling_config.initial_replicas is not None:
-    #         deployment_config.num_replicas = autoscaling_config.initial_replicas
-    #     else:
-    #         if previous_deployment is None:
-    #             deployment_config.num_replicas = autoscaling_config.min_replicas
-    #         else:
-    #             deployment_config.num_replicas = (
-    #                 previous_deployment.deployment_config.num_replicas
-    #             )
-
-    #     autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
-    # else:
-    #     autoscaling_policy = None
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
@@ -134,10 +120,10 @@ def deploy_args_to_deployment_info(
         deployment_config=deployment_config,
         replica_config=replica_config,
         deployer_job_id=deployer_job_id,
-        route_prefix=route_prefix,
-        app_name=app_name,
         start_time_ms=int(time.time() * 1000),
         is_driver_deployment=is_driver_deployment,
+        app_name=app_name,
+        route_prefix=route_prefix,
     )
 
 

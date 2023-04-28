@@ -20,11 +20,13 @@ EndpointTag = str
 ReplicaTag = str
 NodeId = str
 Duration = float
+ApplicationName = str
 
 
 @dataclass
 class EndpointInfo:
     route: str
+    app_name: str
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -178,12 +180,12 @@ class DeploymentInfo:
         replica_config: ReplicaConfig,
         start_time_ms: int,
         deployer_job_id: str,
-        route_prefix: str = None,
-        app_name: str = None,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         is_driver_deployment: Optional[bool] = False,
+        app_name: Optional[str] = None,
+        route_prefix: str = None,
     ):
         self.app_name = app_name
         self.route_prefix = route_prefix
@@ -201,6 +203,8 @@ class DeploymentInfo:
         self._cached_actor_def = None
 
         self.is_driver_deployment = is_driver_deployment
+
+        self.app_name = app_name
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -243,6 +247,7 @@ class DeploymentInfo:
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
+            "app_name": proto.app_name,
         }
 
         return cls(**data)
@@ -253,6 +258,7 @@ class DeploymentInfo:
             "actor_name": self.actor_name,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
+            "app_name": self.app_name,
         }
         if self.deployment_config:
             data["deployment_config"] = self.deployment_config.to_proto()

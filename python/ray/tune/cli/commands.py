@@ -17,11 +17,7 @@ from ray.tune.result import (
 )
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune import TuneError
-
-try:
-    from tabulate import tabulate
-except ImportError:
-    tabulate = None
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
