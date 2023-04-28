@@ -15,6 +15,7 @@ from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
 )
+from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 
 EndpointTag = str
 ReplicaTag = str
@@ -186,9 +187,8 @@ class DeploymentInfo:
         is_driver_deployment: Optional[bool] = False,
         app_name: Optional[str] = None,
         route_prefix: str = None,
+        autoscaled_num_replicas: Optional[int] = None,
     ):
-        self.app_name = app_name
-        self.route_prefix = route_prefix
         self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
@@ -205,6 +205,11 @@ class DeploymentInfo:
         self.is_driver_deployment = is_driver_deployment
 
         self.app_name = app_name
+        self.route_prefix = route_prefix
+        self.autoscaling_policy = BasicAutoscalingPolicy(
+            deployment_config.autoscaling_config
+        )
+        self.autoscaled_num_replicas = autoscaled_num_replicas
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -214,6 +219,9 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
+
+    def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
+        self.autoscaled_num_replicas = autoscaled_num_replicas
 
     @property
     def actor_def(self):
