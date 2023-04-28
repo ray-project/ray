@@ -378,8 +378,6 @@ class RLModule(abc.ABC):
         """Returns the default input specs."""
         return [SampleBatch.OBS]
 
-    @check_input_specs("_input_specs_inference")
-    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler.
 
@@ -401,8 +399,6 @@ class RLModule(abc.ABC):
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
-    @check_input_specs("_input_specs_exploration")
-    @check_output_specs("_output_specs_exploration")
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
@@ -426,8 +422,6 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_input_specs("_input_specs_train")
-    @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.

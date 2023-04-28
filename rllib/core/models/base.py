@@ -413,12 +413,10 @@ class ActorCriticEncoder(Encoder):
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         if self.config.shared:
             outs = self.encoder(inputs, **kwargs)
-            return NestedDict(
-                {
+            return {
                     ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
                     STATE_OUT: outs[STATE_OUT],
                 }
-            )
         else:
             actor_inputs = NestedDict({**inputs})
             # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
@@ -427,8 +425,7 @@ class ActorCriticEncoder(Encoder):
             )
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
-            return NestedDict(
-                {
+            return {
                     ENCODER_OUT: {
                         ACTOR: actor_out[ENCODER_OUT],
                         CRITIC: critic_out[ENCODER_OUT],
@@ -438,4 +435,3 @@ class ActorCriticEncoder(Encoder):
                         CRITIC: critic_out[STATE_OUT],
                     },
                 }
-            )

@@ -69,14 +69,6 @@ class TorchModel(nn.Module, Model, abc.ABC):
         nn.Module.__init__(self)
         Model.__init__(self, config)
 
-        # Raise errors if forward method is not decorated to check specs.
-        if not is_input_decorated(self.forward):
-            _raise_not_decorated_exception(type(self).__name__ + ".forward()", "input")
-        if not is_output_decorated(self.forward):
-            _raise_not_decorated_exception(type(self).__name__ + ".forward()", "output")
-
-    @check_input_specs("input_specs")
-    @check_output_specs("output_specs")
     def forward(
         self, inputs: Union[NestedDict, TensorType], **kwargs
     ) -> Union[NestedDict, TensorType]:
