@@ -70,7 +70,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
         batch["label"] = label
         return batch
 
-    ds = ds.map_batches(add_label).materialize()
+    ds = ds.map_batches(add_label, batch_format="pandas").materialize()
 
     # Test iter_torch_batches() with default args.
     benchmark.run(
