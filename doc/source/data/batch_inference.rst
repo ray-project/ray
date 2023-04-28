@@ -74,7 +74,7 @@ Install Ray with the data processing library, Ray Data:
 
 Running batch inference is conceptually easy and requires three steps:
 
-1. Load your data into a Ray ``Datastream`` and optionally apply any preprocessing you need.
+1. Load your data into a Ray dataset and optionally apply any preprocessing you need.
 2. Define your model for inference.
 3. Run inference on your data by using the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
    method from Ray Data.
