@@ -1,4 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+
+compile_pip_requirements(
+    name = "requirements_buildkite",
+    requirements_in = "requirements_buildkite.in",
+    requirements_txt = "requirements_buildkite.txt",
+    visibility = ["//visibility:private"],
+)
 
 test_srcs = glob(["**/*.py"])
 
