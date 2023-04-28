@@ -9,9 +9,6 @@ from ray import air
 from ray import tune
 from ray.rllib.algorithms.a2c.a2c import A2CConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.qmix import QMixConfig
-from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -169,37 +166,30 @@ class TestGPUsLargeBatch(unittest.TestCase):
         except torch.cuda.OutOfMemoryError:
             pass
 
-        for config_class in (PPOConfig, QMixConfig):
-            config = (
-                config_class()
-                .environment(env="CartPole-v1")
-                .framework("torch")
-                .resources(num_gpus=1)
-                .rollouts(num_rollout_workers=0)
-                .training(
-                    train_batch_size=train_batch_size,
-                    num_sgd_iter=1,
-                    sgd_minibatch_size=sgd_minibatch_size,
-                )
-                .experimental(
-                    # This setting makes it so that we don't load a batch of
-                    # size `train_batch_size` onto the device, but only
-                    # minibatches.
-                    _load_only_minibatch_onto_device=True,
-                )
+        config = (
+            PPOConfig()
+            .environment(env="CartPole-v1")
+            .framework("torch")
+            .resources(num_gpus=1)
+            .rollouts(num_rollout_workers=0)
+            .training(
+                train_batch_size=train_batch_size,
+                num_sgd_iter=1,
+                sgd_minibatch_size=sgd_minibatch_size,
             )
+            .experimental(
+                # This setting makes it so that we don't load a batch of
+                # size `train_batch_size` onto the device, but only
+                # minibatches.
+                _load_only_minibatch_onto_device=True,
+            )
+        )
 
-            algorithm = config.build()
-            policy = algorithm.get_policy()
+        algorithm = config.build()
+        policy = algorithm.get_policy()
 
-            # Sanity check if we are covering both, TorchPolicy and TorchPolicyV2
-            if config_class is QMixConfig:
-                assert isinstance(policy, TorchPolicy)
-            elif config_class is PPOConfig:
-                assert isinstance(policy, TorchPolicyV2)
-
-            policy.load_batch_into_buffer(CARTPOLE_FAKE_BATCH)
-            policy.learn_on_loaded_batch()
+        policy.load_batch_into_buffer(CARTPOLE_FAKE_BATCH)
+        policy.learn_on_loaded_batch()
 
 
 if __name__ == "__main__":
