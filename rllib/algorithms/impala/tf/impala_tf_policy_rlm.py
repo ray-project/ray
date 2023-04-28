@@ -125,20 +125,20 @@ class ImpalaTfPolicyWithRLModule(
         mean_vf_loss = 0.5 * tf.reduce_mean(tf.math.pow(delta, 2.0))
 
         # The entropy loss.
-        entropy_loss = -tf.reduce_sum(target_actions_logp_time_major)
+        mean_entropy_loss = -tf.reduce_mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
             pi_loss
             + vf_loss * self.config["vf_loss_coeff"]
-            + entropy_loss * self.entropy_coeff
+            + mean_entropy_loss * self.entropy_coeff
         )
         self.stats = {
             "total_loss": total_loss,
             "pi_loss": mean_pi_loss,
             "vf_loss": mean_vf_loss,
             "values": values_time_major,
-            "entropy_loss": entropy_loss,
+            "entropy_loss": mean_entropy_loss,
             "vtrace_adjusted_target_values": vtrace_adjusted_target_values,
         }
         return total_loss

@@ -5,6 +5,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
+from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -110,16 +111,17 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
         mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
-        entropy_loss = -torch.sum(target_actions_logp_time_major)
+        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
             pi_loss
             + vf_loss * self.hps.vf_loss_coeff
-            + entropy_loss * self.hps.entropy_coeff
+            + mean_entropy_loss * self.hps.entropy_coeff
         )
         return {
             self.TOTAL_LOSS_KEY: total_loss,
             "pi_loss": mean_pi_loss,
             "vf_loss": mean_vf_loss,
+            ENTROPY_KEY: -mean_entropy_loss,
         }

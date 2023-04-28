@@ -213,7 +213,13 @@ class APPOConfig(ImpalaConfig):
 
     @override(ImpalaConfig)
     def get_default_learner_class(self):
-        if self.framework_str == "tf2":
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.appo.torch.appo_torch_learner import (
+                APPOTorchLearner,
+            )
+
+            return APPOTorchLearner
+        elif self.framework_str == "tf2":
             from ray.rllib.algorithms.appo.tf.appo_tf_learner import APPOTfLearner
 
             return APPOTfLearner
@@ -222,15 +228,22 @@ class APPOConfig(ImpalaConfig):
 
     @override(ImpalaConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
-            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import APPOTfRLModule
-
-            return SingleAgentRLModuleSpec(
-                module_class=APPOTfRLModule, catalog_class=APPOCatalog
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
+                APPOTorchRLModule as RLModule
+            )
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
+                APPOTfRLModule as RLModule
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+        from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+
+        return SingleAgentRLModuleSpec(
+            module_class=RLModule, catalog_class=APPOCatalog
+        )
 
     @override(ImpalaConfig)
     def get_learner_hyperparameters(self) -> AppoHyperparameters:
@@ -290,9 +303,9 @@ class APPO(Impala):
 
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-        if self.config._enable_learner_api and train_results:
+        if self.config._enable_learner_api:
             # using steps trained here instead of sampled ... I'm not sure why the
-            # other implemenetation uses sampled.
+            # other implementation uses sampled.
             # to be quite frank, im not sure if I understand how their target update
             # freq would work. The difference in steps sampled/trained is pretty
             # much always going to be larger than self.config.num_sgd_iter *
@@ -315,11 +328,12 @@ class APPO(Impala):
             )
             if (cur_ts - last_update) >= target_update_steps_freq:
                 kls_to_update = {}
-                for module_id, module_results in train_results.items():
-                    if module_id != ALL_MODULES:
-                        kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
-                            LEARNER_RESULTS_KL_KEY
-                        ]
+                if self.config.use_kl_loss and train_results:
+                    for module_id, module_results in train_results.items():
+                        if module_id != ALL_MODULES:
+                            kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
+                                LEARNER_RESULTS_KL_KEY
+                            ]
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
                 self.learner_group.additional_update(sampled_kls=kls_to_update)
@@ -387,10 +401,11 @@ class APPO(Impala):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config._enable_rl_module_api:
-                raise ValueError(
-                    "APPO with the torch backend is not yet supported by "
-                    " the RLModule and Learner API."
+                from ray.rllib.algorithms.appo.torch.appo_torch_policy_rlm import (
+                    APPOTorchPolicyWithRLModule
                 )
+
+                return APPOTorchPolicyWithRLModule
             else:
                 from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
 

@@ -930,7 +930,7 @@ py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/appo/tests/tf/test_appo_learner.py"]
+    srcs = ["algorithms/appo/tests/test_appo_learner.py"]
 )
 
 # ARS

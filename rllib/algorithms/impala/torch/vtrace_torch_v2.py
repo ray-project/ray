@@ -132,13 +132,13 @@ def vtrace_torch(
     discounts_cpu = discounts.to("cpu")
     cs_cpu = cs.to("cpu")
     deltas_cpu = deltas.to("cpu")
-    vs_minus_v_xs = [torch.zeros_like(bootstrap_value, device="cpu")]
-    for i in reversed(range(len(discounts))):
+    vs_minus_v_xs_cpu = [torch.zeros_like(bootstrap_value, device="cpu")]
+    for i in reversed(range(len(discounts_cpu))):
         discount_t, c_t, delta_t = discounts_cpu[i], cs_cpu[i], deltas_cpu[i]
-        vs_minus_v_xs.append(delta_t + discount_t * c_t * vs_minus_v_xs[-1])
-    vs_minus_v_xs = torch.stack(vs_minus_v_xs[1:])
+        vs_minus_v_xs_cpu.append(delta_t + discount_t * c_t * vs_minus_v_xs_cpu[-1])
+    vs_minus_v_xs_cpu = torch.stack(vs_minus_v_xs_cpu[1:])
     # Move results back to GPU - if applicable.
-    vs_minus_v_xs = vs_minus_v_xs.to(deltas.device)
+    vs_minus_v_xs = vs_minus_v_xs_cpu.to(deltas.device)
 
     # Reverse the results back to original order.
     vs_minus_v_xs = torch.flip(vs_minus_v_xs, dims=[0])

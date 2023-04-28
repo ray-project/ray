@@ -226,7 +226,7 @@ class PPOConfig(PGConfig):
                 tune this if you set vf_share_layers=True inside your model's config.
             entropy_coeff: Coefficient of the entropy regularizer.
             entropy_coeff_schedule: Decay schedule for the entropy regularizer.
-            clip_param: The PPO clip parameterm.
+            clip_param: PPO clip parameter.
             vf_clip_param: Clip param for the value function. Note that this is
                 sensitive to the scale of the rewards. If your expected V is large,
                 increase this.

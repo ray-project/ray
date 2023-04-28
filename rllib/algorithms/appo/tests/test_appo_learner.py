@@ -75,7 +75,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         # config.exploration() only deepupdates it
         config.exploration_config = {}
 
-        for fw in framework_iterator(config, ("tf2")):
+        for fw in framework_iterator(config, ("torch", "tf2")):
             trainer = config.build()
             policy = trainer.get_policy()
 
@@ -134,7 +134,7 @@ class TestAPPOTfLearner(unittest.TestCase):
             )
             .exploration(exploration_config={})
         )
-        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
+        for _ in framework_iterator(config, ("torch", "tf2"), with_eager_tracing=True):
             algo = config.build()
             # Call train while results aren't returned because this is
             # a asynchronous trainer and results are returned asynchronously.
