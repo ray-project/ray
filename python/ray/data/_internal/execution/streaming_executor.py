@@ -70,7 +70,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
 
         Executor.__init__(self, options)
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
