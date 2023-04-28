@@ -329,13 +329,8 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_get_read_tasks(ray_start_cluster):
-    ray.shutdown()
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-    cluster.wait_for_nodes()
-    ray.init(cluster.address)
+def test_get_read_tasks(shutdown_only):
+    ray.init()
 
     head_node_id = ray.get_runtime_context().get_node_id()
 
@@ -346,9 +341,7 @@ def test_get_read_tasks(ray_start_cluster):
     def verify_get_read_tasks():
         from ray.experimental.state.api import list_tasks
 
-        task_states = list_tasks(
-            address=cluster.address, filters=[("name", "=", "_get_read_tasks")]
-        )
+        task_states = list_tasks(filters=[("name", "=", "_get_read_tasks")])
         # Verify only one task being executed on same node.
         assert len(task_states) == 1
         assert task_states[0]["name"] == "_get_read_tasks"
