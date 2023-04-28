@@ -906,6 +906,16 @@ class Learner:
         NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
         will be appended to.
 
+        the state of the learner is saved in the following format:
+
+        checkpoint_dir/
+            learner_state.json
+            module_state/
+                module_1/
+                    ...
+            optimizer_state/
+                optimizers_module_1/
+                    ...
 
         Args:
             path: The path to the directory to save the state to.
