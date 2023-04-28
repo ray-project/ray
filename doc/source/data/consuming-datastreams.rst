@@ -1,7 +1,7 @@
 .. _consuming_datastreams:
 
 =====================
-Consuming Datastreams
+Consuming Data
 =====================
 
 The data underlying a ``Datastream`` can be consumed in several ways:
@@ -76,7 +76,7 @@ This is a common pattern useful for loading and sharding data between distribute
 
 .. _saving_datastreams:
 
-Saving Datastreams
+Saving Data
 ==================
 
 Datastreams can be written to local or remote storage in the desired data format.

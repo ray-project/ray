@@ -1,7 +1,7 @@
 .. _creating_datastreams:
 
 ====================
-Creating Datastreams
+Loading Data
 ====================
 
 :class:`Datastreams <ray.data.Datastream>` can be created from:

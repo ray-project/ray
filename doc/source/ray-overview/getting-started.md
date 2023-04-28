@@ -139,7 +139,7 @@ Use the trained model for batch prediction with a ``BatchPredictor``.
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
 Simply click on the dropdowns below to see examples of our most popular libraries.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datastreams
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Distributed ML Preprocessing
 :animate: fade-in-slide-down
 
 Ray Data is the standard way to load and exchange data in Ray libraries and applications.
