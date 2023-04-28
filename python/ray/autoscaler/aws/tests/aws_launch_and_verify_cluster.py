@@ -62,8 +62,6 @@ def download_ssh_key():
     print("======================================")
     print("Downloading ssh key...")
     # Create a Boto3 client to interact with S3
-    print(boto3.client('sts').get_caller_identity())
-
     s3_client = boto3.client("s3", region_name="us-west-2")
 
     # Set the name of the S3 bucket and the key to download
