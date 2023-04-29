@@ -48,42 +48,41 @@ You can install the nightly Ray wheels via the following links. These daily rele
   # Install Ray with minimal dependencies
   # pip install -U LINK_TO_WHEEL.whl
 
+.. tab-set::
 
+    .. tab-item:: Linux
 
-.. tabbed:: Linux
+        =============================================== ================================================
+               Linux (x86_64)                                   Linux (arm64/aarch64)
+        =============================================== ================================================
+        `Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_
+        `Linux Python 3.9 (x86_64)`_                     `Linux Python 3.9 (aarch64)`_
+        `Linux Python 3.8 (x86_64)`_                     `Linux Python 3.8 (aarch64)`_
+        `Linux Python 3.7 (x86_64)`_                     `Linux Python 3.7 (aarch64)`_
+        `Linux Python 3.11 (x86_64) (EXPERIMENTAL)`_     `Linux Python 3.11 (aarch64) (EXPERIMENTAL)`_
+        =============================================== ================================================
 
-    =============================================== ================================================
-           Linux (x86_64)                                   Linux (arm64/aarch64)
-    =============================================== ================================================
-    `Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_
-    `Linux Python 3.9 (x86_64)`_                     `Linux Python 3.9 (aarch64)`_
-    `Linux Python 3.8 (x86_64)`_                     `Linux Python 3.8 (aarch64)`_
-    `Linux Python 3.7 (x86_64)`_                     `Linux Python 3.7 (aarch64)`_
-    `Linux Python 3.11 (x86_64) (EXPERIMENTAL)`_     `Linux Python 3.11 (aarch64) (EXPERIMENTAL)`_
-    =============================================== ================================================
+    .. tab-item:: MacOS
 
-.. tabbed:: MacOS
+        ================================  ================================
+         MacOS (x86_64)                    MacOS (arm64)
+        ================================  ================================
+        `MacOS Python 3.10 (x86_64)`_      `MacOS Python 3.10 (arm64)`_
+        `MacOS Python 3.9 (x86_64)`_       `MacOS Python 3.9 (arm64)`_
+        `MacOS Python 3.8 (x86_64)`_       `MacOS Python 3.8 (arm64)`_
+        `MacOS Python 3.7 (x86_64)`_
+        ================================  ================================
 
-    ================================  ================================
-     MacOS (x86_64)                    MacOS (arm64)
-    ================================  ================================
-    `MacOS Python 3.10 (x86_64)`_      `MacOS Python 3.10 (arm64)`_
-    `MacOS Python 3.9 (x86_64)`_       `MacOS Python 3.9 (arm64)`_
-    `MacOS Python 3.8 (x86_64)`_       `MacOS Python 3.8 (arm64)`_
-    `MacOS Python 3.7 (x86_64)`_
-    ================================  ================================
+    .. tab-item:: Windows (beta)
 
-.. tabbed:: Windows (beta)
+        .. list-table::
+           :header-rows: 1
 
-    .. list-table::
-       :header-rows: 1
-
-       * - Windows (beta)
-       * - `Windows Python 3.10`_
-       * - `Windows Python 3.9`_
-       * - `Windows Python 3.8`_
-       * - `Windows Python 3.7`_
-
+           * - Windows (beta)
+           * - `Windows Python 3.10`_
+           * - `Windows Python 3.9`_
+           * - `Windows Python 3.8`_
+           * - `Windows Python 3.7`_
 
 .. note::
 
