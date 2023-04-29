@@ -291,7 +291,6 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     num_of_actors = 10
     actors = [A.remote() for _ in range(num_of_actors)]
     print(ray.get([t.ready.remote() for t in actors]))
-    get_gcs_num_of_connections()
 
     # Kill the actors
     del actors
@@ -299,9 +298,7 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     # Make sure the # of fds opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
     # processes die.
-    wait_for_condition(
-        lambda: get_gcs_num_of_connections() <= fds_without_workers, timeout=30
-    )
+    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
     num_fds_after_workers_die = get_gcs_num_of_connections()
 
     n = cluster.add_node(wait=True)
