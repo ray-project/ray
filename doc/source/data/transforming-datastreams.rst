@@ -260,6 +260,18 @@ When using :meth:`ds.map() <ray.data.Datastream.map>`, the output type must alwa
 
 .. _transform_datastreams_configuring_batch_size:
 
+---------------------
+Configuring Resources
+---------------------
+
+By default, each task used for transformation (e.g., `map` or `map_batches`) will request 1 CPU from Ray.
+To increase the resources reserved per task, you can increase the CPU request by specifying
+``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task.
+
+To request tasks be run on a GPU, use ``.map_batches(..., num_gpus=1)``, etc. In addition to
+``num_cpus`` and ``num_gpus``, any kwarg from ``@ray.remote`` can be passed to customize
+the resource scheduling of transformation tasks.
+
 ----------------------
 Configuring Batch Size
 ----------------------
@@ -268,11 +280,9 @@ An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.m
 is ``batch_size``, which controls the size of the batches provided to the UDF. The default
 batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required.
 
-Increasing ``batch_size`` can result in faster execution by better leveraging vectorized
-operations and hardware, reducing batch slicing and concatenation overhead, and overall
-saturation of CPUs/GPUs, but will also result in higher memory utilization, which can
-lead to out-of-memory failures. If encountering OOMs, decreasing your ``batch_size`` may
-help.
+Increasing ``batch_size`` can improve performance for UDFs that take advantage of vectorization,
+but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors.
+If encountering OOMs, decreasing your ``batch_size`` may help.
 
 If you set a ``batch_size`` that's larger than your ``Datastream`` blocks, Datastreams
 will bundle multiple blocks together for a single task in order to better satisfy

@@ -16,10 +16,7 @@ Retrieving a limited set of rows
 A limited set of rows can be retrieved from a ``Datastream`` via the
 :meth:`ds.take() <ray.data.Datastream.take>` or :meth:`ds.take_batch() <ray.data.Datastream.take_batch>`
 APIs, and :meth:`ds.show() <ray.data.Datastream.show>`, for printing a limited set of rows. These
-methods are convenient for quickly inspecting a subset (prefix) of rows. They have the
-benefit that, if used right after reading, they will only trigger more files to be
-read if needed to retrieve rows from that file; if inspecting a small prefix of rows,
-often only the first file will need to be read.
+methods are convenient for quickly inspecting a subset (prefix) of rows.
 
 .. literalinclude:: ./doc_code/consuming_datastreams.py
   :language: python
@@ -39,15 +36,13 @@ Datastreams can be consumed a row at a time using the
 
 or a batch at a time using the
 :meth:`ds.iter_batches() <ray.data.Datastream.iter_batches>` API, where you can specify
-batch size as well as the desired batch format. By default, the batch format is
-``"default"``. For tabular data, the default format is a Pandas DataFrame; for Python
-objects, it's a list.
+batch size as well as the desired batch format. By default, the batches will have type
+``Dict[str, np.ndarray]`` (NumPy format).
 
 .. literalinclude:: ./doc_code/consuming_datastreams.py
   :language: python
   :start-after: __iter_batches_begin__
   :end-before: __iter_batches_end__
-
 
 Datastreams can be passed to Ray tasks or actors and accessed by these iteration methods.
 This does not incur a copy, since the blocks of the Datastream are passed by reference as Ray objects:
