@@ -1,3 +1,4 @@
+from typing import Any
 import ray
 import torch
 import pytorch_lightning as pl
@@ -48,6 +49,9 @@ preprocessor = Chain(splitter, tokenizer)
 
 ray_datasets = ray.data.from_huggingface(current_dataset)
 
+
+total_train_batches = splitter.fit_transform(ray_datasets["train"]).count()
+
 from transformers.models.gpt_neox.modeling_gpt_neox import GPTNeoXLayer
 
 class DollyV2Model(pl.LightningModule):
@@ -55,7 +59,7 @@ class DollyV2Model(pl.LightningModule):
         super().__init__()
         self.lr = lr
         self.eps = eps
-        self.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=torch.float16)
+        self.model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 
         self.metric = evaluate.load("accuracy")
         self.predictions = []
@@ -130,7 +134,7 @@ from ray.air.config import RunConfig, ScalingConfig, CheckpointConfig
 from pytorch_lightning.callbacks import TQDMProgressBar
 
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy, transformer_auto_wrap_policy
-from torch.distributed.fsdp import ShardingStrategy, MixedPrecision
+from torch.distributed.fsdp import ShardingStrategy, MixedPrecision, CPUOffload
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 
 import functools
@@ -145,20 +149,35 @@ mixed_precision_policy = MixedPrecision(
     buffer_dtype=torch.float16,
 )
 
-from pytorch_lightning.plugins.precision import FSDPMixedPrecisionPlugin
+cpu_offload = CPUOffload(
+    offload_params=True
+)
 
-mixed_precision_plugin = FSDPMixedPrecisionPlugin(precision="16-mixed", device="cuda")
+class DollyV2Progressbar(TQDMProgressBar):
+    def __init__(self, num_iters_per_epoch, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.num_iters_per_epoch = num_iters_per_epoch
+    
+    def on_train_epoch_start(self, trainer, *_):
+        super().on_train_epoch_start(trainer, *_)
+        self.train_progress_bar.reset(self.num_iters_per_epoch)
+    
+num_workers = 16
+batch_size_per_worker = 8
+num_iters_per_epoch = total_train_batches // (num_workers * batch_size_per_worker)
+progress_bar = DollyV2Progressbar(num_iters_per_epoch)
 
 # Define the configs for LightningTrainer
 lightning_config = (
     LightningConfigBuilder()
     .module(cls=DollyV2Model, lr=1e-5, eps=1e-8)
     .trainer(
-        max_epochs=3, 
+        max_epochs=1, 
         accelerator="gpu", 
         log_every_n_steps=1,
         precision=16,
-        callbacks=[TQDMProgressBar()],
+        limit_train_batches=5,
+        callbacks=[progress_bar],
         # plugins=[mixed_precision_plugin],
     )
     .checkpointing(save_on_train_epoch_end=False, save_top_k = 0)
@@ -166,7 +185,7 @@ lightning_config = (
         name="fsdp",
         sharding_strategy=ShardingStrategy.FULL_SHARD,
         auto_wrap_policy=wrap_policy,
-        # mixed_precision=mixed_precision_policy,
+        # cpu_offload=cpu_offload
     )
     .build()
 )
@@ -196,7 +215,7 @@ run_config = RunConfig(
 # Scale the DDP training workload across 4 GPUs
 # You can change this config based on your compute resources.
 scaling_config = ScalingConfig(
-    num_workers=16, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+    num_workers=num_workers, use_gpu=True, resources_per_worker={"CPU": 8, "GPU": 1}
 )
 
 
@@ -204,8 +223,8 @@ trainer = LightningTrainer(
     lightning_config=lightning_config,
     run_config=run_config,
     scaling_config=scaling_config,
-    datasets={"train": ray_datasets["train"], "val": ray_datasets["validation"]},
-    datasets_iter_config={"batch_size": 16},
+    datasets={"train": ray_datasets["train"]},
+    datasets_iter_config={"batch_size": batch_size_per_worker},
     preprocessor=preprocessor,
 )
 result = trainer.fit()
