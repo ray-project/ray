@@ -129,6 +129,9 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
         step = get_step(
             test,
             ray_wheels=ray_wheels_url,
+            env={
+                "RAY_TEST_BRANCH": "can-bisect-fix-working",
+            },
         )
         step["label"] = f'{test["name"]}:{commit[:7]}-{run}'
         step["key"] = f"{commit}-{run}"
