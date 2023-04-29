@@ -1867,6 +1867,13 @@ py_test(
 
 # Default Models
 py_test(
+    name = "test_base_models",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_base_models.py"]
+)
+
+py_test(
     name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
     size = "medium",
