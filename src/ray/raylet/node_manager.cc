@@ -1494,9 +1494,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
                                    creation_task_exception);
-  RAY_CHECK_OK(
-      gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
-
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const TaskID &task_id = worker->GetAssignedTaskId();
@@ -1571,9 +1568,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
   cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
-
-  client->Close();
-
+  client->AsyncWaitTerminated([client, worker_failure_data_ptr, this]{
+    RAY_CHECK_OK(
+        gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
+  });
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
