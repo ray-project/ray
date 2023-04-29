@@ -784,8 +784,8 @@ void CoreWorker::Exit(
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
-          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           KillChildProcs();
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -829,9 +829,9 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  Disconnect(exit_type, detail);
-
   KillChildProcs();
+
+  Disconnect(exit_type, detail);
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
