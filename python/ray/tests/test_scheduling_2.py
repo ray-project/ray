@@ -568,7 +568,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     @ray.remote(num_cpus=1)
     def f(sleep_s):
         time.sleep(sleep_s)
-        return ray.get_runtime_context().node_id
+        return ray.get_runtime_context().get_node_id()
 
     worker_node_id = ray.get(f.remote(0))
 
@@ -713,13 +713,13 @@ def test_data_locality_spilled_objects(
     def f():
         return (
             np.zeros(50 * 1024 * 1024, dtype=np.uint8),
-            ray.runtime_context.get_runtime_context().node_id,
+            ray.runtime_context.get_runtime_context().get_node_id(),
         )
 
     @ray.remote
     def check_locality(x):
         _, node_id = x
-        assert node_id == ray.runtime_context.get_runtime_context().node_id
+        assert node_id == ray.runtime_context.get_runtime_context().get_node_id()
 
     # Check locality works when dependent task is already submitted by the time
     # the upstream task finishes.
