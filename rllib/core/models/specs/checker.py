@@ -237,16 +237,14 @@ def check_input_specs(
         def wrapper(self, input_data, **kwargs):
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
-
-            func_successfully_executed = False
+            if cache and func.__name__ not in self.__checked_input_specs_cache__:
+                self.__checked_input_specs_cache__[func.__name__] = True
 
             initial_exception = None
-
             if only_check_on_retry:
                 # Attempt to run the function without spec checking
                 try:
-                    output_data = func(self, input_data, **kwargs)
-                    func_successfully_executed = True
+                    return func(self, input_data, **kwargs)
                 except Exception as e:
                     # We store the initial exception to raise it later if the spec
                     # check fails.
@@ -260,40 +258,34 @@ def check_input_specs(
             # If the function was not executed successfully yet, because of a failed
             # attempt or because only_check_on_retry is False, we need to check the
             # spec.
-            if not func_successfully_executed:
-                checked_data = input_data
-                if input_specs:
-                    spec = getattr(self, input_specs, "___NOT_FOUND___")
-                    if spec == "___NOT_FOUND___":
-                        raise ValueError(
-                            f"object {self} has no attribute {input_specs}."
-                        )
-                    if spec is not None:
-                        spec = convert_to_canonical_format(spec)
-                        checked_data = _validate(
-                            cls_instance=self,
-                            method=func,
-                            data=input_data,
-                            spec=spec,
-                            filter=filter,
-                            tag="input",
-                        )
+            checked_data = input_data
+            if input_specs:
+                if hasattr(self, input_specs):
+                    spec = getattr(self, input_specs)
+                else:
+                    raise ValueError(f"object {self} has no attribute {input_specs}.")
 
-                        if filter and isinstance(checked_data, NestedDict):
-                            # filtering should happen regardless of cache
-                            checked_data = checked_data.filter(spec)
+                if spec is not None:
+                    spec = convert_to_canonical_format(spec)
+                    checked_data = _validate(
+                        cls_instance=self,
+                        method=func,
+                        data=input_data,
+                        spec=spec,
+                        filter=filter,
+                        tag="input",
+                    )
 
-                if initial_exception:
-                    # If we have encountered an exception from calling `func` already,
-                    # we raise it again here and don't need to call func again.
-                    raise initial_exception
+                    if filter and isinstance(checked_data, NestedDict):
+                        # filtering should happen regardless of cache
+                        checked_data = checked_data.filter(spec)
 
-                output_data = func(self, checked_data, **kwargs)
+            if initial_exception:
+                # If we have encountered an exception from calling `func` already,
+                # we raise it again here and don't need to call func again.
+                raise initial_exception
 
-            if cache and func.__name__ not in self.__checked_input_specs_cache__:
-                self.__checked_input_specs_cache__[func.__name__] = True
-
-            return output_data
+            return func(self, checked_data, **kwargs)
 
         wrapper.__checked_input_specs__ = True
         return wrapper

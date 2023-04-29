@@ -113,15 +113,15 @@ class TestModelBase(unittest.TestCase):
 
             model = config.build(framework="spam")
 
-            # We want to raise an input spec validation error here since the input
-            # consists of lists and not torch Tensors
+            # This should not raise an error since the specs are correct and the
+            # model does not raise an error either.
             if fw == "torch":
                 model({"in_1": torch.Tensor([[1]]), "in_2": torch.Tensor([[1, 2]])})
             else:
                 model({"in_1": tf.constant([[1]]), "in_2": tf.constant([[1, 2]])})
-            # We want to raise an input spec validation error here since the model
-            # itself does not raise an exception, so there is no need to double check
-            # the inputs.
+
+            # This should not raise an error since specs would be violated, but they
+            # are not checked and the model does not raise an error.
             if fw == "torch":
                 model(
                     {"in_1": torch.Tensor([[1]]), "in_2": torch.Tensor([[1, 2, 3, 4]])}
