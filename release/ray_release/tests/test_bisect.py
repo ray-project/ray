@@ -5,13 +5,11 @@ from ray_release.config import Test
 
 
 def test_sanity_check():
-    def _mock_run_test(
-            test: Test, commit: List[str]
-        ) -> Dict[str, Dict[int, str]]:
-            return {
-                "passing_revision": {0: "passed"},
-                "failing_revision": {0: "failed"},
-            }
+    def _mock_run_test(test: Test, commit: List[str]) -> Dict[str, Dict[int, str]]:
+        return {
+            "passing_revision": {0: "passed"},
+            "failing_revision": {0: "failed"},
+        }
 
     with mock.patch(
         "ray_release.scripts.ray_bisect._run_test",
