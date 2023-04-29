@@ -109,7 +109,7 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
 
 
-def _run_test(test: Test, commits: Set[str], run_per_commit: int = 1) -> Dict[str, str]:
+def _run_test(test: Test, commits: Set[str], run_per_commit: int = 1) -> Dict[str, Dict[int, str]]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
         _trigger_test_run(test, commit, run_per_commit)
@@ -142,7 +142,7 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
 
 def _obtain_test_result(
     commits: Set[str], run_per_commit: int
-) -> Dict[str, Dict[str, str]]:
+) -> Dict[str, Dict[int, str]]:
     outcomes = {}
     wait = 5
     total_wait = 0
