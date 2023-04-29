@@ -12,6 +12,9 @@ dataset = ray.data.from_numpy(np.ones((1, 100)))
 
 
 # __pt_quickstart_model_start__
+import torch
+import torch.nn as nn
+
 class TorchPredictor:
     import torch
     import torch.nn as nn
