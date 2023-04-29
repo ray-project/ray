@@ -127,9 +127,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
   void AsyncWaitTerminated(std::function<void()> callback) {
     socket_.async_wait(local_stream_socket::wait_type::wait_error,
-                       [callback=std::move(callback)] (auto){
-                         callback();
-                       });
+                       [callback = std::move(callback)](auto) { callback(); });
   }
 
  protected:
