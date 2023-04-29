@@ -89,8 +89,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
         :start-after: __writing_default_udfs_tabular_begin__
         :end-before: __writing_default_udfs_tabular_end__
 
-    .. tip::
-
+      .. tip::
         The convenience methods :meth:`ds.map() <ray.data.Datastream.map>`,
         :meth:`ds.flat_map() <ray.data.Datastream.flat_map>`, and :meth:`ds.filter() <ray.data.Datastream.filter>`,
         are usually slower than :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, but
