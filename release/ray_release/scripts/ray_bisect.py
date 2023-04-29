@@ -48,15 +48,14 @@ def main(
             f"Concurrency input need to be a positive number, received: {concurrency}"
         )
     test = _get_test(test_name)
-    """
-    pre_sanity_check = _sanity_check(test, passing_commit, failing_commit)
+    pre_sanity_check = _sanity_check(
+        test, passing_commit, failing_commit, run_per_commit)
     if not pre_sanity_check:
         logger.info(
             "Failed pre-saniy check, the test might be flaky or fail due to"
             " an external (not a code change) factors"
         )
         return
-    """
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
     blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
@@ -95,7 +94,7 @@ def _bisect(
     return commit_list[-1]
 
 
-def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
+def _sanity_check(test: Test, passing_revision: str, failing_revision: str, run_per_commit: int) -> bool:
     """
     Sanity check that the test indeed passes on the passing revision, and fails on the
     failing revision
@@ -104,11 +103,14 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
         f"Sanity check passing revision: {passing_revision}"
         f" and failing revision: {failing_revision}"
     )
-    outcomes = _run_test(test, [passing_revision, failing_revision])
-    return (
-        outcomes[passing_revision][0] == "passed"
-        and outcomes[failing_revision][0] != "passed"
+    outcomes = _run_test(test, [passing_revision, failing_revision], run_per_commit)
+    is_passing = all(
+        outcome == "passed" for outcome in outcomes[passing_revision].values()
     )
+    is_failing = any(
+        outcome != "passed" for outcome in outcomes[failing_revision].values()
+    )
+    return is_passing and is_failing
 
 
 def _run_test(test: Test, commits: Set[str], run_per_commit: int = 1) -> Dict[str, str]:
@@ -127,9 +129,6 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
         step = get_step(
             test,
             ray_wheels=ray_wheels_url,
-            env={
-                "RAY_COMMIT_WHEEL": commit,
-            },
         )
         step["label"] = f'{test["name"]}:{commit[:7]}-{run}'
         step["key"] = f"{commit}-{run}"

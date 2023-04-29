@@ -185,7 +185,7 @@ def _setup_cluster_environment(
 
     # Load some timeouts
     build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))
-    command_timeout = 4000 # int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+    command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
     cluster_timeout = int(test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT))
 
     # Get prepare command timeout, if any
