@@ -10,12 +10,6 @@ Loading Data
 * local and distributed in-memory data, and
 * local and external storage systems (local disk, cloud storage, HDFS, etc.).
 
-This guide surveys the many ways to create a ``Datastream``. If none of these meet your
-needs, please reach out to us on `Discourse <https://discuss.ray.io/>`__ or open a feature
-request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
-our :ref:`guide for implementing a custom datasource <custom_datasources>`
-if you're interested in rolling your own integration!
-
 .. _datastream_generate_data:
 
 -------------------------
@@ -47,7 +41,7 @@ Generating Synthetic Data
 Reading Files From Storage
 --------------------------
 
-Using the ``ray.data.read_*()`` APIs, Datastreams can be created from files on local disk
+Using the ``ray.data.read_*()`` APIs, data can be loaded from files on local disk
 or remote storage system such as S3, GCS, Azure Blob Storage, or HDFS. Any filesystem
 `supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
 can be used to specify file locations, and many common file formats are supported:
@@ -286,14 +280,10 @@ In Ray Data, users often read from remote storage systems as described above. In
 some use cases, users may want to read from local storage. There are three ways to read
 from a local filesystem:
 
-* **Providing a local filesystem path**: For example, in ``ray.data.read_csv("my_file.csv")``,
-  the given path will be resolved as a local filesystem path.
-
-.. note::
-
-  If the file exists only on the local node and you run this read operation in
-  distributed cluster, this will fail as it cannot access the file from remote node.
-
+* **Providing a raw filesystem path**: For example, in ``ray.data.read_csv("my_file.csv")``,
+  the given path will be resolved as a local filesystem path. If the file exists only on the
+  local node and you run this read operation in distributed cluster, this will fail as it
+  cannot access the file from remote nodes.
 * **Using ``local://`` custom URI scheme**: Similarly, this will be resolved to local
   filesystem, e.g. ``ray.data.read_csv("local://my_file.csv")`` will read the
   same file as the approach above. The difference is that this scheme will ensure
@@ -412,16 +402,9 @@ distributed (multi-node) in-memory data, interoperating with popular distributed
 data processing frameworks such as :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
 :ref:`Modin <modin-on-ray>`, and :ref:`Mars <mars-on-ray>`.
 
-These conversions work by running Ray tasks converting each Dask/Spark/Modin/Mars
-data partition to a block format supported by Datastreams (copying data if needed), and using the
-futures representing the return value of those conversion tasks as the ``Datastream`` block
-futures.
-
-.. note::
-
-  These data processing frameworks must be running on Ray in order for these Datastreams
-  integrations to work. See how these frameworks can be run on Ray in our
-  :ref:`data processing integrations docs <data_integrations>`.
+Note that these data processing frameworks must be running on Ray in order for these
+integrations to work. See how these frameworks can be run on Ray in our
+:ref:`data processing integrations docs <data_integrations>`.
 
 .. tabbed:: Dask
 
@@ -429,9 +412,6 @@ futures.
   `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
   ``Datastream`` backed by the distributed Pandas DataFrame partitions that underly the
   Dask DataFrame.
-
-  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
-  Dask-in-Ray partition objects as Datastream blocks.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -457,9 +437,6 @@ futures.
   Create a ``MaterializedDatastream`` from a Modin DataFrame. This constructs a ``Datastream``
   backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
-  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
-  Modin partition objects as Datastream blocks.
-
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
     :start-after: __from_modin_begin__
@@ -469,9 +446,6 @@ futures.
 
   Create a ``MaterializedDatastream`` from a Mars DataFrame. This constructs a ``Datastream``
   backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
-
-  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
-  Mars partition objects as Datastream blocks.
 
   .. literalinclude:: ./doc_code/creating_datastreams_untested.py
     :language: python

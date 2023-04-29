@@ -53,12 +53,8 @@ Here is a table listing some common transformations supported by Ray Data.
      - All-to-all
      - | Group the datastream by a groupkey.
 
-.. tip::
-
-    Datastreams also provides the convenience transformation methods :meth:`ds.map() <ray.data.Datastream.map>`,
-    :meth:`ds.flat_map() <ray.data.Datastream.flat_map>`, and :meth:`ds.filter() <ray.data.Datastream.filter>`,
-    which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`), but
-    may be useful for development.
+Example
+=======
 
 The following is an example to make use of those transformation APIs for processing
 the Iris datastream.
@@ -95,7 +91,7 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 
 .. tab-set::
 
-    .. tab-item:: "Function UDFs"
+    .. tab-item:: Functions
 
       The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datastreams_batch_formats` for the supported batch formats.
 
@@ -104,7 +100,26 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
         :start-after: __writing_default_udfs_tabular_begin__
         :end-before: __writing_default_udfs_tabular_end__
 
-    .. tab-item:: "Callable Class UDFs"
+    .. tip::
+
+        The convenience methods :meth:`ds.map() <ray.data.Datastream.map>`,
+        :meth:`ds.flat_map() <ray.data.Datastream.flat_map>`, and :meth:`ds.filter() <ray.data.Datastream.filter>`,
+        are usually slower than :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, but
+        may be useful for development.
+
+    .. tab-item:: Generators
+
+      UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_generator_udfs_begin__
+        :end-before: __writing_generator_udfs_end__
+
+      .. tip::
+        When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Datastream.flat_map>` API and not the :meth:`.map() <ray.data.Datastream.map>` API.
+
+    .. tab-item:: Callable Classes
 
       With the actor compute strategy, you can use per-row and per-batch UDFs
       *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
@@ -113,32 +128,34 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 
       Callable classes are useful if you need to load expensive state (such as a model) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
 
-      .. note::
-        These transformation APIs take the uninstantiated callable class as an argument,
-        not an instance of the class.
-
       .. literalinclude:: ./doc_code/transforming_datastreams.py
         :language: python
         :start-after: __writing_callable_classes_udfs_begin__
         :end-before: __writing_callable_classes_udfs_end__
 
-    .. tab-item:: "Generator UDFs"
+      .. tip::
+        The class type of the callable must be passed to ``map_batches``, not an instance of the class.
 
-      UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+.. _transform_datastreams_row_output_types:
 
-      .. warning::
-        When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Datastream.flat_map>` API and not the :meth:`.map() <ray.data.Datastream.map>` API.
+Row UDF Types
+=============
 
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_generator_udfs_begin__
-        :end-before: __writing_generator_udfs_end__
+When using :meth:`ds.map() <ray.data.Datastream.map>`, both the input and output types are always ``Dict[str, Any]``.
+
+
+.. literalinclude:: ./doc_code/transforming_datastreams.py
+  :language: python
+  :start-after: __writing_dict_out_row_udfs_begin__
+  :end-before: __writing_dict_out_row_udfs_end__
+
+.. _transform_datastreams_configuring_batch_size:
 
 
 .. _transform_datastreams_batch_formats:
 
-UDF Input Batch Format
-======================
+Batch Format
+============
 
 Choose the *batch format* of the data given to UDFs
 by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Datastream.map_batches>`.
@@ -215,10 +232,10 @@ may incur data copies; which conversions cause data copying is given in the belo
 
 .. _transform_datastreams_batch_output_types:
 
-Batch UDF Output Types
-======================
+Batch Return Types
+==================
 
-The following output types are allowed for batch UDFs (e.g.,
+The following return types are allowed for batch UDFs (e.g.,
 :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`). The following describes
 how they are interpreted to create the transformation result:
 
@@ -244,21 +261,6 @@ how they are interpreted to create the transformation result:
         :language: python
         :start-after: __writing_arrow_out_udfs_begin__
         :end-before: __writing_arrow_out_udfs_end__
-
-.. _transform_datastreams_row_output_types:
-
-Row UDF Output Types
-====================
-
-When using :meth:`ds.map() <ray.data.Datastream.map>`, the output type must always be ``Dict[str, Any]``.
-
-
-.. literalinclude:: ./doc_code/transforming_datastreams.py
-  :language: python
-  :start-after: __writing_dict_out_row_udfs_begin__
-  :end-before: __writing_dict_out_row_udfs_end__
-
-.. _transform_datastreams_configuring_batch_size:
 
 ---------------------
 Configuring Resources

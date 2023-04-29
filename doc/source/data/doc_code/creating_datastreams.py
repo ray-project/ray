@@ -371,8 +371,8 @@ ds = ray.data.read_numpy("example://mnist_subset.npy")
 #   )
 
 ds.show(2)
-{'data': array([[0, ...]], dtype=uint8)}
-{'data': array([[0, ...]], dtype=uint8)}
+# -> {'data': array([[0, ...]], dtype=uint8)}
+#    {'data': array([[0, ...]], dtype=uint8)}
 # __read_numpy_end__
 # fmt: on
 

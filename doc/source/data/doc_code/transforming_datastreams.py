@@ -1,6 +1,34 @@
 # flake8: noqa
 
 # fmt: off
+# __writing_default_udfs_tabular_begin__
+import ray
+import pandas as pd
+
+# Load datastream.
+ds = ray.data.read_csv("example://iris.csv")
+
+# UDF as a function on Pandas DataFrame batches.
+def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
+    # Filter rows.
+    df_batch = df_batch[df_batch["variety"] == "Versicolor"]
+    # Add derived column.
+    # Notice here that `df["sepal.length"].max()` is only the max value of the column
+    # within a given batch (instead of globally)!!
+    df_batch.loc[:, "normalized.sepal.length"] = df_batch["sepal.length"] / df_batch["sepal.length"].max()
+    # Drop column.
+    df_batch = df_batch.drop(columns=["sepal.length"])
+    return df_batch
+
+ds.map_batches(pandas_transform, batch_format="pandas").show(2)
+# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
+#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
+# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
+#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
+# __writing_default_udfs_tabular_end__
+# fmt: on
+
+# fmt: off
 # __datastream_transformation_begin__
 import ray
 import pandas
@@ -129,6 +157,7 @@ ds.map_batches(pyarrow_transform, batch_format="pyarrow").show(2)
 # __writing_numpy_udfs_begin__
 import ray
 import numpy as np
+from typing import Dict
 
 # Load datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
