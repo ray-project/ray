@@ -82,8 +82,11 @@ class ProgressBar:
         ref_to_result = {}
         remaining = refs
         t = threading.current_thread()
+        first = True
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=True, timeout=0.1)
+            done, remaining = ray.wait(remaining, fetch_local=first, timeout=0.1)
+            if first:
+                first = False
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
             self.update(len(done))
