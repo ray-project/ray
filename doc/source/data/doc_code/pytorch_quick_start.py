@@ -16,7 +16,6 @@ import torch
 import torch.nn as nn
 
 class TorchPredictor:
-    import torch
 
     def __init__(self):  # <1>
         self.model = nn.Sequential(
