@@ -96,9 +96,6 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
-    default_concurrent = concurrent_group[-1]
-    if test.get('name') == 'chaos_many_actors.aws':
-        return default_concurrent.group, 100
     if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:
@@ -109,6 +106,9 @@ def get_concurrency_group(test: Test) -> Tuple[str, int]:
         logger.warning(f"Couldn't get test resources for test {test['name']}: {e}")
         return default_concurrent.group, default_concurrent.limit
 
+    default_concurrent = concurrent_group[-1]
+    if test.get('name') == 'chaos_many_actors.aws':
+        return default_concurrent.group, 100
     for condition in concurrent_group:
         min_gpu = parse_condition(condition.min_gpu, float("-inf"))
         max_gpu = parse_condition(condition.max_gpu, float("inf"))
