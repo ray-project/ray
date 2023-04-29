@@ -65,9 +65,7 @@ Writing User-defined Functions (UDFs)
 User-defined functions (UDFs) are routines that apply on one row (e.g.
 :meth:`.map() <ray.data.Datastream.map>`) or a batch of rows (e.g.
 :meth:`.map_batches() <ray.data.Datastream.map_batches>`) of a datastream. UDFs let you
-express your customized business logic in transformations. Here we will focus on
-:meth:`.map_batches() <ray.data.Datastream.map_batches>` as it's the primary mapping
-API in Datastreams.
+express your customized business logic in transformations.
 
 Here are the basics that you need to know about UDFs:
 
@@ -79,7 +77,7 @@ Here are the basics that you need to know about UDFs:
 
 Types of UDFs
 =============
-There are three types of UDFs that you can use with Ray Data: Function UDFs, Callable Class UDFs, and Generator UDFs.
+There are three types of UDFs that you can use with Ray Data: Functions, Generators, and Callable Classes.
 
 .. tab-set::
 
@@ -129,10 +127,10 @@ There are three types of UDFs that you can use with Ray Data: Function UDFs, Cal
 
 .. _transform_datastreams_row_output_types:
 
-Row UDF Types
-=============
+Using ``map()``
+==============
 
-When using :meth:`ds.map() <ray.data.Datastream.map>`, both the input and output types are always ``Dict[str, Any]``.
+When using :meth:`ds.map() <ray.data.Datastream.map>`, both the input and output types of your UDF are always ``Dict[str, Any]``.
 
 
 .. literalinclude:: ./doc_code/transforming_datastreams.py
@@ -145,12 +143,12 @@ When using :meth:`ds.map() <ray.data.Datastream.map>`, both the input and output
 
 .. _transform_datastreams_batch_formats:
 
-Batch Format
-============
+Batch format for ``map_batches()``
+==================================
 
-Choose the *batch format* of the data given to UDFs
-by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Datastream.map_batches>`.
-Here is an overview of the available batch formats:
+When using :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`,
+you can choose the *batch format* of the data given to your UDF via
+the ``batch_format`` option. Here is an overview of the available batch formats:
 
 .. tab-set::
 
@@ -223,10 +221,10 @@ may incur data copies; which conversions cause data copying is given in the belo
 
 .. _transform_datastreams_batch_output_types:
 
-Batch Return Types
-==================
+Return type for ``map_batches()``
+=================================
 
-The following return types are allowed for batch UDFs (e.g.,
+The following return types are allowed for batch UDFs (i.e., those passed to
 :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`). The following describes
 how they are interpreted to create the transformation result:
 
