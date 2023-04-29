@@ -90,10 +90,10 @@ This section shows how to create datastreams that include tensor data.
         :start-after: __create_parquet_3_begin__
         :end-before: __create_parquet_3_end__
 
-Transforming / Consuming Tensor Data
-------------------------------------
+Processing Tensor Data
+----------------------
 
-Like any other Datastream, Datastreams with tensor columns can be consumed / transformed in batches via :meth:`ds.iter_batches <ray.data.Datastream.iter_batches>` and :meth:`ds.map_batches <ray.data.Datastream.map_batches>` APIs. This section shows the available batch formats and their behavior:
+Like any other Datastream, Datastreams with tensor columns can be processed in batches via :meth:`ds.iter_batches <ray.data.Datastream.iter_batches>` and :meth:`ds.map_batches <ray.data.Datastream.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
 .. tab-set::
 

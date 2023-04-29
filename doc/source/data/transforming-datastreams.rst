@@ -53,17 +53,6 @@ Here is a table listing some common transformations supported by Ray Data.
      - All-to-all
      - | Group the datastream by a groupkey.
 
-Example
-=======
-
-The following is an example to make use of those transformation APIs for processing
-the Iris datastream.
-
-.. literalinclude:: ./doc_code/transforming_datastreams.py
-   :language: python
-   :start-after: __datastream_transformation_begin__
-   :end-before: __datastream_transformation_end__
-
 .. _transform_datastreams_writing_udfs:
 
 -------------------------------------
