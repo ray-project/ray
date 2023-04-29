@@ -96,13 +96,13 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
+    default_concurrent = concurrent_group[-1]
     if test.get('name') == 'chaos_many_actors.aws':
         return default_concurrent.group, 100
     if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:
         concurrent_group = aws_gpu_cpu_to_concurrency_groups
-    default_concurrent = concurrent_group[-1]
     try:
         test_cpus, test_gpus = get_test_resources(test)
     except Exception as e:
