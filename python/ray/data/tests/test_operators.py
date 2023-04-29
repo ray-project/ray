@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 from typing import List, Iterable, Any
 import time
+from unittest.mock import MagicMock
 
 import ray
 from ray.data.block import Block
@@ -596,6 +597,7 @@ def test_limit_operator(ray_start_regular_shared):
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
         input_op = InputDataBuffer(refs)
         limit_op = LimitOperator(limit, input_op)
+        limit_op.inputs_done = MagicMock(wraps=limit_op.inputs_done)
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
             assert limit_op.completed()
@@ -617,10 +619,12 @@ def test_limit_operator(ray_start_regular_shared):
                 limit_op.get_next()
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
+                assert limit_op.inputs_done.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
                 assert not limit_op.need_more_inputs(), limit
             else:
+                assert limit_op.inputs_done.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
                 assert limit_op.need_more_inputs(), limit
