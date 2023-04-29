@@ -48,6 +48,7 @@ def main(
             f"Concurrency input need to be a positive number, received: {concurrency}"
         )
     test = _get_test(test_name)
+    """
     pre_sanity_check = _sanity_check(test, passing_commit, failing_commit)
     if not pre_sanity_check:
         logger.info(
@@ -55,6 +56,7 @@ def main(
             " an external (not a code change) factors"
         )
         return
+    """
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
     blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
@@ -126,7 +128,7 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
             test,
             ray_wheels=ray_wheels_url,
             env={
-                "RAY_COMMIT_OF_WHEEL": commit,
+                "RAY_TEST_BRANCH": "can-bisect-fix-working",
             },
         )
         step["label"] = f'{test["name"]}:{commit[:7]}-{run}'
