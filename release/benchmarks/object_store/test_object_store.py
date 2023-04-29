@@ -52,6 +52,7 @@ def test_object_broadcast():
 
     return end - start
 
+
 ray.init(address="auto")
 duration = test_object_broadcast()
 print(f"Broadcast time: {duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
