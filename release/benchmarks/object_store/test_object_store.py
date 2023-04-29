@@ -28,7 +28,7 @@ def test_object_broadcast():
         def foo(self):
             pass
 
-        def len(self, arr):
+        def data_len(self, arr):
             return len(arr)
 
     actors = [Actor.remote() for _ in range(NUM_NODES)]
@@ -42,7 +42,7 @@ def test_object_broadcast():
     start = perf_counter()
     result_refs = []
     for actor in tqdm(actors, desc="Broadcasting objects"):
-        result_refs.append(actor.sum.remote(ref))
+        result_refs.append(actor.data_len.remote(ref))
 
     results = ray.get(result_refs)
     end = perf_counter()
