@@ -1124,6 +1124,7 @@ def init(
     include_dashboard: Optional[bool] = None,
     dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
     dashboard_port: Optional[int] = None,
+    dashboard_agent_listen_port: int = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     job_config: "ray.job_config.JobConfig" = None,
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
@@ -1214,6 +1215,8 @@ def init(
         dashboard_port(int, None): The port to bind the dashboard server to.
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
+        dashboard_agent_listen_port: The port for dashboard agents to listen on
+            for HTTP requests.
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -1495,6 +1498,7 @@ def init(
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
+            dashboard_agent_listen_port=dashboard_agent_listen_port,
             memory=_memory,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,
