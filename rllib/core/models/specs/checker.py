@@ -248,6 +248,8 @@ def check_input_specs(
                     output_data = func(self, input_data, **kwargs)
                     func_successfully_executed = True
                 except Exception as e:
+                    # We store the initial exception to raise it later if the spec
+                    # check fails.
                     initial_exception = e
                     logger.error(
                         f"Exception {e} raised on function call without checkin "
