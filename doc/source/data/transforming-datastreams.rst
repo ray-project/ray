@@ -31,6 +31,9 @@ Here is a table listing some common transformations supported by Ray Data.
    * - Transformation
      - Type
      - Description
+   * - :meth:`ds.map() <ray.data.Datastream.map>`
+     - One-to-one
+     - Apply a given function to individual records of this datastream.
    * - :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
      - One-to-one
      - Apply a given function to batches of records of this datastream.
