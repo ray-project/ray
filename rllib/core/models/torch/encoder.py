@@ -81,9 +81,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
         return {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
+            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+            STATE_OUT: inputs[STATE_IN],
+        }
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
@@ -152,9 +152,9 @@ class TorchCNNEncoder(TorchModel, Encoder):
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
         return {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
+            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+            STATE_OUT: inputs[STATE_IN],
+        }
 
 
 class TorchGRUEncoder(TorchModel, Encoder):

@@ -1,7 +1,6 @@
 import functools
 import logging
 from collections import abc
-import sys
 from typing import Union, Mapping, Any, Callable
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
@@ -12,17 +11,6 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
-
-class SpecCheckedException(Exception):
-    """Encapsulates an exception that has been raised by a spec checked function.
-
-    This is useful in cases of multiple layers of nested spec-checked functions so
-    that the outer function does not attempt to retry with a spec check.
-    """
-    def __init__(self):
-        super().__init__(f"Exception raised by spec-checked function. This means "
-                         f"that RLlib tried checked the inputs of this function "
-                         f"before executing it, but the function itself still failed.")
 
 @DeveloperAPI
 def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
@@ -252,18 +240,17 @@ def check_input_specs(
 
             func_successfully_executed = False
 
+            initial_exception = None
+
             if only_check_on_retry:
                 # Attempt to run the function without spec checking
                 try:
                     output_data = func(self, input_data, **kwargs)
                     func_successfully_executed = True
-                except SpecCheckedException as e:
-                    # If a spec checked execution somewhere inside func failed
-                    # already, we don't need to check the spec again but can re-raise.
-                    raise e
                 except Exception as e:
-                    logger.warning(
-                        f"Exception {str(e)} raised on function call without checkin "
+                    initial_exception = e
+                    logger.error(
+                        f"Exception {e} raised on function call without checkin "
                         f"input specs. RLlib will now attempt to check the spec "
                         f"before calling the function again."
                     )
@@ -272,30 +259,34 @@ def check_input_specs(
             # attempt or because only_check_on_retry is False, we need to check the
             # spec.
             if not func_successfully_executed:
-                try:
-                    checked_data = input_data
-                    if input_specs:
-                        spec = getattr(self, input_specs, "___NOT_FOUND___")
-                        if spec == "___NOT_FOUND___":
-                            raise ValueError(f"object {self} has no attribute {input_specs}.")
-                        if spec is not None:
-                            spec = convert_to_canonical_format(spec)
-                            checked_data = _validate(
-                                cls_instance=self,
-                                method=func,
-                                data=input_data,
-                                spec=spec,
-                                filter=filter,
-                                tag="input",
-                            )
+                checked_data = input_data
+                if input_specs:
+                    spec = getattr(self, input_specs, "___NOT_FOUND___")
+                    if spec == "___NOT_FOUND___":
+                        raise ValueError(
+                            f"object {self} has no attribute {input_specs}."
+                        )
+                    if spec is not None:
+                        spec = convert_to_canonical_format(spec)
+                        checked_data = _validate(
+                            cls_instance=self,
+                            method=func,
+                            data=input_data,
+                            spec=spec,
+                            filter=filter,
+                            tag="input",
+                        )
 
-                            if filter and isinstance(checked_data, NestedDict):
-                                # filtering should happen regardless of cache
-                                checked_data = checked_data.filter(spec)
+                        if filter and isinstance(checked_data, NestedDict):
+                            # filtering should happen regardless of cache
+                            checked_data = checked_data.filter(spec)
 
-                    output_data = func(self, checked_data, **kwargs)
-                except Exception as e:
-                    raise SpecCheckedException from e
+                if initial_exception:
+                    # If we have encountered an exception from calling `func` already,
+                    # we raise it again here and don't need to call func again.
+                    raise initial_exception
+
+                output_data = func(self, checked_data, **kwargs)
 
             if cache and func.__name__ not in self.__checked_input_specs_cache__:
                 self.__checked_input_specs_cache__[func.__name__] = True

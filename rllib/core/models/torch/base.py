@@ -12,6 +12,7 @@ from ray.rllib.core.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
     check_input_specs,
+    check_output_specs,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -106,15 +107,17 @@ class TorchModel(nn.Module, Model, abc.ABC):
             dict: The output tensors.
         """
 
-        # When debugging, always check input and output specs.
+        # When `always_check_shapes` is set, we always check input and output specs.
         # Note that we check the input specs twice because we need the following
         # check to always check the input specs.
         if self.config.always_check_shapes:
-            always_input_checked_forwad = check_input_specs("input_specs",
-                                                            only_check_on_retry=False
-                                                            )(self._forward)
-            check_input_specs("output_specs")(always_input_checked_forwad)(inputs,
-                                                                           **kwargs)
+
+            @check_input_specs("input_specs", only_check_on_retry=False)
+            @check_output_specs("output_specs")
+            def checked_forward(self, input_data, **kwargs):
+                return self._forward(input_data, **kwargs)
+
+            return checked_forward(self, inputs, **kwargs)
 
         return self._forward(inputs, **kwargs)
 

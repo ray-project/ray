@@ -412,22 +412,22 @@ class ActorCriticEncoder(Encoder):
         if self.config.shared:
             outs = self.encoder(inputs, **kwargs)
             return {
-                    ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
-                    STATE_OUT: outs[STATE_OUT],
-                }
+                ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
+                STATE_OUT: outs[STATE_OUT],
+            }
         else:
-            actor_inputs = inputs # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
-            critic_inputs = inputs # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+            actor_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            critic_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
 
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
             return {
-                    ENCODER_OUT: {
-                        ACTOR: actor_out[ENCODER_OUT],
-                        CRITIC: critic_out[ENCODER_OUT],
-                    },
-                    STATE_OUT: {
-                        ACTOR: actor_out[STATE_OUT],
-                        CRITIC: critic_out[STATE_OUT],
-                    },
-                }
+                ENCODER_OUT: {
+                    ACTOR: actor_out[ENCODER_OUT],
+                    CRITIC: critic_out[ENCODER_OUT],
+                },
+                STATE_OUT: {
+                    ACTOR: actor_out[STATE_OUT],
+                    CRITIC: critic_out[STATE_OUT],
+                },
+            }
