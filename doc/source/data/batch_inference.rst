@@ -197,7 +197,7 @@ Once you have your Ray Datastream ``ds`` and your predictor class, you can use
 ``map_batches`` takes your predictor class as an argument and allows you to specify
 ``compute`` resources by defining the :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
 In the example below, we use two CPUs to run inference in parallel and then print the results.
-We cover resource allocation in more detail in :ref:`the configuration section of this guide<batch_inference_config>`.
+We cover resource allocation in more detail in :ref:`the configuration section of this guide <batch_inference_config>`.
 
 .. tabs::
 
