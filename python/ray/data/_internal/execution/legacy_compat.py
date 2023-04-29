@@ -40,6 +40,9 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.util import make_callable_class_concurrent
 
+# Warn about tasks larger than this.
+TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
+
 
 def execute_to_legacy_block_iterator(
     executor: Executor,
@@ -192,6 +195,24 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         read_tasks = blocks._tasks
         remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
+
+        # Defensively compute the size of the block as the max size reported by the
+        # datasource and the actual read task size. This is to guard against issues
+        # with bad metadata reporting.
+        def cleaned_metadata(read_task):
+            block_meta = read_task.get_metadata()
+            task_size = len(cloudpickle.dumps(read_task))
+            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
+                if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
+                    print(
+                        f"WARNING: the read task size ({task_size} bytes) is larger "
+                        "than the reported output size of the task "
+                        f"({block_meta.size_bytes} bytes). This may be a size "
+                        "reporting bug in the datasource being read from."
+                    )
+                block_meta.size_bytes = task_size
+            return block_meta
+
         inputs = InputDataBuffer(
             [
                 RefBundle(
@@ -200,13 +221,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             # This isn't a proper block, but it's what we are doing
                             # in the legacy code.
                             ray.put(read_task),
-                            BlockMetadata(
-                                num_rows=1,
-                                size_bytes=len(cloudpickle.dumps(read_task)),
-                                schema=None,
-                                input_files=[],
-                                exec_stats=None,
-                            ),
+                            cleaned_metadata(read_task),
                         )
                     ],
                     owns_blocks=True,

@@ -1,4 +1,5 @@
 import datetime
+import io
 import json
 import functools
 import glob
@@ -9,8 +10,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 from collections import defaultdict
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict
 
 import click
 import docker
@@ -296,6 +299,43 @@ def _build_docker_image(
             break
 
     print("BUILT: ", tagged_name)
+    return tagged_name
+
+
+def _extract_files_from_docker(docker_image: str, files: Dict[str, str]):
+    """Extract files from docker container image and save to local disk.
+
+    ``files`` is a dict mapping from paths inside the docker container to
+    local paths on the host system.
+    """
+    # Create container
+    container = DOCKER_CLIENT.containers.create(docker_image)
+    for container_path, local_path in files.items():
+        # Get tar stream of file
+        stream, stat = container.get_archive(f"{container_path}")
+        # Create local directory containing target file
+        local_path = Path(local_path)
+        local_path.parent.mkdir(exist_ok=True)
+        # Read tar stream into bytes IO
+        with tarfile.open(fileobj=io.BytesIO(b"".join(d for d in stream))) as tar:
+            # Extract file from tar archive into local path
+            with open(local_path, "wb") as f:
+                for r in tar.extractfile(os.path.basename(container_path)):
+                    f.write(r)
+    container.remove()
+
+
+def extract_image_infos(images: List[str], target_dir: str):
+    for image in images:
+        image_basename = image.replace("rayproject/", "")
+        _extract_files_from_docker(
+            image,
+            {
+                "/home/ray/pip-freeze.txt": (
+                    f"{target_dir}/{image_basename}_" f"pip-freeze.txt"
+                )
+            },
+        )
 
 
 def copy_wheels(human_build):
@@ -330,17 +370,22 @@ def check_staleness(repository, tag):
     return is_stale
 
 
-def build_for_all_versions(image_name, py_versions, image_types, suffix, **kwargs):
+def build_for_all_versions(
+    image_name, py_versions, image_types, suffix, **kwargs
+) -> List[str]:
     """Builds the given Docker image for all Python & CUDA versions"""
+    tagged_names = []
     for py_version in py_versions:
         for image_type in image_types:
-            _build_docker_image(
+            tagged_name = _build_docker_image(
                 image_name,
                 py_version=py_version,
                 image_type=image_type,
                 suffix=suffix,
                 **kwargs,
             )
+            tagged_names.append(tagged_name)
+    return tagged_names
 
 
 def build_base_images(py_versions, image_types, suffix):
@@ -834,7 +879,11 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
-            build_for_all_versions("ray", py_versions, image_types, suffix=suffix)
+            all_tagged_images = []
+
+            all_tagged_images += build_for_all_versions(
+                "ray", py_versions, image_types, suffix=suffix
+            )
 
             # List of images to tag and push to docker hub
             images_to_tag_and_push = []
@@ -858,13 +907,18 @@ def main(
 
             if len(ml_image_types) > 0:
                 prep_ray_ml()
-                build_for_all_versions(
+                all_tagged_images += build_for_all_versions(
                     "ray-ml",
                     py_versions,
                     image_types=ml_image_types,
                     suffix=suffix,
                 )
                 images_to_tag_and_push += ["ray-ml"]
+
+            if is_buildkite:
+                extract_image_infos(
+                    all_tagged_images, target_dir="/artifact-mount/.image-info"
+                )
 
             if build_type in {MERGE, PR}:
                 valid_branch = _valid_branch()

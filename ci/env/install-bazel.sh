@@ -73,11 +73,14 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
       export PATH=$PATH:"$HOME/bin"
     fi
 
-    if [ "${architecture}" = "aarch64" ]; then
+    if [ "${architecture}" = "aarch64" ] || [ "${architecture}" = "arm64" ]; then
       # architecture is "aarch64", but the bazel tag is "arm64"
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
     elif [ "${architecture}" = "x86_64" ]; then
       url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
+    else
+      echo "Could not found matching bazelisk URL for platform ${platform} and architecture ${architecture}"
+      exit 1
     fi
 
     if [ "$INSTALL_USER" = "1" ]; then

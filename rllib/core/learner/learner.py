@@ -849,14 +849,29 @@ class Learner:
 
         Args:
             state: The state of the optimizer and module. Can be obtained
-                from `get_state`.
+                from `get_state`. State is a dictionary with two keys:
+                "module_state" and "optimizer_state". The value of each key
+                is a dictionary that can be passed to `set_weights` and
+                `set_optimizer_weights` respectively.
 
         """
         # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
         # having both can become confusing. Can we simplify this API requirement?
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        self._module.set_state(state.get("module_state", {}))
+        if "module_state" not in state:
+            raise ValueError(
+                "state must have a key 'module_state' for the module weights"
+            )
+        if "optimizer_state" not in state:
+            raise ValueError(
+                "state must have a key 'optimizer_state' for the optimizer weights"
+            )
+
+        module_state = state.get("module_state")
+        optimizer_state = state.get("optimizer_state")
+        self.set_weights(module_state)
+        self.set_optimizer_weights(optimizer_state)
 
     def get_state(self) -> Mapping[str, Any]:
         """Get the state of the learner.
@@ -867,7 +882,29 @@ class Learner:
         """
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        return {"module_state": self._module.get_state()}
+        return {
+            "module_state": self.get_weights(),
+            "optimizer_state": self.get_optimizer_weights(),
+        }
+        # return {"module_state": self.get_weights(), "optimizer_state": {}}
+
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        """Set the weights of the optimizer.
+
+        Args:
+            weights: The weights of the optimizer.
+
+        """
+        raise NotImplementedError
+
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        """Get the weights of the optimizer.
+
+        Returns:
+            The weights of the optimizer.
+
+        """
+        raise NotImplementedError
 
     def _get_metadata(self) -> Dict[str, Any]:
         metadata = {

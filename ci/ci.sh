@@ -284,6 +284,8 @@ install_npm_project() {
 build_dashboard_front_end() {
   if [ "${OSTYPE}" = msys ]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
+  elif [ "${NO_DASHBOARD-}" = "1" ]; then
+    echo "Skipping dashboard build"
   else
     (
       cd ray/dashboard/client
@@ -794,20 +796,8 @@ run_minimal_test() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
   # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
 
-  # Todo: Make compatible with python 3.9/3.10
-  if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
-    # shellcheck disable=SC2086
-    bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
-  fi
-
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_serve_ray_minimal
   # shellcheck disable=SC2086

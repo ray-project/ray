@@ -2290,8 +2290,8 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
+    tags = ["team:rllib", "utils", "gpu"],
+    size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
 

@@ -4,6 +4,7 @@ import random
 import time
 from unittest.mock import patch
 
+import pandas as pd
 import numpy as np
 import pytest
 from ray.data.block import BlockMetadata
@@ -26,6 +27,7 @@ from ray.data._internal.split import (
 from ray.data.block import BlockAccessor
 from ray.data.datastream import Dataset
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -97,7 +99,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     metadata = []
     total_rows = 0
     for block_size in block_sizes:
-        block = list(range(total_rows, total_rows + block_size))
+        block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
@@ -119,7 +121,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     assert total_rows - expected_total_rows == total_rows % num_splits
     # Check that all rows are unique (content check).
     split_rows = [row for split in splits for row in split.take(total_rows)]
-    assert len(set(split_rows)) == len(split_rows)
+    assert len(set(extract_values("id", split_rows))) == len(split_rows)
 
 
 def test_equal_split_balanced_grid(ray_start_regular_shared):
@@ -160,7 +162,7 @@ def test_split_small(ray_start_regular_shared, pipelined):
 
     @ray.remote(num_cpus=0)
     def take(s):
-        return s.take()
+        return extract_values("item", s.take())
 
     for m in [1, 3]:
         for n in [1, 3]:
@@ -216,23 +218,23 @@ def test_split_at_indices_simple(ray_start_regular_shared):
         ds.split_at_indices([3, 1])
 
     splits = ds.split_at_indices([5])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
 
     splits = ds.split_at_indices([2, 5])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
 
     splits = ds.split_at_indices([2, 5, 5, 100])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1], [2, 3, 4], [], [5, 6, 7, 8, 9], []]
 
     splits = ds.split_at_indices([100])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], []]
 
     splits = ds.split_at_indices([0])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
 
 
@@ -266,7 +268,7 @@ def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices
     # indices configurations.
     ds = ray.data.range(20, parallelism=num_blocks)
     splits = ds.split_at_indices(indices)
-    r = [s.take_all() for s in splits]
+    r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
     assert r == [arr.tolist() for arr in np.array_split(list(range(20)), indices)]
 
@@ -304,7 +306,7 @@ def test_split_at_indices_coverage_complete(
     # indices configurations.
     ds = ray.data.range(5, parallelism=num_blocks)
     splits = ds.split_at_indices(indices)
-    r = [s.take_all() for s in splits]
+    r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
     assert r == [arr.tolist() for arr in np.array_split(list(range(5)), indices)]
 
@@ -328,19 +330,19 @@ def test_split_proportionately(ray_start_regular_shared):
         ds.split_proportionately([0.5, 0.5])
 
     splits = ds.split_proportionately([0.5])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
 
     splits = ds.split_proportionately([0.2, 0.3])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
 
     splits = ds.split_proportionately([0.2, 0.3, 0.3])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1], [2, 3, 4], [5, 6, 7], [8, 9]]
 
     splits = ds.split_proportionately([0.98, 0.01])
-    r = [s.take() for s in splits]
+    r = [extract_values("id", s.take()) for s in splits]
     assert r == [[0, 1, 2, 3, 4, 5, 6, 7], [8], [9]]
 
     with pytest.raises(ValueError):
@@ -357,31 +359,31 @@ def test_split(ray_start_regular_shared):
     assert [2] * 5 == [
         dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
     assert [4, 3, 3] == [
         dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
     assert [10] == [
         dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
     assert [1] * 10 == [
         dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
         dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() or 0 for dataset in datasets])
+    assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
 
 def test_split_hints(ray_start_regular_shared):
@@ -510,6 +512,7 @@ def _create_meta(num_rows):
 
 
 def _create_block(data):
+    data = pd.DataFrame({"id": data})
     return (ray.put(data), _create_meta(len(data)))
 
 
@@ -528,7 +531,7 @@ def _create_blocks_with_metadata(blocks):
 
 
 def test_split_single_block(ray_start_regular_shared):
-    block = [1, 2, 3]
+    block = pd.DataFrame({"id": [1, 2, 3]})
     metadata = _create_meta(3)
 
     results = ray.get(
@@ -540,7 +543,7 @@ def test_split_single_block(ray_start_regular_shared):
     blocks = results[1:]
     assert 234 == block_id
     assert len(blocks) == 1
-    assert blocks[0] == [1, 2, 3]
+    assert list(blocks[0]["id"]) == [1, 2, 3]
     assert meta[0].num_rows == 3
 
     results = ray.get(
@@ -552,9 +555,9 @@ def test_split_single_block(ray_start_regular_shared):
     blocks = results[1:]
     assert 234 == block_id
     assert len(blocks) == 2
-    assert blocks[0] == [1]
+    assert list(blocks[0]["id"]) == [1]
     assert meta[0].num_rows == 1
-    assert blocks[1] == [2, 3]
+    assert list(blocks[1]["id"]) == [2, 3]
     assert meta[1].num_rows == 2
 
     results = ray.get(
@@ -566,13 +569,13 @@ def test_split_single_block(ray_start_regular_shared):
     blocks = results[1:]
     assert 234 == block_id
     assert len(blocks) == 5
-    assert blocks[0] == []
-    assert blocks[1] == [1]
-    assert blocks[2] == []
-    assert blocks[3] == [2, 3]
-    assert blocks[4] == []
+    assert list(blocks[0]["id"]) == []
+    assert list(blocks[1]["id"]) == [1]
+    assert list(blocks[2]["id"]) == []
+    assert list(blocks[3]["id"]) == [2, 3]
+    assert list(blocks[4]["id"]) == []
 
-    block = []
+    block = pd.DataFrame({"id": []})
     metadata = _create_meta(0)
 
     results = ray.get(
@@ -584,8 +587,8 @@ def test_split_single_block(ray_start_regular_shared):
     blocks = results[1:]
     assert 234 == block_id
     assert len(blocks) == 2
-    assert blocks[0] == []
-    assert blocks[1] == []
+    assert list(blocks[0]["id"]) == []
+    assert list(blocks[1]["id"]) == []
 
 
 def test_drop_empty_block_split():
@@ -600,7 +603,7 @@ def verify_splits(splits, blocks_by_split):
         assert len(blocks) == len(block_refs)
         assert len(blocks) == len(meta)
         for block, block_ref, meta in zip(blocks, block_refs, meta):
-            assert ray.get(block_ref) == block
+            assert list(ray.get(block_ref)["id"]) == block
             assert meta.num_rows == len(block)
 
 
@@ -666,7 +669,7 @@ def equalize_helper(input_block_lists):
         for block_ref, _ in blocklist.get_blocks_with_metadata():
             block = ray.get(block_ref)
             block_accessor = BlockAccessor.for_block(block)
-            block_list.append(block_accessor.to_default())
+            block_list.append(list(block_accessor.to_default()["id"]))
         result_block_lists.append(block_list)
     return result_block_lists
 
@@ -749,18 +752,18 @@ def test_train_test_split(ray_start_regular_shared):
 
     # float
     train, test = ds.train_test_split(test_size=0.25)
-    assert train.take() == [0, 1, 2, 3, 4, 5]
-    assert test.take() == [6, 7]
+    assert extract_values("id", train.take()) == [0, 1, 2, 3, 4, 5]
+    assert extract_values("id", test.take()) == [6, 7]
 
     # int
     train, test = ds.train_test_split(test_size=2)
-    assert train.take() == [0, 1, 2, 3, 4, 5]
-    assert test.take() == [6, 7]
+    assert extract_values("id", train.take()) == [0, 1, 2, 3, 4, 5]
+    assert extract_values("id", test.take()) == [6, 7]
 
     # shuffle
     train, test = ds.train_test_split(test_size=0.25, shuffle=True, seed=1)
-    assert train.take() == [4, 5, 3, 2, 7, 6]
-    assert test.take() == [0, 1]
+    assert extract_values("id", train.take()) == [4, 5, 3, 2, 7, 6]
+    assert extract_values("id", test.take()) == [0, 1]
 
     # error handling
     with pytest.raises(TypeError):
