@@ -11,8 +11,8 @@ Datastream
 ----------
 
 A :term:`Datastream <Datastream (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
-Each block holds a set of items in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_,
-`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
+Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
+`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
 Having multiple blocks in a datastream allows for parallel transformation and ingest.
 
 For ML use cases, Datastream also natively supports mixing :ref:`Tensors <data_tensor_support>` and tabular data.

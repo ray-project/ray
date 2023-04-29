@@ -74,79 +74,6 @@ ds.groupby("variety").count().show()
 # fmt: on
 
 # fmt: off
-# __writing_default_udfs_tabular_begin__
-import ray
-import pandas as pd
-
-# Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-
-# UDF as a function on Pandas DataFrame batches.
-def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
-    # Filter rows.
-    df_batch = df_batch[df_batch["variety"] == "Versicolor"]
-    # Add derived column.
-    # Notice here that `df["sepal.length"].max()` is only the max value of the column
-    # within a given batch (instead of globally)!!
-    df_batch.loc[:, "normalized.sepal.length"] = df_batch["sepal.length"] / df_batch["sepal.length"].max()
-    # Drop column.
-    df_batch = df_batch.drop(columns=["sepal.length"])
-    return df_batch
-
-ds.map_batches(pandas_transform, batch_format="pandas").show(2)
-# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
-# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
-# __writing_default_udfs_tabular_end__
-# fmt: on
-
-# fmt: off
-# __writing_default_udfs_tensor_begin__
-import ray
-import numpy as np
-from typing import Dict
-
-# Load datastream.
-ds = ray.data.range_tensor(1000, shape=(2, 2))
-
-# UDF as a function on NumPy ndarray batches.
-def tensor_transform(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    # Notice here that the ndarray is of shape (batch_size, 2, 2)
-    # Multiply each element in the ndarray by a factor of 2
-    arr["data"] *= 2
-    return arr
-
-ds.map_batches(tensor_transform, batch_format="numpy").show(2)
-# [array([[0, 0],
-#         [0, 0]]),
-# array([[2, 2],
-#         [2, 2]])]
-
-# __writing_default_udfs_tensor_end__
-# fmt: on
-
-# fmt: off
-# __writing_default_udfs_list_begin__
-import ray
-from typing import Any
-
-# Load datastream.
-ds = ray.data.range(1000)
-
-def list_transform(batch: Dict[str, Any]) -> Dict[str, Any]:
-    # Notice here that the list is of length batch_size
-    # Multiply each element in the list by a factor of 2
-    return {"id": [x * 2 for x in batch["id"]]}
-
-ds.map_batches(list_transform).show(2)
-# {"id": 0}
-# {"id": 2}
-
-# __writing_default_udfs_list_end__
-# fmt: on
-
-# fmt: off
 # __writing_pandas_udfs_begin__
 import ray
 import pandas as pd
@@ -222,7 +149,7 @@ ds = ds.map_batches(normalize, batch_format="numpy")
 # -> MapBatches(normalize)
 #    +- Datastream(num_blocks=1,
 #               num_rows=3,
-#               schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)}
+#               schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)}
 #       )
 # __writing_numpy_udfs_end__
 # fmt: on
@@ -276,20 +203,20 @@ ds.map_batches(repeat_dataframe, batch_format="pandas", ).show(2)
 # fmt: off
 # __writing_pandas_out_udfs_begin__
 import ray
+import numpy as np
 import pandas as pd
-from typing import List
+from typing import Dict
 
 # Load datastream.
 ds = ray.data.from_items(["test", "string", "teststring"])
 # -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
 
-# Convert column name.
-def convert_pandas(batch: pd.DataFrame) -> pd.DataFrame:
-    return pd.DataFrame({"text": batch["item"]}, dtype="string")
+def rename_column(batch: Dict[str, np.ndarray]) -> pd.DataFrame:
+    return pd.DataFrame({"text": batch["item"]})
 
-ds = ds.map_batches(convert_pandas, batch_format="pandas")
-# -> MapBatches(convert_pandas)
-#    +- Datastream(num_blocks=3, num_rows=3, schema={item: tsring})
+ds = ds.map_batches(rename_column)
+# -> MapBatches(rename_column)
+#    +- Datastream(num_blocks=3, num_rows=3, schema={item: string})
 
 ds.show(2)
 # -> {'text': 'test'}
@@ -303,19 +230,19 @@ print(ds)
 # fmt: off
 # __writing_arrow_out_udfs_begin__
 import ray
+import numpy as np
 import pyarrow as pa
-from typing import List
+from typing import Dict
 
 # Load datastream.
 ds = ray.data.from_items(["test", "string", "teststring"])
 # -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
 
-# Convert to Arrow.
-def convert_to_arrow(batch: Dict[str, np.ndarray]) -> pa.Table:
+def rename_column(batch: Dict[str, np.ndarray]) -> pa.Table:
     return pa.table({"text": batch["item"]})
 
-ds = ds.map_batches(convert_to_arrow)
-# -> MapBatches(convert_to_arrow)
+ds = ds.map_batches(rename_column)
+# -> MapBatches(rename_column)
 #    +- Datastream(num_blocks=1, num_rows=3, schema={text: string})
 
 ds.show(2)
@@ -330,317 +257,50 @@ print(ds)
 # fmt: off
 # __writing_numpy_out_udfs_begin__
 import ray
-import pandas as pd
 import numpy as np
 from typing import Dict
 
 # Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-# -> Datastream(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal.length: double,
-#            sepal.width: double,
-#            petal.length: double,
-#            petal.width: double,
-#            variety: string,
-#        },
-#   )
+ds = ray.data.from_items(["test", "string", "teststring"])
+# -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
 
-# Convert to NumPy.
-def convert_to_numpy(df: pd.DataFrame) -> Dict[str, np.ndarray]:
-    return {"data": df[["sepal.length", "sepal.width"]].to_numpy()}
+def rename_column(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    return {"text": batch["item"]}
 
-ds = ds.map_batches(convert_to_numpy, batch_format="pandas")
-# -> MapBatches(convert_to_numpy)
-#    +- Datastream(
-#           num_blocks=1,
-#           num_rows=150,
-#           schema={
-#               sepal.length: double,
-#               sepal.width: double,
-#               petal.length: double,
-#               petal.width: double,
-#               variety: string,
-#           },
-#      )
+ds = ds.map_batches(rename_column)
+# -> MapBatches(rename_column)
+#    +- Datastream(num_blocks=1, num_rows=3, schema={text: string})
 
 ds.show(2)
-# -> {'data': [5.1 3.5]}
-#    {'data': [4.9 3. ]}
+# -> {'text': 'test'}
+# -> {'text': 'string'}
+
+print(ds)
+# -> Datastream(num_blocks=3, num_rows=3, schema={text: string})
 # __writing_numpy_out_udfs_end__
-# fmt: on
-
-# fmt: off
-# __writing_numpy_dict_out_udfs_begin__
-import ray
-import pandas as pd
-import numpy as np
-from typing import Dict
-
-# Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-# -> Datastream(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal.length: double,
-#            sepal.width: double,
-#            petal.length: double,
-#            petal.width: double,
-#            variety: string,
-#        },
-#   )
-
-# Convert to dict of NumPy ndarrays.
-def convert_to_numpy(df: pd.DataFrame) -> Dict[str, np.ndarray]:
-    return {
-        "sepal_len_and_width": df[["sepal.length", "sepal.width"]].to_numpy(),
-        "petal_len": df["petal.length"].to_numpy(),
-        "petal_width": df["petal.width"].to_numpy(),
-    }
-
-ds = ds.map_batches(convert_to_numpy, batch_format="pandas")
-# -> MapBatches(convert_to_numpy)
-#    +- Datastream(
-#           num_blocks=1,
-#           num_rows=150,
-#           schema={
-#               sepal.length: double,
-#               sepal.width: double,
-#               petal.length: double,
-#               petal.width: double,
-#               variety: string,
-#           },
-#      )
-
-ds.show(2)
-# -> {'sepal_len_and_width': array([5.1, 3.5]), 'petal_len': 1.4, 'petal_width': 0.2}
-# -> {'sepal_len_and_width': array([4.9, 3. ]), 'petal_len': 1.4, 'petal_width': 0.2}
-# __writing_numpy_dict_out_udfs_end__
-# fmt: on
-
-# fmt: off
-# __writing_simple_out_udfs_begin__
-import ray
-import pandas as pd
-from typing import List
-
-# Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-# -> Datastream(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal.length: double,
-#            sepal.width: double,
-#            petal.length: double,
-#            petal.width: double,
-#            variety: string,
-#        },
-#   )
-
-# Convert to list of dicts.
-def convert_to_list(df: pd.DataFrame) -> pd.DataFrame:
-    return df
-
-ds = ds.map_batches(convert_to_list, batch_format="pandas")
-# -> MapBatches(convert_to_list)
-#    +- Datastream(
-#           num_blocks=1,
-#           num_rows=150,
-#           schema={
-#               sepal.length: double,
-#               sepal.width: double,
-#               petal.length: double,
-#               petal.width: double,
-#               variety: string,
-#           },
-#      )
-
-ds.show(2)
-# -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2,
-#     'variety': 'Setosa'}
-# -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2,
-#     'variety': 'Setosa'}
-# __writing_simple_out_udfs_end__
 # fmt: on
 
 # fmt: off
 # __writing_dict_out_row_udfs_begin__
 import ray
 import pandas as pd
-from typing import Dict
-
-# Load datastream.
-ds = ray.data.range(10)
-# -> Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
-
-# Convert row to dict.
-def row_to_dict(row: int) -> Dict[str, int]:
-    return {"foo": row}
-
-ds = ds.map(row_to_dict)
-# -> Map
-#    +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
-
-ds.show(2)
-# -> {'foo': 0}
-# -> {'foo': 1}
-# __writing_dict_out_row_udfs_end__
-# fmt: on
-
-# fmt: off
-# __writing_table_row_out_row_udfs_begin__
-import ray
-import pandas as pd
-from typing import Dict
-
-# Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-# -> Datastream(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal.length: double,
-#            sepal.width: double,
-#            petal.length: double,
-#            petal.width: double,
-#            variety: string,
-#        },
-#   )
-
-# Treat row as dict.
-def map_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    row["sepal.area"] = row["sepal.length"] * row["sepal.width"]
-    return row
-
-ds = ds.map(map_row)
-# -> Map
-#    +- Datastream(
-#           num_blocks=1,
-#           num_rows=150,
-#           schema={
-#               sepal.length: double,
-#               sepal.width: double,
-#               petal.length: double,
-#               petal.width: double,
-#               variety: string,
-#           },
-#      )
-
-ds.show(2)
-# -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2,
-#     'variety': 'Setosa', 'sepal.area': 17.849999999999998}
-# -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2,
-#     'variety': 'Setosa', 'sepal.area': 14.700000000000001}
-# __writing_table_row_out_row_udfs_end__
-# fmt: on
-
-# fmt: off
-# __writing_numpy_out_row_udfs_begin__
-import ray
-import numpy as np
-from typing import Dict
+from typing import Dict, Any
 
 # Load datastream.
 ds = ray.data.range(10)
 # -> Datastream(num_blocks=10, num_rows=10, schema={id: int64})
 
-# Convert row to NumPy ndarray.
-def row_to_numpy(row: Dict[str, Any]) -> Dict[str, np.ndarray]:
-    return {"data": np.full(shape=(2, 2), fill_value=row["id"])}
+def rename_column(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {"foo": row["id"]}
 
-ds = ds.map(row_to_numpy)
+ds = ds.map(rename_column)
 # -> Map
-#    +- Datastream(num_blocks=10, num_rows=10, schema={data: np.ndarray(shape=(2, 2))})
+#    +- Datastream(num_blocks=10, num_rows=10, schema={foo: int64})
 
 ds.show(2)
-# -> {'data': [[0 0], [0 0]]]}
-#    {'data': [[1 1], [1 1]]]}
-# __writing_numpy_out_row_udfs_end__
-# fmt: on
-
-# fmt: off
-# __writing_simple_out_row_udfs_begin__
-import ray
-from typing import List
-
-# Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-# -> Datastream(
-#        num_blocks=1,
-#        num_rows=150,
-#        schema={
-#            sepal.length: double,
-#            sepal.width: double,
-#            petal.length: double,
-#            petal.width: double,
-#            variety: string,
-#        },
-#   )
-
-# Convert row to simple (opaque) row.
-def map_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    row["petal.random_property"] = random.random()
-    return row
-
-ds = ds.map(map_row)
-# -> Map
-#    +- Datastream(
-#           num_blocks=1,
-#           num_rows=150,
-#           schema={
-#               sepal.length: double,
-#               sepal.width: double,
-#               petal.length: double,
-#               petal.width: double,
-#               variety: string,
-#          },
-#     )
-# __writing_simple_out_row_udfs_end__
-# fmt: on
-
-# fmt: off
-# __configuring_batch_size_begin__
-import ray
-import pandas as pd
-
-# Load datastream.
-ds = ray.data.read_csv("example://iris.csv")
-
-# UDF as a function on Pandas DataFrame batches.
-def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
-    # Filter rows.
-    df = df[df["variety"] == "Versicolor"]
-    # Add derived column.
-    df.loc[:, "normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
-    # Drop column.
-    df = df.drop(columns=["sepal.length"])
-    return df
-
-# Have each batch that pandas_transform receives contain 10 rows.
-ds = ds.map_batches(pandas_transform, batch_format="pandas", batch_size=10)
-# -> MapBatches(pandas_transform)
-#    +- Datastream(
-#           num_blocks=1,
-#           num_rows=150,
-#           schema={
-#               sepal.length: double,
-#               sepal.width: double,
-#               petal.length: double,
-#               petal.width: double,
-#               variety: string,
-#           },
-#      )
-
-ds.show(2)
-# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
-# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
-# __configuring_batch_size_end__
+# -> {'foo': 0}
+# -> {'foo': 1}
+# __writing_dict_out_row_udfs_end__
 # fmt: on
 
 # fmt: off

@@ -37,9 +37,8 @@ Ray reads from any `filesystem supported by Arrow
 
     import ray
 
-    datastream = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-    datastream.show(limit=1)
+    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+    ds.show(limit=1)
 
 .. testoutput::
 
@@ -57,30 +56,33 @@ transform datastreams. Ray executes transformations in parallel for performance.
 
 .. testcode::
 
-    import pandas as pd
+    from typing import Dict
+    import numpy as np
 
-    # Find rows with sepal length < 5.5 and petal length > 3.5.
-    def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
-        return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
+    # Compute a "petal area" attribute.
+    def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        vec_a = batch["petal length (cm)"]
+        vec_b = batch["petal width (cm)"]
+        batch["petal area (cm^2)"] = vec_a * vec_b
+        return batch
 
-    transformed_ds = datastream.map_batches(transform_batch, batch_format="pandas")
-    print(transformed_ds)
+    transformed_ds = ds.map_batches(transform_batch)
+    print(transformed_ds.materialize())
 
 .. testoutput::
 
-    MapBatches(transform_batch)
-    +- Datastream(
-          num_blocks=1,
-          num_rows=150,
-          schema={
-             sepal length (cm): double,
-             sepal width (cm): double,
-             petal length (cm): double,
-             petal width (cm): double,
-             target: int64
-          }
-       )
-
+    MaterializedDatastream(
+       num_blocks=1,
+       num_rows=150,
+       schema={
+          sepal length (cm): double,
+          sepal width (cm): double,
+          petal length (cm): double,
+          petal width (cm): double,
+          target: int64,
+          petal area (cm^2): double
+       }
+    )
 
 To learn more about transforming datastreams, read
 :ref:`Transforming data <transforming_datastreams>`.
@@ -89,7 +91,7 @@ Consume the datastream
 ----------------------
 
 Pass datastreams to Ray tasks or actors, and access records with methods like
-:meth:`~ray.data.Datastream.iter_batches`.
+:meth:`~ray.data.Datastream.take_batch` and :meth:`~ray.data.Datastream.iter_batches`.
 
 .. tab-set::
 
@@ -97,17 +99,17 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
 
         .. testcode::
 
-            batches = transformed_ds.iter_batches(batch_size=8)
-            print(next(iter(batches)))
+            print(transformed_ds.take_batch(batch_size=3))
 
         .. testoutput::
             :options: +NORMALIZE_WHITESPACE
 
-            {'sepal length (cm)': array([5.2, 5.4, 4.9]),
-             'sepal width (cm)': array([2.7, 3. , 2.5]),
-             'petal length (cm)': array([3.9, 4.5, 4.5]),
-             'petal width (cm)': array([1.4, 1.5, 1.7]),
-             'target': array([1, 1, 2])}
+            {'sepal length (cm)': array([5.1, 4.9, 4.7]),
+             'sepal width (cm)': array([3.5, 3. , 3.2]),
+             'petal length (cm)': array([1.4, 1.4, 1.3]),
+             'petal width (cm)': array([0.2, 0.2, 0.2]),
+             'target': array([0, 0, 0]),
+             'petal area (cm^2)': array([0.28, 0.28, 0.26])}
 
     .. tab-item:: Tasks
 
@@ -151,9 +153,9 @@ or remote filesystems.
 
     import os
 
-    transformed_ds.write_parquet("iris")
+    transformed_ds.write_parquet("/tmp/iris")
 
-    print(os.listdir("iris"))
+    print(os.listdir("/tmp/iris"))
 
 .. testoutput::
     :options: +ELLIPSIS

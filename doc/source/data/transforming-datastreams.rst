@@ -34,12 +34,6 @@ Here is a table listing some common transformations supported by Ray Data.
    * - :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
      - One-to-one
      - Apply a given function to batches of records of this datastream.
-   * - :meth:`ds.add_column() <ray.data.Datastream.add_column>`
-     - One-to-one
-     - Apply a given function to batches of records to create a new column.
-   * - :meth:`ds.drop_columns() <ray.data.Datastream.add_column>`
-     - One-to-one
-     - Drop the given columns from the datastream.
    * - :meth:`ds.streaming_split() <ray.data.Datastream.split>`
      - One-to-one
      - | Split the datastream into N disjoint iterators.
@@ -90,8 +84,8 @@ API in Datastreams.
 Here are the basics that you need to know about UDFs:
 
 * A UDF can be either a function, a generator, or if using the :ref:`actor compute strategy <transform_datastreams_compute_strategy>`, a :ref:`callable class <transform_datastreams_callable_classes>`.
-* Select the UDF input :ref:`batch format <transform_datastreams_batch_formats>` using the ``batch_format`` argument.
 * The UDF output type determines the Datastream schema of the transformation result.
+* (Optional) Change the UDF input :ref:`batch format <transform_datastreams_batch_formats>` using the ``batch_format`` argument.
 
 .. _transform_datastreams_callable_classes:
 
@@ -152,42 +146,22 @@ Here is an overview of the available batch formats:
 
 .. tab-set::
 
-    .. tab-item:: "default"
+    .. tab-item:: "numpy" (default)
 
-      The "default" batch format presents data as follows for each Datastream type:
+      The ``"numpy"`` option presents batches as ``Dict[str, np.ndarray]``, where the
+      `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
+      values represent a batch of record field values.
 
-      * **Tabular Datastreams**: Each batch will be a
-        `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
-        This may incur a conversion cost if the underlying Datastream block is not
-        zero-copy convertible from an Arrow table.
-
-        .. literalinclude:: ./doc_code/transforming_datastreams.py
-          :language: python
-          :start-after: __writing_default_udfs_tabular_begin__
-          :end-before: __writing_default_udfs_tabular_end__
-
-      * **Tensor Datastreams** (single-column): Each batch will be a single
-        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-        containing the single tensor column for this batch.
-
-        .. literalinclude:: ./doc_code/transforming_datastreams.py
-          :language: python
-          :start-after: __writing_default_udfs_tensor_begin__
-          :end-before: __writing_default_udfs_tensor_end__
-
-      * **Simple Datastreams**: Each batch will be a Python list.
-
-        .. literalinclude:: ./doc_code/transforming_datastreams.py
-          :language: python
-          :start-after: __writing_default_udfs_list_begin__
-          :end-before: __writing_default_udfs_list_end__
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_numpy_udfs_begin__
+        :end-before: __writing_numpy_udfs_end__
 
     .. tab-item:: "pandas"
 
       The ``"pandas"`` batch format presents batches in
       `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-      format. If converting a simple datastream to Pandas DataFrame batches, a single-column
-      dataframe with the column ``"__value__"`` will be created.
+      format.
 
       .. literalinclude:: ./doc_code/transforming_datastreams.py
         :language: python
@@ -198,92 +172,46 @@ Here is an overview of the available batch formats:
 
       The ``"pyarrow"`` batch format presents batches in
       `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-      format. If converting a simple datastream to Arrow Table batches, a single-column table
-      with the column ``"__value__"`` will be created.
+      format.
 
       .. literalinclude:: ./doc_code/transforming_datastreams.py
         :language: python
         :start-after: __writing_arrow_udfs_begin__
         :end-before: __writing_arrow_udfs_end__
 
-    .. tab-item:: "numpy"
+    .. tab-item:: None
 
-      The ``"numpy"`` batch format presents batches in
-      `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-      format as follows:
+      Specifying ``None`` will tell Ray Data to choose the most performant batch format
+      for the operation.
 
-      * **Tabular Datastreams**: Each batch will be a dictionary of NumPy
-        ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
-        in the table.
-
-      * **Tensor Datastreams** (single-column): Each batch will be a single
-        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-        containing the single tensor column for this batch.
-
-      * **Simple Datastreams**: Each batch will be a single NumPy ndarray, where Datastreams will
-        attempt to convert each list-batch to an ndarray.
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_numpy_udfs_begin__
-        :end-before: __writing_numpy_udfs_end__
-
-Converting between the underlying Datastreams data representations (Arrow, Pandas, and
-Python lists) and the requested batch format (``"default"``, ``"pandas"``,
-``"pyarrow"``, ``"numpy"``) may incur data copies; which conversions cause data copying
-is given in the below table:
+Converting between the internal block types (Arrow, Pandas)
+and the requested batch format (``"numpy"``, ``"pandas"``, ``"pyarrow"``)
+may incur data copies; which conversions cause data copying is given in the below table:
 
 
 .. list-table:: Data Format Conversion Costs
    :header-rows: 1
    :stub-columns: 1
 
-   * - Datastream Format x Batch Format
-     - ``"default"``
+   * - Block Type x Batch Format
      - ``"pandas"``
      - ``"numpy"``
      - ``"pyarrow"``
      - ``None``
-   * - ``"pandas"``
-     - Zero-copy
+   * - Pandas Block
      - Zero-copy
      - Copy*
      - Copy*
      - Zero-copy
-   * - ``"arrow"``
-     - Copy*
+   * - Arrow Block
      - Copy*
      - Zero-copy*
      - Zero-copy
      - Zero-copy
-   * - ``"simple"``
-     - Copy
-     - Copy
-     - Copy
-     - Copy
-     - Copy
 
 .. note::
   \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
-  represented in our tensor extension type (unless data is boolean). Copies **always**
-  occur when converting boolean data from/to Arrow to/from Pandas/NumPy, since Arrow
-  bitpacks boolean data while Pandas/NumPy does not.
-
-.. tip::
-
-   Prefer using vectorized operations on the ``pandas.DataFrame``,
-   ``pyarrow.Table``, and ``numpy.ndarray`` types for better performance. For
-   example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
-   instead of iterating over each row of a batch and summing up values of that column,
-   use ``df_batch["col_foo"].sum()``.
-
-.. tip::
-
-  If the UDF for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` does **not**
-  mutate its input, we can prevent an unnecessary data batch copy by specifying
-  ``zero_copy_batch=True``, which will provide the UDF with zero-copy, read-only
-  batches. See the :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` docstring for
-  more information.
+  represented in the Ray Data tensor extension type (except for bool arrays).
 
 .. _transform_datastreams_batch_output_types:
 
@@ -296,9 +224,14 @@ how they are interpreted to create the transformation result:
 
 .. tab-set::
 
-    .. tab-item:: pd.DataFrame
+    .. tab-item:: Dict[str, np.ndarray]
 
-      Returning ``pd.DataFrame`` creates a Tabular datastream as the transformation result:
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_numpy_out_udfs_begin__
+        :end-before: __writing_numpy_out_udfs_end__
+
+    .. tab-item:: pd.DataFrame
 
       .. literalinclude:: ./doc_code/transforming_datastreams.py
         :language: python
@@ -307,83 +240,23 @@ how they are interpreted to create the transformation result:
 
     .. tab-item:: pa.Table
 
-      Returning ``pa.Table`` creates a Tabular datastream as the transformation result:
-
       .. literalinclude:: ./doc_code/transforming_datastreams.py
         :language: python
         :start-after: __writing_arrow_out_udfs_begin__
         :end-before: __writing_arrow_out_udfs_end__
-
-    .. tab-item:: np.ndarray
-
-      Returning ``np.ndarray`` creates a single-column Tensor datastream as the transformation result:
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_numpy_out_udfs_begin__
-        :end-before: __writing_numpy_out_udfs_end__
-
-    .. tab-item:: Dict[str, np.ndarray]
-
-      Returning ``Dict[str, np.ndarray]`` creates a multi-column Tensor datastream as the transformation result.
-
-      If a column tensor is 1-dimensional, then the native Arrow 1D list
-      type is used; if a column tensor has 2 or more dimensions, then the Datastream
-      :ref:`tensor extension type <datastream-tensor-extension-api>` to embed these
-      n-dimensional tensors in the Arrow table.
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_numpy_dict_out_udfs_begin__
-        :end-before: __writing_numpy_dict_out_udfs_end__
-
-    .. tab-item:: list
-
-      Returning ``list`` creates a simple Python object datastream as the transformation result:
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_simple_out_udfs_begin__
-        :end-before: __writing_simple_out_udfs_end__
 
 .. _transform_datastreams_row_output_types:
 
 Row UDF Output Types
 ====================
 
-The following output types are allowed for per-row UDFs (e.g.,
-:meth:`ds.map() <ray.data.Datastream.map>`):
+When using :meth:`ds.map() <ray.data.Datastream.map>`, the output type must always be ``Dict[str, Any]``.
 
-.. tab-set::
 
-    .. tab-item:: dict
-
-      Returning a ``dict`` of Arrow-compatible data types creates a Tabular datastream
-      as the transformation result. If any dict values are not Arrow-compatible, then
-      a simple Python object datastream will be created:
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_dict_out_row_udfs_begin__
-        :end-before: __writing_dict_out_row_udfs_end__
-
-    .. tab-item:: np.ndarray
-
-      Returning ``np.ndarray`` creates a single-column Tensor datastream as the transformation result:
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_numpy_out_row_udfs_begin__
-        :end-before: __writing_numpy_out_row_udfs_end__
-
-    .. tab-item:: object
-
-      Other return row types will create a simple Python object datastream as the transformation result:
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_simple_out_row_udfs_begin__
-        :end-before: __writing_simple_out_row_udfs_end__
+.. literalinclude:: ./doc_code/transforming_datastreams.py
+  :language: python
+  :start-after: __writing_dict_out_row_udfs_begin__
+  :end-before: __writing_dict_out_row_udfs_end__
 
 .. _transform_datastreams_configuring_batch_size:
 
@@ -391,16 +264,9 @@ The following output types are allowed for per-row UDFs (e.g.,
 Configuring Batch Size
 ----------------------
 
-:meth:`ds.map_batches() <ray.data.Datastream.map_batches>` is the canonical parallel
-transformation API for Datastreams: it launches parallel tasks over the underlying Datastreams
-blocks and maps UDFs over data batches within those tasks, allowing the UDF to
-implement vectorized operations on batches. An important parameter to
-set is ``batch_size``, which controls the size of the batches provided to the UDF.
-
-.. literalinclude:: ./doc_code/transforming_datastreams.py
-  :language: python
-  :start-after: __configuring_batch_size_begin__
-  :end-before: __configuring_batch_size_end__
+An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+is ``batch_size``, which controls the size of the batches provided to the UDF. The default
+batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required.
 
 Increasing ``batch_size`` can result in faster execution by better leveraging vectorized
 operations and hardware, reducing batch slicing and concatenation overhead, and overall
@@ -408,33 +274,17 @@ saturation of CPUs/GPUs, but will also result in higher memory utilization, whic
 lead to out-of-memory failures. If encountering OOMs, decreasing your ``batch_size`` may
 help.
 
-.. note::
-  The default ``batch_size`` of ``4096`` may be too large for datastreams with large rows
-  (e.g. tables with many columns or a collection of large images).
-
-If you specify a ``batch_size`` that's larger than your ``Datastream`` blocks, Datastreams
+If you set a ``batch_size`` that's larger than your ``Datastream`` blocks, Datastreams
 will bundle multiple blocks together for a single task in order to better satisfy
 ``batch_size``. If ``batch_size`` is a lot larger than your ``Datastream`` blocks (e.g. if
 your datastream was created with too large of a ``parallelism`` and/or the ``batch_size``
 is set to too large of a value for your datastream), the number of parallel tasks
 may be less than expected.
 
-If your ``Datastream`` blocks are smaller than your ``batch_size`` and you want to increase
-:meth:`ds.map_batches() <ray.data.Datastream.map_batches>` parallelism, decrease your
-``batch_size`` to prevent this block bundling. If you think that your ``Datastream`` blocks
-are too small, try decreasing ``parallelism`` during the read to create larger blocks.
-
 .. note::
   The size of the batches provided to the UDF may be smaller than the provided
   ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
   task.
-
-.. note::
-  Block bundling (processing multiple blocks in a single task) will not occur if
-  ``batch_size`` is not set; instead, each task will receive a single block. If a block
-  is smaller than the default ``batch_size`` (4096), then the batch provided to the UDF
-  in that task will the same size as the block, and will therefore be smaller than the
-  default ``batch_size``.
 
 .. _transform_datastreams_compute_strategy:
 
@@ -558,8 +408,8 @@ perform a global shuffle.
 
     >>> import ray
     >>> datastream = ray.data.range(10)
-    >>> datastream.random_shuffle().take_all()  # doctest: +SKIP
-    [7, 0, 9, 3, 5, 1, 4, 2, 8, 6]
+    >>> datastream.random_shuffle().take_batch()  # doctest: +SKIP
+    {'id': array([7, 0, 9, 3, 5, 1, 4, 2, 8, 6])}
 
 For better performance, perform a local shuffle. Read 
 :ref:`Shuffling Data <air-shuffle>` in the AIR user guide to learn more.

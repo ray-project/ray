@@ -24,17 +24,7 @@ Generating Synthetic Data
 
 .. tabbed:: Int Range
 
-  Create a ``Datastream`` from a range of integers.
-
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __gen_synth_int_range_begin__
-    :end-before: __gen_synth_int_range_end__
-
-.. tabbed:: Tabular Range
-
-  Create an Arrow (tabular) ``Datastream`` from a range of integers,
-  with a single column containing this integer range.
+  Create a ``Datastream`` from a range of integers, with a single column containing this integer range.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -43,7 +33,7 @@ Generating Synthetic Data
 
 .. tabbed:: Tensor Range
 
-  Create a tensor datastream from a range of integers, packing this integer range into
+  Create a datastream from a range of integers, packing this integer range into
   tensors of the provided shape.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
@@ -69,16 +59,12 @@ will be read in parallel.
 
 .. _datastream_supported_file_formats:
 
-Supported File Formats
-======================
+Common File Formats
+===================
 
 .. tabbed:: Parquet
 
-  Read Parquet files into a tabular ``Datastream``. The Parquet data will be read into
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Although this simple example demonstrates reading a single file, note that
-  Datastreams can also read directories of Parquet files. We also support reading partitioned
-  Parquet datasets with partition column values pulled from the file paths.
+  Read Parquet files and directories. Partitioned parquet read support is also available.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -98,11 +84,7 @@ Supported File Formats
 
 .. tabbed:: CSV
 
-  Read CSV files into a tabular ``Datastream``. The CSV data will be read into
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Although this simple example demonstrates reading a single file, note that
-  Datastreams can also read directories of CSV files, with one tabular block created
-  per file.
+  Read CSV files and directories.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -113,11 +95,7 @@ Supported File Formats
 
 .. tabbed:: JSON
 
-  Read JSON files into a tabular ``Datastream``. The JSON data will be read into
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Although this simple example demonstrates reading a single file, note that
-  Datastreams can also read directories of JSON files, with one tabular block created
-  per file.
+  Read JSON files and directories.
 
   Currently, only newline-delimited JSON (NDJSON) is supported.
 
@@ -130,16 +108,10 @@ Supported File Formats
 
 .. tabbed:: NumPy
 
-  Read NumPy files into a tensor ``Datastream``. The NumPy ndarray data will be read into
-  single-column
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks using our
-  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`,
-  treating the outermost ndarray dimension as the row dimension. See our
-  :ref:`tensor data guide <data_tensor_support>` for more information on working
-  with tensors in Datastreams. Although this simple example demonstrates reading a single
-  file, note that Datastreams can also read directories of NumPy files, with one tensor
-  block created per file.
+  Read NumPy files and directories. The NumPy data will be represented via the Ray Data
+  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
+  Refer to the :ref:`tensor data guide <data_tensor_support>` for more information on working
+  with tensors.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -150,9 +122,7 @@ Supported File Formats
 
 .. tabbed:: Text
 
-  Read text files into a ``Datastream``. Each line in each text file will be treated as a
-  row in the datastream, resulting in a list-of-strings block being created for each text
-  file.
+  Read text files and directories. Each line in each text file will be treated as a row in the datastream.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -163,14 +133,11 @@ Supported File Formats
 
 .. tabbed:: Images
 
-  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Datastream`. 
+  Call :func:`~ray.data.read_images` to read images.
 
-  This function stores image data in single-column
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks using the 
+  This function represents image data using the Ray Data
   :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
-  For more information on working with tensors in Datastreams, read the 
-  :ref:`tensor data guide <data_tensor_support>`.
+  For more information on working with tensors, refer to the :ref:`tensor data guide <data_tensor_support>`.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -179,13 +146,10 @@ Supported File Formats
 
 .. tabbed:: Binary
 
-  Read binary files into a ``Datastream``. Each binary file will be treated as a single row
-  of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
+  Read binary files and directories. Each binary file will be converted to a record
+  containing opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
   kind of data using :meth:`~ray.data.Datastream.map_batches` to apply a per-row decoding
   :ref:`user-defined function <transform_datastreams_writing_udfs>`.
-
-  Although this simple example demonstrates reading a single file, note that Datastreams
-  can also read directories of binary files, with one bytes block created per file.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -196,7 +160,7 @@ Supported File Formats
 
 .. tabbed:: TFRecords
 
-  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
+  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a
   :class:`~ray.data.Datastream`.
 
   .. warning::
@@ -375,7 +339,7 @@ In this section, we demonstrate creating a ``Datastream`` from single-node in-me
 .. tabbed:: Pandas
 
   Create a ``Datastream`` from a Pandas DataFrame. This constructs a ``Datastream``
-  backed by a single Pandas DataFrame block.
+  backed by a single block.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -393,8 +357,8 @@ In this section, we demonstrate creating a ``Datastream`` from single-node in-me
 .. tabbed:: NumPy
 
   Create a ``Datastream`` from a NumPy ndarray. This constructs a ``Datastream``
-  backed by a single-column Arrow table block; the outer dimension of the ndarray
-  will be treated as the row dimension, and the column will have name ``"__value__"``.
+  backed by a single block; the outer dimension of the ndarray
+  will be treated as the row dimension, and the column will have name ``"data"``.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -402,7 +366,7 @@ In this section, we demonstrate creating a ``Datastream`` from single-node in-me
     :end-before: __from_numpy_end__
 
   We can also build a ``Datastream`` from more than one NumPy ndarray, where each said
-  ndarray will become a single-column Arrow table block in the ``Datastream``.
+  ndarray will become a block in the ``Datastream``.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -413,7 +377,7 @@ In this section, we demonstrate creating a ``Datastream`` from single-node in-me
 
   Create a ``Datastream`` from an
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
-  This constructs a ``Datastream`` backed by a single Arrow ``Table`` block.
+  This constructs a ``Datastream`` backed by a single block.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -430,9 +394,8 @@ In this section, we demonstrate creating a ``Datastream`` from single-node in-me
 
 .. tabbed:: Python Objects
 
-  Create a ``Datastream`` from a list of Python objects; since each object in this
-  particular list is a dictionary, Datastreams will treat this list as a list of tabular
-  records, and will construct an Arrow ``Datastream``.
+  Create a ``Datastream`` from a list of Python objects; which are interpreted as dict records.
+  If the object is not a dict, it will be wrapped as ``{"item": item}``.
 
   .. literalinclude:: ./doc_code/creating_datastreams.py
     :language: python
@@ -539,7 +502,7 @@ From Torch and TensorFlow
         torch_ds = torchvision.datasets.MNIST("data", download=True)
         datastream = ray.data.from_torch(torch_ds)
         datastream.take(1)
-        # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
+        # {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)}
 
 .. tabbed:: TensorFlow
 
@@ -849,35 +812,11 @@ For more details, check out :ref:`guide for implementing a custom datasource <cu
 Performance Considerations
 --------------------------
 
-Read Parallelism
-================
-
-Datastreams automatically selects the read ``parallelism`` according to the following procedure:
-
-1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
-2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
-3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
-4. The parallelism is truncated to ``min(num_files, parallelism)``.
-
-The ``parallelism`` determines the number of blocks the base data will be split into for parallel reads. Datastream will decide internally how many read tasks to run concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In other words, the higher the parallelism, the smaller the data blocks in the Datastream and hence the more opportunity for parallel execution.
+The datastream ``parallelism`` determines the number of blocks the base data will be split into for parallel reads. Ray Data will decide internally how many read tasks to run concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In other words, the higher the parallelism, the smaller the data blocks in the Datastream and hence the more opportunity for parallel execution.
 
 .. image:: images/datastream-read.svg
    :width: 650px
    :align: center
 
 This default parallelism can be overridden via the ``parallelism`` argument; see the
-:ref:`performance guide <data_performance_tips>`  for tips on how to tune this read
-parallelism.
-
-.. _datastream_deferred_reading:
-
-Deferred Read Task Execution
-============================
-
-Datastreams created via the ``ray.data.read_*()`` APIs are lazy: no read tasks are
-executed until a downstream consumption operation triggers execution. Metadata
-inspection functions like :meth:`ds.schema() <ray.data.Datastream.schema>` and
-:meth:`ds.show() <ray.data.Datastream.show>` will trigger execution of only one or some
-tasks, instead of all tasks. This allows metadata to be inspected right away. Execution
-of all read tasks can be triggered manually using the
-:meth:`ds.materialize() <ray.data.Datastream.materialize>` API.
+:ref:`performance guide <data_performance_tips>`  for more information on how to tune this read parallelism.
