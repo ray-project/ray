@@ -64,14 +64,7 @@ Writing User-defined Functions (UDFs)
 
 User-defined functions (UDFs) are routines that apply on one row (e.g.
 :meth:`.map() <ray.data.Datastream.map>`) or a batch of rows (e.g.
-:meth:`.map_batches() <ray.data.Datastream.map_batches>`) of a datastream. UDFs let you
-express your customized business logic in transformations.
-
-Here are the basics that you need to know about UDFs:
-
-* A UDF can be either a function, a generator, or if using the :ref:`actor compute strategy <transform_datastreams_compute_strategy>`, a :ref:`callable class <transform_datastreams_callable_classes>`.
-* The UDF output type determines the Datastream schema of the transformation result.
-* (Optional) Change the UDF input :ref:`batch format <transform_datastreams_batch_formats>` using the ``batch_format`` argument.
+:meth:`.map_batches() <ray.data.Datastream.map_batches>`) of a datastream.
 
 .. _transform_datastreams_callable_classes:
 
@@ -143,12 +136,16 @@ When using :meth:`ds.map() <ray.data.Datastream.map>`, both the input and output
 
 .. _transform_datastreams_batch_formats:
 
-Batch format for ``map_batches()``
-==================================
+Using ``map_batches()``
+=======================
 
-When using :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`,
-you can choose the *batch format* of the data given to your UDF via
-the ``batch_format`` option. Here is an overview of the available batch formats:
+When using :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, data is
+given to your UDF in batches. You can choose *batch size* using the ``batch_size`` argument, and
+the *batch format* using ``batch_format``.
+
+The following are examples in each available batch format.
+Note that you do not have to return data in the same batch format as specified in the input.
+For example, you could return a ``pd.DataFrame`` even if the input was in ``numpy`` format.
 
 .. tab-set::
 
@@ -190,6 +187,31 @@ the ``batch_format`` option. Here is an overview of the available batch formats:
       Specifying ``None`` will tell Ray Data to choose the most performant batch format
       for the operation.
 
+Configuring Batch Size
+~~~~~~~~~~~~~~~~~~~~~~
+
+An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+is ``batch_size``, which controls the size of the batches provided to the UDF. The default
+batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required.
+
+Increasing ``batch_size`` can improve performance for UDFs that take advantage of vectorization,
+but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors.
+If encountering OOMs, decreasing your ``batch_size`` may help.
+
+If you set a ``batch_size`` that's larger than your ``Datastream`` blocks, Datastreams
+will bundle multiple blocks together for a single task in order to better satisfy
+``batch_size``. If ``batch_size`` is a lot larger than your ``Datastream`` blocks (e.g. if
+your datastream was created with too large of a ``parallelism`` and/or the ``batch_size``
+is set to too large of a value for your datastream), the number of parallel tasks
+may be less than expected.
+
+.. note::
+  The size of the batches provided to the UDF may be smaller than the provided
+  ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
+  task.
+
+Format Overheads
+~~~~~~~~~~~~~~~~
 Converting between the internal block types (Arrow, Pandas)
 and the requested batch format (``"numpy"``, ``"pandas"``, ``"pyarrow"``)
 may incur data copies; which conversions cause data copying is given in the below table:
@@ -219,38 +241,6 @@ may incur data copies; which conversions cause data copying is given in the belo
   \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
   represented in the Ray Data tensor extension type (except for bool arrays).
 
-.. _transform_datastreams_batch_output_types:
-
-Return type for ``map_batches()``
-=================================
-
-The following return types are allowed for batch UDFs (i.e., those passed to
-:meth:`ds.map_batches() <ray.data.Datastream.map_batches>`). The following describes
-how they are interpreted to create the transformation result:
-
-.. tab-set::
-
-    .. tab-item:: Dict[str, np.ndarray]
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_numpy_out_udfs_begin__
-        :end-before: __writing_numpy_out_udfs_end__
-
-    .. tab-item:: pd.DataFrame
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_pandas_out_udfs_begin__
-        :end-before: __writing_pandas_out_udfs_end__
-
-    .. tab-item:: pa.Table
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_arrow_out_udfs_begin__
-        :end-before: __writing_arrow_out_udfs_end__
-
 ---------------------
 Configuring Resources
 ---------------------
@@ -262,30 +252,6 @@ To increase the resources reserved per task, you can increase the CPU request by
 To request tasks be run on a GPU, use ``.map_batches(..., num_gpus=1)``, etc. In addition to
 ``num_cpus`` and ``num_gpus``, any kwarg from ``@ray.remote`` can be passed to customize
 the resource scheduling of transformation tasks.
-
-----------------------
-Configuring Batch Size
-----------------------
-
-An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
-is ``batch_size``, which controls the size of the batches provided to the UDF. The default
-batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required.
-
-Increasing ``batch_size`` can improve performance for UDFs that take advantage of vectorization,
-but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors.
-If encountering OOMs, decreasing your ``batch_size`` may help.
-
-If you set a ``batch_size`` that's larger than your ``Datastream`` blocks, Datastreams
-will bundle multiple blocks together for a single task in order to better satisfy
-``batch_size``. If ``batch_size`` is a lot larger than your ``Datastream`` blocks (e.g. if
-your datastream was created with too large of a ``parallelism`` and/or the ``batch_size``
-is set to too large of a value for your datastream), the number of parallel tasks
-may be less than expected.
-
-.. note::
-  The size of the batches provided to the UDF may be smaller than the provided
-  ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
-  task.
 
 .. _transform_datastreams_compute_strategy:
 
