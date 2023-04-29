@@ -186,7 +186,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # of the models regardless of this flag. If this flag is set to `True`, inputs and
     # outputs are checked on every call. This leads to a slow-down and should only be
     # used for debugging. Note that this flag is only relevant for instances of
-    # Rllib's Model class. These are commonly generated from ModelConfigs in RLModules.
+    # RLlib's Model class. These are commonly generated from ModelConfigs in RLModules.
     "always_check_shapes": False,
 
     # Deprecated keys:
