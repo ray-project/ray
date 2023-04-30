@@ -125,12 +125,10 @@ def _write_lines_and_get_offset_at_index(
 @pytest.mark.parametrize("new_line", [True, False])
 @pytest.mark.parametrize("block_size", [4, 16, 256])
 def test_find_start_offset_last_n_lines_from_offset(new_line, temp_file, block_size):
-
-    with open(temp_file.name, "wb") as file:
-        o, end_file = _write_lines_and_get_offset_at_index(
-            file, num_lines=50, start_offset=0, trailing_new_line=new_line
-        )
-    file = open(temp_file.name, "rb")
+    file = temp_file
+    o, end_file = _write_lines_and_get_offset_at_index(
+        file, num_lines=50, start_offset=0, trailing_new_line=new_line
+    )
     # Test the function with different offsets and number of lines to find
     assert find_start_offset_last_n_lines_from_offset(file, o[3], 1, block_size) == o[2]
     assert (
@@ -164,15 +162,13 @@ def test_find_start_offset_last_n_lines_from_offset(new_line, temp_file, block_s
         find_start_offset_last_n_lines_from_offset(file, o[2] - 1, 1, block_size)
         == o[1]
     )
-    file.close()
 
 
 def test_find_end_offset_next_n_lines_from_offset(temp_file):
-    with open(temp_file.name, "wb") as file:
-        o, end_file = _write_lines_and_get_offset_at_index(
-            file, num_lines=10, start_offset=0
-        )
-    file = open(temp_file.name, "rb")
+    file = temp_file
+    o, end_file = _write_lines_and_get_offset_at_index(
+        file, num_lines=10, start_offset=0
+    )
     # Test the function with different offsets and number of lines to find
     assert find_end_offset_next_n_lines_from_offset(file, o[3], 1) == o[4]
     assert find_end_offset_next_n_lines_from_offset(file, o[3], 2) == o[5]
@@ -184,8 +180,6 @@ def test_find_end_offset_next_n_lines_from_offset(temp_file):
     # Test offset diff
     assert find_end_offset_next_n_lines_from_offset(file, 1, 1) == o[1]
     assert find_end_offset_next_n_lines_from_offset(file, o[1] - 1, 1) == o[1]
-
-    file.close()
 
 
 @pytest.mark.asyncio
@@ -203,18 +197,16 @@ def test_find_end_offset_next_n_lines_from_offset(temp_file):
 )
 async def test_stream_log_in_chunk(random_ascii_file, start_offset, end_offset):
     """Test streaming of a file from different offsets"""
-    with open(random_ascii_file.name, "rb") as test_file:
-        context = MagicMock(grpc.aio.ServicerContext)
-        context.done.return_value = False
+    test_file = random_ascii_file
+    context = MagicMock(grpc.aio.ServicerContext)
+    context.done.return_value = False
 
-        expected_file_content = _read_file(test_file, start_offset, end_offset)
-        actual_log_content = await _stream_log(
-            context, test_file, start_offset, end_offset
-        )
+    expected_file_content = _read_file(test_file, start_offset, end_offset)
+    actual_log_content = await _stream_log(context, test_file, start_offset, end_offset)
 
-        assert (
-            expected_file_content == actual_log_content
-        ), "Non-matching content from log streamed"
+    assert (
+        expected_file_content == actual_log_content
+    ), "Non-matching content from log streamed"
 
 
 @pytest.mark.asyncio
@@ -230,25 +222,22 @@ async def test_log_tails(lines_to_tail, total_lines, trailing_new_line, temp_fil
         total_lines,
         trailing_new_line=trailing_new_line,
     )
+    test_file = temp_file
+    context = MagicMock(grpc.aio.ServicerContext)
+    context.done.return_value = False
+    start_offset = find_start_offset_last_n_lines_from_offset(
+        test_file, offset=-1, n=lines_to_tail
+    )
 
-    with open(temp_file.name, "rb") as test_file:
-        context = MagicMock(grpc.aio.ServicerContext)
-        context.done.return_value = False
-        start_offset = find_start_offset_last_n_lines_from_offset(
-            test_file, offset=-1, n=lines_to_tail
-        )
+    actual_data = await _stream_log(context, test_file, start_offset, -1)
+    expected_data = _read_file(test_file, start_offset, -1)
 
-        actual_data = await _stream_log(context, test_file, start_offset, -1)
-        expected_data = _read_file(test_file, start_offset, -1)
+    assert actual_data == expected_data, "Non-matching data from stream log"
 
-        assert actual_data == expected_data, "Non-matching data from stream log"
-
-        all_lines = actual_data.decode("utf-8")
-        assert all_lines.count("\n") == (
-            lines_to_tail
-            if trailing_new_line or lines_to_tail == 0
-            else lines_to_tail - 1
-        ), "Non-matching number of lines tailed"
+    all_lines = actual_data.decode("utf-8")
+    assert all_lines.count("\n") == (
+        lines_to_tail if trailing_new_line or lines_to_tail == 0 else lines_to_tail - 1
+    ), "Non-matching number of lines tailed"
 
 
 @pytest.mark.asyncio
@@ -259,47 +248,44 @@ async def test_log_tails(lines_to_tail, total_lines, trailing_new_line, temp_fil
 async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
     """Test tailing a log file that grows at the same time"""
     _write_lines_and_get_offset_at_index(temp_file, total_lines)
+    test_file = temp_file
+    context = MagicMock(grpc.aio.ServicerContext)
+    context.done.return_value = False
+    start_offset = find_start_offset_last_n_lines_from_offset(
+        test_file, offset=-1, n=lines_to_tail
+    )
 
-    with open(temp_file.name, "rb") as test_file:
-        context = MagicMock(grpc.aio.ServicerContext)
-        context.done.return_value = False
-        start_offset = find_start_offset_last_n_lines_from_offset(
-            test_file, offset=-1, n=lines_to_tail
-        )
+    actual_data = await _stream_log(context, test_file, start_offset, -1)
 
-        actual_data = await _stream_log(context, test_file, start_offset, -1)
+    end_offset = find_end_offset_file(test_file)
+    expected_data = _read_file(test_file, start_offset, end_offset)
+    assert actual_data == expected_data, "Non-matching data from stream log"
 
-        end_offset = find_end_offset_file(test_file)
-        expected_data = _read_file(test_file, start_offset, end_offset)
-        assert actual_data == expected_data, "Non-matching data from stream log"
+    all_lines = actual_data.decode("utf-8")
+    assert all_lines.count("\n") == lines_to_tail, "Non-matching number of lines tailed"
 
-        all_lines = actual_data.decode("utf-8")
-        assert (
-            all_lines.count("\n") == lines_to_tail
-        ), "Non-matching number of lines tailed"
+    # Modify the file with append here
+    num_new_lines = 2
+    _write_lines_and_get_offset_at_index(
+        temp_file, num_new_lines, start_offset=end_offset
+    )
 
-        # Modify the file with append here
-        num_new_lines = 2
-        _write_lines_and_get_offset_at_index(
-            temp_file, num_new_lines, start_offset=end_offset
-        )
+    # Tail again should read the new lines written
+    start_offset = find_start_offset_last_n_lines_from_offset(
+        test_file, offset=-1, n=lines_to_tail + num_new_lines
+    )
 
-        # Tail again should read the new lines written
-        start_offset = find_start_offset_last_n_lines_from_offset(
-            test_file, offset=-1, n=lines_to_tail + num_new_lines
-        )
+    expected_data = _read_file(test_file, start_offset, -1)
+    actual_data = await _stream_log(context, test_file, start_offset, -1)
 
-        expected_data = _read_file(test_file, start_offset, -1)
-        actual_data = await _stream_log(context, test_file, start_offset, -1)
+    assert (
+        actual_data == expected_data
+    ), "Non-matching data from stream log after append"
 
-        assert (
-            actual_data == expected_data
-        ), "Non-matching data from stream log after append"
-
-        all_lines = actual_data.decode("utf-8")
-        assert (
-            all_lines.count("\n") == lines_to_tail + num_new_lines
-        ), "Non-matching number of lines tailed after append"
+    all_lines = actual_data.decode("utf-8")
+    assert (
+        all_lines.count("\n") == lines_to_tail + num_new_lines
+    ), "Non-matching number of lines tailed after append"
 
 
 # Unit Tests (LogsManager)

@@ -1147,7 +1147,7 @@ def enable_syncer_test(request, monkeypatch):
 
 @pytest.fixture(scope="function")
 def temp_file(request):
-    with tempfile.NamedTemporaryFile() as fp:
+    with tempfile.NamedTemporaryFile("r+b") as fp:
         yield fp
 
 
@@ -1158,8 +1158,8 @@ def random_ascii_file(request):
 
     file_size = getattr(request, "param", 1 << 10)
 
-    with tempfile.NamedTemporaryFile(mode="w") as fp:
-        fp.write("".join(random.choices(string.ascii_letters, k=file_size)))
+    with tempfile.NamedTemporaryFile(mode="r+b") as fp:
+        fp.write("".join(random.choices(string.ascii_letters, k=file_size)).encode())
         fp.flush()
 
         yield fp
