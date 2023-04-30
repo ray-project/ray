@@ -14,29 +14,31 @@ Object refs can be created in two ways.
   1. They are returned by remote function calls.
   2. They are returned by :func:`ray.put() <ray.put>`.
 
-.. tabbed:: Python
+.. tab-set::
 
-  .. code-block:: python
+    .. tab-item:: Python
 
-    # Put an object in Ray's object store.
-    y = 1
-    object_ref = ray.put(y)
+      .. code-block:: python
 
-.. tabbed:: Java
+        # Put an object in Ray's object store.
+        y = 1
+        object_ref = ray.put(y)
 
-  .. code-block:: java
+    .. tab-item:: Java
 
-    // Put an object in Ray's object store.
-    int y = 1;
-    ObjectRef<Integer> objectRef = Ray.put(y);
+      .. code-block:: java
 
-.. tabbed:: C++
+        // Put an object in Ray's object store.
+        int y = 1;
+        ObjectRef<Integer> objectRef = Ray.put(y);
 
-  .. code-block:: c++
+    .. tab-item:: C++
 
-    // Put an object in Ray's object store.
-    int y = 1;
-    ray::ObjectRef<int> object_ref = ray::Put(y);
+      .. code-block:: c++
+
+        // Put an object in Ray's object store.
+        int y = 1;
+        ray::ObjectRef<int> object_ref = ray::Put(y);
 
 .. note::
 
@@ -51,82 +53,84 @@ Fetching Object Data
 You can use the :func:`ray.get() <ray.get>` method to fetch the result of a remote object from an object ref.
 If the current node's object store does not contain the object, the object is downloaded.
 
-.. tabbed:: Python
+.. tab-set::
 
-    If the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
-    or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
-    Otherwise, we deserialize the object data into a Python object.
+    .. tab-item:: Python
 
-    .. code-block:: python
+        If the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
+        or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
+        Otherwise, we deserialize the object data into a Python object.
 
-      # Get the value of one object ref.
-      obj_ref = ray.put(1)
-      assert ray.get(obj_ref) == 1
+        .. code-block:: python
 
-      # Get the values of multiple object refs in parallel.
-      assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
+          # Get the value of one object ref.
+          obj_ref = ray.put(1)
+          assert ray.get(obj_ref) == 1
 
-      # You can also set a timeout to return early from a ``get``
-      # that's blocking for too long.
-      from ray.exceptions import GetTimeoutError
-      # ``GetTimeoutError`` is a subclass of ``TimeoutError``.
+          # Get the values of multiple object refs in parallel.
+          assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
 
-      @ray.remote
-      def long_running_function():
-          time.sleep(8)
+          # You can also set a timeout to return early from a ``get``
+          # that's blocking for too long.
+          from ray.exceptions import GetTimeoutError
+          # ``GetTimeoutError`` is a subclass of ``TimeoutError``.
 
-      obj_ref = long_running_function.remote()
-      try:
-          ray.get(obj_ref, timeout=4)
-      except GetTimeoutError:  # You can capture the standard "TimeoutError" instead
-          print("`get` timed out.")
+          @ray.remote
+          def long_running_function():
+              time.sleep(8)
 
-.. tabbed:: Java
+          obj_ref = long_running_function.remote()
+          try:
+              ray.get(obj_ref, timeout=4)
+          except GetTimeoutError:  # You can capture the standard "TimeoutError" instead
+              print("`get` timed out.")
 
-    .. code-block:: java
+    .. tab-item:: Java
 
-      // Get the value of one object ref.
-      ObjectRef<Integer> objRef = Ray.put(1);
-      Assert.assertTrue(objRef.get() == 1);
-      // You can also set a timeout(ms) to return early from a ``get`` that's blocking for too long.
-      Assert.assertTrue(objRef.get(1000) == 1);
+        .. code-block:: java
 
-      // Get the values of multiple object refs in parallel.
-      List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
-      for (int i = 0; i < 3; i++) {
-	objectRefs.add(Ray.put(i));
-      }
-      List<Integer> results = Ray.get(objectRefs);
-      Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
+          // Get the value of one object ref.
+          ObjectRef<Integer> objRef = Ray.put(1);
+          Assert.assertTrue(objRef.get() == 1);
+          // You can also set a timeout(ms) to return early from a ``get`` that's blocking for too long.
+          Assert.assertTrue(objRef.get(1000) == 1);
 
-      // Ray.get timeout example: Ray.get will throw an RayTimeoutException if time out.
-      public class MyRayApp {
-        public static int slowFunction() throws InterruptedException {
-          TimeUnit.SECONDS.sleep(10);
-          return 1;
-        }
-      }
-      Assert.assertThrows(RayTimeoutException.class,
-        () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
+          // Get the values of multiple object refs in parallel.
+          List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
+          for (int i = 0; i < 3; i++) {
+        objectRefs.add(Ray.put(i));
+          }
+          List<Integer> results = Ray.get(objectRefs);
+          Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
 
-.. tabbed:: C++
+          // Ray.get timeout example: Ray.get will throw an RayTimeoutException if time out.
+          public class MyRayApp {
+            public static int slowFunction() throws InterruptedException {
+              TimeUnit.SECONDS.sleep(10);
+              return 1;
+            }
+          }
+          Assert.assertThrows(RayTimeoutException.class,
+            () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
 
-    .. code-block:: c++
+    .. tab-item:: C++
 
-      // Get the value of one object ref.
-      ray::ObjectRef<int> obj_ref = ray::Put(1);
-      assert(*obj_ref.Get() == 1);
+        .. code-block:: c++
 
-      // Get the values of multiple object refs in parallel.
-      std::vector<ray::ObjectRef<int>> obj_refs;
-      for (int i = 0; i < 3; i++) {
-        obj_refs.emplace_back(ray::Put(i));
-      }
-      auto results = ray::Get(obj_refs);
-      assert(results.size() == 3);
-      assert(*results[0] == 0);
-      assert(*results[1] == 1);
-      assert(*results[2] == 2);
+          // Get the value of one object ref.
+          ray::ObjectRef<int> obj_ref = ray::Put(1);
+          assert(*obj_ref.Get() == 1);
+
+          // Get the values of multiple object refs in parallel.
+          std::vector<ray::ObjectRef<int>> obj_refs;
+          for (int i = 0; i < 3; i++) {
+            obj_refs.emplace_back(ray::Put(i));
+          }
+          auto results = ray::Get(obj_refs);
+          assert(results.size() == 3);
+          assert(*results[0] == 0);
+          assert(*results[1] == 1);
+          assert(*results[2] == 2);
 
 Passing Object Arguments
 ------------------------

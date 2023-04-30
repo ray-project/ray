@@ -11,23 +11,33 @@ from ray.rllib.core.models.base import (
 )
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
     CNNEncoderConfig,
     MLPEncoderConfig,
-    ModelConfig,
+    RecurrentEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.models.utils import get_activation_fn
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
 
 torch, nn = try_import_torch()
+
+
+class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
+    """An actor-critic encoder for torch."""
+
+    framework = "torch"
+
+    def __init__(self, config: ActorCriticEncoderConfig) -> None:
+        TorchModel.__init__(self, config)
+        ActorCriticEncoder.__init__(self, config)
 
 
 class TorchMLPEncoder(TorchModel, Encoder):
@@ -50,7 +60,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TorchTensorSpec("b, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, d", d=self.config.input_dims[0], framework="torch"
+                ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
             }
@@ -60,7 +72,9 @@ class TorchMLPEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: None,
             }
         )
@@ -115,11 +129,12 @@ class TorchCNNEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TorchTensorSpec(
+                SampleBatch.OBS: TensorSpec(
                     "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
                     c=self.config.input_dims[2],
+                    framework="torch",
                 ),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
@@ -130,7 +145,9 @@ class TorchCNNEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("b, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: None,
             }
         )
@@ -145,37 +162,45 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
 
-class TorchLSTMEncoder(TorchModel, Encoder):
-    """An encoder that uses an LSTM cell and a linear layer."""
+class TorchGRUEncoder(TorchModel, Encoder):
+    """An encoder that uses one or more GRU cells and a linear output layer."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: RecurrentEncoderConfig) -> None:
         TorchModel.__init__(self, config)
 
-        # Create the neural networks
-        self.lstm = nn.LSTM(
-            # We only support 1D spaces right now.
-            config.observation_space.shape[0],
+        # Create the torch LSTM layer.
+        self.gru = nn.GRU(
+            config.input_dims[0],
             config.hidden_dim,
             config.num_layers,
-            batch_first=config.batch_first,
+            batch_first=config.batch_major,
+            bias=config.use_bias,
         )
-        self.linear = nn.Linear(config.hidden_dim, config.output_dims[0])
+        # Create the final dense layer.
+        self.linear = nn.Linear(
+            config.hidden_dim,
+            config.output_dims[0],
+            bias=config.use_bias,
+        )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                # `bxt` is just a name for better readability to indicate padded batch.
-                SampleBatch.OBS: TorchTensorSpec("bxt, h", h=self.config.input_dims[0]),
+                # b, t for batch major; t, b for time major.
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d",
+                    d=self.config.input_dims[0],
+                    framework="torch",
+                ),
                 STATE_IN: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
-                    ),
-                    "c": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
                     ),
                 },
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -183,13 +208,15 @@ class TorchLSTMEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TorchTensorSpec("bxt, h", h=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="torch"
+                ),
                 STATE_OUT: {
-                    "h": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
-                    ),
-                    "c": TorchTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
                     ),
                 },
             }
@@ -197,42 +224,121 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
     @override(Model)
     def get_initial_state(self):
-        config = self.config
         return {
-            "h": torch.zeros(config.num_layers, config.hidden_dim),
-            "c": torch.zeros(config.num_layers, config.hidden_dim),
+            "h": torch.zeros(self.config.num_layers, self.config.hidden_dim),
         }
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        x = inputs[SampleBatch.OBS].float()
-        states = inputs[STATE_IN]
-        # states are batch-first when coming in
-        states = tree.map_structure(lambda x: x.transpose(0, 1), states)
+        out = inputs[SampleBatch.OBS].float()
 
-        x = add_time_dimension(
-            x,
-            seq_lens=inputs[SampleBatch.SEQ_LENS],
-            framework="torch",
-            time_major=not self.config.batch_first,
-        )
-        states_o = {}
-        x, (states_o["h"], states_o["c"]) = self.lstm(x, (states["h"], states["c"]))
+        # States are batch-first when coming in. Make them layers-first.
+        states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
 
-        x = self.linear(x)
-        x = x.view(-1, x.shape[-1])
+        out, states_out = self.gru(out, states_in["h"])
+        states_out = {"h": states_out}
+
+        out = self.linear(out)
 
         return {
-            ENCODER_OUT: x,
-            STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
+            ENCODER_OUT: out,
+            # Make states layer-first again.
+            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
         }
 
 
-class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
-    """An actor-critic encoder for torch."""
+class TorchLSTMEncoder(TorchModel, Encoder):
+    """An encoder that uses an LSTM cell and a linear layer."""
 
-    framework = "torch"
+    def __init__(self, config: RecurrentEncoderConfig) -> None:
+        TorchModel.__init__(self, config)
 
-    def __init__(self, config: ModelConfig) -> None:
-        TorchModel.__init__(self, config, skip_nn_module_init=True)
-        ActorCriticEncoder.__init__(self, config)
+        # Create the torch LSTM layer.
+        self.lstm = nn.LSTM(
+            # We only support 1D spaces right now.
+            config.input_dims[0],
+            config.hidden_dim,
+            config.num_layers,
+            batch_first=config.batch_major,
+            bias=config.use_bias,
+        )
+        # Create the final dense layer.
+        self.linear = nn.Linear(
+            config.hidden_dim,
+            config.output_dims[0],
+            bias=config.use_bias,
+        )
+
+    @override(Model)
+    def get_input_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                # b, t for batch major; t, b for time major.
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="torch"
+                ),
+                STATE_IN: {
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
+                    ),
+                    "c": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
+                    ),
+                },
+            }
+        )
+
+    @override(Model)
+    def get_output_specs(self) -> Optional[Spec]:
+        return SpecDict(
+            {
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="torch"
+                ),
+                STATE_OUT: {
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
+                    ),
+                    "c": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="torch",
+                    ),
+                },
+            }
+        )
+
+    @override(Model)
+    def get_initial_state(self):
+        return {
+            "h": torch.zeros(self.config.num_layers, self.config.hidden_dim),
+            "c": torch.zeros(self.config.num_layers, self.config.hidden_dim),
+        }
+
+    @override(Model)
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        out = inputs[SampleBatch.OBS].float()
+
+        # States are batch-first when coming in. Make them layers-first.
+        states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
+
+        out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
+        states_out = {"h": states_out[0], "c": states_out[1]}
+
+        out = self.linear(out)
+
+        return {
+            ENCODER_OUT: out,
+            # Make states layer-first again.
+            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
+        }

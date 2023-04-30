@@ -31,10 +31,10 @@ aws_gpu_cpu_to_concurrency_groups = [
 ]
 
 gce_gpu_cpu_to_concurrent_groups = [
-    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
-    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
-    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=3),
-    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=8),
+    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=16),
+    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=32),
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous-gce", limit=1
     ),
@@ -61,6 +61,7 @@ gcp_gpu_instances = {
     "n1-standard-16-nvidia-tesla-t4-1": (16, 1),
     "n1-standard-64-nvidia-tesla-t4-4": (64, 4),
     "n1-standard-32-nvidia-tesla-t4-2": (32, 2),
+    "n1-highmem-64-nvidia-tesla-v100-8": {64, 8},
     "n1-highmem-96-nvidia-tesla-v100-8": {96, 8},
 }
 

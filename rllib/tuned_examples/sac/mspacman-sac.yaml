@@ -5,7 +5,7 @@ mspacman-sac-tf:
     env: ALE/MsPacman-v5
     run: SAC
     stop:
-        episode_reward_mean: 800
+        sampler_results/episode_reward_mean: 800
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

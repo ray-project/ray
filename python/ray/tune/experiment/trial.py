@@ -57,6 +57,7 @@ from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
+_DEFAULT_WIN_MAX_PATH_LENGTH = 260
 logger = logging.getLogger(__name__)
 
 
@@ -181,6 +182,13 @@ class _TrialInfo:
     @trial_resources.setter
     def trial_resources(self, new_resources: PlacementGroupFactory):
         self._trial_resources = new_resources
+
+
+def _get_max_path_length() -> int:
+    if hasattr(os, "pathconf"):
+        return os.pathconf("/", "PC_PATH_MAX")
+    # Windows
+    return _DEFAULT_WIN_MAX_PATH_LENGTH
 
 
 def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
@@ -820,6 +828,14 @@ class Trial:
             )
         assert self.local_path
         logdir_path = Path(self.local_path)
+        max_path_length = _get_max_path_length()
+        if len(str(logdir_path)) >= max_path_length:
+            logger.warning(
+                f"The path to the trial log directory is too long "
+                f"(max length: {max_path_length}. "
+                f"Consider using `trial_dirname_creator` to shorten the path. "
+                f"Path: {logdir_path}"
+            )
         logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()

@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces import (
 class InputDataBuffer(PhysicalOperator):
     """Defines the input data for the operator DAG.
 
-    For example, this may hold cached blocks from a previous Dataset execution, or
+    For example, this may hold cached blocks from a previous Datastream execution, or
     the arguments for read tasks.
     """
 
