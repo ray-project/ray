@@ -48,6 +48,7 @@ def main(
             f"Concurrency input need to be a positive number, received: {concurrency}"
         )
     test = _get_test(test_name)
+    """
     pre_sanity_check = _sanity_check(
         test, passing_commit, failing_commit, run_per_commit)
     if not pre_sanity_check:
@@ -56,6 +57,7 @@ def main(
             " an external (not a code change) factors"
         )
         return
+    """
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
     blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
