@@ -145,7 +145,7 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool, detail: bool = False, **kwargs):
+def state_column(*, filterable: bool = True, detail: bool = False, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
@@ -156,16 +156,20 @@ def state_column(*, filterable: bool, detail: bool = False, **kwargs):
         filterable: If True, the column can be used for filtering.
         kwargs: The same kwargs for the `dataclasses.field` function.
     """
-    m = {"detail": detail, "filterable": filterable}
 
     # Default for detail field is None since it could be missing.
     if detail and "default" not in kwargs:
         kwargs["default"] = None
 
     if "metadata" in kwargs:
-        kwargs["metadata"].update(m)
+        # Metadata explicitly specified, so add detail and filterable if missing.
+        if "detail" not in kwargs["metadata"]:
+            kwargs["metadata"]["detail"] = detail
+        if "filterable" not in kwargs["metadata"]:
+            kwargs["metadata"]["filterable"] = filterable
     else:
-        kwargs["metadata"] = m
+        # Metadata not explicitly specified, so add it.
+        kwargs["metadata"] = {"detail": detail, "filterable": filterable}
     return field(**kwargs)
 
 
@@ -545,6 +549,22 @@ class ClusterEventState(StateSchema):
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
+class Humanify:
+    """A class containing default methods to convert units into a human readable string."""
+
+    def timestamp(x: float):
+        """Converts miliseconds to a datetime object."""
+        return datetime.datetime.fromtimestamp(x / 1000)
+
+    def memory(x: int):
+        """Converts raw bytes to megabytes"""
+        return str(x / 1e6) + " MB"
+
+    def duration(x: int):
+        """Converts miliseconds to a human readable duration."""
+        return str(datetime.timedelta(milliseconds=x))
+
+
 @dataclass(init=True)
 class TaskState(StateSchema):
     """Task State"""
@@ -604,15 +624,17 @@ class TaskState(StateSchema):
     #: The list of profile events of the given task.
     profiling_data: Optional[dict] = state_column(detail=True, filterable=False)
     #: The time when the task is created. A Unix timestamp in ms.
-    creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    creation_time_ms: Optional[int] = state_column(
+        metadata={"detail": True, "filterable": False, "format_fn": Humanify.timestamp},
+    )
     #: The time when the task starts to run. A Unix timestamp in ms.
     start_time_ms: Optional[int] = state_column(
-        detail=True,
-        filterable=False,
-        metadata={"format_fn": lambda x: datetime.datetime.fromtimestamp(x / 1000)},
+        metadata={"detail": True, "filterable": False, "format_fn": Humanify.timestamp},
     )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
-    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    end_time_ms: Optional[int] = state_column(
+        metadata={"detail": True, "filterable": False, "format_fn": Humanify.timestamp},
+    )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
