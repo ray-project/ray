@@ -522,14 +522,14 @@ class Learner:
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
-        mean_grads = [
-            np.mean(grad)
+        mean_abs_grads = [
+            np.mean(np.abs(grad))
             for grad in convert_to_numpy(postprocessed_gradients.values())
             if grad is not None
         ]
 
         module_learner_stats[ALL_MODULES] = {
-            "mean_gradient": np.mean(mean_grads),
+            "mean_abs_postprocessed_gradients": np.mean(mean_abs_grads),
             self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
         }
 
@@ -754,19 +754,21 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
+        self,
+        gradients_dict: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        """Applies potential postprocessings to the gradients.
+        """Applies potential postprocessing operations on the gradients.
 
-        In some algorithms, we may want to perform some postprocessing on the
-        gradients before they are applied. This method is called after gradients
-        have been computed, and modifies them before they are applied.
+        This method is called after gradients have been computed, and modifies them
+        before they are applied to the respective module(s).
+        This includes grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
 
         Args:
             gradients_dict: A dictionary of gradients.
 
         Returns:
-            A dictionary of updated gradients.
+            A dictionary with the updated gradients.
         """
         return gradients_dict
 
@@ -776,7 +778,9 @@ class Learner:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
     ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -845,14 +849,29 @@ class Learner:
 
         Args:
             state: The state of the optimizer and module. Can be obtained
-                from `get_state`.
+                from `get_state`. State is a dictionary with two keys:
+                "module_state" and "optimizer_state". The value of each key
+                is a dictionary that can be passed to `set_weights` and
+                `set_optimizer_weights` respectively.
 
         """
         # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
         # having both can become confusing. Can we simplify this API requirement?
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        self._module.set_state(state.get("module_state", {}))
+        if "module_state" not in state:
+            raise ValueError(
+                "state must have a key 'module_state' for the module weights"
+            )
+        if "optimizer_state" not in state:
+            raise ValueError(
+                "state must have a key 'optimizer_state' for the optimizer weights"
+            )
+
+        module_state = state.get("module_state")
+        optimizer_state = state.get("optimizer_state")
+        self.set_weights(module_state)
+        self.set_optimizer_weights(optimizer_state)
 
     def get_state(self) -> Mapping[str, Any]:
         """Get the state of the learner.
@@ -863,7 +882,29 @@ class Learner:
         """
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        return {"module_state": self._module.get_state()}
+        return {
+            "module_state": self.get_weights(),
+            "optimizer_state": self.get_optimizer_weights(),
+        }
+        # return {"module_state": self.get_weights(), "optimizer_state": {}}
+
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        """Set the weights of the optimizer.
+
+        Args:
+            weights: The weights of the optimizer.
+
+        """
+        raise NotImplementedError
+
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        """Get the weights of the optimizer.
+
+        Returns:
+            The weights of the optimizer.
+
+        """
+        raise NotImplementedError
 
     def _get_metadata(self) -> Dict[str, Any]:
         metadata = {
@@ -902,6 +943,16 @@ class Learner:
         NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
         will be appended to.
 
+        the state of the learner is saved in the following format:
+
+        checkpoint_dir/
+            learner_state.json
+            module_state/
+                module_1/
+                    ...
+            optimizer_state/
+                optimizers_module_1/
+                    ...
 
         Args:
             path: The path to the directory to save the state to.
@@ -957,17 +1008,17 @@ class Learner:
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
-        multi-agent RL module. Override this method if there are other things than
-        needs to happen for instantiation of the module.
-
+        multi-agent RL module. Override this method if there are other things that
+        need to happen for instantiation of the module.
 
         Returns:
-            The constructed module.
+            A constructed MultiAgentRLModule.
         """
         if self._module_obj is not None:
             module = self._module_obj
         else:
             module = self._module_spec.build()
+        # If not already, convert to MultiAgentRLModule.
         module = module.as_multi_agent()
         return module
 
@@ -975,11 +1026,11 @@ class Learner:
         """Checks whether the result has the correct format.
 
         All the keys should be referencing the module ids that got updated. There is a
-        special key `__all__` that hold any extra information that is not specific to a
-        module.
+        special key `ALL_MODULES` that hold any extra information that is not specific
+        to a module.
 
         Args:
-            results: The result of the update.
+            result: The result of the update.
 
         Raises:
             ValueError: If the result are not in the correct format.
@@ -1000,7 +1051,7 @@ class Learner:
                 if key not in self.module.keys():
                     raise ValueError(
                         f"The key {key} in the result of the update is not a valid "
-                        f"module id. Valid module ids are: {self.module.keys()}"
+                        f"module id. Valid module ids are: {list(self.module.keys())}."
                     )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
