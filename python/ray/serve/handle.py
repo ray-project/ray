@@ -170,6 +170,39 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
+        """Set options for this handle.
+
+        Args:
+            method_name: The method to invoke.
+        """
+        # BYTEDANCE
+        # This is a temporary fix for endless log when serve shutdown.
+        # Exception ignored in: <function RayServeHandle.__del__ at 0x7f9f4d7b7700>
+        # Traceback (most recent call last):
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/serve/handle.py", line 267, in __del__
+        #     self.stop_metrics_pusher()
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/serve/handle.py", line 171, in stop_metrics_pusher
+        #     if self._stop_event and self._pusher:
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/serve/handle.py", line 264, in __getattr__
+        #     return self.options(method_name=name)
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/serve/handle.py", line 207, in options
+        #     return self.__class__(
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/serve/handle.py", line 143, in __init__
+        #     self.controller_handle.get_deployment_info.remote(self.deployment_name)
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/actor.py", line 138, in remote
+        #     return self._remote(args, kwargs)
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/util/tracing/tracing_helper.py", line 425, in _start_span
+        #     return method(self, args, kwargs, *_args, **_kwargs)
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/actor.py", line 184, in _remote
+        #     return invocation(args, kwargs)
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/actor.py", line 171, in invocation
+        #     return actor._actor_method_call(
+        #   File "/usr/local/lib/python3.9/dist-packages/ray/actor.py", line 1169, in _actor_method_call
+        #     object_refs = worker.core_worker.submit_actor_task(
+        # AttributeError: 'Worker' object has no attribute 'core_worker'
+        if method_name == "_stop_event" or method_name == "_pusher":
+            return
+
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
             key: value
