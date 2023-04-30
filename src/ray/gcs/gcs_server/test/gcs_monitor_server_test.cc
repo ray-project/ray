@@ -22,13 +22,14 @@
 #include "ray/gcs/gcs_server/gcs_monitor_server.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 // clang-format on
 
 using namespace testing;
 
 namespace ray {
 
-NodeResources constructNodeResources(
+NodeResources ConstructNodeResources(
     absl::flat_hash_map<ResourceID, FixedPoint> available,
     absl::flat_hash_map<ResourceID, FixedPoint> total) {
   NodeResources resources;
@@ -37,7 +38,7 @@ NodeResources constructNodeResources(
   return resources;
 }
 
-rpc::ResourceDemand constructResourceDemand(
+rpc::ResourceDemand ConstructResourceDemand(
     absl::flat_hash_map<std::string, double> shape,
     int num_ready_requests_queued,
     int num_infeasible_requests_queued,
@@ -51,6 +52,23 @@ rpc::ResourceDemand constructResourceDemand(
   return demand;
 }
 
+std::shared_ptr<gcs::GcsPlacementGroup> ConstructPlacementGroupDemand(
+    std::vector<absl::flat_hash_map<std::string, double>> bundles,
+    rpc::PlacementStrategy strategy
+
+) {
+  rpc::PlacementGroupTableData data;
+  for (auto &bundle : bundles) {
+    auto rpc_bundle = data.add_bundles();
+    rpc_bundle->mutable_unit_resources()->insert(bundle.begin(), bundle.end());
+  }
+  data.set_strategy(strategy);
+  auto counter =
+      std::make_shared<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>();
+  auto ptr = std::make_shared<gcs::GcsPlacementGroup>(data, counter);
+  return ptr;
+}
+
 class GcsMonitorServerTest : public ::testing::Test {
  public:
   GcsMonitorServerTest()
@@ -58,11 +76,14 @@ class GcsMonitorServerTest : public ::testing::Test {
         cluster_resource_manager_(),
         mock_resource_manager_(
             std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
-        monitor_server_(
-            mock_node_manager_, cluster_resource_manager_, mock_resource_manager_) {}
+        mock_placement_group_manager_(
+            std::make_shared<gcs::MockGcsPlacementGroupManager>(*mock_resource_manager_)),
+        monitor_server_(mock_node_manager_,
+                        cluster_resource_manager_,
+                        mock_resource_manager_,
+                        mock_placement_group_manager_) {}
 
   absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceUsages() {
-    // return ((gcs::GcsResourceManager&)*mock_resource_manager_).node_resource_usages_;
     return mock_resource_manager_->node_resource_usages_;
   }
 
@@ -70,11 +91,23 @@ class GcsMonitorServerTest : public ::testing::Test {
     return mock_node_manager_->alive_nodes_;
   }
 
+  absl::btree_multimap<
+      int64_t,
+      std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
+      &PendingPlacementGroups() {
+    return mock_placement_group_manager_->pending_placement_groups_;
+  }
+
+  std::deque<std::shared_ptr<gcs::GcsPlacementGroup>> &InfeasiblePlacementGroups() {
+    return mock_placement_group_manager_->infeasible_placement_groups_;
+  }
+
  protected:
   instrumented_io_context io_context_;
   std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
+  std::shared_ptr<gcs::MockGcsPlacementGroupManager> mock_placement_group_manager_;
   gcs::GcsMonitorServer monitor_server_;
 };
 
@@ -126,7 +159,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     // Setup resource demand mocks.
     rpc::ResourcesData data;
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
+        ConstructResourceDemand(
             {
                 {"CPU", 0.75},
             },
@@ -134,7 +167,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             2,
             3));
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
+        ConstructResourceDemand(
             {
                 {"custom", 0.25},
             },
@@ -143,7 +176,7 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             1));
 
     data.mutable_resource_load_by_shape()->add_resource_demands()->CopyFrom(
-        constructResourceDemand(
+        ConstructResourceDemand(
             {
                 {"CPU", 0.75},
                 {"custom", 0.25},
@@ -154,17 +187,34 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
     NodeResourceUsages()[id_1] = data;
   }
   {
+    // Setup some placement group demand mocks.
+    auto &pending_pgs = PendingPlacementGroups();
+    for (int i = 0; i < 2; i++) {
+      pending_pgs.insert(
+          {0,
+           {{},
+            ConstructPlacementGroupDemand({{{"CPU", 1}, {"GPU", 1}}, {{"CPU", 1}}},
+                                          rpc::PlacementStrategy::STRICT_SPREAD)}});
+    }
+
+    auto &infeasible_pgs = InfeasiblePlacementGroups();
+    for (int i = 0; i < 3; i++) {
+      infeasible_pgs.push_back(ConstructPlacementGroupDemand(
+          {{{"GPU", 1}}, {{"GPU", 1}}}, rpc::PlacementStrategy::STRICT_PACK));
+    }
+  }
+  {
     // Setup the node management mocks.
     cluster_resource_manager_.AddOrUpdateNode(
         scheduling::NodeID(id_1.Binary()),
-        constructNodeResources(
+        ConstructNodeResources(
             {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
             {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
     AliveNodes()[id_1] = Mocker::GenNodeInfo(0, "1.1.1.1", "Node1");
 
     cluster_resource_manager_.AddOrUpdateNode(
         scheduling::NodeID(id_2.Binary()),
-        constructNodeResources(
+        ConstructNodeResources(
             {{scheduling::ResourceID::CPU(), 0.5}, {scheduling::ResourceID("custom"), 4}},
             {{scheduling::ResourceID::CPU(), 1}, {scheduling::ResourceID("custom"), 8}}));
 
@@ -192,40 +242,115 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
   }
   {
     // Check the resource requests field looks good.
-    ASSERT_EQ(reply.resource_requests().size(), 3);
+    ASSERT_EQ(reply.resource_requests().size(), 8);
 
     bool cpu_found = false;
     bool custom_found = false;
     bool cpu_and_custom_found = false;
+    bool found_pending_pg = false;
+    bool found_infeasible_pg = false;
 
     for (const auto &request : reply.resource_requests()) {
       RAY_LOG(ERROR) << request.DebugString();
-      ASSERT_EQ(request.resource_request_type(),
-                rpc::ResourceRequest_ResourceRequestType::
-                    ResourceRequest_ResourceRequestType_TASK_RESERVATION);
-      ASSERT_EQ(request.bundles().size(), 1);
-      const auto &resources = request.bundles()[0].resources();
-      if (resources.size() == 1 && resources.begin()->first == "CPU") {
-        cpu_found = true;
-        ASSERT_EQ(request.count(), 6);
-        ASSERT_EQ(resources.begin()->second, 0.75);
-      }
-      if (resources.size() == 1 && resources.begin()->first == "custom") {
-        custom_found = true;
-        ASSERT_EQ(request.count(), 3);
-        ASSERT_EQ(resources.begin()->second, 0.25);
-      }
-      if (resources.size() == 2) {
-        cpu_and_custom_found = true;
-        ASSERT_EQ(resources.at("CPU"), 0.75);
-        ASSERT_EQ(resources.at("custom"), 0.25);
-        ASSERT_EQ(request.count(), 3);
+      if (request.resource_request_type() ==
+          rpc::ResourceRequest_ResourceRequestType::
+              ResourceRequest_ResourceRequestType_TASK_RESERVATION) {
+        ASSERT_EQ(request.bundles().size(), 1);
+        const auto &resources = request.bundles()[0].resources();
+        if (resources.size() == 1 && resources.begin()->first == "CPU") {
+          cpu_found = true;
+          ASSERT_EQ(request.count(), 6);
+          ASSERT_EQ(resources.begin()->second, 0.75);
+        }
+        if (resources.size() == 1 && resources.begin()->first == "custom") {
+          custom_found = true;
+          ASSERT_EQ(request.count(), 3);
+          ASSERT_EQ(resources.begin()->second, 0.25);
+        }
+        if (resources.size() == 2) {
+          cpu_and_custom_found = true;
+          ASSERT_EQ(resources.at("CPU"), 0.75);
+          ASSERT_EQ(resources.at("custom"), 0.25);
+          ASSERT_EQ(request.count(), 3);
+        }
+      } else if (request.resource_request_type() ==
+                 rpc::ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION) {
+        found_pending_pg = true;
+
+      } else if (request.resource_request_type() ==
+                 rpc::ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION) {
+        found_infeasible_pg = true;
       }
     }
 
     ASSERT_TRUE(cpu_found);
     ASSERT_TRUE(custom_found);
     ASSERT_TRUE(cpu_and_custom_found);
+    ASSERT_TRUE(found_pending_pg);
+    ASSERT_TRUE(found_infeasible_pg);
+  }
+}
+
+TEST_F(GcsMonitorServerTest, TestPlacementGroupConversion) {
+  auto check_bundles = [](const rpc::ResourceRequest &request) {
+    ASSERT_EQ(request.bundles().size(), 2);
+    bool cpu_bundle_found = false;
+    bool gpu_bundle_found = false;
+    for (const auto &bundle : request.bundles()) {
+      if (bundle.resources().size() == 2) {
+        cpu_bundle_found =
+            bundle.resources().at("CPU") == 1 && bundle.resources().at("GPU") == 1;
+      } else if (bundle.resources().size() == 1) {
+        gpu_bundle_found = bundle.resources().at("GPU") == 1;
+      }
+    }
+    ASSERT_TRUE(cpu_bundle_found);
+    ASSERT_TRUE(gpu_bundle_found);
+  };
+
+  {
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::STRICT_PACK);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_STRICT_PACK_RESERVATION);
+    check_bundles(request);
+  }
+  {
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::STRICT_SPREAD);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_STRICT_SPREAD_RESERVATION);
+    check_bundles(request);
+  }
+  {
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::PACK);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_PACK_RESERVATION);
+    check_bundles(request);
+  }
+  {
+    auto gcs_pg = ConstructPlacementGroupDemand({{{"GPU", 1}, {"CPU", 1}}, {{"GPU", 1}}},
+                                                rpc::PlacementStrategy::SPREAD);
+    rpc::ResourceRequest request;
+    GcsPlacementGroupToResourceRequest(*gcs_pg, request);
+    RAY_LOG(ERROR) << request.DebugString();
+    ASSERT_EQ(request.resource_request_type(),
+              rpc::ResourceRequest_ResourceRequestType::
+                  ResourceRequest_ResourceRequestType_SPREAD_RESERVATION);
+    check_bundles(request);
   }
 }
 

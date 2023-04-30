@@ -7,7 +7,7 @@ import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.dag.input_node import InputNode
-from ray.serve._private.deployment_state import ReplicaState
+from ray.serve._private.common import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 # Magic number to use for speed up scale from 0 replica

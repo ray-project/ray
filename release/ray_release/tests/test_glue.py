@@ -4,7 +4,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Type, Callable
+from typing import Type, Callable, Optional
 import unittest
 from unittest.mock import patch
 
@@ -138,7 +138,9 @@ class GlueTest(unittest.TestCase):
                 self,
                 cluster_manager: ClusterManager,
                 file_manager: FileManager,
-                working_dir: str,
+                working_dir,
+                sdk=None,
+                artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
                     cluster_manager, file_manager, this_tempdir
@@ -242,7 +244,7 @@ class GlueTest(unittest.TestCase):
         if until == "fetch_results":
             return
 
-        self.command_runner_return["get_last_logs"] = "Lorem ipsum"
+        self.command_runner_return["get_last_logs_ex"] = "Lorem ipsum"
 
         if until == "get_last_logs":
             return
@@ -629,7 +631,7 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("fetch_results")
 
-        self.command_runner_return["get_last_logs"] = _fail_on_call(LogsError)
+        self.command_runner_return["get_last_logs_ex"] = _fail_on_call(LogsError)
 
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
@@ -663,7 +665,7 @@ class GlueTest(unittest.TestCase):
         self._succeed_until("complete")
 
         class FailReporter(Reporter):
-            def report_result(self, test: Test, result: Result):
+            def report_result_ex(self, test: Test, result: Result):
                 raise RuntimeError
 
         with self.assertLogs(logger, "ERROR") as cm:

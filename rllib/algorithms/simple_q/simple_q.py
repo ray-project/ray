@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -379,20 +379,3 @@ class SimpleQ(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SimpleQConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.simple_q::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.simple_q.simple_q::SimpleQConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

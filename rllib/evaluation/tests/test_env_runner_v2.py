@@ -13,6 +13,11 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+
 from ray.rllib.utils.test_utils import check
 
 
@@ -157,6 +162,18 @@ class TestEnvRunnerV2(unittest.TestCase):
                 },
                 policy_mapping_fn=mapping_fn,
             )
+            # TODO (Kourosh): We need to later create the PickOne and
+            # GuessHigherThanOne RLModules but for now, the policy only needs a
+            # placeholder RLModule, since the compute_actions() method is
+            # directly overridden in the policy class.
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "pol1": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "pol2": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                    }
+                ),
+            )
             .debugging(seed=42)
         )
 
@@ -214,6 +231,14 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
+            )
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                    }
+                ),
             )
         )
 
@@ -302,6 +327,14 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                    }
+                ),
+            )
         )
 
         algo = PPO(config, env="basic_multiagent")
@@ -348,6 +381,14 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
+            )
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                    }
+                ),
             )
         )
 
@@ -398,6 +439,14 @@ class TestEnvRunnerV2(unittest.TestCase):
                 policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
+            )
+            .rl_module(
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                    }
+                ),
             )
             .callbacks(
                 callbacks_class=CheckErrorCallbacks,

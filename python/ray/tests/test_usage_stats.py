@@ -13,7 +13,6 @@ from jsonschema import validate
 import ray
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private import gcs_utils
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
@@ -239,7 +238,7 @@ def test_worker_crash_increment_stats():
         with pytest.raises(ray.exceptions.OutOfMemoryError):
             ray.get(oomer.options(max_retries=0).remote())
 
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
         wait_for_condition(
             lambda: "worker_crash_system_error"
             in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
@@ -264,7 +263,7 @@ def test_actor_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         actor = Actor.remote()
         wait_for_condition(
@@ -319,7 +318,7 @@ def test_pg_stats(reset_usage_stats):
         num_cpus=3,
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         pg = placement_group([{"CPU": 1}], strategy="STRICT_PACK")
         ray.get(pg.ready())
@@ -349,7 +348,7 @@ def test_task_stats(reset_usage_stats):
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
-        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+        gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
 
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
@@ -704,6 +703,8 @@ def test_usage_stats_enabled_endpoint(
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
+    from ray.job_submission import JobSubmissionClient
+
     address = call_ray_start
     ray.init(address=address)
 
@@ -748,9 +749,7 @@ with joblib.parallel_backend("ray"):
     run_string_as_driver(driver)
 
     if sys.platform != "win32":
-        job_submission_client = ray.job_submission.JobSubmissionClient(
-            "http://127.0.0.1:8265"
-        )
+        job_submission_client = JobSubmissionClient("http://127.0.0.1:8265")
         job_id = job_submission_client.submit_job(entrypoint="ls")
         wait_for_condition(
             lambda: job_submission_client.get_job_status(job_id)
@@ -798,7 +797,7 @@ def test_usage_lib_get_total_num_running_jobs_to_report(
 ):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
-    gcs_client = gcs_utils.GcsClient(address=cluster.gcs_address)
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
     assert ray_usage_lib.get_total_num_running_jobs_to_report(gcs_client) == 0
 
     ray.init(address=cluster.address)
@@ -971,6 +970,11 @@ available_node_types:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_lib_report_data(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats
 ):
@@ -1057,6 +1061,11 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
+)
 def test_usage_report_e2e(
     monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
 ):
@@ -1122,7 +1131,7 @@ provider:
         reporter = StatusReporter.remote()
 
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
-        class ServeInitator:
+        class ServeInitiator:
             def __init__(self):
                 # This is used in the worker process
                 # so it won't be tracked as library usage.
@@ -1145,7 +1154,7 @@ provider:
 
         # We need to start a serve with runtime env to make this test
         # work with minimal installation.
-        s = ServeInitator.remote()
+        s = ServeInitiator.remote()
         ray.get(s.ready.remote())
 
         """
@@ -1187,13 +1196,14 @@ provider:
         payload["extra_usage_tags"]["num_actor_tasks"] = "0"
         payload["extra_usage_tags"]["num_normal_tasks"] = "0"
         payload["extra_usage_tags"]["num_drivers"] = "0"
-        assert payload["extra_usage_tags"] == {
+        expected_payload = {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
             "dashboard_metrics_grafana_enabled": "False",
             "dashboard_metrics_prometheus_enabled": "False",
             "serve_num_deployments": "1",
+            "serve_num_gpu_deployments": "0",
             "serve_api_version": "v1",
             "actor_num_created": "0",
             "pg_num_created": "0",
@@ -1204,6 +1214,10 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
+        if os.environ.get("RAY_MINIMAL") != "1":
+            expected_payload["tune_scheduler"] = "FIFOScheduler"
+            expected_payload["tune_searcher"] = "BasicVariantGenerator"
+        assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
@@ -1393,6 +1407,11 @@ if os.environ.get("RAY_MINIMAL") != "1":
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
+)
+# TODO(https://github.com/ray-project/ray/issues/33486)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 11, 0),
+    reason=("Currently not passing for Python 3.11"),
 )
 def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
     """

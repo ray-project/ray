@@ -10,7 +10,6 @@ import yaml
 from ray_release.buildkite.concurrency import (
     get_test_resources_from_cluster_compute,
     get_concurrency_group,
-    CONCURRENY_GROUPS,
 )
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
@@ -393,7 +392,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "run": {"type": "job"},
                 }
             ),
-            Test({"name": "other_3", "frequency": "disabled", "team": "team_2"}),
+            Test({"name": "other_3", "frequency": "manual", "team": "team_2"}),
             Test({"name": "test_3", "frequency": "nightly", "team": "team_2"}),
         ]
 
@@ -405,6 +404,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", False),
                 ("other_1", False),
                 ("other_2", False),
+                ("other_3", False),
                 ("test_3", False),
             ],
         )
@@ -421,6 +421,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_2", True),
                 ("other_1", False),
                 ("other_2", True),
+                ("other_3", False),
                 ("test_3", False),
             ],
         )
@@ -612,9 +613,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "ray_release.buildkite.concurrency.get_test_resources",
                 _return((cpu, gpu)),
             ):
-                group_name, limit = get_concurrency_group(test)
+                group_name, _ = get_concurrency_group(test)
                 self.assertEqual(group_name, group)
-                self.assertEqual(limit, CONCURRENY_GROUPS[group_name])
 
         test_concurrency(12800, 9, "large-gpu")
         test_concurrency(12800, 8, "small-gpu")

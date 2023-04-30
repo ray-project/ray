@@ -67,6 +67,30 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert ds.count() == 5
 
 
+@pytest.mark.parametrize("ignore_missing_paths", [True, False])
+def test_read_text_ignore_missing_paths(
+    ray_start_regular_shared, tmp_path, ignore_missing_paths
+):
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.txt"), "w") as f:
+        f.write("hello\n")
+        f.write("world")
+
+    paths = [
+        path,
+        "missing.txt",
+    ]
+
+    if ignore_missing_paths:
+        ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
+        assert ds.input_files() == [os.path.join(path, "file1.txt")]
+    else:
+        with pytest.raises(FileNotFoundError):
+            ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
+            ds.fully_executed()
+
+
 def test_read_text_meta_provider(
     ray_start_regular_shared,
     tmp_path,

@@ -61,70 +61,71 @@ training.
        and :func:`ray.train.torch.prepare_data_loader` utilities below,
        and instead handle the logic directly inside your training function.
 
-    First, use the :func:~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
-    ``DistributedDataParallel``
+    First, use the :func:`~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
+    ``DistributedDataParallel``:
 
     .. code-block:: diff
 
-        import torch
-        from torch.nn.parallel import DistributedDataParallel
+         import torch
+         from torch.nn.parallel import DistributedDataParallel
         +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
-        def train_func():
-        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
-        -         torch.cuda.is_available() else "cpu")
-        -   torch.cuda.set_device(device)
+         def train_func():
+        -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+        -        torch.cuda.is_available() else "cpu")
+        -    torch.cuda.set_device(device)
 
-            # Create model.
-            model = NeuralNetwork()
+             # Create model.
+             model = NeuralNetwork()
 
-        -   model = model.to(device)
-        -   model = DistributedDataParallel(model,
-        -       device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
+        -    model = model.to(device)
+        -    model = DistributedDataParallel(model,
+        -        device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
 
-        +   model = train.torch.prepare_model(model)
+        +    model = train.torch.prepare_model(model)
 
-            ...
+             ...
+            
 
 
     Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
     and move the batches to the right device. This step is not necessary if you are passing in Ray Datasets to your Trainer
-    (see :ref:`train-datasets`)
+    (see :ref:`train-datasets`):
 
     .. code-block:: diff
 
-        import torch
-        from torch.utils.data import DataLoader, DistributedSampler
+         import torch
+         from torch.utils.data import DataLoader, DistributedSampler
         +from ray.air import session
         +from ray import train
         +import ray.train.torch
 
 
-        def train_func():
-        -   device = torch.device(f"cuda:{session.get_local_rank()}" if
-        -          torch.cuda.is_available() else "cpu")
-        -   torch.cuda.set_device(device)
+         def train_func():
+        -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+        -        torch.cuda.is_available() else "cpu")
+        -    torch.cuda.set_device(device)
 
-            ...
+             ...
 
-        -   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
+        -    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
 
-        +   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
-        +   data_loader = train.torch.prepare_data_loader(data_loader)
+        +    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+        +    data_loader = train.torch.prepare_data_loader(data_loader)
 
-            for X, y in data_loader:
-        -       X = X.to_device(device)
-        -       y = y.to_device(device)
+             for X, y in data_loader:
+        -        X = X.to_device(device)
+        -        y = y.to_device(device)
 
     .. tip::
-       Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
-       The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+        Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
+        The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
-        .. code-block::
-
+        .. code-block:: python
+            
             global_batch_size = worker_batch_size * session.get_world_size()
 
 .. tabbed:: TensorFlow
@@ -300,11 +301,11 @@ Then, you can pass in the config dictionary as an argument to ``Trainer``:
 .. code-block:: diff
 
     +config = {} # This should be populated.
-    trainer = TorchTrainer(
-        train_func,
-    +   train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=2)
-    )
+     trainer = TorchTrainer(
+         train_func,
+    +    train_loop_config=config,
+         scaling_config=ScalingConfig(num_workers=2)
+     )
 
 Putting this all together, you can run your training function with different
 configurations. As an example:
@@ -1083,29 +1084,29 @@ precision datatype for operations like linear layers and convolutions.
 
     .. code-block:: diff
 
-        def train_func():
-        +   train.torch.accelerate(amp=True)
+         def train_func():
+        +    train.torch.accelerate(amp=True)
 
-            model = NeuralNetwork()
-            model = train.torch.prepare_model(model)
+             model = NeuralNetwork()
+             model = train.torch.prepare_model(model)
 
-            data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
-            data_loader = train.torch.prepare_data_loader(data_loader)
+             data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+             data_loader = train.torch.prepare_data_loader(data_loader)
 
-            optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
-        +   optimizer = train.torch.prepare_optimizer(optimizer)
+             optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        +    optimizer = train.torch.prepare_optimizer(optimizer)
 
-            model.train()
-            for epoch in range(90):
-                for images, targets in dataloader:
-                    optimizer.zero_grad()
+             model.train()
+             for epoch in range(90):
+                 for images, targets in dataloader:
+                     optimizer.zero_grad()
 
-                    outputs = model(images)
-                    loss = torch.nn.functional.cross_entropy(outputs, targets)
+                     outputs = model(images)
+                     loss = torch.nn.functional.cross_entropy(outputs, targets)
 
-        -           loss.backward()
-        +           train.torch.backward(loss)
-                    optimizer.step()
+        -            loss.backward()
+        +            train.torch.backward(loss)
+                     optimizer.step()
             ...
 
 
@@ -1126,13 +1127,13 @@ Reproducibility
 
     .. code-block:: diff
 
-        def train_func():
-        +   train.torch.enable_reproducibility()
+         def train_func():
+        +    train.torch.enable_reproducibility()
 
-            model = NeuralNetwork()
-            model = train.torch.prepare_model(model)
+             model = NeuralNetwork()
+             model = train.torch.prepare_model(model)
 
-            ...
+             ...
 
     .. warning:: :func:`ray.train.torch.enable_reproducibility` can't guarantee
         completely reproducible results across executions. To learn more, read

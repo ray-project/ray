@@ -44,8 +44,8 @@ Since this is applicable to all of Ray Train's built-in trainers,
 we'll use `FrameworkTrainer` to refer to a generic trainer for the remainder of this answer.
 
 To restore an experiment, first find the experiment directory that your previous
-run was saved to. If you saved locally, this will look like ``{local_dir}/{name}``,
-where ``local_dir`` may be ``~/ray_results``, and ``name`` is something
+run was saved to. If you saved locally, this will look like ``{storage_path}/{name}``,
+where ``storage_path`` may be ``~/ray_results``, and ``name`` is something
 like ``FrameworkTrainer_2023-xxx``.
 
 Note that these are the same parameters that you pass through :class:`~ray.air.RunConfig`.
@@ -108,7 +108,7 @@ to determine the existence/validity of the given experiment directory.
             scaling_config=air.ScalingConfig(num_workers=2, use_gpu=False),
             run_config=air.RunConfig(
                 name=experiment_name,
-                local_dir="~/ray_results",
+                storage_path="~/ray_results",
                 failure_config=air.FailureConfig(max_failures=3),
                 stop={"training_iteration": 10},
             ),

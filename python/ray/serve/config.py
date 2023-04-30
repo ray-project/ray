@@ -32,6 +32,7 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray._private import ray_option_utils
 from ray._private.utils import resources_from_ray_options
+from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -390,9 +391,12 @@ class ReplicaConfig:
 
         config = cls(
             deployment_def_name,
-            cloudpickle.dumps(deployment_def),
-            cloudpickle.dumps(init_args),
-            cloudpickle.dumps(init_kwargs),
+            pickle_dumps(
+                deployment_def,
+                f"Could not serialize the deployment {repr(deployment_def)}",
+            ),
+            pickle_dumps(init_args, "Could not serialize the deployment init args"),
+            pickle_dumps(init_kwargs, "Could not serialize the deployment init kwargs"),
             ray_actor_options,
         )
 
@@ -514,6 +518,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"

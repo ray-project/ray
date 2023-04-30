@@ -8,6 +8,7 @@ This user guide will help you navigate the Ray Serve project and show you how to
 - [Scaling and Resource Allocation](scaling-and-resource-allocation)
 - [Model Composition](serve-model-composition)
 - [Development Workflow](dev-workflow)
+- [Ray Serve Dashboard](dash-serve-view)
 - [Production Guide](serve-in-production)
 - [Performance Tuning](performance)
 - [Handling Dependencies](handling-dependencies)

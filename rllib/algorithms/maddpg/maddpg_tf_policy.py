@@ -1,4 +1,3 @@
-import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import minimize_and_clip
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
@@ -43,7 +42,6 @@ class MADDPGPostprocessing:
 class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
-        config = dict(ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG, **config)
         self.config = config
         self.global_step = tf1.train.get_or_create_global_step()
 

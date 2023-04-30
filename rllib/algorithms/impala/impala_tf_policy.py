@@ -7,7 +7,6 @@ import logging
 import gymnasium as gym
 from typing import Dict, List, Type, Union
 
-import ray
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -180,15 +179,19 @@ class VTraceClipGradients:
         self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Supporting more than one loss/optimizer.
+        if self.config.get("_enable_rl_module_api", False):
+            # In order to access the variables for rl modules, we need to
+            # use the underlying keras api model.trainable_variables.
+            trainable_variables = self.model.trainable_variables
+        else:
+            trainable_variables = self.model.trainable_variables()
         if self.config["_tf_policy_handles_more_than_one_loss"]:
             optimizers = force_list(optimizer)
             losses = force_list(loss)
             assert len(optimizers) == len(losses)
             clipped_grads_and_vars = []
             for optim, loss_ in zip(optimizers, losses):
-                grads_and_vars = optim.compute_gradients(
-                    loss_, self.model.trainable_variables()
-                )
+                grads_and_vars = optim.compute_gradients(loss_, trainable_variables)
                 clipped_g_and_v = []
                 for g, v in grads_and_vars:
                     if g is not None:
@@ -206,9 +209,7 @@ class VTraceClipGradients:
             )
             grads = [g for (g, v) in grads_and_vars]
             self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-            clipped_grads_and_vars = list(
-                zip(self.grads, self.model.trainable_variables())
-            )
+            clipped_grads_and_vars = list(zip(self.grads, trainable_variables))
 
         return clipped_grads_and_vars
 
@@ -285,10 +286,6 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
-            )
 
             # Initialize base class.
             base.__init__(

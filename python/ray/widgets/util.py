@@ -167,3 +167,33 @@ def _has_outdated(
         logger.warning(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
 
     return outdated
+
+
+@DeveloperAPI
+def fallback_if_colab(func: F) -> Callable[[F], F]:
+    try:
+        ipython = get_ipython()
+    except NameError:
+        ipython = None
+
+    @wraps(func)
+    def wrapped(self, *args, **kwargs):
+        if ipython and "google.colab" not in str(ipython):
+            return func(self, *args, **kwargs)
+        elif hasattr(self, "__repr__"):
+            return print(self.__repr__(*args, **kwargs))
+        else:
+            return None
+
+    return wrapped
+
+
+@DeveloperAPI
+def in_notebook() -> bool:
+    """Return whether we are in a Jupyter notebook."""
+    try:
+        class_name = get_ipython().__class__.__name__
+        is_notebook = True if "Terminal" not in class_name else False
+    except NameError:
+        is_notebook = False
+    return is_notebook

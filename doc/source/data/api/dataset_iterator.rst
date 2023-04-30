@@ -1,16 +1,16 @@
 .. _dataset-iterator-api:
 
-DatasetIterator API
-===================
+DataIterator API
+================
 
 .. currentmodule:: ray.data
 
-.. autoclass:: DatasetIterator
+.. autoclass:: DataIterator
 
 .. autosummary::
    :toctree: doc/
 
-   DatasetIterator.iter_batches
-   DatasetIterator.iter_torch_batches
-   DatasetIterator.to_tf
-   DatasetIterator.stats
+   DataIterator.iter_batches
+   DataIterator.iter_torch_batches
+   DataIterator.to_tf
+   DataIterator.stats

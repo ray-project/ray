@@ -1,5 +1,12 @@
 .. _pipelining_datasets:
 
+.. note::
+
+  The DatasetPipeline is expected to be deprecated in Ray 2.5. If your use case doesn't
+  need per-window shuffle, we recommend using just plain Datasets, which supports the
+  streaming execution by default in Ray 2.4. For more detail, see
+  :ref:`Streaming Execution <datasets_streaming_execution>`.
+
 ==================
 Pipelining Compute 
 ==================

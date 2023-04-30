@@ -116,11 +116,13 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectNotFound()
         c_bool IsNotFound()
         c_bool IsObjectUnknownOwner()
+        c_bool IsRpcError()
 
         c_string ToString()
         c_string CodeAsString()
         StatusCode code()
         c_string message()
+        int rpc_code()
 
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()
@@ -168,6 +170,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CNodeAffinitySchedulingStrategy()
         void set_node_id(const c_string& node_id)
         void set_soft(c_bool soft)
+        void set_spill_on_unavailable(c_bool spill_on_unavailable)
     cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
         CSchedulingStrategy()
         void clear_scheduling_strategy()
@@ -307,9 +310,52 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 
+    cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
+        CPythonGcsClient(const CGcsClientOptions &options)
+
+        CRayStatus Connect()
+
+        CRayStatus InternalKVGet(
+            const c_string &ns, const c_string &key,
+            int64_t timeout_ms, c_string &value)
+        CRayStatus InternalKVMultiGet(
+            const c_string &ns, const c_vector[c_string] &keys,
+            int64_t timeout_ms, unordered_map[c_string, c_string] &result)
+        CRayStatus InternalKVPut(
+            const c_string &ns, const c_string &key, const c_string &value,
+            c_bool overwrite, int64_t timeout_ms, c_bool &added)
+        CRayStatus InternalKVDel(
+            const c_string &ns, const c_string &key, c_bool del_by_prefix,
+            int64_t timeout_ms, int &deleted_num)
+        CRayStatus InternalKVKeys(
+            const c_string &ns, const c_string &prefix,
+            int64_t timeout_ms, c_vector[c_string] &value)
+        CRayStatus InternalKVExists(
+            const c_string &ns, const c_string &key,
+            int64_t timeout_ms, c_bool &exists)
+
+        CRayStatus PinRuntimeEnvUri(
+            const c_string &uri, int expiration_s, int64_t timeout_ms)
+        CRayStatus GetAllNodeInfo(
+            int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
+        CRayStatus GetAllJobInfo(
+            int64_t timeout_ms, c_vector[CJobTableData]& result)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
+        c_string ray_namespace() const
         const c_string &SerializeAsString()
+
+    cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
+        c_string node_id() const
+        c_string node_name() const
+        int state() const
+
+    cdef cppclass CJobTableData "ray::rpc::JobTableData":
+        c_string job_id() const
+        c_bool is_dead() const
+        CJobConfig config() const
+
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

@@ -6,7 +6,7 @@ cartpole-a2c-fake-gpus:
         training_iteration: 200
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         train_batch_size: 20
         rollout_fragment_length: auto
         num_workers: 0

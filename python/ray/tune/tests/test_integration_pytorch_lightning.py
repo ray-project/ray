@@ -118,12 +118,12 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
             dir
-            for dir in os.listdir(analysis.trials[0].logdir)
+            for dir in os.listdir(analysis.trials[0].local_path)
             if dir.startswith("checkpoint")
         ]
         # 10 checkpoints after each batch, 1 checkpoint at end
@@ -149,12 +149,12 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
             dir
-            for dir in os.listdir(analysis.trials[0].logdir)
+            for dir in os.listdir(analysis.trials[0].local_path)
             if dir.startswith("checkpoint")
         ]
         # 1 checkpoint after the validation step

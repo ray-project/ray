@@ -27,9 +27,11 @@ from starlette.routing import Route
 import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
+from ray.serve.exceptions import RayServeException
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 def test_fastapi_function(serve_instance):
@@ -662,6 +664,73 @@ def test_fastapi_custom_serializers(serve_instance):
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == [0, 0]
+
+
+@pytest.mark.parametrize("two_fastapi", [True, False])
+def test_two_fastapi_in_one_application(
+    serve_instance: ServeControllerClient, two_fastapi
+):
+    """
+    Check that a deployment graph that would normally work, will not deploy
+    successfully if there are two FastAPI deployments.
+    """
+    app1 = FastAPI()
+    app2 = FastAPI()
+
+    class SubModel:
+        def add(self, a: int):
+            return a + 1
+
+    @serve.deployment
+    @serve.ingress(app1)
+    class Model:
+        def __init__(self, submodel):
+            self.submodel = submodel
+
+        @app1.get("/{a}")
+        async def func(self, a: int):
+            return await (await self.submodel.add.remote(a))
+
+    if two_fastapi:
+        SubModel = serve.deployment(serve.ingress(app2)(SubModel))
+        with pytest.raises(RayServeException) as e:
+            handle = serve.run(Model.bind(SubModel.bind()), name="app1")
+        assert "FastAPI" in str(e.value)
+    else:
+        handle = serve.run(Model.bind(serve.deployment(SubModel).bind()), name="app1")
+        assert ray.get(handle.func.remote(5)) == 6
+
+
+@pytest.mark.parametrize(
+    "is_fastapi,docs_path",
+    [
+        (False, None),  # Not integrated with FastAPI
+        (True, "/docs"),  # Don't specify docs_url, use default
+        (True, "/documentation"),  # Override default docs url
+    ],
+)
+def test_fastapi_docs_path(
+    serve_instance: ServeControllerClient, is_fastapi, docs_path
+):
+    # If not the default docs_url, override it.
+    if docs_path != "/docs":
+        app = FastAPI(docs_url=docs_path)
+    else:
+        app = FastAPI()
+
+    class Model:
+        @app.get("/{a}")
+        def func(a: int):
+            return {"result": a}
+
+    if is_fastapi:
+        Model = serve.ingress(app)(Model)
+
+    serve.run(serve.deployment(Model).bind(), name="app1")
+    wait_for_condition(
+        lambda: ray.get(serve_instance._controller.get_docs_path.remote("app1"))
+        == docs_path
+    )
 
 
 if __name__ == "__main__":

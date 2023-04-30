@@ -208,9 +208,14 @@ class TargetNetworkMixin:
     """
 
     def __init__(self):
-
-        model_vars = self.model.trainable_variables()
-        target_model_vars = self.target_model.trainable_variables()
+        if self.config.get("_enable_rl_module_api", False):
+            # In order to access the variables for rl modules, we need to
+            # use the underlying keras api model.trainable_variables.
+            model_vars = self.model.trainable_variables
+            target_model_vars = self.target_model.trainable_variables
+        else:
+            model_vars = self.model.trainable_variables()
+            target_model_vars = self.target_model.trainable_variables()
 
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):
@@ -238,13 +243,19 @@ class TargetNetworkMixin:
     @property
     def q_func_vars(self):
         if not hasattr(self, "_q_func_vars"):
-            self._q_func_vars = self.model.variables()
+            if self.config.get("_enable_rl_module_api", False):
+                self._q_func_vars = self.model.variables
+            else:
+                self._q_func_vars = self.model.variables()
         return self._q_func_vars
 
     @property
     def target_q_func_vars(self):
         if not hasattr(self, "_target_q_func_vars"):
-            self._target_q_func_vars = self.target_model.variables()
+            if self.config.get("_enable_rl_module_api", False):
+                self._target_q_func_vars = self.target_model.variables
+            else:
+                self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
 
     # Support both hard and soft sync.
@@ -253,7 +264,10 @@ class TargetNetworkMixin:
 
     @override(TFPolicy)
     def variables(self) -> List[TensorType]:
-        return self.model.variables()
+        if self.config.get("_enable_rl_module_api", False):
+            return self.model.variables
+        else:
+            return self.model.variables()
 
     def set_weights(self, weights):
         if isinstance(self, TFPolicy):

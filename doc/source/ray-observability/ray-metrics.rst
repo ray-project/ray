@@ -136,6 +136,9 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - `ray_memory_manager_worker_eviction_total`
+     - `Type`, `Name`
+     - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
    * - `ray_node_cpu_utilization`
      - `InstanceId`
      - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
@@ -143,8 +146,8 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - `InstanceId`
      - The number of CPU cores per node.
    * - `ray_node_gpus_utilization`
-     - `InstanceId`
-     - The GPU utilization per node as a percentage quantity (0..NGPU*100). Note that unlike ray_node_cpu_utilization, this quantity is pre-multiplied by the number of GPUs per node.
+     - `InstanceId`, `GpuDeviceName`, `GpuIndex`
+     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., Nvidia A10G) and `GpuIndex` is the index of the GPU.
    * - `ray_node_disk_usage`
      - `InstanceId`
      - The amount of disk space used per node, in bytes.
@@ -170,8 +173,8 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - `Component`, `InstanceId`
      - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
-     - `InstanceId`
-     - The amount of GPU memory used per node, in bytes.
+     - `InstanceId`, `GpuDeviceName`, `GpuIndex`
+     - The amount of GPU memory used per GPU, in bytes.
    * - `ray_node_network_receive_speed`
      - `InstanceId`
      - The network receive throughput per node, in bytes per second.

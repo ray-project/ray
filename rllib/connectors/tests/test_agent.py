@@ -5,7 +5,6 @@ import tree  # pip install dm_tree
 import unittest
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -470,11 +469,20 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         )
 
         env = gym.make("CartPole-v1")
-        policy = PPOTorchPolicy(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            config=config.to_dict(),
-        )
+        policy = config.build().get_policy()
+
+        REQUIRED_KEYS = {
+            SampleBatch.OBS,
+            SampleBatch.NEXT_OBS,
+            SampleBatch.REWARDS,
+            SampleBatch.TERMINATEDS,
+            SampleBatch.TRUNCATEDS,
+            SampleBatch.INFOS,
+            SampleBatch.ACTIONS,
+        }
+        policy.view_requirements = {
+            k: v for k, v in policy.view_requirements.items() if k in REQUIRED_KEYS
+        }
 
         # create a connector context
         ctx = ConnectorContext(

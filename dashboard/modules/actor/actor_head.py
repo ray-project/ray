@@ -57,6 +57,7 @@ def actor_table_data_to_dict(message):
         "className",
         "startTime",
         "endTime",
+        "reprName",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -141,6 +142,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             "exitDetail",
             "startTime",
             "endTime",
+            "reprName",
         )
 
         def process_actor_data_from_pubsub(actor_id, actor_table_data):
@@ -192,11 +194,12 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 logger.debug(
                     f"Processing takes {elapsed}. Total process: " f"{len(published)}"
                 )
-                logger.debug(
-                    "Processing throughput: "
-                    f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
-                    " / s"
-                )
+                if self.accumulative_event_processing_s > 0:
+                    logger.debug(
+                        "Processing throughput: "
+                        f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
+                        " / s"
+                    )
                 logger.debug(f"queue size: {self.subscriber_queue_size}")
             except Exception:
                 logger.exception("Error processing actor info from GCS.")

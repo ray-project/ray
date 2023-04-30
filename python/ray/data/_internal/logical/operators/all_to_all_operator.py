@@ -20,7 +20,7 @@ class AbstractAllToAll(LogicalOperator):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
+                inspecting the logical plan of a Datastream.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             num_outputs: The number of expected output bundles outputted by this

@@ -98,3 +98,12 @@ RLlib Feature Guides
         :type: ref
         :text: How To Work With the RLlib CLI?
         :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
+    .. link-button:: rllib-catalogs
+        :type: ref
+        :text: How To Use the RLlib Catalogs
+        :classes: btn-link btn-block stretched-link

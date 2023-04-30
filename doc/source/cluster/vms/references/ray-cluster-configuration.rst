@@ -267,7 +267,7 @@ The maximum number of workers the cluster will have at any given time.
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
 
-The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up. 
+The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up.
 
 * **Required:** No
 * **Importance:** Medium
@@ -469,7 +469,7 @@ A list of commands to run to set up nodes. These commands will always run on the
         # Default setup_commands:
         setup_commands:
           - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-          - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+          - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 - Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
@@ -1123,7 +1123,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
     * **Required:** No
     * **Importance:** High
     * **Type:** Integer
-        
+
  .. _cluster-configuration-object-store-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.object-store-memory``

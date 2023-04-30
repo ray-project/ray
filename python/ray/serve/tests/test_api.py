@@ -646,6 +646,55 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
 
+@pytest.mark.parametrize(
+    "ingress_route,app_route",
+    [
+        ("/hello", "/"),
+        ("/hello", "/override"),
+        ("/", "/override"),
+        (None, "/override"),
+        ("/hello", None),
+        (None, None),
+    ],
+)
+def test_application_route_prefix_override(serve_instance, ingress_route, app_route):
+    """
+    Set route prefix in serve.run to a non-None value, check it overrides correctly.
+    """
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node, route_prefix=app_route)
+    if app_route is None:
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert len(routes) == 0
+    else:
+        assert requests.get(f"http://localhost:8000{app_route}").text == "hello"
+
+
+@pytest.mark.parametrize("ingress_route", ["/hello", "/"])
+def test_application_route_prefix_override1(serve_instance, ingress_route):
+    """
+    Don't set route prefix in serve.run, check it always uses the ingress deployment
+    route.
+    """
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node)
+    if ingress_route is None:
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert len(routes) == 0
+    else:
+        assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
+
+
 if __name__ == "__main__":
     import sys
 

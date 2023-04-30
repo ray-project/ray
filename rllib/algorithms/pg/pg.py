@@ -4,7 +4,6 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 
 
 class PGConfig(AlgorithmConfig):
@@ -51,6 +50,15 @@ class PGConfig(AlgorithmConfig):
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 200
         self._disable_preprocessor_api = True
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -132,20 +140,3 @@ class PG(Algorithm):
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
 
             return PGTF2Policy
-
-
-# Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.pg.pg::PGConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

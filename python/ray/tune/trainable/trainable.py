@@ -179,7 +179,7 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        # If no sync_config is provided, but we saving to a remote_checkpoint_dir,
+        # If no sync_config is provided, but we save to a remote_checkpoint_dir,
         # then provide a default syncer. `upload_dir` here is just a dummy directory
         # that tells the SyncConfig to create a default syncer.
         self.sync_config = sync_config or SyncConfig(
@@ -201,7 +201,9 @@ class Trainable:
             self.sync_config.syncer = custom_syncer
         else:
             # Resolves syncer="auto" to an actual syncer if needed
-            self.sync_config.syncer = get_node_to_storage_syncer(self.sync_config)
+            self.sync_config.syncer = get_node_to_storage_syncer(
+                self.sync_config, self.remote_checkpoint_dir
+            )
 
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
@@ -213,7 +215,7 @@ class Trainable:
     def uses_cloud_checkpointing(self):
         return bool(self.remote_checkpoint_dir)
 
-    def _storage_path(self, local_path):
+    def _remote_storage_path(self, local_path):
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
         return TrainableUtil.get_remote_storage_path(
@@ -653,7 +655,7 @@ class Trainable:
         syncer = self.sync_config.syncer
         assert syncer
 
-        checkpoint_uri = self._storage_path(local_dir)
+        checkpoint_uri = self._remote_storage_path(local_dir)
 
         syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude)
         try:
@@ -719,7 +721,7 @@ class Trainable:
         if not self.sync_config.sync_artifacts:
             return False
 
-        remote_dir = self._storage_path(self.logdir)
+        remote_dir = self._remote_storage_path(self.logdir)
         with warn_if_slow(
             name="trial_artifact_cloud_download",
             message=(
@@ -956,7 +958,7 @@ class Trainable:
                 syncer = self.sync_config.syncer
                 assert syncer
 
-                checkpoint_uri = self._storage_path(checkpoint_dir)
+                checkpoint_uri = self._remote_storage_path(checkpoint_dir)
                 syncer.delete(checkpoint_uri)
                 try:
                     syncer.wait_or_retry(

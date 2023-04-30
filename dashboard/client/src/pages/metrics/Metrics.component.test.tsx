@@ -7,8 +7,13 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
     <GlobalContext.Provider
       value={{
+        metricsContextLoaded: true,
         grafanaHost: "localhost:3000",
-        grafanaDefaultDashboardUid: "rayDefaultDashboard",
+        dashboardUids: {
+          default: "rayDefaultDashboard",
+          serve: "rayServeDashboard",
+          serveDeployment: "rayServeDeploymentDashboard",
+        },
         prometheusHealth: true,
         sessionName: "session-name",
         ipLogMap: {},
@@ -26,8 +31,13 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
     <GlobalContext.Provider
       value={{
+        metricsContextLoaded: true,
         grafanaHost: undefined,
-        grafanaDefaultDashboardUid: undefined,
+        dashboardUids: {
+          default: "rayDefaultDashboard",
+          serve: "rayServeDashboard",
+          serveDeployment: "rayServeDeploymentDashboard",
+        },
         prometheusHealth: false,
         sessionName: undefined,
         ipLogMap: {},
@@ -45,22 +55,26 @@ describe("Metrics", () => {
   it("renders", async () => {
     expect.assertions(5);
 
-    render(<Metrics newIA />, { wrapper: Wrapper });
+    render(<Metrics />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
     expect(screen.getByText(/5 minutes/)).toBeVisible();
     expect(screen.getByText(/Tasks and Actors/)).toBeVisible();
     expect(screen.getByText(/Ray Resource Usage/)).toBeVisible();
     expect(screen.getByText(/Hardware Utilization/)).toBeVisible();
     expect(
-      screen.queryByText(/Grafana or prometheus server not detected./),
+      screen.queryByText(
+        /Set up Prometheus and Grafana for better Ray Dashboard experience/,
+      ),
     ).toBeNull();
   });
 
   it("renders warning when ", async () => {
     expect.assertions(5);
 
-    render(<Metrics newIA />, { wrapper: MetricsDisabledWrapper });
-    await screen.findByText(/Grafana or prometheus server not detected./);
+    render(<Metrics />, { wrapper: MetricsDisabledWrapper });
+    await screen.findByText(
+      /Set up Prometheus and Grafana for better Ray Dashboard experience/,
+    );
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
     expect(screen.queryByText(/5 minutes/)).toBeNull();
     expect(screen.queryByText(/Tasks and Actors/)).toBeNull();

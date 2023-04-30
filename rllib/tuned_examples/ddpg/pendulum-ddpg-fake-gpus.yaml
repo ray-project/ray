@@ -7,7 +7,7 @@ pendulum-ddpg-fake-gpus:
     config:
         # Works for both torch and tf.
         seed: 42
-        framework: tf
+        framework: torch
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]
         n_step: 1

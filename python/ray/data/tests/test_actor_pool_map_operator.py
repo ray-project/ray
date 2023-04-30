@@ -542,6 +542,14 @@ class TestAutoscalingPolicy:
         policy = AutoscalingPolicy(config)
         assert policy.max_workers == 4
 
+    def test_should_scale_up_over_min_workers(self):
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
+        policy = AutoscalingPolicy(config)
+        num_total_workers = 0
+        num_running_workers = 0
+        # Should scale up since under pool min workers.
+        assert policy.should_scale_up(num_total_workers, num_running_workers)
+
     def test_should_scale_up_over_max_workers(self):
         # Test that scale-up is blocked if the pool would go over the configured max
         # workers.

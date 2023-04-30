@@ -255,20 +255,10 @@ This section explains how Serve recovers from system failures. It uses the follo
 ```
 ::::
 
-You can follow along using your own Kubernetes cluster. Make sure it has at least 4 CPUs and 6 GB of memory to run the working example.
-Also, make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
-First, install the [KubeRay operator](serve-installing-kuberay-operator):
-
-```console
-$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
-$ kubectl get deployments -n ray-system
-NAME                READY   UP-TO-DATE   AVAILABLE   AGE
-kuberay-operator    1/1     1            1           13s
-
-$ kubectl get pods -n ray-system
-NAME                                 READY   STATUS    RESTARTS   AGE
-kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
-```
+Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
+* Install `kubectl` and `Helm`
+* Prepare a Kubernetes cluster
+* Deploy a KubeRay operator
 
 Then, [deploy the Serve application](serve-deploy-app-on-kuberay) above:
 
@@ -374,7 +364,7 @@ redis-75c8b8b65d-4qgfz                                    1/1     Running   0   
 Port-forward to one of your worker pods. Make sure this pod is on a separate node from the head node, so you can kill the head node without crashing the worker:
 
 ```console
-$ port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
+$ kubectl port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
 Forwarding from 127.0.0.1:8000 -> 8000
 Forwarding from [::1]:8000 -> 8000
 ```

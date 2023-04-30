@@ -5,7 +5,7 @@ pong-a3c:
     run: A3C
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         env_config:
             nondeterministic: False  # deterministic
         num_workers: 16

@@ -26,7 +26,7 @@ For Pandas Users
    * - Pandas DataFrame API
      - Ray Datasets API
    * - df.head()
-     - :meth:`ds.show() <ray.data.Dataset.show>` or :meth:`ds.take() <ray.data.Dataset.take>`
+     - :meth:`ds.show() <ray.data.Dataset.show>`, :meth:`ds.take() <ray.data.Dataset.take>`, or :meth:`ds.take_batch() <ray.data.Dataset.take_batch>`
    * - df.dtypes
      - :meth:`ds.schema() <ray.data.Dataset.schema>`
    * - len(df) or df.shape[0]
@@ -42,7 +42,7 @@ For Pandas Users
    * - df.groupby()
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
    * - df.groupby().apply()
-     - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedDataset.map_groups>`
+     - :meth:`ds.groupby().map_groups() <ray.data.grouped_dataset.GroupedData.map_groups>`
    * - df.sample()
      - :meth:`ds.random_sample() <ray.data.Dataset.random_sample>`
    * - df.sort_values()

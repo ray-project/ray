@@ -668,7 +668,7 @@ def test_summarize_by_lineage():
 
     random.shuffle(tasks)
 
-    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks)
+    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks, actors=[])
 
     assert summary.total_tasks == 20
     assert summary.total_actor_tasks == 110

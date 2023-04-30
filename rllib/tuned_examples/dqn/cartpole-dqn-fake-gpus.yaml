@@ -6,7 +6,7 @@ cartpole-dqn-fake-gpus:
         training_iteration: 400
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         model:
             fcnet_hiddens: [64]
             fcnet_activation: linear

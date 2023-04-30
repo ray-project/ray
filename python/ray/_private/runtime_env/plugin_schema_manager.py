@@ -24,9 +24,14 @@ class RuntimeEnvPluginSchemaManager:
     def _load_schemas(cls, schema_paths: List[str]):
         for schema_path in schema_paths:
             try:
-                schema = json.load(open(schema_path))
+                with open(schema_path) as f:
+                    schema = json.load(f)
             except json.decoder.JSONDecodeError:
                 logger.error("Invalid runtime env schema %s, skip it.", schema_path)
+                continue
+            except OSError:
+                logger.error("Cannot open runtime env schema %s, skip it.", schema_path)
+                continue
             if "title" not in schema:
                 logger.error(
                     "No valid title in runtime env schema %s, skip it.", schema_path

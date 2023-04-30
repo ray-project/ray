@@ -5,4 +5,4 @@ cartpole-simpleq-test:
         episode_reward_mean: 50.0
         timesteps_total: 10000
     config:
-        framework: tf
+        framework: torch

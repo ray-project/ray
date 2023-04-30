@@ -110,6 +110,15 @@ class RayClusterOnSpark:
             webui_url = ray_ctx.address_info.get("webui_url", None)
             if webui_url:
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
+            else:
+                try:
+                    __import__("ray.dashboard.optional_deps")
+                except ModuleNotFoundError:
+                    _logger.warning(
+                        "Dependencies to launch the optional dashboard API "
+                        "server cannot be found. They can be installed with "
+                        "pip install ray[default]."
+                    )
 
         except Exception:
             self.shutdown()
@@ -213,7 +222,12 @@ def _convert_ray_node_option_key(key):
 
 
 def _convert_ray_node_options(options):
-    return [f"{_convert_ray_node_option_key(k)}={str(v)}" for k, v in options.items()]
+    return [
+        f"{_convert_ray_node_option_key(k)}"
+        if v is None
+        else f"{_convert_ray_node_option_key(k)}={str(v)}"
+        for k, v in options.items()
+    ]
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
@@ -625,7 +639,6 @@ def _setup_ray_cluster(
     )
 
     def background_job_thread_fn():
-
         try:
             spark.sparkContext.setJobGroup(
                 spark_job_group_id,
@@ -733,8 +746,6 @@ _head_node_option_block_keys = {
     "port": None,
     "num_cpus": None,
     "num_gpus": None,
-    "memory": None,
-    "object_store_memory": None,
     "dashboard_host": None,
     "dashboard_agent_listen_port": None,
 }
@@ -765,19 +776,17 @@ def _verify_node_options(node_options, block_keys, node_type):
 
         if key in block_keys:
             common_err_msg = (
-                f"Setting option {_convert_ray_node_options(key)} for {node_type} "
-                "is not allowed."
+                f"Setting the option '{key}' for {node_type} nodes is not allowed."
             )
             replacement_arg = block_keys[key]
             if replacement_arg:
                 raise ValueError(
-                    f"{common_err_msg} You should set '{replacement_arg}' argument "
+                    f"{common_err_msg} You should set the '{replacement_arg}' option "
                     "instead."
                 )
             else:
                 raise ValueError(
-                    f"{common_err_msg} The option is controlled by Ray on Spark "
-                    "routine."
+                    f"{common_err_msg} This option is controlled by Ray on Spark."
                 )
 
 
@@ -835,10 +844,16 @@ def setup_ray_cluster(
         head_node_options: A dict representing Ray head node extra options, these
             options will be passed to `ray start` script. Note you need to convert
             `ray start` options key from `--foo-bar` format to `foo_bar` format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
         worker_node_options: A dict representing Ray worker node extra options,
             these options will be passed to `ray start` script. Note you need to
             convert `ray start` options key from `--foo-bar` format to `foo_bar`
             format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
             created cluster will create a subdirectory
             "ray-{head_port}-{random_suffix}" beneath this path.
@@ -892,15 +907,22 @@ def setup_ray_cluster(
     spark = get_spark_session()
 
     spark_master = spark.sparkContext.master
+
+    is_spark_local_mode = spark_master == "local" or spark_master.startswith("local[")
+
     if not (
-        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
+        spark_master.startswith("spark://")
+        or spark_master.startswith("local-cluster[")
+        or is_spark_local_mode
     ):
         raise RuntimeError(
-            "Ray on Spark only supports spark cluster in standalone mode or "
-            "local-cluster mode"
+            "Ray on Spark only supports spark cluster in standalone mode, "
+            "local-cluster mode or spark local mode."
         )
 
-    if (
+    if is_spark_local_mode:
+        support_stage_scheduling = False
+    elif (
         is_in_databricks_runtime()
         and Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
     ):
@@ -950,7 +972,7 @@ def setup_ray_cluster(
                 "and number of 'spark.task.resource.gpu.amount' "
                 f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
                 "scheduling, you need to upgrade spark to 3.4 version or use "
-                "Databricks Runtime 12.x."
+                "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
     else:
         using_stage_scheduling = False

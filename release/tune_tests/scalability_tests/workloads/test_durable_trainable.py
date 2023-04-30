@@ -16,7 +16,6 @@ import argparse
 import os
 
 import ray
-from ray import tune
 
 from ray.tune.utils.release_test_util import timed_tune_run
 
@@ -77,9 +76,7 @@ def main(bucket):
         checkpoint_size_b=int(10 * 1000**2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
-        sync_config=tune.SyncConfig(
-            upload_dir=f"s3://{bucket}/durable/",
-        ),
+        storage_path=f"s3://{bucket}/durable/",
     )
 
 

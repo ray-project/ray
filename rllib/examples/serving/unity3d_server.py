@@ -28,6 +28,7 @@ $ python unity3d_client.py --inference-mode=local --game [path to game binary]
 """
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -49,7 +50,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -132,6 +133,14 @@ if __name__ == "__main__":
         .rollouts(
             num_rollout_workers=args.num_workers,
             rollout_fragment_length=20,
+            enable_connectors=False,
+        )
+        .environment(
+            env=None,
+            # TODO: (sven) make these settings unnecessary and get the information
+            #  about the env spaces from the client.
+            observation_space=gym.spaces.Box(float("-inf"), float("inf"), (8,)),
+            action_space=gym.spaces.Box(-1.0, 1.0, (2,)),
         )
         .training(train_batch_size=256)
         # Multi-agent setup for the given env.

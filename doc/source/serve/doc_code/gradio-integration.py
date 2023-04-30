@@ -42,14 +42,14 @@ def gradio_summarizer_builder():
 
     return gr.Interface(
         fn=model,
-        inputs=[gr.inputs.Textbox(default=example_input, label="Input prompt")],
-        outputs=[gr.outputs.Textbox(label="Model output")],
+        inputs=[gr.Textbox(value=example_input, label="Input prompt")],
+        outputs=[gr.Textbox(label="Model output")],
     )
     # __doc_gradio_app_end__
 
 
 # __doc_app_begin__
-app = GradioServer.options(num_replicas=2, ray_actor_options={"num_cpus": 4}).bind(
+app = GradioServer.options(ray_actor_options={"num_cpus": 4}).bind(
     gradio_summarizer_builder
 )
 # __doc_app_end__

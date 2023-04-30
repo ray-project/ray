@@ -9,7 +9,11 @@ import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
 import ray._private.services
 from ray.dashboard.utils import ray_address_to_api_server_url
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import (
+    get_current_unused_port,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
@@ -230,6 +234,47 @@ def test_ports_assignment(ray_start_cluster):
         head_node = cluster.add_node(
             **pre_selected_ports, min_worker_port=25000, max_worker_port=35000
         )
+
+
+def test_non_default_ports_visible_on_init(shutdown_only):
+    import subprocess
+
+    ports = {
+        "dashboard_agent_grpc_port": get_current_unused_port(),
+        "metrics_export_port": get_current_unused_port(),
+        "dashboard_agent_listen_port": get_current_unused_port(),
+        "port": get_current_unused_port(),  # gcs_server_port
+        "node_manager_port": get_current_unused_port(),
+    }
+    # Start a ray head node with customized ports.
+    cmd = "ray start --head --block".split(" ")
+    for port_name, port in ports.items():
+        # replace "_" with "-"
+        port_name = port_name.replace("_", "-")
+        cmd += ["--" + port_name, str(port)]
+
+    print(" ".join(cmd))
+    proc = subprocess.Popen(cmd)
+
+    # From the connected node
+    def verify():
+        # Connect to the node and check ports
+        print(ray.init("auto", ignore_reinit_error=True))
+
+        node = ray.worker.global_worker.node
+        assert node.metrics_agent_port == ports["dashboard_agent_grpc_port"]
+        assert node.metrics_export_port == ports["metrics_export_port"]
+        assert node.dashboard_agent_listen_port == ports["dashboard_agent_listen_port"]
+        assert str(ports["port"]) in node.gcs_address
+        assert node.node_manager_port == ports["node_manager_port"]
+        return True
+
+    try:
+        wait_for_condition(verify, timeout=10, retry_interval_ms=2000)
+    finally:
+        proc.terminate()
+        proc.wait()
+        subprocess.check_output("ray stop --force", shell=True)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")

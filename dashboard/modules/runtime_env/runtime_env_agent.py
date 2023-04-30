@@ -243,7 +243,9 @@ class RuntimeEnvAgent(
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
             del self._env_cache[unused_runtime_env]
-            self._logger.info("Runtime env %s deleted.", unused_runtime_env)
+            self._logger.info(
+                "Runtime env %s removed from env-level cache.", unused_runtime_env
+            )
 
         if unused_runtime_env in self._env_cache:
             if not self._env_cache[unused_runtime_env].success:

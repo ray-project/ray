@@ -9,8 +9,7 @@ from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.http_adapters import json_request
 
 # These imports are used only for type hints:
-from typing import Dict, List
-from starlette.requests import Request
+from typing import Dict
 
 
 @serve.deployment(num_replicas=2)
@@ -86,10 +85,6 @@ class PearStand:
 
     def check_price(self, amount: float) -> float:
         return self.price * amount
-
-
-async def json_resolver(request: Request) -> List:
-    return await request.json()
 
 
 with InputNode() as query:

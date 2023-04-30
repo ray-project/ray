@@ -179,7 +179,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
         gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
+        subscriber = GcsAioResourceUsageSubscriber(address=gcs_addr)
         await subscriber.subscribe()
         cluster_metadata = await self._dashboard_head.gcs_aio_client.internal_kv_get(
             CLUSTER_METADATA_KEY,

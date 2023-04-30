@@ -225,6 +225,14 @@ py_test(
 )
 
 py_test(
+    name = "test_accelerate_trainer_gpu",
+    size = "large",
+    srcs = ["tests/test_accelerate_trainer_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib",  ":conftest"]
+)
+
+py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
@@ -276,14 +284,6 @@ py_test(
     name = "test_data_parallel_trainer_checkpointing",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer_checkpointing.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_dataset_iterator",
-    size = "small",
-    srcs = ["tests/test_dataset_iterator.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
@@ -409,6 +409,38 @@ py_test(
 )
 
 py_test(
+    name = "test_lightning_checkpoint",
+    size = "medium",
+    srcs = ["tests/test_lightning_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightning_trainer_restore",
+    size = "medium",
+    srcs = ["tests/test_lightning_trainer_restore.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightning_trainer",
+    size = "large",
+    srcs = ["tests/test_lightning_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightning_predictor",
+    size = "medium",
+    srcs = ["tests/test_lightning_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -506,7 +538,7 @@ py_test(
 
 py_test(
     name = "test_torch_detection_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_detection_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib", ":conftest"]
@@ -541,7 +573,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune.py"],
     tags = ["team:ml", "exclusive", "tune"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(

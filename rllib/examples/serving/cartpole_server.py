@@ -84,7 +84,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument(
@@ -170,7 +170,11 @@ if __name__ == "__main__":
         # Use the `PolicyServerInput` to generate experiences.
         .offline_data(input_=_input)
         # Use n worker processes to listen on different ports.
-        .rollouts(num_rollout_workers=args.num_workers)
+        .rollouts(
+            num_rollout_workers=args.num_workers,
+            # Connectors are not compatible with the external env.
+            enable_connectors=False,
+        )
         # Disable OPE, since the rollouts are coming from online clients.
         .evaluation(off_policy_estimation_methods={})
         # Set to INFO so we'll see the server's actual address:port.

@@ -9,7 +9,13 @@ import requests
 import pytest
 
 from ray._private.profiling import chrome_tracing_dump
-from ray.experimental.state.api import list_tasks, list_actors, list_workers, list_nodes
+from ray.experimental.state.api import (
+    get_actor,
+    list_tasks,
+    list_actors,
+    list_workers,
+    list_nodes,
+)
 from ray._private.test_utils import wait_for_condition
 
 
@@ -167,6 +173,83 @@ def test_timeline_request(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=10)
+
+
+def test_actor_repr_name(shutdown_only):
+    def _verify_repr_name(id, name):
+        actor = get_actor(id=id)
+        assert actor is not None
+        assert actor["repr_name"] == name
+        return True
+
+    # Assert simple actor repr name
+    @ray.remote
+    class ReprActor:
+        def __init__(self, x) -> None:
+            self.x = x
+
+        def __repr__(self) -> str:
+            return self.x
+
+        def ready(self):
+            pass
+
+    a = ReprActor.remote(x="repr-name-a")
+    b = ReprActor.remote(x="repr-name-b")
+
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="repr-name-a")
+    wait_for_condition(_verify_repr_name, id=b._actor_id.hex(), name="repr-name-b")
+
+    # Assert when no __repr__ defined. repr_name should be empty
+    @ray.remote
+    class Actor:
+        pass
+
+    a = Actor.remote()
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="")
+
+    # Assert special actors (async actor, threaded actor, detached actor, named actor)
+    @ray.remote
+    class AsyncActor:
+        def __init__(self, x) -> None:
+            self.x = x
+
+        def __repr__(self) -> str:
+            return self.x
+
+        async def ready(self):
+            pass
+
+    a = AsyncActor.remote(x="async-x")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="async-x")
+
+    a = ReprActor.options(max_concurrency=3).remote(x="x")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="x")
+
+    a = ReprActor.options(name="named-actor").remote(x="repr-name")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="repr-name")
+
+    a = ReprActor.options(name="detached-actor", lifetime="detached").remote(
+        x="repr-name"
+    )
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="repr-name")
+    ray.kill(a)
+
+    # Assert nested actor class.
+    class OutClass:
+        @ray.remote
+        class InnerActor:
+            def __init__(self, name) -> None:
+                self.name = name
+
+            def __repr__(self) -> str:
+                return self.name
+
+        def get_actor(self, name):
+            return OutClass.InnerActor.remote(name=name)
+
+    a = OutClass().get_actor(name="inner")
+    wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="inner")
 
 
 if __name__ == "__main__":

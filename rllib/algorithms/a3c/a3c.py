@@ -6,7 +6,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
@@ -84,6 +83,15 @@ class A3CConfig(AlgorithmConfig):
         # but to wait until n seconds have passed and then to summarize the
         # thus far collected results.
         self.min_time_s_per_iteration = 5
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -251,20 +259,3 @@ class A3C(Algorithm):
             )
 
         return learner_info_builder.finalize()
-
-
-# Deprecated: Use ray.rllib.algorithms.a3c.A3CConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(A3CConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.a3c.a3c.A3CConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

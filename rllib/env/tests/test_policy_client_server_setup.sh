@@ -56,7 +56,7 @@ fi
 # Start server with 2 workers (will listen on ports worker_1_port and worker_2_port for client
 # connections).
 # Do not attempt to restore from checkpoint; leads to errors on travis.
-(python $basedir/$server_script --run=$trainer_cls --num-workers=2 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
+(python $basedir/$server_script --run="$trainer_cls" --num-workers=2 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
 server_pid=$!
 
 echo "Waiting for server to start ..."
@@ -85,4 +85,32 @@ client2_pid=$!
 sleep 2
 python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port "$stop_criterion"
 
+exit_if_not_running()
+{
+  local pid=$1
+
+  if ps -p "$pid"> /dev/null
+  then
+      return
+  fi
+
+  echo "$2 is not running"
+
+  wait "$pid"
+  exit_code=$?
+  echo "$2 exited with code $exit_code" 
+  return $exit_code
+}
+
+exit_if_not_running $client1_pid "client 1"
+client_1_exit_code=$?
+exit_if_not_running $client2_pid "client 2"
+client_2_exit_code=$?
+exit_if_not_running $server_pid "server"
+server_exit_code=$?
+
+if [ "$client_1_exit_code" != 0 ] || [ "$client_2_exit_code" != 0 ] || [ "$server_exit_code" != 0 ]; then
+  echo "Test failed!"
+  exit 1
+fi
 kill $server_pid $client1_pid $client2_pid || true
