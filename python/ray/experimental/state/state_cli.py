@@ -297,8 +297,12 @@ def format_get_api_output(
 
     if not isinstance(human_readable_state_data, list):
         human_readable_state_data = [human_readable_state_data]
-    human_readable_state_data = [dataclasses.asdict(state) for state in human_readable_state_data]
-    return output_with_format(human_readable_state_data, schema=schema, format=format, detail=True)
+    human_readable_state_data = [
+        dataclasses.asdict(state) for state in human_readable_state_data
+    ]
+    return output_with_format(
+        human_readable_state_data, schema=schema, format=format, detail=True
+    )
 
 
 def format_list_api_output(
