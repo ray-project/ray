@@ -378,6 +378,12 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
+    async def RegisterActor(self, request, context):
+        logger.warning(
+            f"RegisterActor called {request.pid} {request.actor_id} {request.submission_id}"
+        )
+        return reporter_pb2.RegisterActorToMetircAgentReply(message="It is message.")
+
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
         return psutil.cpu_percent()

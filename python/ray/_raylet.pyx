@@ -169,6 +169,8 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray._private.ray_constants import GLOBAL_GRPC_OPTIONS
 
 cimport cpython
 
@@ -1740,6 +1742,23 @@ cdef execute_task_with_cancellation_handler(
                 "max_call has reached, "
                 f"max_calls: {execution_info.max_calls}")
             raise exit
+
+    # BYTEDANCE ENTER
+    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        # set actor info to metric agent
+        try:
+            port = ray._private.worker._global_node.metrics_agent_port
+            channel = ray._private.utils.init_grpc_channel(
+                f"127.0.0.1:{port}", options=GLOBAL_GRPC_OPTIONS, asynchronous=False
+            )
+            stub = reporter_pb2_grpc.ReporterServiceStub(channel)
+            reply = stub.RegisterActor(reporter_pb2.RegisterActorToMetircAgentRequest(
+                pid=os.getpid(), actor_id=core_worker.get_actor_id().hex(), submission_id=os.getenv("BYTED_SUBMISSION_ID")))
+        except Exception as err:
+            exception_str = (
+                "An unexpected error occurred while registering the actor to metric agent: {}".format(err))
+            logger.exception(exception_str)
+    # BYTEDANCE LEAVE
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()

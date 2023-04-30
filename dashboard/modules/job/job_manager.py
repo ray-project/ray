@@ -198,6 +198,7 @@ class JobSupervisor:
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
+        env_vars["BYTED_SUBMISSION_ID"] = self._job_id
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
@@ -405,6 +406,9 @@ class JobSupervisor:
             # will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
             os.environ.update(self._get_driver_env_vars(resources_specified))
+            # BYTEDANCE INTERNAL
+            os.environ.update({"BYTED_SUBMISSION_ID": self._job_id})
+            # BYTEDANCE INTERNAL
             logger.info(
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
