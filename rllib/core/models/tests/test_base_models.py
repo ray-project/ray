@@ -2,6 +2,7 @@ import unittest
 from dataclasses import dataclass
 
 from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.specs.checker import SpecCheckingError
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.tf.base import TfModel
@@ -94,7 +95,9 @@ class TestModelBase(unittest.TestCase):
 
             # We want to raise an input spec validation error here since the input
             # consists of lists and not torch Tensors
-            with self.assertRaisesRegex(ValueError, "input spec validation failed"):
+            with self.assertRaisesRegex(
+                SpecCheckingError, "input spec validation failed"
+            ):
                 model({"in_1": [1], "in_2": [1, 2]})
 
             # We don't want to raise an input spec validation error here since the
@@ -132,7 +135,9 @@ class TestModelBase(unittest.TestCase):
             # We want to raise an input spec validation error here since the model
             # raises an exception that stems from inputs that could have been caught
             # with input spec checking.
-            with self.assertRaisesRegex(ValueError, "input spec validation failed"):
+            with self.assertRaisesRegex(
+                SpecCheckingError, "input spec validation failed"
+            ):
                 model({"in_1": [1], "in_2": [1, 2]})
 
     def test_model_output_spec_checking(self):
@@ -192,7 +197,9 @@ class TestModelBase(unittest.TestCase):
 
             # We want to raise an output spec validation error here since the output
             # has the wrong shape
-            with self.assertRaisesRegex(ValueError, "output spec validation failed"):
+            with self.assertRaisesRegex(
+                SpecCheckingError, "output spec validation failed"
+            ):
                 model({"in": torch.Tensor([[1]])})
 
             # 2) Check if model behaves correctly with always_check_shapes=False.

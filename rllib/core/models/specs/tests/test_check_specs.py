@@ -1,19 +1,21 @@
 import abc
-import numpy as np
 import time
-import torch
-from typing import Dict, Any, Type
 import unittest
+from typing import Dict, Any, Type
 
-from ray.rllib.core.models.specs.specs_base import TensorSpec, TypeSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
+import numpy as np
+import torch
+
+from ray.rllib.core.models.specs.checker import SpecCheckingError
 from ray.rllib.core.models.specs.checker import (
     convert_to_canonical_format,
     check_input_specs,
     check_output_specs,
 )
+from ray.rllib.core.models.specs.specs_base import TensorSpec, TypeSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 
@@ -146,7 +148,8 @@ class TestCheckSpecs(unittest.TestCase):
 
         # This should raise an error saying that the `input` key is missing.
         self.assertRaises(
-            ValueError, lambda: correct_module.check_input_and_output({"not_input": 2})
+            SpecCheckingError,
+            lambda: correct_module.check_input_and_output({"not_input": 2}),
         )
 
     def test_check_only_input(self):
@@ -172,7 +175,8 @@ class TestCheckSpecs(unittest.TestCase):
         # this should raise an error saying that the output does not match the
         # `output_specs`.
         self.assertRaises(
-            ValueError, lambda: incorrect_module.check_input_and_output({"input": 2})
+            SpecCheckingError,
+            lambda: incorrect_module.check_input_and_output({"input": 2}),
         )
 
         # this should not raise an error because output is not forced to be checked
@@ -180,7 +184,8 @@ class TestCheckSpecs(unittest.TestCase):
 
         # This should raise an error because output does not match the `output_specs`.
         self.assertRaises(
-            ValueError, lambda: incorrect_module.check_only_output({"not_input": 2})
+            SpecCheckingError,
+            lambda: incorrect_module.check_only_output({"not_input": 2}),
         )
 
     def test_filter(self):
@@ -254,7 +259,7 @@ class TestCheckSpecs(unittest.TestCase):
 
         module = ClassWithTensorSpec()
         module.forward(torch.rand(2, 4))
-        self.assertRaises(ValueError, lambda: module.forward(torch.rand(2, 3)))
+        self.assertRaises(SpecCheckingError, lambda: module.forward(torch.rand(2, 3)))
 
     def test_type_specs(self):
         class SpecialOutputType:
@@ -279,7 +284,9 @@ class TestCheckSpecs(unittest.TestCase):
         module = ClassWithTypeSpec()
         output = module.forward_pass(torch.rand(2, 4))
         self.assertIsInstance(output, SpecialOutputType)
-        self.assertRaises(ValueError, lambda: module.forward_fail(torch.rand(2, 3)))
+        self.assertRaises(
+            SpecCheckingError, lambda: module.forward_fail(torch.rand(2, 3))
+        )
 
     def test_convert_to_canonical_format(self):
 

@@ -12,6 +12,13 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+class SpecCheckingError(Exception):
+    """Raised when there is an error in the spec checking.
+
+    This Error is raised when inputs or outputs do match the defined specs.
+    """
+
+
 @DeveloperAPI
 def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     """Converts a spec type input to the canonical format.
@@ -163,7 +170,7 @@ def _validate(
         try:
             spec.validate(data)
         except ValueError as e:
-            raise ValueError(
+            raise SpecCheckingError(
                 f"{tag} spec validation failed on "
                 f"{cls_instance.__class__.__name__}.{method.__name__}, {e}."
             )
@@ -245,6 +252,8 @@ def check_input_specs(
                 # Attempt to run the function without spec checking
                 try:
                     return func(self, input_data, **kwargs)
+                except SpecCheckingError as e:
+                    raise e
                 except Exception as e:
                     # We store the initial exception to raise it later if the spec
                     # check fails.
@@ -255,15 +264,15 @@ def check_input_specs(
                         f"before calling the function again."
                     )
 
-            # If the function was not executed successfully yet, because of a failed
-            # attempt or because only_check_on_retry is False, we need to check the
-            # spec.
+            # If the function was not executed successfully yet, we check specs
             checked_data = input_data
             if input_specs:
                 if hasattr(self, input_specs):
                     spec = getattr(self, input_specs)
                 else:
-                    raise ValueError(f"object {self} has no attribute {input_specs}.")
+                    raise SpecCheckingError(
+                        f"object {self} has no attribute {input_specs}."
+                    )
 
                 if spec is not None:
                     spec = convert_to_canonical_format(spec)
