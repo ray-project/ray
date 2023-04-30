@@ -26,7 +26,12 @@ import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
 from prometheus_client.core import REGISTRY
-from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.metrics_agent import (
+    ByteDanceMetricsAgent,
+    Gauge,
+    MetricsAgent,
+    Record,
+)
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.util.debug import log_once
@@ -313,6 +318,10 @@ class ReporterAgent(
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
         self._session_name = dashboard_agent.session_name
+
+        # pid -> {"actor_id":ae57d275837f10d6eb75ab0402000000, "submission_id":raysubmit_h7Fk6ZUGNGCvST1u}
+        self._actor_tags = {}
+
         if not self._metrics_collection_disabled:
             try:
                 stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -332,11 +341,16 @@ class ReporterAgent(
                 )
                 stats_exporter = None
 
-            self._metrics_agent = MetricsAgent(
-                stats_module.stats.view_manager,
-                stats_module.stats.stats_recorder,
-                stats_exporter,
-            )
+            if dashboard_agent.metrics_agent_type == "bytedance":
+                logger.info("use ByteDance Metrics 1.0...")
+                self._metrics_agent = ByteDanceMetricsAgent()
+            else:
+                logger.info("use internal default MetricsAgent...")
+                self._metrics_agent = MetricsAgent(
+                    stats_module.stats.view_manager,
+                    stats_module.stats.stats_recorder,
+                    stats_exporter,
+                )
             if self._metrics_agent.proxy_exporter_collector:
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
@@ -378,10 +392,29 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
+    def register_actor_tags(self, pid: int, actor_id: str, submission_id: str):
+        """register actor's info for metric tags
+        28928 ae57d275837f10d6eb75ab0402000000 raysubmit_h7Fk6ZUGNGCvST1u
+        """
+        tags = {}
+        if actor_id:
+            tags["actor_id"] = actor_id
+        if submission_id:
+            tags["submission_id"] = submission_id
+        self._actor_tags[pid] = tags
+
+    def unregister_actor_tags(self, pid: int):
+        """clear tags for pid if the actor process is dead"""
+        try:
+            del self._actor_tags[pid]
+        except KeyError as ex:
+            logger.info("No such key for pid: %d, exception:%s", pid, ex)
+
     async def RegisterActor(self, request, context):
         logger.warning(
             f"RegisterActor called {request.pid} {request.actor_id} {request.submission_id}"
         )
+        self.register_actor_tags(request.pid, request.actor_id, request.submission_id)
         return reporter_pb2.RegisterActorToMetircAgentReply(message="It is message.")
 
     @staticmethod
@@ -512,6 +545,8 @@ class ReporterAgent(
                 if key not in workers:
                     keys_to_pop.append(key)
             for k in keys_to_pop:
+                logger.info("clear dead actor process:%d for reporter_agent...", k[0])
+                self.unregister_actor_tags(k[0])
                 self._workers.pop(k)
 
             # Remove the current process (reporter agent), which is also a child of
@@ -724,6 +759,9 @@ class ReporterAgent(
         tags = {"ip": self._ip, "Component": component_name}
         if pid:
             tags["pid"] = pid
+            # add actor_id / submission_id to tags
+            if int(pid) in self._actor_tags:
+                tags.update(self._actor_tags[int(pid)])
 
         records = []
         records.append(
@@ -771,19 +809,21 @@ class ReporterAgent(
         """
         # worekr cmd name (ray::*) -> stats dict.
         proc_name_to_stats = defaultdict(list)
+        records = []
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
             # All ray processes start with ray::
             if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
                 proc_name = cmdline[0]
                 proc_name_to_stats[proc_name].append(stat)
+                records.extend(
+                    self._generate_system_stats_record(
+                        [stat], proc_name, str(stat.get("pid"))
+                    )
+                )
             # We will lose worker stats that don't follow the ray worker proc
             # naming convention. Theoretically, there should be no data loss here
             # because all worker processes are renamed to ray::.
-
-        records = []
-        for proc_name, stats in proc_name_to_stats.items():
-            records.extend(self._generate_system_stats_record(stats, proc_name))
 
         # Reset worker metrics that are from finished processes.
         new_proc_names = set(proc_name_to_stats.keys())

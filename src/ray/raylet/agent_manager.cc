@@ -78,6 +78,12 @@ void AgentManager::StartAgent() {
     argv.push_back("--disable-metrics-collection");
   }
 
+  // BYTEDANCE ENTER
+  // Which MetricsAgent to be used
+  argv.push_back("--metrics-agent-type");
+  argv.push_back(RayConfig::instance().metrics_agent_type().c_str());
+  // BYTEDANCE LEAVE
+
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting agent process with command:";

@@ -78,6 +78,7 @@ class DashboardAgent:
         node_manager_port=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
+        metrics_agent_type: str = "internal",
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
@@ -110,6 +111,7 @@ class DashboardAgent:
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
+        self.metrics_agent_type = metrics_agent_type
         self.agent_id = agent_id
         self.session_name = session_name
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
@@ -491,6 +493,13 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
+        "--metrics-agent-type",
+        required=False,
+        type=str,
+        default="internal",
+        help="Which MetricsAgent to be used.",
+    )
+    parser.add_argument(
         "--agent-id",
         required=True,
         type=int,
@@ -542,6 +551,7 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name,
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
+            metrics_agent_type=args.metrics_agent_type,
             agent_id=args.agent_id,
             session_name=args.session_name,
         )

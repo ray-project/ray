@@ -7,6 +7,8 @@ import traceback
 from collections import namedtuple
 from typing import List, Tuple, Any, Dict
 
+from bytedance import metrics
+
 from prometheus_client.core import (
     CounterMetricFamily,
     GaugeMetricFamily,
@@ -562,3 +564,100 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Error message: {e}")
             time.sleep(self.default_service_discovery_flush_period)
+
+
+class ByteDanceMetricsAgent(MetricsAgent):
+    def __init__(self):
+        """A class to record and export metrics to ByteDance Metrics 1.0.
+
+        The class exports metrics in 2 different ways.
+        - Directly record and export metrics using OpenCensus.
+        - Proxy metrics from other core components
+            (e.g., raylet, GCS, core workers).
+
+        This class is thread-safe.
+        """
+        # Lock required because gRPC server uses
+        # multiple threads to process requests.
+        self._lock = threading.Lock()
+        self._mcli = metrics.Client(prefix="ray")
+        self.proxy_exporter_collector = None
+        self._actor_tags = {}
+        self._global_tags = {
+            "RayClusterName": os.getenv("BYTED_RAY_CLUSTER", "ray-cluster-default-name")
+        }
+
+    def record_and_export(self, records: List[Record], global_tags=None):
+        """Directly record and export stats from the same process."""
+        global_tags = global_tags or {}
+        for record in records:
+            gauge = record.gauge
+            value = record.value
+            tags = record.tags
+            self._mcli.emit_store(
+                gauge.name, value, {**self._global_tags, **tags, **global_tags}
+            )
+
+    def proxy_export_metrics(self, metrics: List[Metric], worker_id_hex: str = None):
+        """Proxy export metrics specified by a Opencensus Protobuf.
+
+        This API is used to export metrics emitted from
+        core components.
+
+        Args:
+            metrics: A list of protobuf Metric defined from OpenCensus.
+            worker_id_hex: The worker ID it proxies metrics export. None
+                if the metric is not from a worker (i.e., raylet, GCS).
+        """
+        for metric in metrics:
+            descriptor = metric.metric_descriptor
+            name = descriptor.name
+            label_keys = [label_key.key for label_key in descriptor.label_keys]
+
+            timeseries = metric.timeseries
+
+            if len(timeseries) == 0:
+                continue
+
+            # Create the aggregation and fill it in the our stats
+            for series in timeseries:
+                labels = tuple(val.value for val in series.label_values)
+
+                tags = {}
+                assert len(labels) == len(label_keys)
+                for index, key in enumerate(label_keys):
+                    if labels[index]:
+                        tags[key] = labels[index]
+                tags = {**self._global_tags, **tags}
+                # Aggregate points.
+                for point in series.points:
+                    if point.HasField("int64_value"):
+                        data = point.int64_value
+                        self._mcli.emit_counter(name, data, tags)
+                    elif point.HasField("double_value"):
+                        data = point.double_value
+                        self._mcli.emit_store(name, data, tags)
+                    # elif point.HasField("distribution_value"):
+                    # ToDO: not supported in ByteDance metric 1.0
+                    # dist_value = point.distribution_value
+                    # counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
+                    # bucket_bounds = dist_value.bucket_options.explicit.bounds
+                    # data = DistributionAggregationData(
+                    #     dist_value.sum / dist_value.count,
+                    #     dist_value.count,
+                    #     dist_value.sum_of_squared_deviation,
+                    #     counts_per_bucket,
+                    #     bucket_bounds,
+                    # )
+                    else:
+                        logger.warning(f"metric not supported: {name}")
+
+    def clean_all_dead_worker_metrics(self):
+        """Clean dead worker's metrics.
+
+        Worker metrics are cleaned up and won't be exported once
+        it is considered as dead.
+
+        This method has to be periodically called by a caller.
+        """
+        return
