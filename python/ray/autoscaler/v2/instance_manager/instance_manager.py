@@ -2,6 +2,7 @@ import logging
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage
@@ -34,11 +35,21 @@ class InstanceManager(metaclass=ABCMeta):
         pass
 
 
+@dataclass
+class InstanceStatusChange:
+    """Class for keeping track of an item in inventory."""
+
+    instance: Instance
+    from_status: int
+    to_status: int
+
+
 class BaseInstanceManager(InstanceManager):
     """BaseInstanceManager is the base class for all instance managers.
     It only manipulates the state of the instances, and does not actually
     calling node provider to create/terminate instances.
     """
+
     def __init__(
         self,
         cluster_id: str,
@@ -79,17 +90,19 @@ class BaseInstanceManager(InstanceManager):
                 reply.version = version
                 reply.error_message = (
                     f"Failed to transition instance "
-                    "{instance.instance_id} from {instance.instance_state} to STOPPING"
+                    "{instance.instance_id} from {instance.status} to STOPPING"
                 )
                 return reply
             mutations[instance.instance_id] = instance.SerializeToString()
 
         # handle new instances to start
+        new_instances = {}
         for instance_type in request.new_nodes_to_start:
             instance = Instance()
             instance.instance_id = str(uuid.uuid4())
             instance.instance_type = instance_type.type_name
-            instance.instance_state = Instance.INSTANCE_STATUS_UNSPECIFIED
+            instance.status = Instance.INSTANCE_STATUS_UNSPECIFIED
+            new_instances.append(instance)
             mutations[instance.instance_id] = instance.SerializeToString()
 
         expected_version = (
@@ -98,6 +111,21 @@ class BaseInstanceManager(InstanceManager):
         result, version = self._storage.update(
             self._table_name, mutations, {}, expected_version
         )
+
+        if result:
+            if new_instances:
+                self._notify_instances_status_changed(
+                    new_instances,
+                    [None] * len(new_instances),
+                    [Instance.INSTANCE_STATUS_UNSPECIFIED] * len(new_instances),
+                )
+            if to_terminate_instances:
+                to_terminate_instances_values = list(to_terminate_instances.values())
+                self._notify_instances_status_changed(
+                    to_terminate_instances_values,
+                    [instance.status for instance in to_terminate_instances_values],
+                    [Instance.STOPPING] * len(to_terminate_instances),
+                )
 
         reply = UpdateInstanceManagerStateReply()
         reply.success = result
@@ -125,21 +153,58 @@ class BaseInstanceManager(InstanceManager):
         return instances, version
 
     def _transition_state(self, instance: Instance, new_state: int) -> bool:
-        instance.instance_state = new_state
+        instance.status = new_state
         return True
 
     def _gc_stopped_nodes(self) -> bool:
-        instances = self.get_instance_manager_state().state.instances
+        state = self.get_instance_manager_state().state
+        instances = state.instances
         to_gc_instances = []
+        to_gc_instance_ids = []
         for instance in instances:
             if (
-                instance.instance_state == Instance.STOPPED
+                instance.status == Instance.STOPPED
                 and instance.timestamp_since_last_state_change
                 + self._stopped_node_gc_timeout_s
                 < time.time()
             ):
                 logger.info("GCing stopped node %s", instance.instance_id)
-                to_gc_instances.append(instance.instance_id)
+                to_gc_instance_ids.append(instance.instance_id)
+                to_gc_instances.append(instance)
         if not to_gc_instances:
             return False
-        return self._storage.update(self._table_name, {}, to_gc_instances)[0]
+
+        result = self._storage.update(
+            self._table_name, {}, to_gc_instances, state.version
+        )[0]
+
+        if result:
+            self._notify_instances_status_changed(
+                to_gc_instances,
+                [Instance.STOPPED] * len(to_gc_instances),
+                [Instance.GARBAGE_COLLECTED] * len(to_gc_instances),
+            )
+        return result
+
+    def _notify_instances_status_changed(
+        self,
+        instances: List[Instance],
+        old_status: List[Optional[int]],
+        new_status: List[int],
+    ) -> None:
+        for i, instance in enumerate(instances):
+            if instance.status == old_status[i]:
+                instance.status = new_status[i]
+            assert (
+                instance.status == new_status
+            ), f"instance {instance.instance_id} status is {instance.status}, expected {new_status}"
+        self._status_change_subscriber.notify(
+            [
+                InstanceStatusChange(
+                    instance=instance,
+                    from_status=old_status[i],
+                    to_status=new_status[i],
+                )
+                for i, instance in enumerate(instances)
+            ]
+        )
