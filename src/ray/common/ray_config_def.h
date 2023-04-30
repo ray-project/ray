@@ -441,7 +441,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, true)
+RAY_CONFIG(bool, use_ray_syncer, false)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -487,6 +487,11 @@ RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
 RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1000 * 15)
+
+/// The delay in ms that GCS should mark any running tasks from a dead worker failed.
+/// Setting this value too smaller might result in some finished tasks marked as failed by
+/// GCS since task events data are pushed to GCS asynchronously.
+RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */ 1000 * 1)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
@@ -794,8 +799,8 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 // Example: RAY_preload_python_modules=tensorflow,pytorch
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
-// By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
+// By default, raylet send a self liveness check to GCS every 5s
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks

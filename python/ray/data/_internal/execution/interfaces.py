@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
@@ -209,7 +209,7 @@ class ExecutionOptions:
             option is useful for performance debugging. Off by default.
     """
 
-    resource_limits: ExecutionResources = ExecutionResources()
+    resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 
@@ -281,18 +281,24 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
 
     def completed(self) -> bool:
-        """Return True when this operator is done and all outputs are taken."""
+        """Return True when this operator is completed.
+
+        An operator is completed if any of the following conditions are met:
+        - All upstream operators are completed and all outputs are taken.
+        - All downstream operators are completed.
+        """
         return (
             self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
-        )
+        ) or self._dependents_complete
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatastreamStats."""
@@ -337,6 +343,21 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
+    def should_add_input(self) -> bool:
+        """Return whether it is desirable to add input to this operator right now.
+
+        Operators can customize the implementation of this method to apply additional
+        backpressure (e.g., waiting for internal actors to be created).
+        """
+        return True
+
+    def need_more_inputs(self) -> bool:
+        """Return true if the operator still needs more inputs.
+
+        Once this return false, it should never return true again.
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -358,6 +379,13 @@ class PhysicalOperator(Operator):
         via `add_input` for any input index.
         """
         self._inputs_complete = True
+
+    def all_dependents_complete(self) -> None:
+        """Called when all downstream operators have completed().
+
+        After this is called, the operator is marked as completed.
+        """
+        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
@@ -444,6 +472,17 @@ class PhysicalOperator(Operator):
         ExecutionResources(cpu=1) as its incremental usage.
         """
         return ExecutionResources()
+
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        """Called periodically by the executor.
+
+        Args:
+            input_queue_size: The number of inputs queued outside this operator.
+            under_resource_limits: Whether this operator is under resource limits.
+        """
+        pass
 
 
 class OutputIterator(Iterator[RefBundle]):

@@ -15,6 +15,7 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def _route_prefix_format(cls, v):
@@ -304,9 +305,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     """
 
     name: str = Field(
-        # TODO(cindy): eventually we should set the default app name to a non-empty
-        # string and forbid empty app names.
-        default="",
+        default=SERVE_DEFAULT_APP_NAME,
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -357,7 +356,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     deployments: List[DeploymentSchema] = Field(
         default=[],
-        description=("Deployment options that override options specified in the code."),
+        description="Deployment options that override options specified in the code.",
+    )
+    args: Dict = Field(
+        default={},
+        description="Arguments that will be passed to the application builder.",
     )
 
     @validator("runtime_env")

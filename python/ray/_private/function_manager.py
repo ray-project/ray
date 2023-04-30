@@ -5,7 +5,6 @@ import inspect
 import json
 import logging
 import os
-import sys
 import threading
 import time
 import traceback
@@ -128,10 +127,7 @@ class FunctionActorManager:
         import io
 
         string_file = io.StringIO()
-        if sys.version_info[1] >= 7:
-            dis.dis(function_or_class, file=string_file, depth=2)
-        else:
-            dis.dis(function_or_class, file=string_file)
+        dis.dis(function_or_class, file=string_file, depth=2)
         collision_identifier = function_or_class.__name__ + ":" + string_file.getvalue()
 
         # Return a hash of the identifier in case it is too large.

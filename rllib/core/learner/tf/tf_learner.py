@@ -5,12 +5,12 @@ import pathlib
 import tree  # pip install dm-tree
 from typing import (
     Any,
-    Mapping,
-    Union,
-    Optional,
     Callable,
-    Sequence,
     Hashable,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -30,6 +30,7 @@ from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
@@ -68,9 +69,10 @@ class TfLearner(Learner):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
-        # the default strategy is a no-op that can be used in the local mode
-        # cpu only case, build will override this if needed.
-        self._strategy = tf.distribute.get_strategy()
+
+        # this is a placeholder which will be filled by
+        # `_make_distributed_strategy_if_necessary`
+        self._strategy: tf.distribute.Strategy = None
 
     @override(Learner)
     def configure_optimizer_per_module(
@@ -97,11 +99,27 @@ class TfLearner(Learner):
         return grads
 
     @override(Learner)
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Postprocesses gradients depending on the optimizer config."""
+
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+        )
+
+        return gradients_dict
+
+    @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
-        # only some agents have a sample batch that is passed but not others.
-        # This is probably because of the way that we are iterating over the
-        # parameters in the optim_to_param_dictionary
+        #  only some agents have a sample batch that is passed but not others.
+        #  This is probably because of the way that we are iterating over the
+        #  parameters in the optim_to_param_dictionary.
         for optim, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
@@ -114,20 +132,6 @@ class TfLearner(Learner):
                 if gradients[param_ref] is not None
             ]
             optim.apply_gradients(zip(gradient_list, variable_list))
-
-    @override(Learner)
-    def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        grad_clip = self._optimizer_config.get("grad_clip", None)
-        assert isinstance(
-            grad_clip, (int, float, type(None))
-        ), "grad_clip must be a number"
-        if grad_clip is not None:
-            gradients_dict = tf.nest.map_structure(
-                lambda v: tf.clip_by_value(v, -grad_clip, grad_clip), gradients_dict
-            )
-        return gradients_dict
 
     @override(Learner)
     def load_state(
@@ -267,6 +271,25 @@ class TfLearner(Learner):
         self._module.set_state(weights)
 
     @override(Learner)
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        optim_weights = {}
+        with tf.init_scope():
+            for name, optim in self._named_optimizers.items():
+                optim_weights[name] = [var.numpy() for var in optim.variables()]
+        return optim_weights
+
+    @override(Learner)
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        for name, weight_array in weights.items():
+            if name not in self._named_optimizers:
+                raise ValueError(
+                    f"Optimizer {name} in weights is not known."
+                    f"Known optimizers are {self._named_optimizers.keys()}"
+                )
+            optim = self._named_optimizers[name]
+            optim.set_weights(weight_array)
+
+    @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
         return param.ref()
 
@@ -349,6 +372,35 @@ class TfLearner(Learner):
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
+    def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
+        """Create a distributed strategy for the learner.
+
+        A stratgey is a tensorflow object that is used for distributing training and
+        gradient computation across multiple devices. By default a no-op strategy is
+        that is not distributed is used.
+
+        Returns:
+            A strategy for the learner to use for distributed training.
+
+        """
+        if self._distributed:
+            strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        elif self._use_gpu:
+            # mirrored strategy is typically used for multi-gpu training
+            # on a single machine, however we can use it for single-gpu
+            devices = tf.config.list_logical_devices("GPU")
+            assert self._local_gpu_idx < len(devices), (
+                f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                " not available."
+            )
+            local_gpu = [devices[self._local_gpu_idx].name]
+            strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+        else:
+            # the default strategy is a no-op that can be used in the local mode
+            # cpu only case, build will override this if needed.
+            strategy = tf.distribute.get_strategy()
+        return strategy
+
     @override(Learner)
     def build(self) -> None:
         """Build the TfLearner.
@@ -358,19 +410,13 @@ class TfLearner(Learner):
         placed on the correct device. After running super(), depending on eager_tracing
         flag it will decide whether to wrap the update function with tf.function or not.
         """
-        if self._distributed:
-            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        else:
-            if self._use_gpu:
-                # mirrored strategy is typically used for multi-gpu training
-                # on a single machine, however we can use it for single-gpu
-                devices = tf.config.list_logical_devices("GPU")
-                assert self._local_gpu_idx < len(devices), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
-                )
-                local_gpu = [devices[self._local_gpu_idx].name]
-                self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+
+        # we call build anytime we make a learner, or load a learner from a checkpoint.
+        # we can't make a new strategy every time we build, so we only make one the
+        # first time build is called.
+        if not self._strategy:
+            self._strategy = self._make_distributed_strategy_if_necessary()
+
         with self._strategy.scope():
             super().build()
 
