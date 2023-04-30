@@ -116,7 +116,6 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
                 "cart": self.wrapped.observation_space,
             }
         )
-        self._skip_env_checking = True
 
     def reset(self, *, seed=None, options=None):
         obs, infos = self.wrapped.reset()
