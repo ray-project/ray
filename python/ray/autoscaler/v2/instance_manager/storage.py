@@ -56,6 +56,8 @@ class InMemoryStorage(Storage):
             return (copy.deepcopy(self._tables[table]), self._version)
 
     def get(self, table: str, keys: List[str]) -> Tuple[Dict[str, str], int]:
+        if not keys:
+            return self.get_all(table)
         with self._lock:
             result = {}
             for key in keys:
