@@ -438,11 +438,8 @@ class JobSupervisor:
                     # otherwise SIGKILL job forcefully after timeout.
                     self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
                     try:
-                        stop_job_wait_time = int(
-                            os.environ.get(
-                                "RAY_JOB_STOP_WAIT_TIME_S",
-                                self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
-                            )
+                        stop_job_wait_time = (
+                            JobSupervisor.get_ray_job_stop_wait_time_seconds()
                         )
                         poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
                         await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
@@ -503,6 +500,15 @@ class JobSupervisor:
     def stop(self):
         """Set step_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
+
+    @staticmethod
+    def get_ray_job_stop_wait_time_seconds():
+        return int(
+            os.environ.get(
+                "RAY_JOB_STOP_WAIT_TIME_S",
+                JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+            )
+        )
 
 
 class JobManager:
@@ -954,7 +960,21 @@ class JobManager:
         if job_supervisor_actor is not None:
             # Actor is still alive, signal it to stop the driver, fire and
             # forget
-            job_supervisor_actor.stop.remote()
+            # If JobSupervisor actor is pending, for example, the user submit the job with
+            # an inappropriate --entrypoint-num-cpus parameter. JobSupervisor cannot be stopped
+            # by calling job_supervisor_actor.stop.remote().
+            try:
+                # JobSupervisor wait `get_ray_job_stop_wait_time_seconds()` for the driver to exit.
+                # Wait an extra 10 seconds for JobSupervisor to exit.
+                ray.get(
+                    job_supervisor_actor.stop.remote(),
+                    timeout=JobSupervisor.get_ray_job_stop_wait_time_seconds() + 10,
+                )
+            except ray.exceptions.GetTimeoutError:
+                logger.warning(
+                    f"Wait for JobSupervisor exit timed out, kill JobSupervisor actor by force."
+                )
+                ray.kill(job_supervisor_actor)
             return True
         else:
             return False

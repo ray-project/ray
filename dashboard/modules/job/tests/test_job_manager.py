@@ -344,6 +344,12 @@ async def check_job_running(job_manager, job_id):
     return status == JobStatus.RUNNING
 
 
+async def check_job_pending(job_manager, job_id):
+    status = await job_manager.get_job_status(job_id)
+    assert status in {JobStatus.PENDING}
+    return status == JobStatus.PENDING
+
+
 def check_subprocess_cleaned(pid):
     return psutil.pid_exists(pid) is False
 
@@ -1047,6 +1053,39 @@ while True:
 
     await async_wait_for_condition_async_predicate(
         check_job_stopped,
+        job_manager=job_manager,
+        job_id=job_id,
+        timeout=10,
+    )
+
+
+@pytest.mark.asyncio
+async def test_stop_job_jobsupervisor_pending(job_manager):
+    """
+    Stop job by force is JobSupervisor actor is pending.
+    """
+    entrypoint = """ls -l"""
+    # Total num_cpus is 16, so JobSupervisor is pending because entrypoint_num_cpus=128 will not be satisfied.
+    job_id = await job_manager.submit_job(
+        entrypoint=entrypoint, entrypoint_num_cpus=128
+    )
+
+    await async_wait_for_condition_async_predicate(
+        check_job_pending, job_manager=job_manager, job_id=job_id
+    )
+
+    with pytest.raises(RuntimeError):
+        await async_wait_for_condition_async_predicate(
+            check_job_running,
+            job_manager=job_manager,
+            job_id=job_id,
+            timeout=10,
+        )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition_async_predicate(
+        check_job_failed,
         job_manager=job_manager,
         job_id=job_id,
         timeout=10,
