@@ -34,7 +34,7 @@ message GetAvailableInstanceTypesRequest {}
 
 message GetAvailableInstanceTypesResponse {
   repeated InstanceType instance_types = 1;
-  repeated int64 available_instances = 2;
+  int64 available_instances = 2;
 }
 
 // Represents the state of a launched instance.
