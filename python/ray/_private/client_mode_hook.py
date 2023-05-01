@@ -126,6 +126,7 @@ def client_mode_wrap(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         from ray.util.client import ray
+
         auto_init_ray()
         # Directly pass this through since `client_mode_wrap` is for
         # Placement Group APIs
