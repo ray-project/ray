@@ -1,7 +1,7 @@
 .. _creating_datastreams:
 
 ====================
-Creating Datastreams
+Loading Data
 ====================
 
 :class:`Datastreams <ray.data.Datastream>` can be created from:
@@ -22,34 +22,36 @@ if you're interested in rolling your own integration!
 Generating Synthetic Data
 -------------------------
 
-.. tabbed:: Int Range
+.. tab-set::
 
-  Create a ``Datastream`` from a range of integers.
+    .. tab-item:: Int Range
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __gen_synth_int_range_begin__
-    :end-before: __gen_synth_int_range_end__
+      Create a ``Datastream`` from a range of integers.
 
-.. tabbed:: Tabular Range
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __gen_synth_int_range_begin__
+        :end-before: __gen_synth_int_range_end__
 
-  Create an Arrow (tabular) ``Datastream`` from a range of integers,
-  with a single column containing this integer range.
+    .. tab-item:: Tabular Range
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __gen_synth_tabular_range_begin__
-    :end-before: __gen_synth_tabular_range_end__
+      Create an Arrow (tabular) ``Datastream`` from a range of integers,
+      with a single column containing this integer range.
 
-.. tabbed:: Tensor Range
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __gen_synth_tabular_range_begin__
+        :end-before: __gen_synth_tabular_range_end__
 
-  Create a tensor datastream from a range of integers, packing this integer range into
-  tensors of the provided shape.
+    .. tab-item:: Tensor Range
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __gen_synth_tensor_range_begin__
-    :end-before: __gen_synth_tensor_range_end__
+      Create a tensor datastream from a range of integers, packing this integer range into
+      tensors of the provided shape.
+
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __gen_synth_tensor_range_begin__
+        :end-before: __gen_synth_tensor_range_end__
 
 .. _datastream_reading_from_storage:
 
@@ -72,141 +74,143 @@ will be read in parallel.
 Supported File Formats
 ======================
 
-.. tabbed:: Parquet
+.. tab-set::
 
-  Read Parquet files into a tabular ``Datastream``. The Parquet data will be read into
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Although this simple example demonstrates reading a single file, note that
-  Datastreams can also read directories of Parquet files. We also support reading partitioned
-  Parquet datasets with partition column values pulled from the file paths.
+    .. tab-item:: Parquet
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_parquet_begin__
-    :end-before: __read_parquet_end__
+      Read Parquet files into a tabular ``Datastream``. The Parquet data will be read into
+      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+      blocks. Although this simple example demonstrates reading a single file, note that
+      Datastreams can also read directories of Parquet files. We also support reading partitioned
+      Parquet datasets with partition column values pulled from the file paths.
 
-  Datastreams' Parquet reader also supports projection and filter pushdown, allowing column
-  selection and row filtering to be pushed down to the file scan. For column selection,
-  unselected columns will never be read from the file.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_parquet_begin__
+        :end-before: __read_parquet_end__
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_parquet_pushdown_begin__
-    :end-before: __read_parquet_pushdown_end__
+      Datastreams' Parquet reader also supports projection and filter pushdown, allowing column
+      selection and row filtering to be pushed down to the file scan. For column selection,
+      unselected columns will never be read from the file.
 
-  See the API docs for :func:`read_parquet() <ray.data.read_parquet>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_parquet_pushdown_begin__
+        :end-before: __read_parquet_pushdown_end__
 
-.. tabbed:: CSV
+      See the API docs for :func:`read_parquet() <ray.data.read_parquet>`.
 
-  Read CSV files into a tabular ``Datastream``. The CSV data will be read into
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Although this simple example demonstrates reading a single file, note that
-  Datastreams can also read directories of CSV files, with one tabular block created
-  per file.
+    .. tab-item:: CSV
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_csv_begin__
-    :end-before: __read_csv_end__
+      Read CSV files into a tabular ``Datastream``. The CSV data will be read into
+      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+      blocks. Although this simple example demonstrates reading a single file, note that
+      Datastreams can also read directories of CSV files, with one tabular block created
+      per file.
 
-  See the API docs for :func:`read_csv() <ray.data.read_csv>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_csv_begin__
+        :end-before: __read_csv_end__
 
-.. tabbed:: JSON
+      See the API docs for :func:`read_csv() <ray.data.read_csv>`.
 
-  Read JSON files into a tabular ``Datastream``. The JSON data will be read into
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Although this simple example demonstrates reading a single file, note that
-  Datastreams can also read directories of JSON files, with one tabular block created
-  per file.
+    .. tab-item:: JSON
 
-  Currently, only newline-delimited JSON (NDJSON) is supported.
+      Read JSON files into a tabular ``Datastream``. The JSON data will be read into
+      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+      blocks. Although this simple example demonstrates reading a single file, note that
+      Datastreams can also read directories of JSON files, with one tabular block created
+      per file.
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_json_begin__
-    :end-before: __read_json_end__
+      Currently, only newline-delimited JSON (NDJSON) is supported.
 
-  See the API docs for :func:`read_json() <ray.data.read_json>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_json_begin__
+        :end-before: __read_json_end__
 
-.. tabbed:: NumPy
+      See the API docs for :func:`read_json() <ray.data.read_json>`.
 
-  Read NumPy files into a tensor ``Datastream``. The NumPy ndarray data will be read into
-  single-column
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks using our
-  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`,
-  treating the outermost ndarray dimension as the row dimension. See our
-  :ref:`tensor data guide <data_tensor_support>` for more information on working
-  with tensors in Datastreams. Although this simple example demonstrates reading a single
-  file, note that Datastreams can also read directories of NumPy files, with one tensor
-  block created per file.
+    .. tab-item:: NumPy
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_numpy_begin__
-    :end-before: __read_numpy_end__
+      Read NumPy files into a tensor ``Datastream``. The NumPy ndarray data will be read into
+      single-column
+      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+      blocks using our
+      :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`,
+      treating the outermost ndarray dimension as the row dimension. See our
+      :ref:`tensor data guide <data_tensor_support>` for more information on working
+      with tensors in Datastreams. Although this simple example demonstrates reading a single
+      file, note that Datastreams can also read directories of NumPy files, with one tensor
+      block created per file.
 
-  See the API docs for :func:`read_numpy() <ray.data.read_numpy>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_numpy_begin__
+        :end-before: __read_numpy_end__
 
-.. tabbed:: Text
+      See the API docs for :func:`read_numpy() <ray.data.read_numpy>`.
 
-  Read text files into a ``Datastream``. Each line in each text file will be treated as a
-  row in the datastream, resulting in a list-of-strings block being created for each text
-  file.
+    .. tab-item:: Text
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_text_begin__
-    :end-before: __read_text_end__
+      Read text files into a ``Datastream``. Each line in each text file will be treated as a
+      row in the datastream, resulting in a list-of-strings block being created for each text
+      file.
 
-  See the API docs for :func:`read_text() <ray.data.read_text>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_text_begin__
+        :end-before: __read_text_end__
 
-.. tabbed:: Images
+      See the API docs for :func:`read_text() <ray.data.read_text>`.
 
-  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Datastream`. 
+    .. tab-item:: Images
 
-  This function stores image data in single-column
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks using the 
-  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
-  For more information on working with tensors in Datastreams, read the 
-  :ref:`tensor data guide <data_tensor_support>`.
+      Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Datastream`.
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_images_begin__
-    :end-before: __read_images_end__
+      This function stores image data in single-column
+      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+      blocks using the
+      :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
+      For more information on working with tensors in Datastreams, read the
+      :ref:`tensor data guide <data_tensor_support>`.
 
-.. tabbed:: Binary
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_images_begin__
+        :end-before: __read_images_end__
 
-  Read binary files into a ``Datastream``. Each binary file will be treated as a single row
-  of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
-  kind of data using :meth:`~ray.data.Datastream.map_batches` to apply a per-row decoding
-  :ref:`user-defined function <transform_datastreams_writing_udfs>`.
+    .. tab-item:: Binary
 
-  Although this simple example demonstrates reading a single file, note that Datastreams
-  can also read directories of binary files, with one bytes block created per file.
+      Read binary files into a ``Datastream``. Each binary file will be treated as a single row
+      of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
+      kind of data using :meth:`~ray.data.Datastream.map_batches` to apply a per-row decoding
+      :ref:`user-defined function <transform_datastreams_writing_udfs>`.
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_binary_begin__
-    :end-before: __read_binary_end__
+      Although this simple example demonstrates reading a single file, note that Datastreams
+      can also read directories of binary files, with one bytes block created per file.
 
-  See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_binary_begin__
+        :end-before: __read_binary_end__
 
-.. tabbed:: TFRecords
+      See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
 
-  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
-  :class:`~ray.data.Datastream`.
+    .. tab-item:: TFRecords
 
-  .. warning::
-      Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
-      records are supported.
+      Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
+      :class:`~ray.data.Datastream`.
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_tfrecords_begin__
-    :end-before: __read_tfrecords_end__
+      .. warning::
+          Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+          records are supported.
+
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_tfrecords_begin__
+        :end-before: __read_tfrecords_end__
 
 .. _datastream_reading_remote_storage:
 
@@ -232,88 +236,90 @@ specify a ``filesystem`` argument.
 We use Parquet files for the below examples, but all of the aforementioned file formats
 are supported for each of these storage systems.
 
-.. tabbed:: S3
+.. tab-set::
 
-  The AWS S3 storage system is inferred from the URI scheme (``s3://``), with required connection
-  configuration such as S3 credentials being pulled from the machine's environment
-  (e.g. the ``AWS_ACCESS_KEY_ID`` and ``AWS_SECRET_ACCESS_KEY`` environment variables).
+    .. tab-item:: S3
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __read_parquet_s3_begin__
-    :end-before: __read_parquet_s3_end__
+      The AWS S3 storage system is inferred from the URI scheme (``s3://``), with required connection
+      configuration such as S3 credentials being pulled from the machine's environment
+      (e.g. the ``AWS_ACCESS_KEY_ID`` and ``AWS_SECRET_ACCESS_KEY`` environment variables).
 
-  If needing to customize this S3 storage system connection (credentials, region,
-  endpoint override, etc.), you can pass in an
-  `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
-  to :func:`read_parquet() <ray.data.read_parquet>`.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __read_parquet_s3_begin__
+        :end-before: __read_parquet_s3_end__
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __read_parquet_s3_with_fs_begin__
-    :end-before: __read_parquet_s3_with_fs_end__
+      If needing to customize this S3 storage system connection (credentials, region,
+      endpoint override, etc.), you can pass in an
+      `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
+      to :func:`read_parquet() <ray.data.read_parquet>`.
 
-.. tabbed:: HDFS
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __read_parquet_s3_with_fs_begin__
+        :end-before: __read_parquet_s3_with_fs_end__
 
-  The HDFS storage system is inferred from the URI scheme (``hdfs://``), with required connection
-  configuration such as the host and the port being derived from the URI.
+    .. tab-item:: HDFS
 
-  .. note::
+      The HDFS storage system is inferred from the URI scheme (``hdfs://``), with required connection
+      configuration such as the host and the port being derived from the URI.
 
-    This example is not runnable as-is; you'll need to point it at your HDFS
-    cluster/data.
+      .. note::
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __read_parquet_hdfs_begin__
-    :end-before: __read_parquet_hdfs_end__
+        This example is not runnable as-is; you'll need to point it at your HDFS
+        cluster/data.
 
-  If needing to customize this HDFS storage system connection (host, port, user, kerb
-  ticket, etc.), you can pass in an `HDFSFileSystem
-  <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
-  instance to :func:`read_parquet() <ray.data.read_parquet>`.
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __read_parquet_hdfs_begin__
+        :end-before: __read_parquet_hdfs_end__
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __read_parquet_hdfs_with_fs_begin__
-    :end-before: __read_parquet_hdfs_with_fs_end__
+      If needing to customize this HDFS storage system connection (host, port, user, kerb
+      ticket, etc.), you can pass in an `HDFSFileSystem
+      <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
+      instance to :func:`read_parquet() <ray.data.read_parquet>`.
 
-.. tabbed:: GCS
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __read_parquet_hdfs_with_fs_begin__
+        :end-before: __read_parquet_hdfs_with_fs_end__
 
-  Data can be read from Google Cloud Storage by providing a configured
-  `gcsfs GCSFileSystem <https://gcsfs.readthedocs.io/en/latest/>`__, where the
-  appropriate Google Cloud project and credentials can be specified.
+    .. tab-item:: GCS
 
-  .. note::
-    This example is not runnable as-is; you'll need to point it at your GCS bucket and
-    configure your GCP project and credentials.
+      Data can be read from Google Cloud Storage by providing a configured
+      `gcsfs GCSFileSystem <https://gcsfs.readthedocs.io/en/latest/>`__, where the
+      appropriate Google Cloud project and credentials can be specified.
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __read_parquet_gcs_begin__
-    :end-before: __read_parquet_gcs_end__
+      .. note::
+        This example is not runnable as-is; you'll need to point it at your GCS bucket and
+        configure your GCP project and credentials.
 
-  .. tip::
-    To verify that your GCP project and credentials are set up, validate
-    that the GCS `filesystem` has permissions to read the input `path`.
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __read_parquet_gcs_begin__
+        :end-before: __read_parquet_gcs_end__
 
-    .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-      :language: python
-      :start-after: __validate_parquet_gcs_begin__
-      :end-before: __validate_parquet_gcs_end__
+      .. tip::
+        To verify that your GCP project and credentials are set up, validate
+        that the GCS `filesystem` has permissions to read the input `path`.
 
-    For more examples, see the `GCSFS Documentation <https://gcsfs.readthedocs.io/en/latest/#examples>`__.
+        .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+          :language: python
+          :start-after: __validate_parquet_gcs_begin__
+          :end-before: __validate_parquet_gcs_end__
 
-.. tabbed:: ADL/ABS (Azure)
+        For more examples, see the `GCSFS Documentation <https://gcsfs.readthedocs.io/en/latest/#examples>`__.
 
-  Data can be read from Azure Blob Storage by providing a configured
-  `adlfs AzureBlobFileSystem <https://github.com/fsspec/adlfs>`__, where the appropriate
-  account name and account key can be specified.
+    .. tab-item:: ADL/ABS (Azure)
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __read_parquet_az_begin__
-    :end-before: __read_parquet_az_end__
+      Data can be read from Azure Blob Storage by providing a configured
+      `adlfs AzureBlobFileSystem <https://github.com/fsspec/adlfs>`__, where the appropriate
+      account name and account key can be specified.
+
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __read_parquet_az_begin__
+        :end-before: __read_parquet_az_end__
 
 Reading from Local Storage
 ==========================
@@ -372,72 +378,74 @@ From Single-Node Data Libraries
 
 In this section, we demonstrate creating a ``Datastream`` from single-node in-memory data.
 
-.. tabbed:: Pandas
+.. tab-set::
 
-  Create a ``Datastream`` from a Pandas DataFrame. This constructs a ``Datastream``
-  backed by a single Pandas DataFrame block.
+    .. tab-item:: Pandas
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_pandas_begin__
-    :end-before: __from_pandas_end__
+      Create a ``Datastream`` from a Pandas DataFrame. This constructs a ``Datastream``
+      backed by a single Pandas DataFrame block.
 
-  We can also build a ``Datastream`` from more than one Pandas DataFrame, where each said
-  DataFrame will become a block in the ``Datastream``.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_pandas_begin__
+        :end-before: __from_pandas_end__
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_pandas_mult_begin__
-    :end-before: __from_pandas_mult_end__
+      We can also build a ``Datastream`` from more than one Pandas DataFrame, where each said
+      DataFrame will become a block in the ``Datastream``.
 
-.. tabbed:: NumPy
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_pandas_mult_begin__
+        :end-before: __from_pandas_mult_end__
 
-  Create a ``Datastream`` from a NumPy ndarray. This constructs a ``Datastream``
-  backed by a single-column Arrow table block; the outer dimension of the ndarray
-  will be treated as the row dimension, and the column will have name ``"__value__"``.
+    .. tab-item:: NumPy
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_numpy_begin__
-    :end-before: __from_numpy_end__
+      Create a ``Datastream`` from a NumPy ndarray. This constructs a ``Datastream``
+      backed by a single-column Arrow table block; the outer dimension of the ndarray
+      will be treated as the row dimension, and the column will have name ``"__value__"``.
 
-  We can also build a ``Datastream`` from more than one NumPy ndarray, where each said
-  ndarray will become a single-column Arrow table block in the ``Datastream``.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_numpy_begin__
+        :end-before: __from_numpy_end__
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_numpy_mult_begin__
-    :end-before: __from_numpy_mult_end__
+      We can also build a ``Datastream`` from more than one NumPy ndarray, where each said
+      ndarray will become a single-column Arrow table block in the ``Datastream``.
 
-.. tabbed:: Arrow
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_numpy_mult_begin__
+        :end-before: __from_numpy_mult_end__
 
-  Create a ``Datastream`` from an
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
-  This constructs a ``Datastream`` backed by a single Arrow ``Table`` block.
+    .. tab-item:: Arrow
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_arrow_begin__
-    :end-before: __from_arrow_end__
+      Create a ``Datastream`` from an
+      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
+      This constructs a ``Datastream`` backed by a single Arrow ``Table`` block.
 
-  We can also build a ``Datastream`` from more than one Arrow Table, where each said
-  ``Table`` will become a block in the ``Datastream``.
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_arrow_begin__
+        :end-before: __from_arrow_end__
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_arrow_mult_begin__
-    :end-before: __from_arrow_mult_end__
+      We can also build a ``Datastream`` from more than one Arrow Table, where each said
+      ``Table`` will become a block in the ``Datastream``.
 
-.. tabbed:: Python Objects
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_arrow_mult_begin__
+        :end-before: __from_arrow_mult_end__
 
-  Create a ``Datastream`` from a list of Python objects; since each object in this
-  particular list is a dictionary, Datastreams will treat this list as a list of tabular
-  records, and will construct an Arrow ``Datastream``.
+    .. tab-item:: Python Objects
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_items_begin__
-    :end-before: __from_items_end__
+      Create a ``Datastream`` from a list of Python objects; since each object in this
+      particular list is a dictionary, Datastreams will treat this list as a list of tabular
+      records, and will construct an Arrow ``Datastream``.
+
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_items_begin__
+        :end-before: __from_items_end__
 
 .. _datastream_from_in_memory_data_distributed:
 
@@ -460,60 +468,62 @@ futures.
   integrations to work. See how these frameworks can be run on Ray in our
   :ref:`data processing integrations docs <data_integrations>`.
 
-.. tabbed:: Dask
+.. tab-set::
 
-  Create a ``MaterializedDatastream`` from a
-  `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
-  ``Datastream`` backed by the distributed Pandas DataFrame partitions that underly the
-  Dask DataFrame.
+    .. tab-item:: Dask
 
-  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
-  Dask-in-Ray partition objects as Datastream blocks.
+      Create a ``MaterializedDatastream`` from a
+      `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
+      ``Datastream`` backed by the distributed Pandas DataFrame partitions that underly the
+      Dask DataFrame.
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_dask_begin__
-    :end-before: __from_dask_end__
+      This conversion has near-zero overhead, since Datastreams simply reinterprets existing
+      Dask-in-Ray partition objects as Datastream blocks.
 
-.. tabbed:: Spark
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_dask_begin__
+        :end-before: __from_dask_end__
 
-  Create a ``MaterializedDatastream`` from a `Spark DataFrame
-  <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
-  This constructs a ``Datastream`` backed by the distributed Spark DataFrame partitions
-  that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
-  will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
-  which Datastreams will then interpret as its blocks.
+    .. tab-item:: Spark
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __from_spark_begin__
-    :end-before: __from_spark_end__
+      Create a ``MaterializedDatastream`` from a `Spark DataFrame
+      <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
+      This constructs a ``Datastream`` backed by the distributed Spark DataFrame partitions
+      that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
+      will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
+      which Datastreams will then interpret as its blocks.
 
-.. tabbed:: Modin
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __from_spark_begin__
+        :end-before: __from_spark_end__
 
-  Create a ``MaterializedDatastream`` from a Modin DataFrame. This constructs a ``Datastream``
-  backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
+    .. tab-item:: Modin
 
-  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
-  Modin partition objects as Datastream blocks.
+      Create a ``MaterializedDatastream`` from a Modin DataFrame. This constructs a ``Datastream``
+      backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
-  .. literalinclude:: ./doc_code/creating_datastreams.py
-    :language: python
-    :start-after: __from_modin_begin__
-    :end-before: __from_modin_end__
+      This conversion has near-zero overhead, since Datastreams simply reinterprets existing
+      Modin partition objects as Datastream blocks.
 
-.. tabbed:: Mars
+      .. literalinclude:: ./doc_code/creating_datastreams.py
+        :language: python
+        :start-after: __from_modin_begin__
+        :end-before: __from_modin_end__
 
-  Create a ``MaterializedDatastream`` from a Mars DataFrame. This constructs a ``Datastream``
-  backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
+    .. tab-item:: Mars
 
-  This conversion has near-zero overhead, since Datastreams simply reinterprets existing
-  Mars partition objects as Datastream blocks.
+      Create a ``MaterializedDatastream`` from a Mars DataFrame. This constructs a ``Datastream``
+      backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
 
-  .. literalinclude:: ./doc_code/creating_datastreams_untested.py
-    :language: python
-    :start-after: __from_mars_begin__
-    :end-before: __from_mars_end__
+      This conversion has near-zero overhead, since Datastreams simply reinterprets existing
+      Mars partition objects as Datastream blocks.
+
+      .. literalinclude:: ./doc_code/creating_datastreams_untested.py
+        :language: python
+        :start-after: __from_mars_begin__
+        :end-before: __from_mars_end__
 
 .. _datastream_from_torch_tf:
 
@@ -521,45 +531,47 @@ futures.
 From Torch and TensorFlow
 -------------------------
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    If you already have a Torch dataset available, you can create a Datastream using
-    :class:`~ray.data.from_torch`.
+    .. tab-item:: PyTorch
 
-    .. warning::
-        :class:`~ray.data.from_torch` doesn't support parallel
-        reads. You should only use this datasource for small datastreams like MNIST or
-        CIFAR.
+        If you already have a Torch dataset available, you can create a Datastream using
+        :class:`~ray.data.from_torch`.
 
-    .. code-block:: python
+        .. warning::
+            :class:`~ray.data.from_torch` doesn't support parallel
+            reads. You should only use this datasource for small datastreams like MNIST or
+            CIFAR.
 
-        import ray
-        import torchvision
+        .. code-block:: python
 
-        torch_ds = torchvision.datasets.MNIST("data", download=True)
-        datastream = ray.data.from_torch(torch_ds)
-        datastream.take(1)
-        # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
+            import ray
+            import torchvision
 
-.. tabbed:: TensorFlow
+            torch_ds = torchvision.datasets.MNIST("data", download=True)
+            datastream = ray.data.from_torch(torch_ds)
+            datastream.take(1)
+            # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
 
-    If you already have a TensorFlow dataset available, you can create a Datastream
-    using :class:`~ray.data.from_tf`.
+    .. tab-item:: TensorFlow
 
-    .. warning::
-        :class:`~ray.data.from_tf` doesn't support parallel reads. You
-        should only use this function with small datastreams like MNIST or CIFAR.
+        If you already have a TensorFlow dataset available, you can create a Datastream
+        using :class:`~ray.data.from_tf`.
 
-    .. code-block:: python
+        .. warning::
+            :class:`~ray.data.from_tf` doesn't support parallel reads. You
+            should only use this function with small datastreams like MNIST or CIFAR.
 
-        import ray
-        import tensorflow_datasets as tfds
+        .. code-block:: python
 
-        tf_ds, _ = tfds.load("cifar10", split=["train", "test"])
-        datastream = ray.data.from_tf(tf_ds)
+            import ray
+            import tensorflow_datasets as tfds
 
-        datastream
-        # -> MaterializedDatastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+            tf_ds, _ = tfds.load("cifar10", split=["train", "test"])
+            datastream = ray.data.from_tf(tf_ds)
+
+            datastream
+            # -> MaterializedDatastream(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
 
 .. _datastream_from_huggingface:
 
@@ -643,187 +655,189 @@ Reading From SQL Databases
 Call :func:`~ray.data.read_sql` to read data from a database that provides a 
 `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
 
-.. tabbed:: MySQL
+.. tab-set::
 
-    To read from MySQL, install 
-    `MySQL Connector/Python <https://dev.mysql.com/doc/connector-python/en/>`_. It's the 
-    first-party MySQL database connector.
+    .. tab-item:: MySQL
 
-    .. code-block:: console
+        To read from MySQL, install
+        `MySQL Connector/Python <https://dev.mysql.com/doc/connector-python/en/>`_. It's the
+        first-party MySQL database connector.
 
-        pip install mysql-connector-python
+        .. code-block:: console
 
-    Then, define your connection login and query the database.
+            pip install mysql-connector-python
 
-    .. code-block:: python
+        Then, define your connection login and query the database.
 
-        import mysql.connector
+        .. code-block:: python
 
-        import ray
+            import mysql.connector
 
-        def create_connection():
-            return mysql.connector.connect(
-                user="admin",
-                password=...,
-                host="example-mysql-database.c2c2k1yfll7o.us-west-2.rds.amazonaws.com",
-                connection_timeout=30,
-                database="example",
+            import ray
+
+            def create_connection():
+                return mysql.connector.connect(
+                    user="admin",
+                    password=...,
+                    host="example-mysql-database.c2c2k1yfll7o.us-west-2.rds.amazonaws.com",
+                    connection_timeout=30,
+                    database="example",
+                )
+
+            # Get all movies
+            datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            datastream = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            datastream = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
-        # Get all movies
-        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
-        # Get movies after the year 1980
-        datastream = ray.data.read_sql(
-            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-        )
-        # Get the number of movies per year
-        datastream = ray.data.read_sql(
-            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-        )
 
+    .. tab-item:: PostgreSQL
 
-.. tabbed:: PostgreSQL
+        To read from PostgreSQL, install `Psycopg 2 <https://www.psycopg.org/docs>`_. It's
+        the most popular PostgreSQL database connector.
 
-    To read from PostgreSQL, install `Psycopg 2 <https://www.psycopg.org/docs>`_. It's 
-    the most popular PostgreSQL database connector.
+        .. code-block:: console
 
-    .. code-block:: console
+            pip install psycopg2-binary
 
-        pip install psycopg2-binary
+        Then, define your connection login and query the database.
 
-    Then, define your connection login and query the database.
+        .. code-block:: python
 
-    .. code-block:: python
+            import psycopg2
 
-        import psycopg2
+            import ray
 
-        import ray
+            def create_connection():
+                return psycopg2.connect(
+                    user="postgres",
+                    password=...,
+                    host="example-postgres-database.c2c2k1yfll7o.us-west-2.rds.amazonaws.com",
+                    dbname="example",
+                )
 
-        def create_connection():
-            return psycopg2.connect(
-                user="postgres",
-                password=...,
-                host="example-postgres-database.c2c2k1yfll7o.us-west-2.rds.amazonaws.com",
-                dbname="example",
+            # Get all movies
+            datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            datastream = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            datastream = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
-        # Get all movies
-        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
-        # Get movies after the year 1980
-        datastream = ray.data.read_sql(
-            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-        )
-        # Get the number of movies per year
-        datastream = ray.data.read_sql(
-            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-        )
+    .. tab-item:: Snowflake
 
-.. tabbed:: Snowflake
+        To read from Snowflake, install the
+        `Snowflake Connector for Python <https://docs.snowflake.com/en/user-guide/python-connector>`_.
 
-    To read from Snowflake, install the 
-    `Snowflake Connector for Python <https://docs.snowflake.com/en/user-guide/python-connector>`_.
+        .. code-block:: console
 
-    .. code-block:: console
+            pip install snowflake-connector-python
 
-        pip install snowflake-connector-python
+        Then, define your connection login and query the database.
 
-    Then, define your connection login and query the database.
+        .. code-block:: python
 
-    .. code-block:: python
+            import snowflake.connector
 
-        import snowflake.connector
+            import ray
 
-        import ray
+            def create_connection():
+                return snowflake.connector.connect(
+                    user=...,
+                    password=...
+                    account="ZZKXUVH-IPB52023",
+                    database="example",
+                )
 
-        def create_connection():
-            return snowflake.connector.connect(
-                user=...,
-                password=...
-                account="ZZKXUVH-IPB52023",
-                database="example",
+            # Get all movies
+            datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            datastream = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            datastream = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
-        # Get all movies
-        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
-        # Get movies after the year 1980
-        datastream = ray.data.read_sql(
-            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-        )
-        # Get the number of movies per year
-        datastream = ray.data.read_sql(
-            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-        )
+
+    .. tab-item:: Databricks
+
+        To read from Databricks, install the
+        `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_.
+
+        .. code-block:: console
+
+            pip install databricks-sql-connector
 
 
-.. tabbed:: Databricks
+        Then, define your connection logic and read from the Databricks SQL warehouse.
 
-    To read from Databricks, install the 
-    `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_. 
+        .. code-block:: python
 
-    .. code-block:: console
+            from databricks import sql
 
-        pip install databricks-sql-connector
+            import ray
 
-
-    Then, define your connection logic and read from the Databricks SQL warehouse.
-
-    .. code-block:: python
-
-        from databricks import sql
-
-        import ray
-
-        def create_connection():
-            return sql.connect(
-                server_hostname="dbc-1016e3a4-d292.cloud.databricks.com",
-                http_path="/sql/1.0/warehouses/a918da1fc0b7fed0",
-                access_token=...,
+            def create_connection():
+                return sql.connect(
+                    server_hostname="dbc-1016e3a4-d292.cloud.databricks.com",
+                    http_path="/sql/1.0/warehouses/a918da1fc0b7fed0",
+                    access_token=...,
 
 
-        # Get all movies
-        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
-        # Get movies after the year 1980
-        datastream = ray.data.read_sql(
-            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-        )
-        # Get the number of movies per year
-        datastream = ray.data.read_sql(
-            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-        )
+            # Get all movies
+            datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            datastream = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            datastream = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+            )
 
-.. tabbed:: BigQuery
+    .. tab-item:: BigQuery
 
-    To read from BigQuery, install the 
-    `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_. 
-    This package includes a DB API2-compliant database connector.
+        To read from BigQuery, install the
+        `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_.
+        This package includes a DB API2-compliant database connector.
 
-    .. code-block:: console
+        .. code-block:: console
 
-        pip install google-cloud-bigquery
+            pip install google-cloud-bigquery
 
-    Then, define your connection login and query the dataset.
+        Then, define your connection login and query the dataset.
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from google.cloud import bigquery
-        from google.cloud.bigquery import dbapi
+            from google.cloud import bigquery
+            from google.cloud.bigquery import dbapi
 
-        import ray
+            import ray
 
-        def create_connection():
-            client = bigquery.Client(...)
-            return dbapi.Connection(client)
+            def create_connection():
+                client = bigquery.Client(...)
+                return dbapi.Connection(client)
 
-        # Get all movies
-        datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
-        # Get movies after the year 1980
-        datastream = ray.data.read_sql(
-            "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-        )
-        # Get the number of movies per year
-        datastream = ray.data.read_sql(
-            "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-        )
+            # Get all movies
+            datastream = ray.data.read_sql("SELECT * FROM movie", create_connection)
+            # Get movies after the year 1980
+            datastream = ray.data.read_sql(
+                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+            )
+            # Get the number of movies per year
+            datastream = ray.data.read_sql(
+                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+            )
 
 
 .. _data_custom_datasource:

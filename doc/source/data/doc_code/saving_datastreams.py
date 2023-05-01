@@ -84,11 +84,11 @@ ds.show(2)
 # -> {'value': array(1)}
 
 # Write out just one file.
-ds.repartition(1).write_numpy("/tmp/one_numpy")
+ds.repartition(1).write_numpy("/tmp/one_numpy", column="data")
 # -> /tmp/one_numpy/78c91652e2364a7481cf171bed6d96e4_000000.npy
 
 # Write out multiple files.
-ds.repartition(3).write_numpy("/tmp/multi_numpy")
+ds.repartition(3).write_numpy("/tmp/multi_numpy", column="data")
 # -> /tmp/multi_numpy/b837e5b5a18448bfa3f8388f5d99d033_000000.npy
 # -> /tmp/multi_numpy/b837e5b5a18448bfa3f8388f5d99d033_000001.npy
 # -> /tmp/multi_numpy/b837e5b5a18448bfa3f8388f5d99d033_000002.npy

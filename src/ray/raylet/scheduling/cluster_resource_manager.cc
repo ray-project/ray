@@ -22,7 +22,23 @@
 
 namespace ray {
 
-ClusterResourceManager::ClusterResourceManager() : nodes_{} {}
+ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
+    : timer_(io_service) {
+  if (RayConfig::instance().use_ray_syncer()) {
+    timer_.RunFnPeriodically(
+        [this]() {
+          auto syncer_delay = absl::Milliseconds(
+              RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+          for (auto &[node_id, resource] : received_node_resources_) {
+            auto modified_ts = GetNodeResourceModifiedTs(node_id);
+            if (modified_ts && *modified_ts + syncer_delay < absl::Now()) {
+              AddOrUpdateNode(node_id, resource);
+            }
+          }
+        },
+        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
+  }
+}
 
 std::optional<absl::Time> ClusterResourceManager::GetNodeResourceModifiedTs(
     scheduling::NodeID node_id) const {
@@ -76,18 +92,13 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
   }
 
   AddOrUpdateNode(node_id, local_view);
+  received_node_resources_[node_id] = std::move(local_view);
   return true;
 }
 
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    // Node not found.
-    return false;
-  } else {
-    nodes_.erase(it);
-    return true;
-  }
+  received_node_resources_.erase(node_id);
+  return nodes_.erase(node_id) != 0;
 }
 
 bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,

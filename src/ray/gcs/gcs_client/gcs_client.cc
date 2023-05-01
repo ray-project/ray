@@ -398,5 +398,11 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+std::unordered_map<std::string, double> PythonGetResourcesTotal(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
+                                                 node_info.resources_total().end());
+}
+
 }  // namespace gcs
 }  // namespace ray
