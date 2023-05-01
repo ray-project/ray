@@ -5990,8 +5990,6 @@
   working_dir: k8s_tests
 
   stable: false
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: serve
@@ -6003,16 +6001,12 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
-    type: sdk_command
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -6023,16 +6017,12 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py aws_cluster.yaml
-    type: sdk_command
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -6043,16 +6033,12 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal.yaml
-    type: sdk_command
 
 - name: aws_cluster_launcher_full
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -6063,4 +6049,3 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py ../example-full.yaml
-    type: sdk_command
