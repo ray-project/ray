@@ -236,13 +236,10 @@ py_test_run_all_subdirectory(
 
 filegroup(
     name = "workspace_templates",
-    srcs = glob(["source/templates/tests/*.ipynb"]),
-    visibility = ["//doc:__subpackages__"]
-)
-
-filegroup(
-    name = "workspace_templates_requirements",
-    srcs = glob(["source/templates/**/requirements.txt"]),
+    srcs = glob([
+        "source/templates/tests/**/*.ipynb",
+        "source/templates/test/**/requirements.txt"
+    ]),
     visibility = ["//doc:__subpackages__"]
 )
 
@@ -261,9 +258,10 @@ py_test(
 
 py_test_run_all_notebooks(
     size = "large",
-    include = ["source/templates/tests/many_model_training.ipynb"],
+    # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
+    include = ["source/templates/tests/02_many_model_training/many_model_training.ipynb"],
     exclude = [],
-    data = ["//doc:workspace_templates", "//doc:workspace_templates_requirements"],
+    data = ["//doc:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air"],
     env = {"SMOKE_TEST": "1"},
 )
@@ -273,11 +271,12 @@ py_test_run_all_notebooks(
 py_test_run_all_notebooks(
     size = "large",
     include = [
-        "source/templates/tests/batch_inference.ipynb",
-        "source/templates/tests/serving_stable_diffusion.ipynb"
+        # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
+        "source/templates/tests/01_batch_inference/batch_inference.ipynb",
+        "source/templates/tests/03_serving_stable_diffusion/serving_stable_diffusion.ipynb"
     ],
     exclude = [],
-    data = ["//doc:workspace_templates", "//doc:workspace_templates_requirements"],
+    data = ["//doc:workspace_templates"],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
     env = {"SMOKE_TEST": "1"},
 )
