@@ -1,7 +1,7 @@
 """Durable trainable with multi-file checkpoints (16 trials, checkpoint to cloud)
 
 In this run, we will start 16 trials on a cluster. The trials create 16 files a
-1 MB checkpoints every 12 seconds and should only keep 2 of these. This test
+1 MB checkpoints every 12 seconds and should only keep 2 checkpoints. This test
 ensures that durable checkpoints don't slow down experiment progress too much.
 
 Cluster: cluster_16x2.yaml
