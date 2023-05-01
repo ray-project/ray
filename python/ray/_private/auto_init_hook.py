@@ -7,6 +7,7 @@ def auto_init_ray():
     if (
         os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
         and not ray.is_initialized()
+        and ray.worker.global_worker.mode == ray.SCRIPT_MODE
     ):
         ray.init()
 
