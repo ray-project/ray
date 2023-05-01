@@ -699,6 +699,9 @@ class RayActorManager:
         args = args or tuple()
         kwargs = kwargs or {}
 
+        if tracked_actor.actor_id in self._failed_actor_ids:
+            return
+
         tracked_actor_task = TrackedActorTask(
             tracked_actor=tracked_actor, on_result=on_result, on_error=on_error
         )
