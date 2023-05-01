@@ -874,6 +874,3 @@ class RayActorManager:
         self._resource_manager.clear()
 
         self.__init__(resource_manager=self._resource_manager)
-
-    def __del__(self):
-        self.cleanup()
