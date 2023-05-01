@@ -247,13 +247,14 @@ class APPOConfig(ImpalaConfig):
 
     @override(ImpalaConfig)
     def get_learner_hyperparameters(self) -> AppoHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
         return AppoHyperparameters(
             use_kl_loss=self.use_kl_loss,
             kl_target=self.kl_target,
             kl_coeff=self.kl_coeff,
             clip_param=self.clip_param,
             tau=self.tau,
-            **dataclasses.asdict(super().get_learner_hyperparameters()),
+            **dataclasses.asdict(base_hps),
         )
 
 
