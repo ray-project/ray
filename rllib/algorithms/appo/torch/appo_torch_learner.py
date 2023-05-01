@@ -85,6 +85,7 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             ).float()
         ) * self.hps.discount_factor
 
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=old_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,

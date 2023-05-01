@@ -144,7 +144,7 @@ class TestPPO(unittest.TestCase):
         algo = config.build()
         policy = algo.get_policy()
 
-        for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
+        for _ in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()

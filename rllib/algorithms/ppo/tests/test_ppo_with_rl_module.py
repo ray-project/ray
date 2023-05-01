@@ -124,9 +124,6 @@ class TestPPO(unittest.TestCase):
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
-                if env == "ALE/Breakout-v5" and fw == "tf2":
-                    # TODO(Artur): Implement CNN in TF2.
-                    continue
                 print("Env={}".format(env))
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:

@@ -133,9 +133,6 @@ class TestPPO(unittest.TestCase):
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
-            if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # TODO(Artur): Implement CNN in TF2.
-                continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
             if env_name.startswith("ALE/"):
                 env = gym.make("GymV26Environment-v0", env_id=env_name)
@@ -180,9 +177,6 @@ class TestPPO(unittest.TestCase):
             fw, env_name, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
-                continue
-            if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # TODO(Artur): Implement CNN in TF2.
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
             # TODO(Artur): Figure out why this is needed and fix it.

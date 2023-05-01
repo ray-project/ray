@@ -9,10 +9,15 @@ from typing import (
     Union,
 )
 
+import tree  # pip install dm_tree
+
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -24,7 +29,10 @@ from ray.rllib.core.learner.learner import (
     ParamType,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchDDPRLModule,
+    TorchDDPRLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
@@ -241,13 +249,23 @@ class TorchLearner(Learner):
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
         if self._distributed:
+            # TODO (sven): Shouldn't self._module always be MARL?
             if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(self._module)
             else:
+                assert isinstance(self._module, MultiAgentRLModule)
                 for key in self._module.keys():
-                    if isinstance(self._module[key], TorchRLModule):
+                    sub_module = self._module[key]
+                    if isinstance(sub_module, TorchRLModule):
+                        ddp_class = (
+                            TorchDDPRLModuleWithTargetNetworksInterface
+                            if isinstance(
+                                sub_module, RLModuleWithTargetNetworksInterface
+                            )
+                            else TorchDDPRLModule
+                        )
                         self._module.add_module(
-                            key, TorchDDPRLModule(self._module[key]), override=True
+                            key, ddp_class(sub_module), override=True
                         )
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:

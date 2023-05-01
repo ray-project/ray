@@ -74,12 +74,12 @@ class ImpalaTfLearner(TfLearner, ImpalaLearner):
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size

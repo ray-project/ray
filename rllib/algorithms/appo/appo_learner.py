@@ -71,7 +71,7 @@ class AppoLearner(ImpalaLearner):
             module_id:
         """
         self._update_module_target_networks(module_id)
-        if self._hps.use_kl_loss:
+        if self.hps.use_kl_loss:
             self._update_module_kl_coeff(module_id, sampled_kls)
         return {}
 

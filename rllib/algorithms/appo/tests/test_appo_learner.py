@@ -75,7 +75,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         # config.exploration() only deepupdates it
         config.exploration_config = {}
 
-        for fw in framework_iterator(config, ("torch", "tf2")):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             trainer = config.build()
             policy = trainer.get_policy()
 

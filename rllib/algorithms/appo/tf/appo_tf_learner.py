@@ -89,12 +89,12 @@ class APPOTfLearner(TfLearner, AppoLearner):
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=old_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
-            discounts=discounts_time_major,
         )
 
         # The policy gradients loss.
@@ -119,7 +119,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
             ),
         )
 
-        if self._hps.use_kl_loss:
+        if self.hps.use_kl_loss:
             action_kl = old_target_policy_dist.kl(target_policy_dist)
             mean_kl_loss = tf.math.reduce_mean(action_kl)
         else:
