@@ -24,6 +24,7 @@ from typing import (
 import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -846,7 +847,7 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
-    # Create syncer callbacks
+    # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
         sync_config=sync_config,
@@ -854,6 +855,7 @@ def run(
         metric=metric,
         progress_metrics=progress_metrics,
     )
+    air_usage.tag_callbacks(callbacks)
 
     # User Warning for GPUs
     if ray.cluster_resources().get("GPU", 0):

@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Set, Union
+import collections
+import json
+from typing import TYPE_CHECKING, List, Set, Union
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
@@ -6,6 +8,8 @@ if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
+    from ray.tune import Callback
+
 
 AIR_TRAINERS = {
     "AccelerateTrainer",
@@ -54,6 +58,15 @@ TUNE_SCHEDULERS = {
     "PopulationBasedTrainingReplay",
     "PB2",
     "ResourceChangingScheduler",
+}
+
+# These include all built-in callbacks,
+# EXCLUDING default callbacks: CSV, JSON, TBX, Syncer
+AIR_BUILT_IN_CALLBACKS = {
+    "WandbLoggerCallback",
+    "MLflowLoggerCallback",
+    "CometLoggerCallback",
+    "AimLoggerCallback",
 }
 
 
@@ -115,3 +128,47 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     assert isinstance(scheduler, TrialScheduler)
     scheduler_name = _find_class_name(scheduler, "ray.tune.schedulers", TUNE_SCHEDULERS)
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
+
+
+def tag_callbacks(callbacks: List["Callback"]) -> bool:
+    """Records built-in callback usage via a JSON str representing a
+    dictionary mapping callback class name -> counts. User-defined callbacks will
+    increment the count under the `CustomLoggerCallback` / `CustomCallback` key
+    depending on which of the provided interfaces they subclass.
+
+    This will NOT report if no custom callbacks are used.
+    This does not report usage of default callbacks (see ray.tune.util.callback).
+
+    Returns:
+        bool: True if usage was recorded, False otherwise.
+    """
+    from ray.tune import Callback
+    from ray.tune.logger import LoggerCallback
+    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
+
+    default_callback_names = [
+        callback_cls.__name__ for callback_cls in DEFAULT_CALLBACK_CLASSES
+    ]
+
+    callback_counts = collections.defaultdict(int)
+
+    for callback in callbacks:
+        assert isinstance(callback, Callback)
+
+        callback_name = callback.__class__.__name__
+        if callback_name in default_callback_names:
+            continue
+
+        if callback_name in AIR_BUILT_IN_CALLBACKS:
+            callback_counts[callback_name] += 1
+        elif isinstance(callback, LoggerCallback):
+            callback_counts["CustomLoggerCallback"] += 1
+        else:
+            callback_counts["CustomCallback"] += 1
+
+    if callback_counts:
+        callback_counts_str = json.dumps(callback_counts)
+        record_extra_usage_tag(TagKey.AIR_CALLBACKS, callback_counts_str)
+        return True
+
+    return False
