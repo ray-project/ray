@@ -7,6 +7,7 @@ from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     convert_to_canonical_format,
 )
+from ray.rllib.core.models.specs.checker import SpecCheckingError
 
 
 class TypeClass1:
@@ -211,10 +212,13 @@ class TestSpecDict(unittest.TestCase):
             },
         }
 
-        self.assertRaises(ValueError, lambda: model.forward_nested_key(input_dict_2))
+        self.assertRaises(
+            SpecCheckingError, lambda: model.forward_nested_key(input_dict_2)
+        )
 
         self.assertRaises(
-            ValueError, lambda: model.forward_dict_key_with_none_leaves(input_dict_2)
+            SpecCheckingError,
+            lambda: model.forward_dict_key_with_none_leaves(input_dict_2),
         )
 
         input_dict_3 = {
@@ -224,7 +228,7 @@ class TestSpecDict(unittest.TestCase):
 
         # should raise shape mismatch
         self.assertRaises(
-            ValueError,
+            SpecCheckingError,
             lambda: model.forward_spec_with_type_and_tensor_leaves(input_dict_3),
         )
 
