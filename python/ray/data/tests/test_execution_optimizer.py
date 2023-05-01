@@ -602,9 +602,10 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
-def test_read_map_batches_operator_fusion_with_all_to_all_operator(
+def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ray_start_regular_shared, enable_optimizer
 ):
+    # We currently only support fusing MapOperator->AllToAllOperator.
     n = 10
     ds = ray.data.range(n)
     ds = ds.map_batches(lambda batch: [x + 1 for x in batch])
@@ -612,6 +613,15 @@ def test_read_map_batches_operator_fusion_with_all_to_all_operator(
     assert set(ds.take_all()) == set(range(1, n + 1))
     assert "DoRead->MapBatches->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
+
+    ds = ray.data.range(n)
+    ds = ds.random_shuffle()
+    ds = ds.map_batches(lambda batch: [x + 1 for x in batch])
+    assert set(ds.take_all()) == set(range(1, n + 1))
+    # TODO(Scott): Update below assertion after supporting fusion in
+    # the other direction (AllToAllOperator->MapOperator)
+    assert "DoRead->RandomShuffle->MapBatches" not in ds.stats()
+    assert all(op in ds.stats() for op in ("DoRead", "RandomShuffle", "MapBatches"))
 
 
 def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_optimizer):
