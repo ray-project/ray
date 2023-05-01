@@ -30,7 +30,7 @@ Create a datastream
 -------------------
 
 Create datastreams from on-disk files, Python objects, and cloud storage services like S3.
-Ray reads from any `filesystem supported by Arrow
+Ray Data can read from any `filesystem supported by Arrow
 <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
 .. testcode::

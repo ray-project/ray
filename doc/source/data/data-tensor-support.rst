@@ -3,7 +3,7 @@
 ML Tensor Support
 =================
 
-Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Ray Data provides tensor extension types that integrates with Pandas and Arrow.
+Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Ray Data provides tensor extension types that integrate with Pandas and Arrow.
 
 * For Pandas, Ray Data will transparently convert ``List[np.ndarray]`` columns to and from the :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` extension type.
 * For Parquet, Ray Data has an Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` that allows tensors to be loaded from and stored in the Parquet format.
