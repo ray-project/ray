@@ -1,3 +1,5 @@
+import json
+import os
 from typing import TYPE_CHECKING, Set, Union
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -54,6 +56,45 @@ TUNE_SCHEDULERS = {
     "PopulationBasedTrainingReplay",
     "PB2",
     "ResourceChangingScheduler",
+}
+
+AIR_ENV_VARS = {
+    "RAY_AIR_LOCAL_CACHE_DIR",
+    "RAY_AIR_FULL_TRACEBACKS",
+}
+
+TUNE_ENV_VARS = {
+    "TUNE_DISABLE_AUTO_CALLBACK_LOGGERS",
+    "TUNE_DISABLE_AUTO_CALLBACK_SYNCER",
+    "TUNE_DISABLE_AUTO_INIT",
+    "TUNE_DISABLE_DATED_SUBDIR",
+    "TUNE_DISABLE_STRICT_METRIC_CHECKING",
+    "TUNE_DISABLE_SIGINT_HANDLER",
+    "TUNE_FALLBACK_TO_LATEST_CHECKPOINT",
+    "TUNE_FORCE_TRIAL_CLEANUP_S",
+    "TUNE_GET_EXECUTOR_EVENT_WAIT_S",
+    "TUNE_FUNCTION_THREAD_TIMEOUT_S",
+    "TUNE_GLOBAL_CHECKPOINT_S",
+    "TUNE_MAX_LEN_IDENTIFIER",
+    "TUNE_MAX_PENDING_TRIALS_PG",
+    "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
+    "TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD",
+    "TUNE_PLACEMENT_GROUP_PREFIX",
+    "TUNE_PLACEMENT_GROUP_RECON_INTERVAL",
+    "TUNE_PRINT_ALL_TRIAL_ERRORS",
+    "TUNE_RESULT_DIR",
+    "TUNE_RESULT_BUFFER_LENGTH",
+    "TUNE_RESULT_DELIM",
+    "TUNE_RESULT_BUFFER_MAX_TIME_S",
+    "TUNE_RESULT_BUFFER_MIN_TIME_S",
+    "TUNE_WARN_THRESHOLD_S",
+    "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S",
+    "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER",
+    "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S",
+    "TUNE_STATE_REFRESH_PERIOD",
+    "TUNE_RESTORE_RETRY_NUM",
+    "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
+    "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
 }
 
 
@@ -115,3 +156,25 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     assert isinstance(scheduler, TrialScheduler)
     scheduler_name = _find_class_name(scheduler, "ray.tune.schedulers", TUNE_SCHEDULERS)
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
+
+
+def tag_env_vars() -> bool:
+    """Records environment variable usage.
+
+    Returns:
+        bool: True if at least one environment var is supplied by the user.
+    """
+    all_env_vars = sorted(set().union(AIR_ENV_VARS, TUNE_ENV_VARS))
+
+    user_supplied_env_vars = []
+
+    for env_var in all_env_vars:
+        if os.environ.get(env_var):
+            user_supplied_env_vars.append(env_var)
+
+    if user_supplied_env_vars:
+        env_vars_str = json.dumps(user_supplied_env_vars)
+        record_extra_usage_tag(TagKey.AIR_ENV_VARS, env_vars_str)
+        return True
+
+    return False

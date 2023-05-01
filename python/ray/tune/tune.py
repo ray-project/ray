@@ -24,6 +24,7 @@ from typing import (
 import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -555,6 +556,7 @@ def run(
         )
 
     ray._private.usage.usage_lib.record_library_usage("tune")
+    air_usage.tag_env_vars()
 
     all_start = time.time()
 
