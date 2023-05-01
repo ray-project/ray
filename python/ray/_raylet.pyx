@@ -210,7 +210,7 @@ class StreamingObjectRefGeneratorV2:
             r, _ = ray.wait([self._generator_ref], timeout=0)
             if len(r) > 0:
                 ray.get(r)
-            time.sleep(0.1)
+            time.sleep(0.01)
             obj = self._handle_next()
         return obj
 
@@ -699,24 +699,18 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         i = 0
         for output in generator:
             if dynamic_returns[0].size() > 0:
-                print("dynamic return size bigger than 0")
                 CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), -1)
                 dynamic_returns[0].pop_back()
-            else:
-                print("should never happen.")
             core_worker.store_task_outputs(
                 worker, [output],
                 dynamic_returns,
                 generator_id)
             assert dynamic_returns[0].size() == 1
-            print("dynamic return size: ", dynamic_returns[0].size())
             i += 1
             # SANG-TODO Report the dynamic returns and pop it out.
-        print("finished")
         CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), i)
         dynamic_returns[0].pop_back()
     except Exception as error:
-        print(error)
         is_retryable_error[0] = determine_if_retryable(
             error,
             serialized_retry_exception_allowlist,
@@ -1022,7 +1016,6 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:store_outputs"):
                 num_returns = returns[0].size()
                 if dynamic_returns != NULL:
-                    print(outputs)
                     if not inspect.isgenerator(outputs):
                         raise ValueError(
                                 "Functions with "

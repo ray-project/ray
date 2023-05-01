@@ -355,7 +355,7 @@ void TaskManager::HandleIntermediateResult(const rpc::WriteObjectRefStreamReques
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
     if (request.finished_idx() != -1) {
-      RAY_LOG(ERROR) << "SANG-TODO Finished with an index " << request.finished_idx();
+      RAY_LOG(DEBUG) << "SANG-TODO Finished with an index " << request.finished_idx();
       auto &reader = dynamic_ids_from_generator_[generator_id];
       reader.last = request.finished_idx();
     }
@@ -365,7 +365,7 @@ void TaskManager::HandleIntermediateResult(const rpc::WriteObjectRefStreamReques
 
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    RAY_LOG(ERROR) << "SANG-TODO Add an object " << object_id;
+    RAY_LOG(DEBUG) << "SANG-TODO Add an object " << object_id;
     // SANG-TODO This logic is not working with the new protocol
     // upon lineage reconstruction.
     reference_counter_->AddDynamicReturn(object_id, generator_id);

@@ -1030,7 +1030,7 @@ Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
                                    rpc::Address *owner_address) const {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   if (!has_owner) {
-    RAY_LOG(ERROR) << "SANG-TODO Should never happen";
+    RAY_LOG(DEBUG) << "SANG-TODO Should never happen";
     std::ostringstream stream;
     stream << "An application is trying to access a Ray object whose owner is unknown"
            << "(" << object_id
@@ -1684,12 +1684,11 @@ void CoreWorker::TriggerGlobalGC() {
 }
 
 Status CoreWorker::ObjectRefStreamWrite(const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object, int64_t finished_idx) {
-  RAY_LOG(ERROR) << "Write the object ref stream";
+  RAY_LOG(DEBUG) << "Write the object ref stream";
   rpc::WriteObjectRefStreamRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_finished_idx(finished_idx);
   rpc::Address owner_address;
-  RAY_LOG(ERROR) << "HAHA " << dynamic_return_object.first;
   RAY_RETURN_NOT_OK(GetOwnerAddress(dynamic_return_object.first, &owner_address));
   auto client = core_worker_client_pool_->GetOrConnect(owner_address);
 
@@ -1705,9 +1704,9 @@ Status CoreWorker::ObjectRefStreamWrite(const std::pair<ObjectID, std::shared_pt
   client->WriteObjectRefStream(request, [](
             const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
           if (status.ok()) {
-            RAY_LOG(ERROR) << "Succeeded to send the object ref";
+            RAY_LOG(DEBUG) << "Succeeded to send the object ref";
           } else {
-            RAY_LOG(ERROR) << "Failed to send the object ref";
+            RAY_LOG(DEBUG) << "Failed to send the object ref";
           }
         });
   return Status::OK();
@@ -3423,7 +3422,7 @@ void CoreWorker::HandleWriteObjectRefStream(
     rpc::WriteObjectRefStreamRequest request,
     rpc::WriteObjectRefStreamReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "SANG-TODO HandleWriteObjectRefStream";
+  RAY_LOG(DEBUG) << "SANG-TODO HandleWriteObjectRefStream";
   task_manager_->HandleIntermediateResult(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
