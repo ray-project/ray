@@ -161,6 +161,13 @@ Transformers
 
     ~train.huggingface.transformers.TransformersTrainer
     ~train.huggingface.transformers.TransformersCheckpoint
+
+Accelerate
+**********
+
+.. autosummary::
+    :toctree: doc/
+
     ~train.huggingface.accelerate.AccelerateTrainer
 
 Scikit-Learn
