@@ -1,7 +1,24 @@
 from unittest import mock
 from typing import List, Dict
-from ray_release.scripts.ray_bisect import _bisect, _obtain_test_result
+from ray_release.scripts.ray_bisect import _bisect, _obtain_test_result, _sanity_check
 from ray_release.config import Test
+
+
+def test_sanity_check():
+    def _mock_run_test(test: Test, commit: List[str]) -> Dict[str, Dict[int, str]]:
+        return {
+            "passing_revision": {0: "passed"},
+            "failing_revision": {0: "failed"},
+        }
+
+    with mock.patch(
+        "ray_release.scripts.ray_bisect._run_test",
+        side_effect=_mock_run_test,
+    ):
+        assert _sanity_check({}, "passing_revision", "failing_revision")
+        assert not _sanity_check({}, "failing_revision", "passing_revision")
+        assert not _sanity_check({}, "passing_revision", "passing_revision")
+        assert not _sanity_check({}, "failing_revision", "failing_revision")
 
 
 def test_obtain_test_result():

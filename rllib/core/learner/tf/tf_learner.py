@@ -276,6 +276,25 @@ class TfLearner(Learner):
         self._module.set_state(weights)
 
     @override(Learner)
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        optim_weights = {}
+        with tf.init_scope():
+            for name, optim in self._named_optimizers.items():
+                optim_weights[name] = [var.numpy() for var in optim.variables()]
+        return optim_weights
+
+    @override(Learner)
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        for name, weight_array in weights.items():
+            if name not in self._named_optimizers:
+                raise ValueError(
+                    f"Optimizer {name} in weights is not known."
+                    f"Known optimizers are {self._named_optimizers.keys()}"
+                )
+            optim = self._named_optimizers[name]
+            optim.set_weights(weight_array)
+
+    @override(Learner)
     def get_param_ref(self, param: ParamType) -> Hashable:
         return param.ref()
 
