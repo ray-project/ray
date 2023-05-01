@@ -305,6 +305,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   };
 
  private:
+  void RecordDataLossFromWorker(const rpc::TaskEventData &data);
+
   /// Test only
   size_t GetTotalNumStatusTaskEventsDropped() {
     return stats_counter_.Get(kTotalNumStatusTaskEventsDropped);

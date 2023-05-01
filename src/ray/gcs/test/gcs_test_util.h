@@ -266,9 +266,18 @@ struct Mocker {
       auto new_events = data.add_events_by_task();
       new_events->CopyFrom(events);
     }
-    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
-    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
 
+    for (int i = 0; i < num_status_task_events_dropped; ++i) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(RandomTaskId().Binary());
+      rpc_task_attempt.set_attempt_number(0);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+
+    for (int i = 0; i < num_profile_task_events_dropped; ++i) {
+      (*data.mutable_profile_events_dropped())[JobID::FromInt(0).Hex()] =
+          num_profile_task_events_dropped;
+    }
     return data;
   }
 };
