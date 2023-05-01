@@ -24,6 +24,7 @@ from typing import (
 import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -635,6 +636,10 @@ def run(
 
     if storage_path != local_path and local_path:
         os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+
+    air_usage.tag_multinode_cluster_storage(
+        local_path=local_path, remote_path=remote_path, sync_config=sync_config
+    )
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):

@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Set, Union
+import os
+from typing import TYPE_CHECKING, Optional, Set, Union
+import urllib.parse
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
@@ -6,6 +8,7 @@ if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
+    from ray.tune import SyncConfig
 
 AIR_TRAINERS = {
     "AccelerateTrainer",
@@ -115,3 +118,40 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     assert isinstance(scheduler, TrialScheduler)
     scheduler_name = _find_class_name(scheduler, "ray.tune.schedulers", TUNE_SCHEDULERS)
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
+
+
+def tag_multinode_cluster_storage(
+    local_path: str, remote_path: Optional[str], sync_config: "SyncConfig"
+) -> bool:
+    import ray
+
+    if len(ray.nodes()) <= 1:
+        return False
+
+    nfs = local_path and not remote_path and os.path.ismount(local_path)
+    local = local_path and not remote_path
+
+    if nfs:
+        record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "nfs")
+    elif local:
+        if sync_config.syncer is None:
+            record_extra_usage_tag(
+                TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "local+no_sync"
+            )
+        else:
+            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "local+sync")
+    else:
+        assert remote_path
+
+        # HDFS or cloud storage
+        scheme = urllib.parse.urlparse(remote_path).scheme
+        if scheme == "hdfs":
+            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "hdfs")
+        elif scheme in {"s3", "s3a"}:
+            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "s3")
+        elif scheme in {"gs", "gcs"}:
+            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "gs")
+        else:
+            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "Custom")
+
+    return True
