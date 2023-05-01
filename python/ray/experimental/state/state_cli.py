@@ -307,7 +307,7 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    state_data = [dataclasses.asdict(state) for state in state_data]
+    state_data = [dataclasses.asdict(schema.humanify(state)) for state in state_data]
     return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
