@@ -8,21 +8,23 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.mark.parametrize("pandas", [False, True])
 def test_basic(ray_start_regular_shared, pandas):
-    ds = ray.data.range_table(100, parallelism=10)
-    ds = ds.add_column("embedding", lambda b: b["value"] ** 2)
+    ds = ray.data.range(100, parallelism=10)
+    ds = ds.add_column("embedding", lambda b: b["id"] ** 2)
     if not pandas:
-        ds = ds.map_batches(lambda df: pyarrow.Table.from_pandas(df))
+        ds = ds.map_batches(
+            lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas"
+        )
 
-    rad = ds.to_random_access_dataset("value", num_workers=1)
+    rad = ds.to_random_access_dataset("id", num_workers=1)
 
     # Test get.
     assert ray.get(rad.get_async(-1)) is None
     assert ray.get(rad.get_async(100)) is None
     for i in range(100):
-        assert ray.get(rad.get_async(i)) == {"value": i, "embedding": i**2}
+        assert ray.get(rad.get_async(i)) == {"id": i, "embedding": i**2}
 
     def expected(i):
-        return {"value": i, "embedding": i**2}
+        return {"id": i, "embedding": i**2}
 
     # Test multiget.
     results = rad.multiget([-1] + list(range(10)) + [100])
@@ -30,26 +32,22 @@ def test_basic(ray_start_regular_shared, pandas):
 
 
 def test_empty_blocks(ray_start_regular_shared):
-    ds = ray.data.range_table(10).repartition(20)
+    ds = ray.data.range(10).repartition(20)
     assert ds.num_blocks() == 20
-    rad = ds.to_random_access_dataset("value")
+    rad = ds.to_random_access_dataset("id")
     for i in range(10):
-        assert ray.get(rad.get_async(i)) == {"value": i}
+        assert ray.get(rad.get_async(i)) == {"id": i}
 
 
 def test_errors(ray_start_regular_shared):
     ds = ray.data.range(10)
     with pytest.raises(ValueError):
-        ds.to_random_access_dataset("value")
-
-    ds = ray.data.range_table(10)
-    with pytest.raises(ValueError):
         ds.to_random_access_dataset("invalid")
 
 
 def test_stats(ray_start_regular_shared):
-    ds = ray.data.range_table(100, parallelism=10)
-    rad = ds.to_random_access_dataset("value", num_workers=1)
+    ds = ray.data.range(100, parallelism=10)
+    rad = ds.to_random_access_dataset("id", num_workers=1)
     stats = rad.stats()
     assert "Accesses per worker: 0 min, 0 max, 0 mean" in stats, stats
     ray.get(rad.get_async(0))
