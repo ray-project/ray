@@ -6,6 +6,9 @@ compile_pip_requirements(
     requirements_in = "requirements_buildkite.in",
     requirements_txt = "requirements_buildkite.txt",
     visibility = ["//visibility:private"],
+    tags = [
+            "team:core",
+        ],
 )
 
 test_srcs = glob(["**/*.py"])
