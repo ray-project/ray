@@ -18,7 +18,6 @@ pyyaml
 aiosignal
 frozenlist
 requests
-virtualenv>=20.0.24, < 20.21.1
 packaging
 
 # Python version-specific requirements
