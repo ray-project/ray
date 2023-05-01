@@ -10,8 +10,6 @@ is a transform that applies a
 and returns a new datastream as the result. Datastream transforms can be composed to
 express a chain of computations.
 
-.. _transform_datastreams_s:
-
 --------
 Overview
 --------
@@ -119,6 +117,8 @@ batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is alw
     ds.map_batches(func, batch_size=64)
 
 Increasing ``batch_size`` can improve performance for transforms that take advantage of vectorization, but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors. If encountering OOMs, decreasing your ``batch_size`` may help. Note also that if the ``batch_size`` becomes larger than the number of records per block, multiple blocks will be bundled together into a single batch, potentially reducing the parallelism available.
+
+.. _transform_datastreams_batch_formats:
 
 Configuring batch format
 ========================
