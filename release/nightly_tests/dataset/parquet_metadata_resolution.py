@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     num = args.num_files
 
-    assert args.cloud in "aws", "gcp"
+    assert args.cloud in {"aws", "gcp"}, args.cloud
     scheme = "gs" if args.cloud == "gcp" else "s3"
     files = [
         f"{scheme}://shuffling-data-loader-benchmarks/data/r10_000_000_000-f1000"
