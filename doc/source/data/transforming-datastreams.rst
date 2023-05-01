@@ -1,8 +1,8 @@
 .. _transforming_datastreams:
 
-========================
+=================
 Transforming Data
-========================
+=================
 
 Datastream transforms take in datastreams and produce new datastreams. For example, *map_batches*
 is a transform that applies a
@@ -56,7 +56,7 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
 
 .. tab-set::
 
-    .. tab-item:: Map Batches (recommended)
+    .. tab-item:: Map Batches
         
       Records can be transformed in batches of ``Dict[str, np.ndarray]`` using the ``map_batches`` function. The below example shows how to use ``map_batches`` to convert text records to lowercase:
 
