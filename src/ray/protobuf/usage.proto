@@ -130,4 +130,9 @@ enum TagKey {
   // Name of Tune scheduler algorithm or "Custom" if user-defined.
   // Example: "FIFOScheduler"
   TUNE_SCHEDULER = 502;
+
+  // (AIR) Environment variable usage in ML libraries, stored in JSON list format
+  // containing all environment variables provided by users.
+  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
+  AIR_ENV_VARS = 507;
 }
