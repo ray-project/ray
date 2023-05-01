@@ -5,6 +5,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description="Parquet Metadata Read")
 parser.add_argument("--num-files", type=int, default=30)
+parser.add_argument("--cloud", type=str, choices=["aws", "gcp"])
 
 
 if __name__ == "__main__":
@@ -16,8 +17,10 @@ if __name__ == "__main__":
 
     num = args.num_files
 
+    assert args.cloud in "aws", "gcp"
+    scheme = "gs" if args.cloud == "gcp" else "s3"
     files = [
-        f"s3://shuffling-data-loader-benchmarks/data/r10_000_000_000-f1000"
+        f"{scheme}://shuffling-data-loader-benchmarks/data/r10_000_000_000-f1000"
         f"/input_data_{i}.parquet.snappy"
         for i in range(args.num_files)
     ]
