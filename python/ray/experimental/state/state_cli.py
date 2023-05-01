@@ -293,13 +293,13 @@ def format_get_api_output(
     if not state_data or isinstance(state_data, list) and len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    human_readable_state_data = schema.humanify(state_data)
+    if not isinstance(state_data, list):
+        state_data = [state_data]
 
-    if not isinstance(human_readable_state_data, list):
-        human_readable_state_data = [human_readable_state_data]
     human_readable_state_data = [
-        dataclasses.asdict(state) for state in human_readable_state_data
+        dataclasses.asdict(schema.humanify(state)) for state in state_data
     ]
+
     return output_with_format(
         human_readable_state_data, schema=schema, format=format, detail=True
     )
@@ -314,7 +314,7 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    state_data = [dataclasses.asdict(state) for state in state_data]
+    state_data = [dataclasses.asdict(schema.humanify(state)) for state in state_data]
     return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
