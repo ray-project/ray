@@ -9,12 +9,16 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
+import dataclasses
 from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.appo.appo_learner import (
+    AppoHyperparameters,
+    LEARNER_RESULTS_KL_KEY,
+)
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import AppoHPs, LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
@@ -77,7 +81,6 @@ class APPOConfig(ImpalaConfig):
         # __sphinx_doc_begin__
 
         # APPO specific settings:
-        self._learner_hps = AppoHPs()
         self.vtrace = True
         self.use_critic = True
         self.use_gae = True
@@ -195,24 +198,20 @@ class APPOConfig(ImpalaConfig):
             self.lambda_ = lambda_
         if clip_param is not NotProvided:
             self.clip_param = clip_param
-            self._learner_hps.clip_param = clip_param
         if use_kl_loss is not NotProvided:
             self.use_kl_loss = use_kl_loss
         if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
-            self._learner_hps.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
-            self._learner_hps.kl_target = kl_target
         if tau is not NotProvided:
             self.tau = tau
-            self._learner_hps.tau = tau
         if target_update_frequency is not NotProvided:
             self.target_update_frequency = target_update_frequency
 
         return self
 
-    @override(AlgorithmConfig)
+    @override(ImpalaConfig)
     def get_default_learner_class(self):
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.appo.tf.appo_tf_learner import APPOTfLearner
@@ -221,7 +220,7 @@ class APPOConfig(ImpalaConfig):
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
-    @override(AlgorithmConfig)
+    @override(ImpalaConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
@@ -234,20 +233,23 @@ class APPOConfig(ImpalaConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(ImpalaConfig)
-    def validate(self) -> None:
-        super().validate()
-        self._learner_hps.tau = self.tau
-        self._learner_hps.kl_target = self.kl_target
-        self._learner_hps.kl_coeff = self.kl_coeff
-        self._learner_hps.clip_param = self.clip_param
+    def get_learner_hyperparameters(self) -> AppoHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return AppoHyperparameters(
+            use_kl_loss=self.use_kl_loss,
+            kl_target=self.kl_target,
+            kl_coeff=self.kl_coeff,
+            clip_param=self.clip_param,
+            tau=self.tau,
+            **dataclasses.asdict(base_hps),
+        )
 
 
 # Still used by one of the old checkpoints in tests.
 # Keep a shim version of this around.
 class UpdateTargetAndKL:
     def __init__(self, workers, config):
-        self.workers = workers
-        self.config = config
+        pass
 
 
 class APPO(Impala):
@@ -277,9 +279,8 @@ class APPO(Impala):
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
-        This method is called from within the `training_iteration` method after each
-        train update.
-
+        This method is called from within the `training_step` method after each train
+        update.
         The target network update frequency is calculated automatically by the product
         of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
 
@@ -407,7 +408,6 @@ class APPO(Impala):
             return APPOTF1Policy
         else:
             if config._enable_rl_module_api:
-                # TODO(avnishn): This policy class doesn't work just yet
                 from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import (
                     APPOTfPolicyWithRLModule,
                 )
