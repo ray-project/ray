@@ -58,15 +58,16 @@ class ApplicationStatusInfo:
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
-            status=self.status,
+            status=f"APPLICATION_STATUS_{self.status}",
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
 
     @classmethod
     def from_proto(cls, proto: ApplicationStatusInfoProto):
+        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
         return cls(
-            status=ApplicationStatus(ApplicationStatusProto.Name(proto.status)),
+            status=ApplicationStatus(status),
             message=proto.message,
             deployment_timestamp=proto.deployment_timestamp,
         )
@@ -89,14 +90,17 @@ class DeploymentStatusInfo:
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
-            name=self.name, status=self.status, message=self.message
+            name=self.name,
+            status=f"DEPLOYMENT_STATUS_{self.status}",
+            message=self.message,
         )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
+        status = DeploymentStatusProto.Name(proto.status)[len("DEPLOYMENT_STATUS_") :]
         return cls(
             name=proto.name,
-            status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)),
+            status=DeploymentStatus(status),
             message=proto.message,
         )
 
