@@ -146,7 +146,7 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool = True, detail: bool = False, **kwargs):
+def state_column(*, filterable: bool, detail: bool = False, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
@@ -157,20 +157,17 @@ def state_column(*, filterable: bool = True, detail: bool = False, **kwargs):
         filterable: If True, the column can be used for filtering.
         kwargs: The same kwargs for the `dataclasses.field` function.
     """
-
+    m = {"detail": detail, "filterable": filterable}
     # Default for detail field is None since it could be missing.
     if detail and "default" not in kwargs:
         kwargs["default"] = None
 
     if "metadata" in kwargs:
         # Metadata explicitly specified, so add detail and filterable if missing.
-        if "detail" not in kwargs["metadata"]:
-            kwargs["metadata"]["detail"] = detail
-        if "filterable" not in kwargs["metadata"]:
-            kwargs["metadata"]["filterable"] = filterable
+        kwargs["metadata"].update(m)
     else:
         # Metadata not explicitly specified, so add it.
-        kwargs["metadata"] = {"detail": detail, "filterable": filterable}
+        kwargs["metadata"] = m
     return field(**kwargs)
 
 
