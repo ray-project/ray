@@ -114,9 +114,9 @@ if __name__ == "__main__":
         # for overriding the episode reward mean for tf2 tests for off policy
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
-            exp["stop"]["sampler_results/episode_reward_mean"] = (
-                args.override_mean_reward
-            )
+            exp["stop"][
+                "sampler_results/episode_reward_mean"
+            ] = args.override_mean_reward
 
         # QMIX does not support tf yet -> skip.
         if exp["run"] == "QMIX" and args.framework != "torch":
@@ -160,7 +160,9 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = exp["config"].get("evaluation_interval", None) is not None
                 reward_mean = (
-                    t.last_result["evaluation"]["sampler_results"]["episode_reward_mean"]
+                    t.last_result["evaluation"]["sampler_results"][
+                        "episode_reward_mean"
+                    ]
                     if check_eval
                     else t.last_result["sampler_results"]["episode_reward_mean"]
                 )
