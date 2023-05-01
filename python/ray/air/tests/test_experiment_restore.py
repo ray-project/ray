@@ -1,4 +1,6 @@
 import json
+import os
+
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -112,6 +114,7 @@ def test_experiment_restore(tmp_path, runner_type):
         "NUM_TRIALS": str(num_trials),
         "MAX_CONCURRENT_TRIALS": str(max_concurrent),
         "CSV_DATA_FILE": csv_file,
+        "TUNE_NEW_EXECUTION": os.environ.get("TUNE_NEW_EXECUTION", "1"),
     }
 
     # Pass criteria

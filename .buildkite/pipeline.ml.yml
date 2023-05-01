@@ -329,7 +329,7 @@
 ### OLD EXECUTION PATH COMPAT
 
 
-- label: ":octopus: :sunny: Old execution path: Tune tests and examples (small)"
+- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (small)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   parallelism: 3
