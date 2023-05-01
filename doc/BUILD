@@ -238,7 +238,7 @@ filegroup(
     name = "workspace_templates",
     srcs = glob([
         "source/templates/tests/**/*.ipynb",
-        "source/templates/test/**/requirements.txt"
+        "source/templates/tests/**/requirements.txt"
     ]),
     visibility = ["//doc:__subpackages__"]
 )
