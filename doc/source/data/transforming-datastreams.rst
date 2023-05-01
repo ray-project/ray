@@ -277,3 +277,6 @@ Arbitrary processing can be applied to each group of records using :meth:`ds.gro
   :language: python
   :start-after: __map_groups_begin__
   :end-before: __map_groups_end__
+
+Note that when using ``map_groups``, all records of the same group will be gathered into the same batch,
+which may lead to out-of-memory errors if the group size exceeds the capacity of a single machine.

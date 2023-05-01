@@ -183,8 +183,6 @@ ds = ray.data.read_csv("example://iris.csv")
 # zero or more records as the result.
 def process_group(group: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     # Since we are grouping by variety, all elements in this batch are equal.
-    # Note that ALL records of the same group here are gathered into the same batch,
-    # which may consume a lot of memory if the group is large.
     variety = group["variety"][0]
     count = len(group["variety"])
     # Here we return a batch of a single record for the group (array of len 1).
