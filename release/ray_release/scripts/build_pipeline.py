@@ -45,7 +45,18 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
         "(for internal use)."
     ),
 )
-def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
+@click.option(
+    "--run-jailed-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Will run jailed tests."),
+)
+def main(
+    test_collection_file: Optional[str] = None,
+    no_clone_repo: bool = False,
+    run_jailed_tests: bool = False,
+):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -132,6 +143,7 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
         frequency=frequency,
         test_attr_regex_filters=test_attr_regex_filters,
         prefer_smoke_tests=prefer_smoke_tests,
+        run_jailed_tests=run_jailed_tests,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
