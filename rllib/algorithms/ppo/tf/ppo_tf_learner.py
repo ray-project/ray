@@ -1,7 +1,7 @@
 import logging
-from typing import Mapping, Any
+from typing import Any, Mapping
 
-from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,8 +15,8 @@ _, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class PPOTfLearner(PPOBaseLearner, TfLearner):
-    """Implements tf-specific PPO loss logic on top of PPOBaseLearner.
+class PPOTfLearner(PPOLearner, TfLearner):
+    """Implements tf-specific PPO loss logic on top of PPOLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()`.
     """
@@ -88,13 +88,13 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.entropy_coeff * curr_entropy
+            - self.hps.entropy_coeff * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.kl_coeff * mean_kl_loss
+            total_loss += self.curr_kl_coeff * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
@@ -106,14 +106,14 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
             ),
             "entropy": mean_entropy,
             "kl": mean_kl_loss,
-            "entropy_coeff": self.entropy_coeff,
-            "cur_kl_coeff": self.kl_coeff,
+            "entropy_coeff": self.hps.entropy_coeff,
+            "cur_kl_coeff": self.curr_kl_coeff,
         }
 
-    @override(PPOBaseLearner)
-    def _create_kl_variable(self, value: float) -> Any:
+    @override(PPOLearner)
+    def _get_kl_variable(self, value: float) -> Any:
         return tf.Variable(value, trainable=False, dtype=tf.float32)
 
-    @override(PPOBaseLearner)
+    @override(PPOLearner)
     def _set_kl_coeff(self, value: float) -> None:
-        self.kl_coeff.assign(value)
+        self.curr_kl_coeff.assign(value)
