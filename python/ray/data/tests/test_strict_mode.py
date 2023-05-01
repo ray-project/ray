@@ -86,7 +86,9 @@ def test_strict_convert_map_output(ray_start_regular_shared, enable_strict_mode)
 
     with pytest.raises(ValueError):
         # Strings not converted into array.
-        ray.data.range(1).map_batches(lambda x: {"id": "string"}).materialize()
+        ray.data.range(1).map_batches(
+            lambda x: {"id": "string"}, max_retries=0
+        ).materialize()
 
     class UserObj:
         def __eq__(self, other):
@@ -98,6 +100,23 @@ def test_strict_convert_map_output(ray_start_regular_shared, enable_strict_mode)
         .materialize()
     )
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, UserObj()]
+
+
+def test_strict_convert_map_groups(ray_start_regular_shared, enable_strict_mode):
+    ds = ray.data.read_csv("example://iris.csv")
+
+    def process_group(group):
+        variety = group["variety"][0]
+        count = len(group["variety"])
+
+        # Test implicit list->array conversion here.
+        return {
+            "variety": [variety],
+            "count": [count],
+        }
+
+    ds = ds.groupby("variety").map_groups(process_group)
+    ds.show()
 
 
 def test_strict_default_batch_format(ray_start_regular_shared, enable_strict_mode):
