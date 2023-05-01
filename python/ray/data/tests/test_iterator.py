@@ -29,7 +29,8 @@ def test_basic_dataset(ray_start_regular_shared):
     for _ in range(2):
         result = []
         for batch in it.iter_batches():
-            result += batch
+            batch = batch["id"]
+            result += batch.tolist()
         assert result == list(range(100))
 
     # TODO(swang): This check currently fails nondeterministically because
@@ -44,6 +45,7 @@ def test_basic_dataset_iter_rows(ray_start_regular_shared):
     for _ in range(2):
         result = []
         for row in it.iter_rows():
+            row = row["id"]
             result.append(row)
         assert result == list(range(100))
 
@@ -59,6 +61,7 @@ def test_basic_dataset_pipeline(ray_start_regular_shared):
     for _ in range(2):
         result = []
         for batch in it.iter_batches():
+            batch = batch["id"].tolist()
             result += batch
         assert result == list(range(100))
 
@@ -71,6 +74,7 @@ def test_basic_dataset_pipeline_iter_rows(ray_start_regular_shared):
     for _ in range(2):
         result = []
         for row in it.iter_rows():
+            row = row["id"]
             result.append(row)
         assert result == list(range(100))
 
@@ -78,9 +82,9 @@ def test_basic_dataset_pipeline_iter_rows(ray_start_regular_shared):
 
 
 def test_tf_conversion(ray_start_regular_shared):
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     it = ds.iterator()
-    tf_dataset = it.to_tf("value", "value")
+    tf_dataset = it.to_tf("id", "id")
     for i, row in enumerate(tf_dataset):
         assert all(row[0] == i)
         assert all(row[1] == i)
@@ -89,30 +93,30 @@ def test_tf_conversion(ray_start_regular_shared):
 
 
 def test_tf_e2e(ray_start_regular_shared):
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     it = ds.iterator()
     model = build_model()
-    model.fit(it.to_tf("value", "value"), epochs=3)
+    model.fit(it.to_tf("id", "id"), epochs=3)
 
 
 def test_tf_e2e_pipeline(ray_start_regular_shared):
-    ds = ray.data.range_table(5).repeat(2)
+    ds = ray.data.range(5).repeat(2)
     it = ds.iterator()
     model = build_model()
-    model.fit(it.to_tf("value", "value"), epochs=2)
+    model.fit(it.to_tf("id", "id"), epochs=2)
 
-    ds = ray.data.range_table(5).repeat(2)
+    ds = ray.data.range(5).repeat(2)
     it = ds.iterator()
     model = build_model()
     # 3 epochs fails since we only repeated twice.
     with pytest.raises(Exception, match=r"generator raised StopIteration"):
-        model.fit(it.to_tf("value", "value"), epochs=3)
+        model.fit(it.to_tf("id", "id"), epochs=3)
 
 
 def test_tf_conversion_pipeline(ray_start_regular_shared):
-    ds = ray.data.range_table(5).repeat(2)
+    ds = ray.data.range(5).repeat(2)
     it = ds.iterator()
-    tf_dataset = it.to_tf("value", "value")
+    tf_dataset = it.to_tf("id", "id")
     for i, row in enumerate(tf_dataset):
         assert all(row[0] == i)
         assert all(row[1] == i)
@@ -120,7 +124,7 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
         assert isinstance(row[1], tf.Tensor)
 
     # Repeated twice.
-    tf_dataset = it.to_tf("value", "value")
+    tf_dataset = it.to_tf("id", "id")
     for i, row in enumerate(tf_dataset):
         assert all(row[0] == i)
         assert all(row[1] == i)
@@ -129,32 +133,32 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
 
     # Fails on third try.
     with pytest.raises(Exception, match=r"generator raised StopIteration"):
-        tf_dataset = it.to_tf("value", "value")
+        tf_dataset = it.to_tf("id", "id")
         for _ in tf_dataset:
             pass
 
 
 def test_torch_conversion(ray_start_regular_shared):
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     it = ds.iterator()
     for batch in it.iter_torch_batches():
-        assert isinstance(batch["value"], torch.Tensor)
-        assert batch["value"].tolist() == list(range(5))
+        assert isinstance(batch["id"], torch.Tensor)
+        assert batch["id"].tolist() == list(range(5))
 
 
 def test_torch_conversion_pipeline(ray_start_regular_shared):
-    ds = ray.data.range_table(5).repeat(2)
+    ds = ray.data.range(5).repeat(2)
     it = ds.iterator()
 
     # First epoch.
     for batch in it.iter_torch_batches():
-        assert isinstance(batch["value"], torch.Tensor)
-        assert batch["value"].tolist() == list(range(5))
+        assert isinstance(batch["id"], torch.Tensor)
+        assert batch["id"].tolist() == list(range(5))
 
     # Second epoch.
     for batch in it.iter_torch_batches():
-        assert isinstance(batch["value"], torch.Tensor)
-        assert batch["value"].tolist() == list(range(5))
+        assert isinstance(batch["id"], torch.Tensor)
+        assert batch["id"].tolist() == list(range(5))
 
     # Fails on third iteration.
     with pytest.raises(Exception, match=r"generator raised StopIteration"):
@@ -164,9 +168,9 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
 
 def test_torch_conversion_collate_fn(ray_start_regular_shared):
     def collate_fn(batch: Dict[str, np.ndarray]):
-        return torch.as_tensor(batch["value"] + 5)
+        return torch.as_tensor(batch["id"] + 5)
 
-    ds = ray.data.range_table(5)
+    ds = ray.data.range(5)
     it = ds.iterator()
     for batch in it.iter_torch_batches(collate_fn=collate_fn):
         assert isinstance(batch, torch.Tensor)

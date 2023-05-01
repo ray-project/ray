@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 import logging
 import platform
 import queue
@@ -15,10 +16,6 @@ from ray.rllib.algorithms.impala.impala_base_learner import (
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.learner.learner_group_config import (
-    LearnerGroupConfig,
-    ModuleSpec,
-)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -125,7 +122,13 @@ class ImpalaConfig(AlgorithmConfig):
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.opt_type = "adam"
         self.lr_schedule = None
         self.decay = 0.99
@@ -421,16 +424,6 @@ class ImpalaConfig(AlgorithmConfig):
         self._learner_hps.vtrace_clip_pg_rho_threshold = (
             self.vtrace_clip_pg_rho_threshold
         )
-
-    @override(AlgorithmConfig)
-    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-        lg_config = super().get_learner_group_config(module_spec)
-        optim_config = lg_config.optimizer_config
-        # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
-        #  class
-        optim_config.update({"grad_clip": self.grad_clip})
-        lg_config = lg_config.learner(optimizer_config=optim_config)
-        return lg_config
 
     def get_replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
@@ -1051,6 +1044,10 @@ class Impala(Algorithm):
             workers.
 
         """
+
+        def _process_episodes(actor, batch):
+            return actor.process_episodes(ray.get(batch))
+
         for _, batch in worker_to_sample_batches_refs:
             assert isinstance(batch, ObjectRef), (
                 "For efficiency, process_experiences_tree_aggregation should "
@@ -1061,7 +1058,7 @@ class Impala(Algorithm):
                 self._aggregator_actor_manager.healthy_actor_ids()
             )
             calls_placed = self._aggregator_actor_manager.foreach_actor_async(
-                lambda actor: actor.process_episodes(ray.get(batch)),
+                partial(_process_episodes, batch=batch),
                 remote_actor_ids=[aggregator_id],
             )
             if calls_placed <= 0:

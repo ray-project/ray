@@ -186,7 +186,7 @@ class RLModuleConfig:
 
         """
         catalog_class_path = (
-            serialize_type(type(self.catalog_class)) if self.catalog_class else ""
+            serialize_type(self.catalog_class) if self.catalog_class else ""
         )
         return {
             "observation_space": gym_space_to_dict(self.observation_space),

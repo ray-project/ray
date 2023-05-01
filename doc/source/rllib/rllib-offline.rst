@@ -224,7 +224,7 @@ Ray Data Integration
 --------------------
 
 RLlib has experimental support for reading/writing training samples from/to large offline datasets using
-`Ray Data <https://docs.ray.io/en/latest/data/data.html>`__.
+:ref:`Ray Data <data>`.
 We support JSON and Parquet files today. Other file formats supported by Ray Data can also be easily added.
 
 Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers

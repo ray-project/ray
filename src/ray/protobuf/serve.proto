@@ -150,7 +150,8 @@ message ActorNameList {
 
 message DeploymentVersion {
   string code_version = 1;
-  bytes user_config = 2;
+  DeploymentConfig deployment_config = 2;
+  string ray_actor_options = 3;
 }
 
 message ReplicaConfig {
@@ -169,6 +170,7 @@ message DeploymentInfo {
   string actor_name = 5;
   string version = 6;
   int64 end_time_ms = 7;
+  string app_name = 8;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.

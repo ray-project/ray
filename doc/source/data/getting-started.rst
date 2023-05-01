@@ -47,7 +47,7 @@ Ray reads from any `filesystem supported by Arrow
 
 
 To learn more about creating datastreams, read
-:ref:`Creating datastreams <creating_datastreams>`.
+:ref:`Loading data <creating_datastreams>`.
 
 Transform the datastream
 ------------------------
@@ -63,7 +63,7 @@ transform datastreams. Ray executes transformations in parallel for performance.
     def transform_batch(df: pd.DataFrame) -> pd.DataFrame:
         return df[(df["sepal length (cm)"] < 5.5) & (df["petal length (cm)"] > 3.5)]
 
-    transformed_ds = datastream.map_batches(transform_batch)
+    transformed_ds = datastream.map_batches(transform_batch, batch_format="pandas")
     print(transformed_ds)
 
 .. testoutput::
@@ -83,7 +83,7 @@ transform datastreams. Ray executes transformations in parallel for performance.
 
 
 To learn more about transforming datastreams, read
-:ref:`Transforming datastreams <transforming_datastreams>`.
+:ref:`Transforming data <transforming_datastreams>`.
 
 Consume the datastream
 ----------------------
@@ -91,54 +91,55 @@ Consume the datastream
 Pass datastreams to Ray tasks or actors, and access records with methods like
 :meth:`~ray.data.Datastream.iter_batches`.
 
-.. tabbed:: Local
+.. tab-set::
 
-    .. testcode::
+    .. tab-item:: Local
 
-        batches = transformed_ds.iter_batches(batch_size=8)
-        print(next(iter(batches)))
+        .. testcode::
 
-    .. testoutput::
-        :options: +NORMALIZE_WHITESPACE
+            batches = transformed_ds.iter_batches(batch_size=8)
+            print(next(iter(batches)))
 
-           sepal length (cm)  ...  target
-        0                5.2  ...       1
-        1                5.4  ...       1
-        2                4.9  ...       2
+        .. testoutput::
+            :options: +NORMALIZE_WHITESPACE
 
-        [3 rows x 5 columns]
+            {'sepal length (cm)': array([5.2, 5.4, 4.9]),
+             'sepal width (cm)': array([2.7, 3. , 2.5]),
+             'petal length (cm)': array([3.9, 4.5, 4.5]),
+             'petal width (cm)': array([1.4, 1.5, 1.7]),
+             'target': array([1, 1, 2])}
 
-.. tabbed:: Tasks
+    .. tab-item:: Tasks
 
-   .. testcode::
+       .. testcode::
 
-        @ray.remote
-        def consume(ds: ray.data.Datastream) -> int:
-            num_batches = 0
-            for batch in ds.iter_batches(batch_size=8):
-                num_batches += 1
-            return num_batches
+            @ray.remote
+            def consume(ds: ray.data.Datastream) -> int:
+                num_batches = 0
+                for batch in ds.iter_batches(batch_size=8):
+                    num_batches += 1
+                return num_batches
 
-        ray.get(consume.remote(transformed_ds))
+            ray.get(consume.remote(transformed_ds))
 
-.. tabbed:: Actors
+    .. tab-item:: Actors
 
-    .. testcode::
+        .. testcode::
 
-        @ray.remote
-        class Worker:
+            @ray.remote
+            class Worker:
 
-            def train(self, data_iterator):
-                for batch in data_iterator.iter_batches(batch_size=8):
-                    pass
+                def train(self, data_iterator):
+                    for batch in data_iterator.iter_batches(batch_size=8):
+                        pass
 
-        workers = [Worker.remote() for _ in range(4)]
-        shards = transformed_ds.streaming_split(n=4, equal=True)
-        ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            workers = [Worker.remote() for _ in range(4)]
+            shards = transformed_ds.streaming_split(n=4, equal=True)
+            ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
 
 To learn more about consuming datastreams, read
-:ref:`Consuming datastreams <consuming_datastreams>`.
+:ref:`Consuming data <consuming_datastreams>`.
 
 Save the datastream
 -------------------
@@ -160,7 +161,7 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving datastream contents, read :ref:`Saving datastreams <saving_datastreams>`.
+To learn more about saving datastream contents, read :ref:`Saving data <saving_datastreams>`.
 
 Next Steps
 ----------
