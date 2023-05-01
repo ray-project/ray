@@ -264,7 +264,7 @@ NON_AUTO_INIT_APIS = {
 }
 
 assert RAY_APIS == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
-from ray._private.auto_init_hook import wrap_auto_init_for_all_apis
+from ray._private.auto_init_hook import wrap_auto_init_for_all_apis  # noqa: E402
 
 wrap_auto_init_for_all_apis(AUTO_INIT_APIS)
 
