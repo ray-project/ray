@@ -5,7 +5,7 @@ import json
 import yaml
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pkg_resources import packaging
 import ray
 
@@ -202,7 +202,7 @@ class SubmissionClient:
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
-        verify: Optional[str] = None,
+        verify: Optional[Union[str, bool]] = None,
     ):
 
         # Remove any trailing slashes

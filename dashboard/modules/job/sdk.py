@@ -73,7 +73,7 @@ class JobSubmissionClient(SubmissionClient):
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
-        verify: Optional[str] = None,
+        verify: Optional[Union[str, bool]] = None,
     ):
         self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
@@ -82,7 +82,6 @@ class JobSubmissionClient(SubmissionClient):
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default]'`"
             )
-
         # Check types of arguments
         if address is not None and not isinstance(address, str):
             raise TypeError(f"address must be a string, got {type(address)}")
@@ -97,8 +96,10 @@ class JobSubmissionClient(SubmissionClient):
             raise TypeError(f"metadata must be a dict, got {type(metadata)}")
         if headers is not None and not isinstance(headers, dict):
             raise TypeError(f"headers must be a dict, got {type(headers)}")
-        if verify is not None and not isinstance(verify, str):
-            raise TypeError(f"verify must be a str, got {type(verify)}")
+        if verify is not None and not (
+            isinstance(verify, str) or isinstance(verify, bool)
+        ):
+            raise TypeError(f"verify must be a str or bool, got {type(verify)}")
 
         api_server_url = get_address_for_submission_client(address)
 
@@ -458,7 +459,9 @@ class JobSubmissionClient(SubmissionClient):
             RuntimeError: If the job does not exist or if the request to the
                 job server fails.
         """
-        if self._verify is not None:
+        if isinstance(self._verify, bool):
+            ssl_context = self._verify
+        elif self._verify is not None:
             if os.path.isdir(self._verify):
                 cafile, capath = None, self._verify
             else:
