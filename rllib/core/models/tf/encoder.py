@@ -82,8 +82,8 @@ class TfCNNEncoder(TfModel, Encoder):
                     c=self.config.input_dims[2],
                     framework="tf2",
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
+                # STATE_IN: None,
+                # SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -94,7 +94,7 @@ class TfCNNEncoder(TfModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="tf2"
                 ),
-                STATE_OUT: None,
+                # STATE_OUT: None,
             }
         )
 
@@ -103,7 +103,7 @@ class TfCNNEncoder(TfModel, Encoder):
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
+                # STATE_OUT: inputs[STATE_IN],
             }
         )
 
@@ -143,7 +143,7 @@ class TfMLPEncoder(Encoder, TfModel):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="tf2"
                 ),
-                STATE_OUT: None,
+                # STATE_OUT: None,
             }
         )
 
@@ -152,7 +152,7 @@ class TfMLPEncoder(Encoder, TfModel):
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: None,  # inputs[STATE_IN],
+                # STATE_OUT: None,  # inputs[STATE_IN],
             }
         )
 
