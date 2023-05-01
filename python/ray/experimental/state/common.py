@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import json
 import logging
@@ -211,14 +212,15 @@ class StateSchema(ABC):
         if not cls.is_valid_state(state):
             return state  # return the original state
         for f in fields(cls):
-            if f.metadata.get("format_fn") is not None:
+            if f.metadata.get("format_fn") is not None and state[f.name] is not None:
                 state[f.name] = f.metadata["format_fn"](state[f.name])
         return state
 
     @classmethod
     def is_valid_state(cls, state: dict) -> bool:
         """Checks to make sure state has all keys in the current schema class."""
-        cols = cls.list_columns()
+        cols = cls.list_columns(detail=True)
+        state = dataclasses.asdict(state)
         for col in cols:
             if col not in state:
                 return False
@@ -545,6 +547,38 @@ class ClusterEventState(StateSchema):
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
+class Humanify:
+    """A class containing default methods to convert units into a human readable string."""
+
+    def timestamp(x: float):
+        """Converts miliseconds to a datetime object."""
+        return datetime.datetime.fromtimestamp(x / 1000)
+
+    def memory(x: int):
+        """Converts raw bytes to megabytes"""
+        return str(x / 1e6) + " MB"
+
+    def duration(x: int):
+        """Converts miliseconds to a human readable duration."""
+        return str(datetime.timedelta(milliseconds=x))
+
+    def events(events: List[dict]):
+        """Converts a list of events into a human readable format."""
+        for event in events:
+            if "created_ms" in event:
+                event["created_ms"] = Humanify.timestamp(event["created_ms"])
+            if "start_time" in event:
+                event["start_time"] = Humanify.timestamp(event["start_time"])
+            if "end_time" in event:
+                event["end_time"] = Humanify.timestamp(event["end_time"])
+        return events
+
+    def profiliing_data(data: dict):
+        """Converts a profiling data into a human readable format."""
+        data["events"] = Humanify.events(data["events"])
+        return data
+
+
 @dataclass(init=True)
 class TaskState(StateSchema):
     """Task State"""
@@ -600,19 +634,31 @@ class TaskState(StateSchema):
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
-    events: Optional[List[dict]] = state_column(detail=True, filterable=False)
+    events: Optional[List[dict]] = state_column(
+        detail=True, filterable=False, metadata={"format_fn": Humanify.events}
+    )
     #: The list of profile events of the given task.
-    profiling_data: Optional[dict] = state_column(detail=True, filterable=False)
+    profiling_data: Optional[dict] = state_column(
+        detail=True, filterable=False, metadata={"format_fn": Humanify.profiliing_data}
+    )
     #: The time when the task is created. A Unix timestamp in ms.
-    creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    creation_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        metadata={"format_fn": Humanify.timestamp},
+    )
     #: The time when the task starts to run. A Unix timestamp in ms.
     start_time_ms: Optional[int] = state_column(
         detail=True,
         filterable=False,
-        metadata={"format_fn": lambda x: datetime.datetime.fromtimestamp(x / 1000)},
+        metadata={"format_fn": Humanify.timestamp},
     )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
-    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    end_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        metadata={"format_fn": Humanify.timestamp},
+    )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
