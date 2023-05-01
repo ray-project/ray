@@ -672,7 +672,9 @@ class Algorithm(Trainable):
             parallelism = self.evaluation_config.evaluation_num_workers or 1
             batch_size = max(ds.count() // parallelism, 1)
             self.evaluation_dataset = ds.map_batches(
-                remove_time_dim, batch_size=batch_size
+                remove_time_dim,
+                batch_size=batch_size,
+                batch_format="pandas",
             )
             logger.info("Evaluation dataset created")
 

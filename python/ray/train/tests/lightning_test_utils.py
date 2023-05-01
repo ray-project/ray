@@ -14,6 +14,9 @@ class LinearModule(pl.LightningModule):
         self.strategy = strategy
 
     def forward(self, input):
+        # Backwards compat for Ray data strict mode.
+        if isinstance(input, dict) and len(input) == 1:
+            input = list(input.values())[0]
         return self.linear(input)
 
     def training_step(self, batch):

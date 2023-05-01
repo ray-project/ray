@@ -82,8 +82,15 @@ class ProgressBar:
         ref_to_result = {}
         remaining = refs
         t = threading.current_thread()
+        # Triggering fetch_local redundantly for the same object is slower.
+        # We only need to trigger the fetch_local once for each object,
+        # raylet will persist these fetch requests even after ray.wait returns.
+        # See https://github.com/ray-project/ray/issues/30375.
+        fetch_local = True
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=True, timeout=0.1)
+            done, remaining = ray.wait(remaining, fetch_local=fetch_local, timeout=0.1)
+            if fetch_local:
+                fetch_local = False
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
             self.update(len(done))
