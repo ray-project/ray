@@ -5247,17 +5247,17 @@
   run:
     # Expect the test to finish around 40 seconds.
     timeout: 100
-    script: python parquet_metadata_resolution.py --num-files 915
+    script: python parquet_metadata_resolution.py --num-files 915 --cloud aws
 
-  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
-  # variations:
-  #   - __suffix__: aws
-  #   - __suffix__: gce
-  #     env: gce
-  #     frequency: manual
-  #     cluster:
-  #       cluster_env: app_config.yaml
-  #       cluster_compute: single_node_benchmark_compute_gce.yaml
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+      run:
+        script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
 
 - name: dataset_random_access
   group: data-tests
