@@ -4,7 +4,6 @@ from collections import UserDict
 import pytest
 
 import ray
-from ray.data.block import StrictModeError
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -82,7 +81,9 @@ def test_nonstrict_convert_map_output(ray_start_10_cpus_shared, enable_nonstrict
 
     with pytest.raises(ValueError):
         # Strings not converted into array.
-        ray.data.range(1).map_batches(lambda x: {"id": "string"}, max_retries=0).materialize()
+        ray.data.range(1).map_batches(
+            lambda x: {"id": "string"}, max_retries=0
+        ).materialize()
 
     class UserObj:
         def __eq__(self, other):
@@ -96,7 +97,9 @@ def test_nonstrict_convert_map_output(ray_start_10_cpus_shared, enable_nonstrict
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, UserObj()]
 
 
-def test_nonstrict_default_batch_format(ray_start_10_cpus_shared, enable_nonstrict_mode):
+def test_nonstrict_default_batch_format(
+    ray_start_10_cpus_shared, enable_nonstrict_mode
+):
     ds = ray.data.range_table(1)
 
     @ray.remote
@@ -145,9 +148,7 @@ def test_nonstrict_value_repr(ray_start_10_cpus_shared, enable_nonstrict_mode):
 
 def test_nonstrict_compute(ray_start_10_cpus_shared, enable_nonstrict_mode):
     ray.data.range(10).map(lambda x: x, compute="actors").show()
-    ray.data.range(10).map(
-        lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
-    ).show()
+    ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)).show()
     ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
@@ -197,4 +198,3 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
-
