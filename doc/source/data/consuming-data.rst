@@ -1,4 +1,4 @@
-.. _consuming_datastreams:
+.. _consuming_data:
 
 =====================
 Consuming Data
@@ -18,7 +18,7 @@ A limited set of rows can be retrieved from a ``Datastream`` via the
 APIs, and :meth:`ds.show() <ray.data.Datastream.show>`, for printing a limited set of rows. These
 methods are convenient for quickly inspecting a subset (prefix) of rows.
 
-.. literalinclude:: ./doc_code/consuming_datastreams.py
+.. literalinclude:: ./doc_code/consuming_data.py
   :language: python
   :start-after: __take_begin__
   :end-before: __take_end__
@@ -29,7 +29,7 @@ Iterating over Datastreams
 Datastreams can be consumed a row at a time using the
 :meth:`ds.iter_rows() <ray.data.Datastream.iter_rows>` API
 
-.. literalinclude:: ./doc_code/consuming_datastreams.py
+.. literalinclude:: ./doc_code/consuming_data.py
   :language: python
   :start-after: __iter_rows_begin__
   :end-before: __iter_rows_end__
@@ -39,7 +39,7 @@ or a batch at a time using the
 batch size as well as the desired batch format. By default, the batches will have type
 ``Dict[str, np.ndarray]`` (NumPy format).
 
-.. literalinclude:: ./doc_code/consuming_datastreams.py
+.. literalinclude:: ./doc_code/consuming_data.py
   :language: python
   :start-after: __iter_batches_begin__
   :end-before: __iter_batches_end__
@@ -47,7 +47,7 @@ batch size as well as the desired batch format. By default, the batches will hav
 Datastreams can be passed to Ray tasks or actors and accessed by these iteration methods.
 This does not incur a copy, since the blocks of the Datastream are passed by reference as Ray objects:
 
-.. literalinclude:: ./doc_code/consuming_datastreams.py
+.. literalinclude:: ./doc_code/consuming_data.py
   :language: python
   :start-after: __remote_iterators_begin__
   :end-before: __remote_iterators_end__
@@ -64,12 +64,12 @@ This is a common pattern useful for loading and sharding data between distribute
   If using :ref:`Ray Train <train-docs>` for distributed training, you do not need to split the datastream; Ray
   Train will automatically do locality-aware splitting into per-trainer shards for you.
 
-.. literalinclude:: ./doc_code/consuming_datastreams.py
+.. literalinclude:: ./doc_code/consuming_data.py
   :language: python
   :start-after: __split_begin__
   :end-before: __split_end__
 
-.. _saving_datastreams:
+.. _saving_data:
 
 Saving Data
 ==================
@@ -83,35 +83,35 @@ to repartition the Datastream before writing out.
 
     .. tab-item:: Parquet
 
-      .. literalinclude:: ./doc_code/saving_datastreams.py
+      .. literalinclude:: ./doc_code/saving_data.py
         :language: python
         :start-after: __write_parquet_begin__
         :end-before: __write_parquet_end__
 
     .. tab-item:: CSV
 
-      .. literalinclude:: ./doc_code/saving_datastreams.py
+      .. literalinclude:: ./doc_code/saving_data.py
         :language: python
         :start-after: __write_csv_begin__
         :end-before: __write_csv_end__
 
     .. tab-item:: JSON
 
-      .. literalinclude:: ./doc_code/saving_datastreams.py
+      .. literalinclude:: ./doc_code/saving_data.py
         :language: python
         :start-after: __write_json_begin__
         :end-before: __write_json_end__
 
     .. tab-item:: NumPy
 
-      .. literalinclude:: ./doc_code/saving_datastreams.py
+      .. literalinclude:: ./doc_code/saving_data.py
         :language: python
         :start-after: __write_numpy_begin__
         :end-before: __write_numpy_end__
 
     .. tab-item:: TFRecords
 
-      .. literalinclude:: ./doc_code/saving_datastreams.py
+      .. literalinclude:: ./doc_code/saving_data.py
         :language: python
         :start-after: __write_tfrecords_begin__
         :end-before: __write_tfrecords_end__

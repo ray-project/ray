@@ -1,4 +1,4 @@
-.. _transforming_datastreams:
+.. _transforming_data:
 
 =================
 Transforming Data
@@ -60,7 +60,7 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
         
       Records can be transformed in batches of ``Dict[str, np.ndarray]`` using the ``map_batches`` function. The below example shows how to use ``map_batches`` to convert text records to lowercase:
 
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
+      .. literalinclude:: ./doc_code/transforming_data.py
         :language: python
         :start-after: __map_batches_begin__
         :end-before: __map_batches_end__
@@ -69,7 +69,7 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
 
        Records can also be transformed one at a time using the ``map`` function, which takes records encoded as ``Dict[str, Any]]``. The below example shows how to convert text records to lowercase:
 
-       .. literalinclude:: ./doc_code/transforming_datastreams.py
+       .. literalinclude:: ./doc_code/transforming_data.py
          :language: python
          :start-after: __map_begin__
          :end-before: __map_end__
@@ -135,7 +135,7 @@ Transform functions do not have to return data in the same format as the input b
       `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
       values represent a batch of record field values.
 
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
+      .. literalinclude:: ./doc_code/transforming_data.py
         :language: python
         :start-after: __writing_numpy_udfs_begin__
         :end-before: __writing_numpy_udfs_end__
@@ -146,7 +146,7 @@ Transform functions do not have to return data in the same format as the input b
       `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
       format.
 
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
+      .. literalinclude:: ./doc_code/transforming_data.py
         :language: python
         :start-after: __writing_pandas_udfs_begin__
         :end-before: __writing_pandas_udfs_end__
@@ -157,7 +157,7 @@ Transform functions do not have to return data in the same format as the input b
       `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
       format.
 
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
+      .. literalinclude:: ./doc_code/transforming_data.py
         :language: python
         :start-after: __writing_arrow_udfs_begin__
         :end-before: __writing_arrow_udfs_end__
@@ -174,7 +174,7 @@ For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size
 
 When using actors, you must also specify your transform as a callable class type instead of a plain function. The following is an example of using actors for batch inference:
 
-.. literalinclude:: ./doc_code/transforming_datastreams.py
+.. literalinclude:: ./doc_code/transforming_data.py
    :language: python
    :start-after: __datastream_compute_strategy_begin__
    :end-before: __datastream_compute_strategy_end__
@@ -184,7 +184,7 @@ Reduce memory usage using generators
 
 Transform functions can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
 
-.. literalinclude:: ./doc_code/transforming_datastreams.py
+.. literalinclude:: ./doc_code/transforming_data.py
   :language: python
   :start-after: __writing_generator_udfs_begin__
   :end-before: __writing_generator_udfs_end__
@@ -203,7 +203,7 @@ number of blocks of the datastream. This may be useful to break up your dataset 
 pieces to enable more fine-grained parallelization, or to reduce the number of files
 produced as output of a write operation.
 
-.. literalinclude:: ./doc_code/transforming_datastreams.py
+.. literalinclude:: ./doc_code/transforming_data.py
   :language: python
   :start-after: __shuffle_begin__
   :end-before: __shuffle_end__
@@ -273,7 +273,7 @@ Map Groups
 
 Arbitrary processing can be applied to each group of records using :meth:`ds.groupby().map_groups() <ray.data.GroupedData.map_groups>`. For example, this could be used to implement custom aggregations, train a model per group, etc.
 
-.. literalinclude:: ./doc_code/transforming_datastreams.py
+.. literalinclude:: ./doc_code/transforming_data.py
   :language: python
   :start-after: __map_groups_begin__
   :end-before: __map_groups_end__

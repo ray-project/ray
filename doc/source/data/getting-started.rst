@@ -46,7 +46,7 @@ Ray reads from any `filesystem supported by Arrow
 
 
 To learn more about creating datastreams, read
-:ref:`Loading data <creating_datastreams>`.
+:ref:`Loading data <loading_data>`.
 
 Transform the datastream
 ------------------------
@@ -85,7 +85,7 @@ transform datastreams. Ray executes transformations in parallel for performance.
     )
 
 To learn more about transforming datastreams, read
-:ref:`Transforming data <transforming_datastreams>`.
+:ref:`Transforming data <transforming_data>`.
 
 Consume the datastream
 ----------------------
@@ -141,7 +141,7 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
 
 
 To learn more about consuming datastreams, read
-:ref:`Consuming data <consuming_datastreams>`.
+:ref:`Consuming data <consuming_data>`.
 
 Save the datastream
 -------------------
@@ -163,7 +163,7 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving datastream contents, read :ref:`Saving data <saving_datastreams>`.
+To learn more about saving datastream contents, read :ref:`Saving data <saving_data>`.
 
 Next Steps
 ----------

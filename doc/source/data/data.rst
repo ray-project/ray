@@ -112,9 +112,9 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
     **User Guides**
     ^^^
 
-    Learn how to :ref:`create datastreams <creating_datastreams>`, :ref:`save
-    datastreams <saving_datastreams>`, :ref:`transform datastreams <transforming_datastreams>`,
-    :ref:`access and exchange datastreams <consuming_datastreams>`, or
+    Learn how to :ref:`create datastreams <loading_data>`, :ref:`save
+    datastreams <saving_data>`, :ref:`transform datastreams <transforming_data>`,
+    :ref:`access and exchange datastreams <consuming_data>`, or
     :ref:`work with tensor data <data_tensor_support>`.
 
     +++
