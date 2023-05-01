@@ -32,11 +32,14 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._ray_installer = ray_installer
-        self._executor = ThreadPoolExecutor(max_workers=1)
+        self._reconciler_executor = ThreadPoolExecutor(max_workers=1)
         self._ray_installaion_executor = ThreadPoolExecutor(max_workers=50)
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        pass
+        self._reconciler_executor.submit(self._run_reconcile)
+
+    def _run_reconcile(self) -> None:
+        self._reconcile_with_node_provider()
 
     def _launch_new_instances(self):
         queued_instances, storage_version = self._instance_storage.get_instances(
@@ -125,7 +128,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             self._instance_storage.upsert_instances([instance], expected_version=None)
             raise
         instance.state = Instance.RUNNING
-        self._install_storage.upsert_instances([instance], expected_version=None)
+        self._instance_storage.upsert_instances([instance], expected_version=None)
 
     def _terminate_failing_nodes(self) -> int:
         failling_instances, storage_version = self._instance_storage.get_instances(

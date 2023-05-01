@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class InstanceUpdateEvent:
     instance_id: str
-    old: Optional[Instance]
-    new: Optional[Instance]
+    new_status: int
 
 
 class InstanceUpdatedSuscriber(metaclass=ABCMeta):
@@ -41,20 +40,15 @@ class InstanceStorage(object):
         expected_version: Optional[int],
     ) -> Tuple[bool, int]:
         mutations = {}
-
-        old_instances, version = self.get_instances(
-            [instance.instance_id for instance in updates]
-        )
-
+        version = self._storage.get_version()
         # handle version mismatch
         if expected_version and expected_version != version:
             return False, version
 
-        # handle teriminating instances
         for instance in updates.values():
             mutations[instance.instance_id] = instance.SerializeToString()
 
-        result, version = self._storage.update(
+        result, version = self._storage.batch_update(
             self._table_name, mutations, {}, expected_version
         )
 
@@ -63,10 +57,37 @@ class InstanceStorage(object):
                 [
                     InstanceUpdateEvent(
                         instance_id=instance.instance_id,
-                        old=old_instances.get(instance.instance_id),
-                        new=instance,
+                        new_status=instance.status,
                     )
                     for instance in updates
+                ],
+            )
+
+        return result, version
+
+    def update_instance(
+        self,
+        instance: Instance,
+        expected_instance_version: Optional[int],
+        expected_storage_verison: Optional[int],
+    ) -> Tuple[bool, int]:
+
+        result, version = self._storage.update(
+            self._table_name,
+            key=instance.instance_id,
+            value=instance.SerializeToString(),
+            expected_entry_version=expected_instance_version,
+            expected_storage_version=expected_storage_verison,
+            insert_only=True,
+        )
+
+        if result and self._status_change_subscriber:
+            self._status_change_subscriber.notify(
+                [
+                    InstanceUpdateEvent(
+                        instance_id=instance.instance_id,
+                        new_status=instance.status,
+                    )
                 ],
             )
 
@@ -77,9 +98,10 @@ class InstanceStorage(object):
     ) -> Tuple[Dict[str, Instance], int]:
         pairs, version = self._storage.get(self._table_name, instance_ids)
         instances = {}
-        for instance_id, instance_data in pairs.items():
+        for instance_id, (instance_data, entry_version) in pairs.items():
             instance = Instance()
             instance.ParseFromString(instance_data)
+            instance.version = entry_version
             if status_filter and instance.status not in status_filter:
                 continue
             instances[instance_id] = instance
@@ -88,21 +110,20 @@ class InstanceStorage(object):
     def delete_instances(
         self, to_delete: List[Instance], expected_version: Optional[int]
     ) -> Tuple[bool, int]:
-        old_instances, version = self.get_instances(
-            [instance.instance_id for instance in to_delete]
-        )
+        version = self._storage.get_version()
         if expected_version and expected_version != version:
             return False, version
 
-        result = self._storage.update(self._table_name, {}, to_delete, expected_version)
+        result = self._storage.batch_update(
+            self._table_name, {}, to_delete, expected_version
+        )
 
         if result[0] and self._status_change_subscriber:
             self._status_change_subscriber.notify(
                 [
                     InstanceUpdateEvent(
                         instance_id=instance.instance_id,
-                        old=old_instances.get(instance.instance_id),
-                        new=None,
+                        new_status=Instance.GARAGE_COLLECTED,
                     )
                     for instance in to_delete
                 ],
