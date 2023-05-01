@@ -1631,7 +1631,12 @@ class DeploymentState:
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self.health_check_gauge.set(
-            0, tags={"deployment": self._name, "replica": replica.replica_tag}
+            0,
+            tags={
+                "deployment": self._name,
+                "replica": replica.replica_tag,
+                "application": self.app_name,
+            },
         )
 
     def _check_and_update_replicas(self) -> bool:

@@ -29,7 +29,7 @@ def get_datasets(split: float = 0.7) -> Tuple[Datastream]:
             }
         )
 
-    dataset = dataset.map_batches(combine_x)
+    dataset = dataset.map_batches(combine_x, batch_format="pandas")
     train_dataset, validation_dataset = dataset.repartition(
         num_blocks=4
     ).train_test_split(split, shuffle=True)

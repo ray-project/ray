@@ -48,10 +48,6 @@
 #    # run the actual release test.
 #    type: anyscale_job
 #
-#    # File manager to use to transfer files to and from the cluster.
-#    # Can be any of [sdk, job].
-#    file_manager: job
-#
 #    # If you want to wait for nodes to be ready, you can specify this here:
 #    wait_for_nodes:
 #      # Number of nodes
@@ -1919,6 +1915,40 @@
       run:
         timeout: 900
         script: python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
+        wait_for_nodes:
+          num_nodes: 16
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_16x2.yaml
+
+  alert: tune_tests
+
+
+- name: tune_scalability_durable_multifile_checkpoints
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_16x2.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/test_durable_multifile_checkpoints.py --bucket s3://tune-cloud-tests/scalability_durable_multifile_checkpoints
+    wait_for_nodes:
+      num_nodes: 16
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      run:
+        timeout: 900
+        script: python workloads/test_durable_multifile_checkpoints.py --bucket gs://tune-cloud-tests/scalability_durable_multifile_checkpoints
         wait_for_nodes:
           num_nodes: 16
       cluster:
@@ -5718,7 +5748,7 @@
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
-    timeout: 3600
+    timeout: 4200
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start
