@@ -9,6 +9,7 @@ from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceUpdateEvent,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
+from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
@@ -19,17 +20,25 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
     node provider and instance storage. It is also responsible for launching new
     nodes and terminating failing nodes.
     """
+
     def __init__(
-        self, instance_storage: InstanceStorage, node_provider: NodeProvider
+        self,
+        head_node_ip: str,
+        instance_storage: InstanceStorage,
+        node_provider: NodeProvider,
+        ray_installer: RayInstaller,
     ) -> None:
+        self._head_node_ip = head_node_ip
         self._instance_storage = instance_storage
         self._node_provider = node_provider
+        self._ray_installer = ray_installer
         self._executor = ThreadPoolExecutor(max_workers=1)
+        self._ray_installaion_executor = ThreadPoolExecutor(max_workers=50)
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         pass
 
-    def _may_launch_new_instances(self):
+    def _launch_new_instances(self):
         queued_instances, storage_version = self._instance_storage.get_instances(
             status_filter={Instance.INSTANCE_STATUS_UNSPECIFIED}
         )
@@ -91,10 +100,32 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
                 instance.state = Instance.INSTANCE_ALLOCATED
             else:
                 # alternatively, we can retry.
+                # TODO: we probably should retry here anyway.
                 instance.state = Instance.ALLOCATION_FAILED
 
         # blind upsert that ignores version mismatch
         self._instance_storage.upsert_instances(instances, expected_version=None)
+
+    def _install_ray_on_new_nodes(self) -> None:
+        allocated_instance, storage_version = self._instance_storage.get_instances(
+            status_filter={Instance.INSTANCE_ALLOCATED}
+        )
+        for instance in allocated_instance.values():
+            self._ray_installaion_executor.submit(
+                self._install_ray_on_single_node, instance
+            )
+
+    def _install_ray_on_single_node(self, instance: Instance) -> None:
+        instance.state = Instance.RAY_INSTALLING
+        self._instance_storage.upsert_instances([instance], expected_version=None)
+        try:
+            self._ray_installer.install_ray_on_node(instance, self._head_node_ip)
+        except Exception as e:
+            instance.state = Instance.RAY_INSTALL_FAILED
+            self._instance_storage.upsert_instances([instance], expected_version=None)
+            raise
+        instance.state = Instance.RUNNING
+        self._install_storage.upsert_instances([instance], expected_version=None)
 
     def _terminate_failing_nodes(self) -> int:
         failling_instances, storage_version = self._instance_storage.get_instances(
