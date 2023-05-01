@@ -14,7 +14,11 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
-class NodeProviderReconciler(InstanceUpdatedSuscriber):
+class InstanceReconciler(InstanceUpdatedSuscriber):
+    """InstanceReconciler is responsible for reconciling the difference between
+    node provider and instance storage. It is also responsible for launching new
+    nodes and terminating failing nodes.
+    """
     def __init__(
         self, instance_storage: InstanceStorage, node_provider: NodeProvider
     ) -> None:
