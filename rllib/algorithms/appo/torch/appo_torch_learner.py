@@ -1,8 +1,9 @@
-from typing import Mapping
+from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_KEY,
 )
@@ -132,7 +133,7 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             mean_pi_loss
             + (mean_vf_loss * self.hps.vf_loss_coeff)
             + (mean_entropy_loss * self.hps.entropy_coeff)
-            + (mean_kl_loss * self.kl_coeffs[module_id])
+            + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
         return {
@@ -141,17 +142,13 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             VF_LOSS_KEY: mean_vf_loss,
             ENTROPY_KEY: -mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+                self.curr_kl_coeffs_per_module[module_id]
+            ),
         }
 
+    @override(AppoLearner)
     def _update_module_target_networks(self, module_id: ModuleID):
-        """Update the target policy of each module with the current policy.
-
-        Do that update via polyak averaging.
-
-        Args:
-            module_id: The module whose target networks need to be updated.
-
-        """
         module = self.module[module_id]
 
         target_current_network_pairs = module.get_target_network_pairs()
@@ -162,3 +159,29 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
                 for k, v in target_network.state_dict().items()
             }
             target_network.load_state_dict(new_state_dict)
+
+    @override(AppoLearner)
+    def _update_module_kl_coeff(
+        self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
+    ):
+        if module_id in sampled_kls:
+            sampled_kl = sampled_kls[module_id]
+            # Update the current KL value based on the recently measured value.
+            # Increase.
+            kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
+
+            if sampled_kl > 2.0 * self.hps.kl_target:
+                # TODO (Kourosh) why not 2?
+                kl_coeff_var.data *= 1.5
+            # Decrease.
+            elif sampled_kl < 0.5 * self.hps.kl_target:
+                kl_coeff_var.data *= 0.5
+
+    @override(AppoLearner)
+    def _get_kl_variable(self, value: float) -> Any:
+        return torch.tensor(
+            value,
+            requires_grad=False,
+            device=self._device,
+            dtype=torch.float32,
+        )

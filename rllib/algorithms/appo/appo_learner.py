@@ -3,15 +3,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
 
-import numpy as np
-
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
     ImpalaHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_variable
+from ray.rllib.utils.typing import TensorType
 
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
@@ -46,20 +44,18 @@ class AppoLearner(ImpalaLearner):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Create framework-specific variables (simple python vars for torch).
-        self.kl_coeffs = defaultdict(
-            lambda: get_variable(
-                self._hps.kl_coeff,
-                framework=self.framework,
-                trainable=False,
-                dtype=np.float32,
-            )
+
+        # We need to make sure kl_coeff are available as framework tensors that are
+        # registered as part of the graph so that upon update the graph can be updated
+        # (e.g. in TF with eager tracing).
+        self.curr_kl_coeffs_per_module = defaultdict(
+            lambda: self._get_kl_variable(self.hps.kl_coeff)
         )
 
     @override(ImpalaLearner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
-        self.kl_coeffs.pop(module_id)
+        self.curr_kl_coeffs_per_module.pop(module_id)
 
     @override(ImpalaLearner)
     def additional_update_per_module(
@@ -97,7 +93,18 @@ class AppoLearner(ImpalaLearner):
 
         Args:
             module_id: The module whose KL loss coefficient to update.
-            sampled_kls: The KL divergence between the action distributions of
-                the current policy and old policy of each module.
+            sampled_kls: Mapping from Module ID to this module's KL divergence between
+                the action distributions of the current (most recently updated) module
+                and the old module version.
+        """
 
+    @abc.abstractmethod
+    def _get_kl_variable(self, value: float) -> TensorType:
+        """Returns the kl_coeff (framework specific) tensor variable.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-class.
+
+        Args:
+            value: The initial value for the kl_coeff variable.
         """

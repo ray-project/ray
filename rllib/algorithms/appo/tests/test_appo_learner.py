@@ -128,6 +128,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                     vf_share_layers=False,
                 ),
                 _enable_learner_api=True,
+                use_kl_loss=True,
                 kl_coeff=initial_kl_coeff,
             )
             .rl_module(

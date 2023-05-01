@@ -1,4 +1,4 @@
-from typing import Dict, Mapping
+from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo_learner import (
@@ -138,7 +138,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
             mean_pi_loss
             + (mean_vf_loss * self.hps.vf_loss_coeff)
             + (mean_entropy_loss * self.hps.entropy_coeff)
-            + (mean_kl_loss * self.kl_coeffs[module_id])
+            + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
         return {
@@ -147,19 +147,13 @@ class APPOTfLearner(TfLearner, AppoLearner):
             VF_LOSS_KEY: mean_vf_loss,
             ENTROPY_KEY: -mean_entropy_loss,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.kl_coeffs[module_id],
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+                self.curr_kl_coeffs_per_module[module_id]
+            ),
         }
 
     @override(AppoLearner)
     def _update_module_target_networks(self, module_id: ModuleID):
-        """Update the target policy of each module with the current policy.
-
-        Do that update via polyak averaging.
-
-        Args:
-            module_id: The module whose target networks need to be updated.
-
-        """
         module = self.module[module_id]
 
         target_current_network_pairs = module.get_target_network_pairs()
@@ -172,27 +166,22 @@ class APPOTfLearner(TfLearner, AppoLearner):
                 )
                 old_var.assign(updated_var)
 
+    @override(AppoLearner)
     def _update_module_kl_coeff(
         self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
     ):
-        """Dynamically update the KL loss coefficients of each module with.
-
-        The update is completed using the mean KL divergence between the action
-        distributions current policy and old policy of each module. That action
-        distribution is computed during the most recent update/call to `compute_loss`.
-
-        Args:
-            module_id: The module whose KL loss coefficient to update.
-            sampled_kls: The KL divergence between the action distributions of
-                the current policy and old policy of each module.
-
-        """
         if module_id in sampled_kls:
             sampled_kl = sampled_kls[module_id]
+            kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
             # Update the current KL value based on the recently measured value.
             # Increase.
+            # TODO (Kourosh) why not 2?
             if sampled_kl > 2.0 * self.hps.kl_target:
-                self.kl_coeffs[module_id].assign(self.kl_coeffs[module_id] * 1.5)
+                kl_coeff_var.assign(kl_coeff_var * 1.5)
             # Decrease.
             elif sampled_kl < 0.5 * self.hps.kl_target:
-                self.kl_coeffs[module_id].assign(self.kl_coeffs[module_id] * 0.5)
+                kl_coeff_var.assign(kl_coeff_var * 0.5)
+
+    @override(AppoLearner)
+    def _get_kl_variable(self, value: float) -> Any:
+        return tf.Variable(value, trainable=False, dtype=tf.float32)

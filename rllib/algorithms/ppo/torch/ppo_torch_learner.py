@@ -1,8 +1,17 @@
 import logging
-from typing import Any, Mapping
+from typing import Any, Dict, Mapping
 
-from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+from ray.rllib.algorithms.ppo.ppo_learner import (
+    LEARNER_RESULTS_KL_KEY,
+    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+    LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
+    LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
+    PPOLearner,
+)
+from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -94,17 +103,36 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "policy_loss": -torch.mean(surrogate_loss),
-            "vf_loss": mean_vf_loss,
-            "unclipped_vf_loss": mean_vf_unclipped_loss,
-            "vf_explained_var": explained_variance(
+            POLICY_LOSS_KEY: -torch.mean(surrogate_loss),
+            VF_LOSS_KEY: mean_vf_loss,
+            LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
+            LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
-            "entropy": mean_entropy,
-            "kl": mean_kl_loss,
-            "entropy_coeff": self.hps.entropy_coeff,
-            "cur_kl_coeff": self.curr_kl_coeff,
+            ENTROPY_KEY: mean_entropy,
+            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: self.hps.entropy_coeff,
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.curr_kl_coeff,
         }
+
+    @override(PPOLearner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    ) -> Dict[str, Any]:
+        assert sampled_kl_values, "Sampled KL values are empty."
+
+        results = super().additional_update_per_module(module_id, sampled_kl_values)
+
+        sampled_kl = sampled_kl_values[module_id]
+        curr_val = self.curr_kl_coeffs_per_module[module_id]
+        if sampled_kl > 2.0 * self.hps.kl_target:
+            # TODO (Kourosh) why not 2?
+            curr_val.data *= 1.5
+        elif sampled_kl < 0.5 * self.hps.kl_target:
+            curr_val.data *= 0.5
+
+        results.update({"kl_coeff": curr_val})
+        return results
 
     @override(PPOLearner)
     def _get_kl_variable(self, value: float) -> Any:
@@ -113,12 +141,4 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             requires_grad=False,
             device=self._device,
             dtype=torch.float32,
-        )
-
-    @override(PPOLearner)
-    def _set_kl_coeff(self, value: float):
-        self.curr_kl_coeff.data = torch.tensor(
-            value,
-            dtype=torch.float32,
-            device=self.curr_kl_coeff.device,
         )

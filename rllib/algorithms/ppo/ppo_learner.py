@@ -1,5 +1,6 @@
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Mapping, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import abc
 from ray.rllib.core.learner.learner import LearnerHyperparameters
@@ -7,6 +8,13 @@ from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
+
+
+LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
+LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_var"
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 @dataclass
@@ -51,27 +59,17 @@ class PPOLearner(Learner):
         if self.hps.lr_schedule:
             raise ValueError("lr_schedule is not supported in Learner yet")
 
-        # We need to make sure that the kl_coeff is a framework tensor that is
+        # We need to make sure kl_coeff are available as framework tensors that are
         # registered as part of the graph so that upon update the graph can be updated
         # (e.g. in TF with eager tracing).
-        self.curr_kl_coeff_val = self.hps.kl_coeff
-        self.curr_kl_coeff = self._get_kl_variable(self.hps.kl_coeff)
+        self.curr_kl_coeffs_per_module = defaultdict(
+            lambda: self._get_kl_variable(self.hps.kl_coeff)
+        )
 
     @override(Learner)
     def additional_update_per_module(
         self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
-    ) -> Mapping[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
-
-        sampled_kl = sampled_kl_values[module_id]
-        if sampled_kl > 2.0 * self.hps.kl_target:
-            # TODO (Kourosh) why not 2?
-            self.curr_kl_coeff_val *= 1.5
-        elif sampled_kl < 0.5 * self.hps.kl_target:
-            self.curr_kl_coeff_val *= 0.5
-
-        self._set_kl_coeff(self.curr_kl_coeff_val)
-        results = {"kl_coeff": self.curr_kl_coeff_val}
+    ) -> Dict[str, Any]:
 
         # TODO (Kourosh): We may want to index into the schedulers to get the right one
         #  for this module.
@@ -81,7 +79,7 @@ class PPOLearner(Learner):
         if self.lr_scheduler is not None:
             self.lr_scheduler.update(timestep)
 
-        return results
+        return {}
 
     @abc.abstractmethod
     def _get_kl_variable(self, value: float) -> TensorType:
@@ -92,15 +90,4 @@ class PPOLearner(Learner):
 
         Args:
             value: The initial value for the kl_coeff variable.
-        """
-
-    @abc.abstractmethod
-    def _set_kl_coeff(self, value: float) -> None:
-        """Sets the value of the kl_coeff variable.
-
-        This is a framework specific method that should be implemented by the
-        framework specific sub-class.
-
-        Args:
-            value: The new value for the kl_coeff variable.
         """
