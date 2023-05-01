@@ -26,7 +26,6 @@ def httpclient_ssl_context(ca):
         return ssl.create_default_context(cafile=ca_temp_path)
 
 
-@pytest.mark.withoutresponses
 def test_mock_https_connection(httpserver, ca):
     """Test connections to a mock HTTPS job submission server."""
     httpserver.expect_request("/api/version").respond_with_json(
