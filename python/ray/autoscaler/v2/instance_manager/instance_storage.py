@@ -1,12 +1,10 @@
 import logging
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage
-from ray.core.generated.instance_manager_pb2 import (
-    Instance,
-)
+from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +72,9 @@ class InstanceStorage(object):
 
         return result, version
 
-    def get_instances(self, instance_ids: List[str]=[], status_filter: Set[int]={}) -> Tuple[Dict[str, Instance], int]:
+    def get_instances(
+        self, instance_ids: List[str] = [], status_filter: Set[int] = {}
+    ) -> Tuple[Dict[str, Instance], int]:
         pairs, version = self._storage.get(self._table_name, instance_ids)
         instances = {}
         for instance_id, instance_data in pairs.items():

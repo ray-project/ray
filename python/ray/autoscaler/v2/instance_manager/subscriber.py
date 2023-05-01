@@ -1,18 +1,23 @@
 import logging
-
-from typing import Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional, Tuple
 
-from ray.core.generated.instance_manager_pb2 import (
-    Instance,
+from ray.autoscaler.v2.instance_manager.instance_storage import (
+    InstanceStorage,
+    InstanceUpdatedSuscriber,
+    InstanceUpdateEvent,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
-from ray.autoscaler.v2.instance_manager.instance_storage import InstanceUpdatedSuscriber, InstanceStorage, InstanceUpdateEvent
+from ray.core.generated.instance_manager_pb2 import Instance
+
 logger = logging.getLogger(__name__)
 
+
 class NodeProviderSubscriber(InstanceUpdatedSuscriber):
-    def __init__(self,instance_storage: InstanceStorage, node_provider: NodeProvider) -> None:
+    def __init__(
+        self, instance_storage: InstanceStorage, node_provider: NodeProvider
+    ) -> None:
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._executor = ThreadPoolExecutor(max_workers=1)
@@ -21,33 +26,52 @@ class NodeProviderSubscriber(InstanceUpdatedSuscriber):
         pass
 
     def _may_launch_new_instances(self):
-        queued_instances, storage_version = self._instance_storage.get_instances(status_filter={Instance.INSTANCE_STATUS_UNSPECIFIED})
+        queued_instances, storage_version = self._instance_storage.get_instances(
+            status_filter={Instance.INSTANCE_STATUS_UNSPECIFIED}
+        )
         if not queued_instances:
             logger.info("No queued instances to launch")
             return
-    
+
         instances_by_type = defaultdict(list)
         instance_type_min_request_time = {}
         for instance in queued_instances.values():
             instances_by_type[instance.instance_type].append(instance)
-            instance_type_min_request_time[instance.instance_type] = min(instance.timestamp_since_last_state_change, instance_type_min_request_time.get(instance_type, float('inf')))
+            instance_type_min_request_time[instance.instance_type] = min(
+                instance.timestamp_since_last_state_change,
+                instance_type_min_request_time.get(instance_type, float("inf")),
+            )
 
         # Sort instance types by the time of the earlest request
-        picked_instance_type = sorted(instance_type_min_request_time.items(), key=lambda x: x[1])[0][0]
-        self._launch_new_instances_by_type(picked_instance_type, instances_by_type[picked_instance_type], storage_version)
-        
-    def _launch_new_instances_by_type(self, instance_type: str, instances: List[Instance], storage_version) -> int:
-        logger.info(f"Launching {len(instances)} instances of type {instance_type}") 
+        picked_instance_type = sorted(
+            instance_type_min_request_time.items(), key=lambda x: x[1]
+        )[0][0]
+        self._launch_new_instances_by_type(
+            picked_instance_type,
+            instances_by_type[picked_instance_type],
+            storage_version,
+        )
+
+    def _launch_new_instances_by_type(
+        self, instance_type: str, instances: List[Instance], storage_version
+    ) -> int:
+        logger.info(f"Launching {len(instances)} instances of type {instance_type}")
         for instance in instances:
             instance.state = Instance.STARTING
 
-        result, version = self._instance_storage.upsert_instances(instances, storage_version)
+        result, version = self._instance_storage.upsert_instances(
+            instances, storage_version
+        )
         if not result:
             # TODO: we can retry here if starved.
-            logger.info(f"Failed to update instance status due to version mismatch, expected version {storage_version}, actual version {version}")
+            logger.info(
+                f"Failed to update instance status due to version mismatch, expected version {storage_version}, actual version {version}"
+            )
             return 0
-        
-        created_cloud_instances = self._node_provider.create_nodes(instance_type, len(instances))
+
+        created_cloud_instances = self._node_provider.create_nodes(
+            instance_type, len(instances)
+        )
 
         assert len(created_cloud_instances) <= len(instances)
 
@@ -64,10 +88,11 @@ class NodeProviderSubscriber(InstanceUpdatedSuscriber):
 
         # blind upsert that ignores version mismatch
         self._instance_storage.upsert_instances(instances, expected_version=None)
-        
 
     def _terminate_failing_nodes(self) -> int:
-        failling_instances, storage_version = self._instance_storage.get_instances(status_filter={Instance.FAILING})
+        failling_instances, storage_version = self._instance_storage.get_instances(
+            status_filter={Instance.FAILING}
+        )
         if not failling_instances:
             logger.info("No instances to terminate")
             return
@@ -75,22 +100,26 @@ class NodeProviderSubscriber(InstanceUpdatedSuscriber):
         for instance in failling_instances:
             instance.state = Instance.STOPPING
 
-        result, version = self._instance_storage.upsert_instances(failling_instances, expected_version=storage_version)
+        result, version = self._instance_storage.upsert_instances(
+            failling_instances, expected_version=storage_version
+        )
 
         if not result:
             # TODO: we should retry here if verson conflicts.
-            logger.info(f"Failed to update instance status due to version mismatch, expected version {storage_version}, actual version {version}")
+            logger.info(
+                f"Failed to update instance status due to version mismatch, expected version {storage_version}, actual version {version}"
+            )
             return 0
 
-        cloud_instance_ids = [instance.cloud_instance_id for instance in failling_instances] 
+        cloud_instance_ids = [
+            instance.cloud_instance_id for instance in failling_instances
+        ]
         self._node_provider.async_terminate_nodes(cloud_instance_ids)
         return len(cloud_instance_ids)
-
 
     def _terminate_stopping_nodes(self) -> int:
         # TODO: we should retry nodes that are stuck in STOPPING state.
         pass
-
 
     def _sync_node_states_from_provider(self) -> None:
         pass

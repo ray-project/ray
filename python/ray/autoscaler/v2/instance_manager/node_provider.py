@@ -17,9 +17,7 @@ class NodeProvider(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def create_nodes(
-        self, instance_type: InstanceType, count: int
-    ) -> List[str]:
+    def create_nodes(self, instance_type: InstanceType, count: int) -> List[str]:
         """Create new nodes synchronously, returns all non-terminated nodes in the cluster.
         Note that create_nodes could fail partially.
         """
@@ -84,10 +82,13 @@ class NodeProviderAdapter(NodeProvider):
             count,
             instance_type.name,
         )
-        # TODO: we should handle failures where the instance type is 
+        # TODO: we should handle failures where the instance type is
         # not available
         if result:
-            return [self._get_instance(cloud_instance_id) for cloud_instance_id in result.keys()]
+            return [
+                self._get_instance(cloud_instance_id)
+                for cloud_instance_id in result.keys()
+            ]
         return []
 
     @override
