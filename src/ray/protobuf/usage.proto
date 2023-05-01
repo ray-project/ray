@@ -130,4 +130,10 @@ enum TagKey {
   // Name of Tune scheduler algorithm or "Custom" if user-defined.
   // Example: "FIFOScheduler"
   TUNE_SCHEDULER = 502;
+  // (AIR) Fully user-controlled experiment tracking integrations ("0" or "1")
+  AIR_SETUP_WANDB_INTEGRATION_USED = 503;
+  AIR_SETUP_MLFLOW_INTEGRATION_USED = 504;
+  // (AIR) Built-in callbacks, stored in JSON format with callback name -> count.
+  // Ex: {"WandbLoggerCallback": 1, "MLflowLoggerCallback": 1, "Custom": 5}
+  AIR_CALLBACKS = 505
 }
