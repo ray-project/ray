@@ -37,6 +37,12 @@ class TaskFinisherInterface {
                                    const rpc::Address &actor_addr,
                                    bool is_application_error) = 0;
 
+  virtual void HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) = 0;
+
+  virtual void DelGenerator(const ObjectID &generator_id) = 0;
+  
+  virtual Status GetNextObjectRef(const ObjectID &generator_id, ObjectID *object_id_out) = 0;
+
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    const rpc::RayErrorInfo &error_info) = 0;
 
@@ -86,6 +92,12 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
+
+struct ObjectRefStreamReader {
+  std::queue<ObjectID> refs;
+  int64_t last = -1;
+  int64_t curr = 0;
+};
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -166,6 +178,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
+
+  void HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) override;
+
+  void DelGenerator(const ObjectID &generator_id) override;
+  
+  Status GetNextObjectRef(const ObjectID &generator_id, ObjectID *object_id_out) override;
 
   /// Returns true if task can be retried.
   ///
@@ -559,6 +577,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
+
+  absl::flat_hash_map<ObjectID, ObjectRefStreamReader> dynamic_ids_from_generator_ GUARDED_BY(mu_);
 
   friend class TaskManagerTest;
 };

@@ -131,6 +131,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
+    RayKeyError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -195,6 +196,38 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
+class StreamingObjectRefGeneratorV2:
+    def __init__(self, generator_ref):
+        self._generator_ref = generator_ref
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        core_worker = ray._private.worker.global_worker.core_worker
+        obj = self._handle_next()
+        while obj.is_nil():
+            r, _ = ray.wait([self._generator_ref], timeout=0)
+            if len(r) > 0:
+                ray.get(r)
+            time.sleep(0.1)
+            obj = self._handle_next()
+        return obj
+
+    def _handle_next(self):
+        try:
+            core_worker = ray._private.worker.global_worker.core_worker
+            obj = core_worker.generator_get_next(self._generator_ref)
+            return obj
+        except RayKeyError:
+            raise StopIteration
+    
+    def __del__(self):
+        worker = ray._private.worker.global_worker
+        if hasattr(worker, "core_worker"):
+            worker.core_worker.generator_del(self._generator_ref)
+
+
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
@@ -204,6 +237,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    elif status.IsKeyError():
+        raise RayKeyError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsInterrupted():
@@ -661,11 +696,27 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         CoreWorker core_worker = worker.core_worker
 
     try:
-        core_worker.store_task_outputs(
-            worker, generator,
-            dynamic_returns,
-            generator_id)
+        i = 0
+        for output in generator:
+            if dynamic_returns[0].size() > 0:
+                print("dynamic return size bigger than 0")
+                CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), -1)
+                dynamic_returns[0].pop_back()
+            else:
+                print("should never happen.")
+            core_worker.store_task_outputs(
+                worker, [output],
+                dynamic_returns,
+                generator_id)
+            assert dynamic_returns[0].size() == 1
+            print("dynamic return size: ", dynamic_returns[0].size())
+            i += 1
+            # SANG-TODO Report the dynamic returns and pop it out.
+        print("finished")
+        CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), i)
+        dynamic_returns[0].pop_back()
     except Exception as error:
+        print(error)
         is_retryable_error[0] = determine_if_retryable(
             error,
             serialized_retry_exception_allowlist,
@@ -971,6 +1022,7 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:store_outputs"):
                 num_returns = returns[0].size()
                 if dynamic_returns != NULL:
+                    print(outputs)
                     if not inspect.isgenerator(outputs):
                         raise ValueError(
                                 "Functions with "
@@ -993,11 +1045,6 @@ cdef void execute_task(
 
                     task_exception = False
                     dynamic_refs = []
-                    for idx in range(dynamic_returns.size()):
-                        dynamic_refs.append(ObjectRef(
-                            dynamic_returns[0][idx].first.Binary(),
-                            caller_address.SerializeAsString(),
-                        ))
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
 
@@ -3027,6 +3074,24 @@ cdef class CoreWorker:
     def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
         CCoreWorkerProcess.GetCoreWorker() \
             .RecordTaskLogEnd(out_end_offset, err_end_offset)
+
+    def generator_del(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        CCoreWorkerProcess.GetCoreWorker().DelGenerator(c_generator_id)
+
+    def generator_get_next(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            CObjectReference c_object_ref
+        check_status(CCoreWorkerProcess.GetCoreWorker().GetNextObjectRef(c_generator_id, &c_object_ref))
+        return ObjectRef(
+            c_object_ref.object_id(),
+            c_object_ref.owner_address().SerializeAsString(),
+            "",
+            # Already added when the ref is updated.
+            skip_adding_local_ref=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

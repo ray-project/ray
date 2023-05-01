@@ -300,6 +300,89 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
+void TaskManager::DelGenerator(const ObjectID &generator_id) {
+  while (true) {
+    ObjectID object_id;
+    const auto &status = GetNextObjectRef(generator_id, &object_id);
+    if (status.IsKeyError()) {
+      break;
+    }
+    if (object_id == ObjectID::Nil()) {
+      break;
+    }
+    RAY_LOG(INFO) << "SANG-TODO DelGenerator Get Next";
+  }
+  RAY_LOG(INFO) << "SANG-TODO Delete generator from " << generator_id;
+}
+
+Status TaskManager::GetNextObjectRef(const ObjectID &generator_id, ObjectID *object_id_out) {
+  absl::MutexLock lock(&mu_);
+  RAY_CHECK(object_id_out != nullptr);
+  RAY_LOG(INFO) << "SANG-TODO Get the next object ref from " << generator_id;
+  auto it = dynamic_ids_from_generator_.find(generator_id);
+  if (it == dynamic_ids_from_generator_.end()) {
+    *object_id_out = ObjectID::Nil();
+    return Status::OK();
+  }
+
+  auto &reader = dynamic_ids_from_generator_[generator_id];
+  if (reader.last != -1 && reader.curr >= reader.last) {
+    return Status::KeyError("Finished");
+  }
+  if (reader.refs.size() > 0) {
+    *object_id_out = reader.refs.front();
+    reader.refs.pop();
+    reader.curr += 1;
+    RAY_LOG(INFO) << "SANG-TODO Get the next object id " << *object_id_out;
+  } else {
+    *object_id_out = ObjectID::Nil();
+  }
+  return Status::OK();
+}
+
+void TaskManager::HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) {
+  const auto &sample_object_id = ObjectID::FromBinary(request.dynamic_return_objects(0).object_id());
+
+  TaskSpecification spec;
+  // Every generated object has the same task id.
+  const auto &task_id = sample_object_id.TaskId();
+  const auto &generator_id = TaskGeneratorId(task_id);
+
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to complete task that was not pending " << task_id;
+    spec = it->second.spec;
+    if (request.finished_idx() != -1) {
+      RAY_LOG(ERROR) << "SANG-TODO Finished with an index " << request.finished_idx();
+      auto &reader = dynamic_ids_from_generator_[generator_id];
+      reader.last = request.finished_idx();
+    }
+  }
+
+  const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
+
+  for (const auto &return_object : request.dynamic_return_objects()) {
+    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    RAY_LOG(ERROR) << "SANG-TODO Add an object " << object_id;
+    // SANG-TODO This logic is not working with the new protocol
+    // upon lineage reconstruction.
+    reference_counter_->AddDynamicReturn(object_id, generator_id);
+    {
+      absl::MutexLock lock(&mu_);
+      spec.AddDynamicReturnId(object_id);
+      auto &reader = dynamic_ids_from_generator_[generator_id];
+      reader.refs.push(object_id);
+    }
+    HandleTaskReturn(object_id,
+                          return_object,
+                          NodeID::FromBinary(request.worker_addr().raylet_id()),
+                          store_in_plasma_ids.count(object_id));
+  }
+  RAY_LOG(INFO) << "SANG-TODO Finished handling intermediate result";
+}
+
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr,

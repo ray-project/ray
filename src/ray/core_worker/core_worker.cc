@@ -56,6 +56,36 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
 
 namespace {
 
+void SerializeReturnObject(const ObjectID &object_id,
+                          const std::shared_ptr<RayObject> &return_object,
+                          rpc::ReturnObject *return_object_proto) {
+  return_object_proto->set_object_id(object_id.Binary());
+
+  if (!return_object) {
+    // This should only happen if the local raylet died. Caller should
+    // retry the task.
+    RAY_LOG(WARNING) << "Failed to create task return object " << object_id
+                     << " in the object store, exiting.";
+    QuickExit();
+  }
+  return_object_proto->set_size(return_object->GetSize());
+  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
+    return_object_proto->set_in_plasma(true);
+  } else {
+    if (return_object->GetData() != nullptr) {
+      return_object_proto->set_data(return_object->GetData()->Data(),
+                                    return_object->GetData()->Size());
+    }
+    if (return_object->GetMetadata() != nullptr) {
+      return_object_proto->set_metadata(return_object->GetMetadata()->Data(),
+                                        return_object->GetMetadata()->Size());
+    }
+  }
+  for (const auto &nested_ref : return_object->GetNestedRefs()) {
+    return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
+  }
+}
+
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
 class ScopedTaskMetricSetter {
@@ -1000,6 +1030,7 @@ Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
                                    rpc::Address *owner_address) const {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   if (!has_owner) {
+    RAY_LOG(ERROR) << "SANG-TODO Should never happen";
     std::ostringstream stream;
     stream << "An application is trying to access a Ray object whose owner is unknown"
            << "(" << object_id
@@ -1650,6 +1681,36 @@ void CoreWorker::TriggerGlobalGC() {
           RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
         }
       });
+}
+
+Status CoreWorker::ObjectRefStreamWrite(const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object, int64_t finished_idx) {
+  RAY_LOG(ERROR) << "Write the object ref stream";
+  rpc::WriteObjectRefStreamRequest request;
+  request.mutable_worker_addr()->CopyFrom(rpc_address_);
+  request.set_finished_idx(finished_idx);
+  rpc::Address owner_address;
+  RAY_LOG(ERROR) << "HAHA " << dynamic_return_object.first;
+  RAY_RETURN_NOT_OK(GetOwnerAddress(dynamic_return_object.first, &owner_address));
+  auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+
+  auto return_object_proto = request.add_dynamic_return_objects();
+  SerializeReturnObject(
+      dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+  std::vector<ObjectID> deleted;
+  ReferenceCounter::ReferenceTableProto borrowed_refs;
+  reference_counter_->PopAndClearLocalBorrowers(
+      {dynamic_return_object.first}, &borrowed_refs, &deleted);
+  memory_store_->Delete(deleted);
+
+  client->WriteObjectRefStream(request, [](
+            const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
+          if (status.ok()) {
+            RAY_LOG(ERROR) << "Succeeded to send the object ref";
+          } else {
+            RAY_LOG(ERROR) << "Failed to send the object ref";
+          }
+        });
+  return Status::OK();
 }
 
 std::string CoreWorker::MemoryUsageString() {
@@ -2649,12 +2710,12 @@ Status CoreWorker::ExecuteTask(
   if (!borrowed_ids.empty()) {
     reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
   }
-  if (dynamic_return_objects != NULL) {
-    for (const auto &dynamic_return : *dynamic_return_objects) {
-      reference_counter_->PopAndClearLocalBorrowers(
-          {dynamic_return.first}, borrowed_refs, &deleted);
-    }
-  }
+  // if (dynamic_return_objects != NULL) {
+  //   for (const auto &dynamic_return : *dynamic_return_objects) {
+  //     reference_counter_->PopAndClearLocalBorrowers(
+  //         {dynamic_return.first}, borrowed_refs, &deleted);
+  //   }
+  // }
   memory_store_->Delete(deleted);
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
@@ -2727,6 +2788,23 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                      << " in store: " << status.message();
     }
   }
+  return status;
+}
+
+void CoreWorker::DelGenerator(const ObjectID &generator_id) {
+  task_manager_->DelGenerator(generator_id);
+}
+
+Status CoreWorker::GetNextObjectRef(const ObjectID &generator_id, rpc::ObjectReference *object_ref_out) {
+  ObjectID object_id;
+  const auto &status = task_manager_->GetNextObjectRef(generator_id, &object_id);
+  if (!status.ok()) {
+    return status;
+  }
+
+  RAY_CHECK(object_ref_out != nullptr);
+  object_ref_out->set_object_id(object_id.Binary());
+  object_ref_out->mutable_owner_address()->CopyFrom(rpc_address_);
   return status;
 }
 
@@ -3339,6 +3417,15 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 
   // Publish the first object location snapshot when subscribed for the first time.
   reference_counter_->PublishObjectLocationSnapshot(object_id);
+}
+
+void CoreWorker::HandleWriteObjectRefStream(
+    rpc::WriteObjectRefStreamRequest request,
+    rpc::WriteObjectRefStreamReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "SANG-TODO HandleWriteObjectRefStream";
+  task_manager_->HandleIntermediateResult(request);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(

@@ -201,6 +201,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
       LOCKS_EXCLUDED(mutex_);
 
+  void AddIntermediateDynamicReturn(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.

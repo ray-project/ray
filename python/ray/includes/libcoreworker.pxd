@@ -147,6 +147,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id
         )
+        void DelGenerator(const CObjectID &generator_id) 
+        CRayStatus GetNextObjectRef(const CObjectID &generator_id, CObjectReference *object_ref_out) 
         CObjectID AllocateDynamicReturnId()
 
         CJobID GetCurrentJobId()
@@ -235,6 +237,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 int64_t timeout_ms,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
+        CRayStatus ObjectRefStreamWrite(const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object, int64_t finished_idx)
+
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()

@@ -234,9 +234,9 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     outer_it->second.call_site,
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable,
-                                    /*add_local_ref=*/false,
+                                    /*add_local_ref=*/true,
                                     absl::optional<NodeID>()));
-  AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
+  // AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
 bool ReferenceCounter::AddOwnedObjectInternal(
