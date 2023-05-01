@@ -57,6 +57,41 @@ Mapping individual records using :meth:`.map(fn) <ray.data.Datastream.map>` can 
 Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Datastream.map_batches>` and writing your ``batch_fn`` to
 perform vectorized pandas operations.
 
+.. _data_format_overheads:
+
+Format Overheads
+~~~~~~~~~~~~~~~~
+
+Converting between the internal block types (Arrow, Pandas)
+and the requested batch format (``"numpy"``, ``"pandas"``, ``"pyarrow"``)
+may incur data copies; which conversions cause data copying is given in the below table:
+
+
+.. list-table:: Data Format Conversion Costs
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Block Type x Batch Format
+     - ``"pandas"``
+     - ``"numpy"``
+     - ``"pyarrow"``
+     - ``None``
+   * - Pandas Block
+     - Zero-copy
+     - Copy*
+     - Copy*
+     - Zero-copy
+   * - Arrow Block
+     - Copy*
+     - Zero-copy*
+     - Zero-copy
+     - Zero-copy
+
+.. note::
+  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
+  represented in the Ray Data tensor extension type (except for bool arrays).
+
+
 Parquet Column Pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 

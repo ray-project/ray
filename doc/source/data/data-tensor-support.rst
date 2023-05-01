@@ -121,7 +121,7 @@ Like any other Datastream, Datastreams with tensor columns can be processed in b
 Saving Tensor Data
 ------------------
 
-Because tensor data rlies on Datastreams-specific extension types, they can only be
+Because tensor data relies on Datastream-specific extension types, they can only be
 saved in formats that preserve Arrow metadata (currently only Parquet). In addition,
 single-column tensor datastreams can be saved in NumPy format.
 

@@ -12,18 +12,16 @@ express a chain of computations.
 
 .. _transform_datastreams_transformations:
 
----------------
-Transformations
----------------
+--------
+Overview
+--------
 
-There are two main types of transformations:
+There are two main types of supported transformations, summarized in the below table:
 
 * One-to-one: each input block will contribute to only one output
   block, such as :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`.
 * All-to-all: input blocks can contribute to multiple output blocks,
   such as :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>`.
-
-Here is a table listing some common transformations supported by Ray Data.
 
 .. list-table:: Common Ray Data transformations.
    :header-rows: 1
@@ -58,98 +56,63 @@ Here is a table listing some common transformations supported by Ray Data.
 
 .. _transform_datastreams_writing_udfs:
 
--------------------------------------
-Writing User-defined Functions (UDFs)
--------------------------------------
+--------------
+Map transforms
+--------------
 
-User-defined functions (UDFs) are routines that apply on one row (e.g.
-:meth:`.map() <ray.data.Datastream.map>`) or a batch of rows (e.g.
-:meth:`.map_batches() <ray.data.Datastream.map_batches>`) of a datastream.
-
-.. _transform_datastreams_callable_classes:
-
-Types of UDFs
-=============
-There are three types of UDFs that you can use with Ray Data: Functions, Generators, and Callable Classes.
+Use ``map_batches`` to efficiently transform records in batches, or ``map`` to transform records individually:
 
 .. tab-set::
 
-    .. tab-item:: Functions
-
-      The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datastreams_batch_formats` for the supported batch formats.
-
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_default_udfs_tabular_begin__
-        :end-before: __writing_default_udfs_tabular_end__
-
-      .. tip::
-        The convenience methods :meth:`ds.map() <ray.data.Datastream.map>`,
-        :meth:`ds.flat_map() <ray.data.Datastream.flat_map>`, and :meth:`ds.filter() <ray.data.Datastream.filter>`,
-        are usually slower than :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, but
-        may be useful for development.
-
-    .. tab-item:: Generators
-
-      UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+    .. tab-item:: Map Batches
+        
+      Records can be transformed in batches of ``Dict[str, np.ndarray]`` using the ``map_batches`` function. The below example shows how to use ``map_batches`` to normalize the contents of an image column:
 
       .. literalinclude:: ./doc_code/transforming_datastreams.py
         :language: python
-        :start-after: __writing_generator_udfs_begin__
-        :end-before: __writing_generator_udfs_end__
+        :start-after: __writing_numpy_udfs_begin__
+        :end-before: __writing_numpy_udfs_end__
 
-      .. tip::
-        When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Datastream.flat_map>` API and not the :meth:`.map() <ray.data.Datastream.map>` API.
+    .. tab-item:: Map
 
-    .. tab-item:: Callable Classes
+       Records can also be transformed one at a time using the convenience ``map`` function, which takes and returns records encoded as ``Dict[str, Any]]``. The below example shows how to convert text records to lowercase:
 
-      With the actor compute strategy, you can use per-row and per-batch UDFs
-      *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
-      can use the constructor of the class for stateful setup, and it is only invoked once
-      per worker actor.
+       .. literalinclude:: ./doc_code/transforming_datastreams.py
+         :language: python
+         :start-after: __writing_dict_out_row_udfs_begin__
+         :end-before: __writing_dict_out_row_udfs_end__
 
-      Callable classes are useful if you need to load expensive state (such as a model) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
+Configuring resources
+=====================
 
-      .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_callable_classes_udfs_begin__
-        :end-before: __writing_callable_classes_udfs_end__
+By default, each task used for transformation (e.g., `map` or `map_batches`) will request 1 CPU from Ray.
+To increase the resources reserved per task, you can increase the CPU request by specifying
+``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task.
 
-      .. tip::
-        The class type of the callable must be passed to ``map_batches``, not an instance of the class.
+To request tasks be run on a GPU, use ``.map_batches(..., num_gpus=1)``, etc. In addition to
+``num_cpus`` and ``num_gpus``, any kwarg from ``@ray.remote`` can be passed to customize
+the resource scheduling of transformation tasks.
 
-.. _transform_datastreams_row_output_types:
+Configuring batch size
+======================
 
-Using ``map()``
-==============
+An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+is ``batch_size``, which controls the size of the batches provided to the your transform function. The default
+batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required.
 
-When using :meth:`ds.map() <ray.data.Datastream.map>`, both the input and output types of your UDF are always ``Dict[str, Any]``.
+Increasing ``batch_size`` can improve performance for transforms that take advantage of vectorization, but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors. If encountering OOMs, decreasing your ``batch_size`` may help. Note that if you set a ``batch_size`` that's larger than the number of records per block, Datastreams will bundle multiple blocks together into a single batch, potentially reducing the parallelism available.
 
+Configuring batch format
+========================
 
-.. literalinclude:: ./doc_code/transforming_datastreams.py
-  :language: python
-  :start-after: __writing_dict_out_row_udfs_begin__
-  :end-before: __writing_dict_out_row_udfs_end__
+Customize the *format* of data batches passed to your transformation function using the ``batch_format`` argument to :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`. The following are examples in each available batch format.
 
-.. _transform_datastreams_configuring_batch_size:
-
-
-.. _transform_datastreams_batch_formats:
-
-Using ``map_batches()``
-=======================
-
-When using :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, data is
-given to your UDF in batches. You can choose *batch size* using the ``batch_size`` argument, and
-the *batch format* using ``batch_format``.
-
-The following are examples in each available batch format.
 Note that you do not have to return data in the same batch format as specified in the input.
-For example, you could return a ``pd.DataFrame`` even if the input was in ``numpy`` format.
+For example, you could return a ``pd.DataFrame`` even if the input was in NumPy format.
 
 .. tab-set::
 
-    .. tab-item:: "numpy" (default)
+    .. tab-item:: NumPy (default)
 
       The ``"numpy"`` option presents batches as ``Dict[str, np.ndarray]``, where the
       `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
@@ -160,7 +123,7 @@ For example, you could return a ``pd.DataFrame`` even if the input was in ``nump
         :start-after: __writing_numpy_udfs_begin__
         :end-before: __writing_numpy_udfs_end__
 
-    .. tab-item:: "pandas"
+    .. tab-item:: Pandas
 
       The ``"pandas"`` batch format presents batches in
       `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
@@ -171,7 +134,7 @@ For example, you could return a ``pd.DataFrame`` even if the input was in ``nump
         :start-after: __writing_pandas_udfs_begin__
         :end-before: __writing_pandas_udfs_end__
 
-    .. tab-item:: "pyarrow"
+    .. tab-item:: PyArrow
 
       The ``"pyarrow"`` batch format presents batches in
       `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
@@ -187,93 +150,35 @@ For example, you could return a ``pd.DataFrame`` even if the input was in ``nump
       Specifying ``None`` will tell Ray Data to choose the most performant batch format
       for the operation.
 
-Configuring Batch Size
-~~~~~~~~~~~~~~~~~~~~~~
+      See the :ref:`Format overheads <data_format_overheads>` section for an overview
+      of format conversion overheads.
 
-An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
-is ``batch_size``, which controls the size of the batches provided to the UDF. The default
-batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required.
+Reduce setup overheads using actors
+===================================
 
-Increasing ``batch_size`` can improve performance for UDFs that take advantage of vectorization,
-but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors.
-If encountering OOMs, decreasing your ``batch_size`` may help.
-
-If you set a ``batch_size`` that's larger than your ``Datastream`` blocks, Datastreams
-will bundle multiple blocks together for a single task in order to better satisfy
-``batch_size``. If ``batch_size`` is a lot larger than your ``Datastream`` blocks (e.g. if
-your datastream was created with too large of a ``parallelism`` and/or the ``batch_size``
-is set to too large of a value for your datastream), the number of parallel tasks
-may be less than expected.
-
-.. note::
-  The size of the batches provided to the UDF may be smaller than the provided
-  ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
-  task.
-
-Format Overheads
-~~~~~~~~~~~~~~~~
-Converting between the internal block types (Arrow, Pandas)
-and the requested batch format (``"numpy"``, ``"pandas"``, ``"pyarrow"``)
-may incur data copies; which conversions cause data copying is given in the below table:
-
-
-.. list-table:: Data Format Conversion Costs
-   :header-rows: 1
-   :stub-columns: 1
-
-   * - Block Type x Batch Format
-     - ``"pandas"``
-     - ``"numpy"``
-     - ``"pyarrow"``
-     - ``None``
-   * - Pandas Block
-     - Zero-copy
-     - Copy*
-     - Copy*
-     - Zero-copy
-   * - Arrow Block
-     - Copy*
-     - Zero-copy*
-     - Zero-copy
-     - Zero-copy
-
-.. note::
-  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
-  represented in the Ray Data tensor extension type (except for bool arrays).
-
----------------------
-Configuring Resources
----------------------
-
-By default, each task used for transformation (e.g., `map` or `map_batches`) will request 1 CPU from Ray.
-To increase the resources reserved per task, you can increase the CPU request by specifying
-``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task.
-
-To request tasks be run on a GPU, use ``.map_batches(..., num_gpus=1)``, etc. In addition to
-``num_cpus`` and ``num_gpus``, any kwarg from ``@ray.remote`` can be passed to customize
-the resource scheduling of transformation tasks.
-
-.. _transform_datastreams_compute_strategy:
-
-----------------
-Compute Strategy
-----------------
-
-Datastreams transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
-or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
+Ray Data transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
+or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, tasks are
 used. For transformations that require expensive setup,
-it's preferrable to use Ray actors, which are stateful and allow setup to be reused
+it's preferrable to use actors, which are stateful and allow setup to be reused
 for efficiency. For a fixed-size actor pool, specify ``compute=ActorPoolStrategy(size=n)``.
 For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size=m, max_size=n)``.
 
-The following is an example of using the Ray tasks and actors compute strategy
-for batch inference:
+When using actors, you must also specify your transformation function as a callable class typeinstead of a plain function. The following is an example of using actors for batch inference:
 
 .. literalinclude:: ./doc_code/transforming_datastreams.py
    :language: python
    :start-after: __datastream_compute_strategy_begin__
    :end-before: __datastream_compute_strategy_end__
 
+Reduce memory usage using generators
+====================================
+
+Transformations can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+
+.. literalinclude:: ./doc_code/transforming_datastreams.py
+  :language: python
+  :start-after: __writing_generator_udfs_begin__
+  :end-before: __writing_generator_udfs_end__
 .. _data-groupbys:
 
 --------------------------

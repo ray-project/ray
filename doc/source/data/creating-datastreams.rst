@@ -24,8 +24,8 @@ Generating Synthetic Data
 
       .. literalinclude:: ./doc_code/creating_datastreams.py
         :language: python
-        :start-after: __gen_synth_int_range_begin__
-        :end-before: __gen_synth_int_range_end__
+        :start-after: __gen_synth_tabular_range_begin__
+        :end-before: __gen_synth_tabular_range_end__
 
     .. tab-item:: Tensor Range
 
@@ -69,9 +69,8 @@ Common File Formats
         :start-after: __read_parquet_begin__
         :end-before: __read_parquet_end__
 
-      Datastreams' Parquet reader also supports projection and filter pushdown, allowing column
-      selection and row filtering to be pushed down to the file scan. For column selection,
-      unselected columns will never be read from the file.
+      The Parquet reader also supports projection and filter pushdown, allowing column
+      selection and row filtering to be pushed down to the file scan.
 
       .. literalinclude:: ./doc_code/creating_datastreams.py
         :language: python
