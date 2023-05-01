@@ -197,7 +197,7 @@ class DatasetReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ds: ray.data.Dataset, ioctx: Optional[IOContext] = None):
+    def __init__(self, ds: ray.data.Datastream, ioctx: Optional[IOContext] = None):
         """Initializes a DatasetReader instance.
 
         Args:
@@ -246,7 +246,7 @@ class DatasetReader(InputReader):
         ret = []
         count = 0
         while count < self.batch_size:
-            d = next(self._iter).as_pydict()
+            d = next(self._iter)
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
             count += d.count

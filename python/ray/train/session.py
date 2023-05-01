@@ -81,7 +81,7 @@ class _TrainSessionImpl(Session):
         if shard is None:
             warnings.warn(
                 "No dataset passed in. Returning None. Make sure to "
-                "pass in a Ray Dataset to Trainer.run to use this "
+                "pass in a Datastream to Trainer.run to use this "
                 "function."
             )
         elif isinstance(shard, dict):

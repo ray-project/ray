@@ -71,7 +71,11 @@ def mock_add_workers(self, num_workers):
     original_add_workers(self, num_workers)
     for i, worker in enumerate(self.workers):
         metadata = WorkerMetadata(
-            node_id=0, node_ip=str(i % 2), hostname=0, gpu_ids=[0]
+            node_id=0,
+            node_ip=str(i % 2),
+            hostname=0,
+            gpu_ids=[0],
+            pid=0,
         )
         worker.metadata = metadata
 

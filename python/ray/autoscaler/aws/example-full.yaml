@@ -45,6 +45,8 @@ provider:
     # Whether to allow node reuse. If set to False, nodes will be terminated
     # instead of stopped.
     cache_stopped_nodes: True # If not present, the default is True.
+    key_pair:
+        key_name: aws-cluster-launcher-test
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -79,7 +81,7 @@ available_node_types:
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      VolumeSize: 140GB
+                      VolumeSize: 140
             # Additional options in the boto docs.
     ray.worker.default:
         # The minimum number of worker nodes of this type to launch.
@@ -169,7 +171,7 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

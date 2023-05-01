@@ -11,9 +11,9 @@ from ray.rllib.core.models.base import Encoder
 from ray.rllib.core.models.base import ModelConfig
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
-    MLPEncoderConfig,
-    LSTMEncoderConfig,
     CNNEncoderConfig,
+    MLPEncoderConfig,
+    RecurrentEncoderConfig,
 )
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models import MODEL_DEFAULTS
@@ -321,14 +321,13 @@ class Catalog:
         use_attention = model_config_dict["use_attention"]
 
         if use_lstm:
-            encoder_config = LSTMEncoderConfig(
+            encoder_config = RecurrentEncoderConfig(
+                recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
-                batch_first=not model_config_dict["_time_major"],
+                batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
                 output_dims=[model_config_dict["lstm_cell_size"]],
                 output_activation=output_activation,
-                observation_space=observation_space,
-                action_space=action_space,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )

@@ -2,12 +2,18 @@ import logging
 import shutil
 import torch
 import tempfile
-import pytorch_lightning as pl
-
+from packaging.version import Version
 from typing import Any, Dict, Optional
+
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.plugins.environments import LightningEnvironment
+from pytorch_lightning.strategies import DDPStrategy
+
+if Version(pl.__version__) >= Version("2.0.0"):
+    from pytorch_lightning.strategies import FSDPStrategy
+else:
+    from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
 
 import ray
 from ray.air import session
@@ -21,12 +27,36 @@ logger = logging.getLogger(__name__)
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
+def get_worker_root_device():
+    """Get the first torch device of the current worker if there are multiple."""
+    devices = ray.train.torch.get_device()
+    if isinstance(devices, list):
+        return devices[0]
+    else:
+        return devices
+
+
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
 
     @property
     def root_device(self) -> torch.device:
-        return ray.train.torch.get_device()
+        return get_worker_root_device()
+
+    @property
+    def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        return dict(
+            num_replicas=self.world_size,
+            rank=self.global_rank,
+        )
+
+
+class RayFSDPStrategy(FSDPStrategy):
+    """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration."""
+
+    @property
+    def root_device(self) -> torch.device:
+        return get_worker_root_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:

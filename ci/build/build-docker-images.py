@@ -1,4 +1,5 @@
 import datetime
+import io
 import json
 import functools
 import glob
@@ -9,8 +10,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 from collections import defaultdict
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict
 
 import click
 import docker
@@ -21,11 +24,15 @@ DOCKER_CLIENT = docker.from_env()
 PYTHON_WHL_VERSION = "cp3"
 ADDITIONAL_PLATFORMS = ["aarch64"]
 
+DOCKER_HUB_REPO = "rayproject"
+
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": (
-        "Internal Image, refer to " "https://hub.docker.com/r/rayproject/ray"
+        f"Internal Image, refer to https://hub.docker.com/r/{DOCKER_HUB_REPO}/ray"
     ),
-    "ray-deps": ("Internal Image, refer to " "https://hub.docker.com/r/rayproject/ray"),
+    "ray-deps": (
+        f"Internal Image, refer to https://hub.docker.com/r/{DOCKER_HUB_REPO}/ray"
+    ),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
     "ray-worker-container": "Internal Image for CI test",
@@ -233,7 +240,7 @@ def _build_docker_image(
         # can be found.
         build_args["FIND_LINKS_PATH"] = ".whl"
 
-    tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
+    tagged_name = f"{DOCKER_HUB_REPO}/{image_name}:nightly-{py_version}-{device_tag}"
 
     tagged_name = _with_suffix(tagged_name, suffix=suffix)
 
@@ -292,6 +299,43 @@ def _build_docker_image(
             break
 
     print("BUILT: ", tagged_name)
+    return tagged_name
+
+
+def _extract_files_from_docker(docker_image: str, files: Dict[str, str]):
+    """Extract files from docker container image and save to local disk.
+
+    ``files`` is a dict mapping from paths inside the docker container to
+    local paths on the host system.
+    """
+    # Create container
+    container = DOCKER_CLIENT.containers.create(docker_image)
+    for container_path, local_path in files.items():
+        # Get tar stream of file
+        stream, stat = container.get_archive(f"{container_path}")
+        # Create local directory containing target file
+        local_path = Path(local_path)
+        local_path.parent.mkdir(exist_ok=True)
+        # Read tar stream into bytes IO
+        with tarfile.open(fileobj=io.BytesIO(b"".join(d for d in stream))) as tar:
+            # Extract file from tar archive into local path
+            with open(local_path, "wb") as f:
+                for r in tar.extractfile(os.path.basename(container_path)):
+                    f.write(r)
+    container.remove()
+
+
+def extract_image_infos(images: List[str], target_dir: str):
+    for image in images:
+        image_basename = image.replace("rayproject/", "")
+        _extract_files_from_docker(
+            image,
+            {
+                "/home/ray/pip-freeze.txt": (
+                    f"{target_dir}/{image_basename}_" f"pip-freeze.txt"
+                )
+            },
+        )
 
 
 def copy_wheels(human_build):
@@ -326,17 +370,22 @@ def check_staleness(repository, tag):
     return is_stale
 
 
-def build_for_all_versions(image_name, py_versions, image_types, suffix, **kwargs):
+def build_for_all_versions(
+    image_name, py_versions, image_types, suffix, **kwargs
+) -> List[str]:
     """Builds the given Docker image for all Python & CUDA versions"""
+    tagged_names = []
     for py_version in py_versions:
         for image_type in image_types:
-            _build_docker_image(
+            tagged_name = _build_docker_image(
                 image_name,
                 py_version=py_version,
                 image_type=image_type,
                 suffix=suffix,
                 **kwargs,
             )
+            tagged_names.append(tagged_name)
+    return tagged_names
 
 
 def build_base_images(py_versions, image_types, suffix):
@@ -355,7 +404,7 @@ def build_or_pull_base_images(
     suffix: Optional[str] = None,
 ) -> bool:
     """Returns images to tag and build."""
-    repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
+    repositories = [f"{DOCKER_HUB_REPO}/base-deps", f"{DOCKER_HUB_REPO}/ray-deps"]
     tags = [
         f"nightly-{py_version}-{image_type}"
         for py_version, image_type in itertools.product(py_versions, image_types)
@@ -672,7 +721,7 @@ def push_readmes(merge_build: bool):
             "PUSHRM_DEBUG": 1,
             "PUSHRM_SHORT": tag_line,
         }
-        cmd_string = f"rayproject/{image}"
+        cmd_string = f"{DOCKER_HUB_REPO}/{image}"
 
         print(
             DOCKER_CLIENT.containers.run(
@@ -830,7 +879,11 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
-            build_for_all_versions("ray", py_versions, image_types, suffix=suffix)
+            all_tagged_images = []
+
+            all_tagged_images += build_for_all_versions(
+                "ray", py_versions, image_types, suffix=suffix
+            )
 
             # List of images to tag and push to docker hub
             images_to_tag_and_push = []
@@ -854,13 +907,18 @@ def main(
 
             if len(ml_image_types) > 0:
                 prep_ray_ml()
-                build_for_all_versions(
+                all_tagged_images += build_for_all_versions(
                     "ray-ml",
                     py_versions,
                     image_types=ml_image_types,
                     suffix=suffix,
                 )
                 images_to_tag_and_push += ["ray-ml"]
+
+            if is_buildkite:
+                extract_image_infos(
+                    all_tagged_images, target_dir="/artifact-mount/.image-info"
+                )
 
             if build_type in {MERGE, PR}:
                 valid_branch = _valid_branch()
@@ -879,5 +937,72 @@ def main(
         # push_readmes(build_type is MERGE)
 
 
+def fix_docker_images(
+    image: str = "ray-ml",
+    version: str = "nightly",
+    repo: str = DOCKER_HUB_REPO,
+):
+    """Print commands to manually update docker images post-release.
+
+    This function prints commands that can be run to add new layers to
+    fix docker images post-release, e.g. when dependencies have to be fixed
+    or public keys expired.
+
+    The commands can be copied/pasted and executed in a shell.
+
+    Example:
+        FIX_IMAGE=ray-ml FIX_VERSION=2.3.0 python build-docker-images.py
+
+    """
+    tags = create_image_tags(
+        image_name=image,
+        py_versions=list(PY_MATRIX.keys()),
+        image_types=list(BASE_IMAGES.keys()),
+        specific_tag=None,  # Set to `latest` for latest image fixes
+        version=version,
+        suffix=None,
+    )
+    print(dict(tags))
+
+    # Pull images we want to rebuild
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+
+        print(f"docker pull {base_image}")
+
+    # Re-tag these base images as e.g. pinned/ray-ml:tag
+    # This is so we can re-run the build command safely.
+    pinned_base_image = {}
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+        pinned_image = f"pinned/{image}:{base_tag}"
+
+        pinned_base_image[base_image] = pinned_image
+
+        print(f"docker tag {base_image} {pinned_image}")
+
+    # Create commands to build the new layer for the base images.
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+        pinned_image = pinned_base_image[base_image]
+
+        print(f"docker build --build-arg BASE_IMAGE={pinned_image} -t {base_image} .")
+        for subtag in tags[base_tag]:
+            if subtag == base_tag:
+                continue
+
+            # This will overwrite the rayproject/ray-ml:tag image
+            # - but we still have the pinned/ image if we want to re-run!
+            target_image = f"{repo}/{image}:{subtag}"
+            print(f"docker tag {base_image} {target_image}")
+
+    # Lastly, push new layers
+    print(f"docker push --all-tags {repo}/{image}")
+
+
 if __name__ == "__main__":
-    main()
+    fix_image = os.environ.get("FIX_IMAGE")
+    if not fix_image:
+        main()
+    else:
+        fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))

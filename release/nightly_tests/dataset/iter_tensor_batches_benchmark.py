@@ -67,10 +67,10 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     # Add a label column.
     def add_label(batch):
         label = np.ones(shape=(len(batch), 1))
-        batch["__value__"] = label
+        batch["label"] = label
         return batch
 
-    ds = ds.map_batches(add_label).materialize()
+    ds = ds.map_batches(add_label, batch_format="pandas").materialize()
 
     # Test iter_torch_batches() with default args.
     benchmark.run(
@@ -86,7 +86,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
         to_tf,
         ds=ds,
         feature_columns="image",
-        label_columns="__value__",
+        label_columns="label",
         use_default_params=True,
     )
 
@@ -105,7 +105,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
             to_tf,
             ds=ds,
             feature_columns="image",
-            label_columns="__value__",
+            label_columns="label",
             batch_size=batch_size,
         )
 
@@ -139,7 +139,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
                 to_tf,
                 ds=ds,
                 feature_columns="image",
-                label_columns="__value__",
+                label_columns="label",
                 batch_size=batch_size,
                 local_shuffle_buffer_size=shuffle_buffer_size,
             )

@@ -9,6 +9,7 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
+import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
@@ -16,8 +17,8 @@ from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -94,7 +95,6 @@ class PPOConfig(PGConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # PPO specific settings:
-        self._learner_hps = PPOLearnerHPs()
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -167,6 +167,21 @@ class PPOConfig(PGConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
+    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return PPOLearnerHyperparameters(
+            use_critic=self.use_critic,
+            kl_coeff=self.kl_coeff,
+            vf_loss_coeff=self.vf_loss_coeff,
+            entropy_coeff=self.entropy_coeff,
+            entropy_coeff_schedule=self.entropy_coeff_schedule,
+            clip_param=self.clip_param,
+            vf_clip_param=self.vf_clip_param,
+            kl_target=self.kl_target,
+            **dataclasses.asdict(base_hps),
+        )
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -212,7 +227,7 @@ class PPOConfig(PGConfig):
                 tune this if you set vf_share_layers=True inside your model's config.
             entropy_coeff: Coefficient of the entropy regularizer.
             entropy_coeff_schedule: Decay schedule for the entropy regularizer.
-            clip_param: PPO clip parameter.
+            clip_param: The PPO clip parameter.
             vf_clip_param: Clip param for the value function. Note that this is
                 sensitive to the scale of the rewards. If your expected V is large,
                 increase this.
@@ -306,17 +321,6 @@ class PPOConfig(PGConfig):
         # Check `entropy_coeff` for correctness.
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
-        # learner hps need to be updated inside of config.validate in order to have
-        # the correct values for when a user starts an experiment from a dict. This is
-        # as oppposed to assigning the values inthe builder functions such as `training`
-        self._learner_hps.use_critic = self.use_critic
-        self._learner_hps.kl_coeff = self.kl_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.entropy_coeff_schedule = self.entropy_coeff_schedule
-        self._learner_hps.clip_param = self.clip_param
-        self._learner_hps.vf_clip_param = self.vf_clip_param
-        self._learner_hps.kl_target = self.kl_target
 
 
 class UpdateKL:

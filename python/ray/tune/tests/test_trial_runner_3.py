@@ -1159,7 +1159,7 @@ class TrialRunnerTest3(unittest.TestCase):
             assert syncer.sync_up_counter == 2
 
     def testExperimentCheckpointWithDatasets(self):
-        """Test trial runner checkpointing where trials contain Ray Datasets.
+        """Test trial runner checkpointing where trials contain Datastreams.
         When possible, a dataset plan should be saved (for read_* APIs).
         See `Dataset.serialize_lineage` for more information.
 

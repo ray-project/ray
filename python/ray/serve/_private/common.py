@@ -21,11 +21,13 @@ EndpointTag = str
 ReplicaTag = str
 NodeId = str
 Duration = float
+ApplicationName = str
 
 
 @dataclass
 class EndpointInfo:
     route: str
+    app_name: str
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -56,15 +58,16 @@ class ApplicationStatusInfo:
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
-            status=self.status,
+            status=f"APPLICATION_STATUS_{self.status}",
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
 
     @classmethod
     def from_proto(cls, proto: ApplicationStatusInfoProto):
+        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
         return cls(
-            status=ApplicationStatus(ApplicationStatusProto.Name(proto.status)),
+            status=ApplicationStatus(status),
             message=proto.message,
             deployment_timestamp=proto.deployment_timestamp,
         )
@@ -87,14 +90,17 @@ class DeploymentStatusInfo:
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
-            name=self.name, status=self.status, message=self.message
+            name=self.name,
+            status=f"DEPLOYMENT_STATUS_{self.status}",
+            message=self.message,
         )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
+        status = DeploymentStatusProto.Name(proto.status)[len("DEPLOYMENT_STATUS_") :]
         return cls(
             name=proto.name,
-            status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)),
+            status=DeploymentStatus(status),
             message=proto.message,
         )
 
@@ -184,6 +190,7 @@ class DeploymentInfo:
         end_time_ms: Optional[int] = None,
         autoscaling_policy: Optional[AutoscalingPolicy] = None,
         is_driver_deployment: Optional[bool] = False,
+        app_name: Optional[str] = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -200,6 +207,8 @@ class DeploymentInfo:
         self._cached_actor_def = None
 
         self.is_driver_deployment = is_driver_deployment
+
+        self.app_name = app_name
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -242,6 +251,7 @@ class DeploymentInfo:
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
+            "app_name": proto.app_name,
         }
 
         return cls(**data)
@@ -252,6 +262,7 @@ class DeploymentInfo:
             "actor_name": self.actor_name,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
+            "app_name": self.app_name,
         }
         if self.deployment_config:
             data["deployment_config"] = self.deployment_config.to_proto()

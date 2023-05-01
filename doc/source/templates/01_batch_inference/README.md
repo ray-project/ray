@@ -1,7 +1,7 @@
 # Scaling Batch Inference with Ray Data
 
 This template is a quickstart to using [Ray
-Data](https://docs.ray.io/en/latest/data/dataset.html) for batch
+Data](https://docs.ray.io/en/latest/data/data.html) for batch
 inference. Ray Data is one of many libraries under the [Ray AI
 Runtime](https://docs.ray.io/en/latest/ray-air/getting-started.html).
 See [this blog
@@ -16,12 +16,12 @@ to help you build your own application!
 At a high level, this template will:
 
 1.  [Load your dataset using Ray
-    Data.](https://docs.ray.io/en/latest/data/creating-datasets.html)
+    Data.](https://docs.ray.io/en/latest/data/creating-datastreams.html)
 2.  [Preprocess your dataset before feeding it to your
-    model.](https://docs.ray.io/en/latest/data/transforming-datasets.html)
+    model.](https://docs.ray.io/en/latest/data/transforming-datastreams.html)
 3.  [Initialize your model and perform inference on a shard of your
     dataset with a remote
-    actor.](https://docs.ray.io/en/latest/data/transforming-datasets.html#callable-class-udfs)
+    actor.](https://docs.ray.io/en/latest/data/transforming-datastreams.html#callable-class-udfs)
 4.  [Save your prediction
     results.](https://docs.ray.io/en/latest/data/api/input_output.html)
 

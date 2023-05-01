@@ -211,7 +211,7 @@ def test_spillback(ray_start_cluster):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id
+        return ray.get_runtime_context().get_node_id()
 
     @ray.remote
     def func(i, counter):
@@ -220,7 +220,7 @@ def test_spillback(ray_start_cluster):
             while True:
                 time.sleep(1)
         else:
-            return ray.get_runtime_context().node_id
+            return ray.get_runtime_context().get_node_id()
 
     refs = [func.remote(i, counter) for i in range(2)]
 
