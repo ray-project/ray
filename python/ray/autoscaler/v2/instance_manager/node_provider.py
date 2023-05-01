@@ -2,7 +2,7 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import Dict, List, Optional, Set, override
 
-from ray.autoscaler._private import BaseNodeLauncher
+from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.v2.instance_manager.node_config_provider import NodeConfigProvider
@@ -19,14 +19,14 @@ class NodeProvider(metaclass=ABCMeta):
     @abstractmethod
     def create_nodes(
         self, instance_type: InstanceType, count: int
-    ) -> Dict[str, Instance]:
+    ) -> List[str]:
         """Create new nodes synchronously, returns all non-terminated nodes in the cluster.
         Note that create_nodes could fail partially.
         """
         pass
 
     @abstractmethod
-    def async_terminate_nodes(self, instance_ids: List[str]) -> None:
+    def async_terminate_nodes(self, cloud_instance_ids: List[str]) -> None:
         """
         Terminate nodes asynchronously, returns immediately."""
         pass
@@ -41,7 +41,7 @@ class NodeProvider(metaclass=ABCMeta):
     @abstractmethod
     def get_nodes_by_id(
         self,
-        node_ids: List[str],
+        cloud_instance_ids: List[str],
     ) -> Dict[str, Instance]:
         """Get nodes by node ids, including terminated nodes"""
         pass
@@ -78,17 +78,21 @@ class NodeProviderAdapter(NodeProvider):
         return filtered
 
     @override
-    def create_nodes(self, instance_type: InstanceType, count: int):
-        self._node_launcher.launch_node(
+    def create_nodes(self, instance_type: InstanceType, count: int) -> List[str]:
+        result = self._node_launcher.launch_node(
             self._registry.get_node_config(instance_type.name),
             count,
             instance_type.name,
         )
-        return self._get_none_terminated_instances()
+        # TODO: we should handle failures where the instance type is 
+        # not available
+        if result:
+            return [self._get_instance(cloud_instance_id) for cloud_instance_id in result.keys()]
+        return []
 
     @override
-    def async_terminate_nodes(self, instance_ids: List[str]) -> None:
-        self._provider.terminate_node(instance_ids)
+    def async_terminate_nodes(self, clould_instance_ids: List[str]) -> None:
+        self._provider.terminate_node(clould_instance_ids)
 
     @override
     def is_readonly(self) -> bool:
@@ -96,31 +100,31 @@ class NodeProviderAdapter(NodeProvider):
 
     @override
     def get_non_terminated_nodes(self):
-        instance_ids = self._provider.non_terminated_nodes()
-        return self.get_nodes_by_id(instance_ids)
+        clould_instance_ids = self._provider.non_terminated_nodes()
+        return self.get_nodes_by_id(clould_instance_ids)
 
     @abstractmethod
     def get_nodes_by_id(
         self,
-        instance_ids: List[str],
+        cloud_instance_ids: List[str],
     ) -> Dict[str, Instance]:
         instances = {}
-        for instance_id in instance_ids:
-            instances[instance_id] = self._get_instance(instance_id)
+        for cloud_instance_id in cloud_instance_ids:
+            instances[cloud_instance_id] = self._get_instance(cloud_instance_id)
         return instances
 
-    def _get_instance(self, instance_id: str):
+    def _get_instance(self, cloud_instance_id: str):
         instance = Instance()
-        instance.cloud_instance_id = instance_id
-        if self._provider.is_running(instance_id):
-            instance.state = Instance.RESOURCES_ALLOCATED
-        elif self._provider.is_terminated(instance_id):
-            instance.state = Instance.DEAD
+        instance.cloud_instance_id = cloud_instance_id
+        if self._provider.is_running(cloud_instance_id):
+            instance.state = Instance.STARTING
+        elif self._provider.is_terminated(cloud_instance_id):
+            instance.state = Instance.STOPPED
         else:
-            instance.state = Instance.REQUESTED
-        instance.interal_ip = self._provider.internal_ip(instance_id)
-        instance.external_ip = self._provider.external_ip(instance_id)
-        instance.instance_type = self._provider.node_tags(instance_id)[
+            instance.state = Instance.INSTANCE_STATUS_UNSPECIFIED
+        instance.interal_ip = self._provider.internal_ip(cloud_instance_id)
+        instance.external_ip = self._provider.external_ip(cloud_instance_id)
+        instance.instance_type = self._provider.node_tags(cloud_instance_id)[
             TAG_RAY_USER_NODE_TYPE
         ]
         return instance

@@ -1,9 +1,8 @@
 import logging
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
-from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
 from ray.autoscaler.v2.instance_manager.storage import Storage
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
@@ -41,7 +40,7 @@ class InstanceStorage(object):
     def upsert_instances(
         self,
         updates: List[Instance],
-        expected_version: int,
+        expected_version: Optional[int],
     ) -> Tuple[bool, int]:
         mutations = {}
 
@@ -50,7 +49,7 @@ class InstanceStorage(object):
         )
 
         # handle version mismatch
-        if expected_version != version:
+        if expected_version and expected_version != version:
             return False, version
 
         # handle teriminating instances
@@ -75,22 +74,24 @@ class InstanceStorage(object):
 
         return result, version
 
-    def get_instances(self, instance_ids: List[str]=[]) -> Tuple[Dict[str, Instance], int]:
+    def get_instances(self, instance_ids: List[str]=[], status_filter: Set[int]={}) -> Tuple[Dict[str, Instance], int]:
         pairs, version = self._storage.get(self._table_name, instance_ids)
         instances = {}
         for instance_id, instance_data in pairs.items():
             instance = Instance()
             instance.ParseFromString(instance_data)
+            if status_filter and instance.status not in status_filter:
+                continue
             instances[instance_id] = instance
         return instances, version
 
     def delete_instances(
-        self, to_delete: List[Instance], expected_version: int
+        self, to_delete: List[Instance], expected_version: Optional[int]
     ) -> Tuple[bool, int]:
         old_instances, version = self.get_instances(
             [instance.instance_id for instance in to_delete]
         )
-        if expected_version != version:
+        if expected_version and expected_version != version:
             return False, version
 
         result = self._storage.update(self._table_name, {}, to_delete, expected_version)
@@ -107,25 +108,3 @@ class InstanceStorage(object):
                 ],
             )
         return result
-
-
-class NodeProviderInstanceStatusChangeSubscriber(InstanceUpdatedSuscriber):
-    def __init__(self, node_provider: NodeProvider) -> None:
-        self._node_provider = node_provider
-
-    def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        pass
-
-    def create_nodes(self, instance_type: str, count: int) -> List[Instance]:
-        pass
-
-    def terminate_nodes(self, instance_ids: List[str]) -> None:
-        pass
-
-
-class RayInstallerStatusChangeSubscriber(InstanceUpdatedSuscriber):
-    def __init__(self, node_provider: NodeProvider) -> None:
-        pass
-
-    def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        pass

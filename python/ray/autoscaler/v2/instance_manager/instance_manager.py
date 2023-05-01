@@ -123,7 +123,7 @@ class SimpleInstanceManager(InstanceManager):
         instance.status = new_state
         return True
 
-    def _gc_stopped_nodes(self) -> bool:
+    def gc_stopped_nodes(self) -> bool:
         instances, version = self._instance_storage.get_instances()
         to_gc_instances = []
         to_gc_instance_ids = []
