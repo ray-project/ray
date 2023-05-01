@@ -853,8 +853,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
 
 
 - name: workspace_template_many_model_training
@@ -877,8 +877,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/cpu/gce_release_test.yaml
 
 
 - name: workspace_template_serving_stable_diffusion
@@ -901,8 +901,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
 
 
 #######################
