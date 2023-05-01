@@ -1,8 +1,8 @@
 from typing import Any, Dict, Iterable, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.compute import UDF, ComputeStrategy, TaskPoolStrategy
-from ray.data.block import BatchUDF, RowUDF
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 
 
@@ -38,7 +38,7 @@ class AbstractUDFMap(AbstractMap):
         self,
         name: str,
         input_op: LogicalOperator,
-        fn: UDF,
+        fn: UserDefinedFunction,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -81,7 +81,7 @@ class MapBatches(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: BatchUDF,
+        fn: UserDefinedFunction,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
@@ -116,7 +116,7 @@ class MapRows(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -135,7 +135,7 @@ class Filter(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -154,7 +154,7 @@ class FlatMap(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):

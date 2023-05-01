@@ -20,10 +20,6 @@ from ray._private.usage.usage_lib import (
 )
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
-from ray.serve._private.autoscaling_policy import (
-    AutoscalingPolicy,
-    BasicAutoscalingPolicy,
-)
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentInfo,
@@ -61,7 +57,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
-from ray.util import metrics
+from ray.serve import metrics
 from ray._raylet import GcsClient
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -87,42 +83,33 @@ class DeploymentTargetState:
     info: Optional[DeploymentInfo]
     num_replicas: int
     version: Optional[DeploymentVersion]
-    autoscaling_policy: Optional[AutoscalingPolicy]
     deleting: bool
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
-        return cls(None, -1, None, None, False)
+        return cls(None, -1, None, False)
 
     @classmethod
     def from_deployment_info(
-        cls,
-        info: DeploymentInfo,
-        num_replicas_from_autoscaling: int = 1,
-        *,
-        deleting: bool = False,
+        cls, info: DeploymentInfo, *, deleting: bool = False
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
             version = None
-            autoscaling_policy = None
         else:
-            autoscaling_config = info.deployment_config.autoscaling_config
-            if autoscaling_config is not None:
-                num_replicas = num_replicas_from_autoscaling
-                autoscaling_policy = BasicAutoscalingPolicy(
-                    info.deployment_config.autoscaling_config
-                )
+            # If autoscaling config is not none, num replicas should be decided based on
+            # the autoscaling policy and passed in as autoscaled_num_replicas
+            if info.autoscaled_num_replicas is not None:
+                num_replicas = info.autoscaled_num_replicas
             else:
                 num_replicas = info.deployment_config.num_replicas
-                autoscaling_policy = None
             version = DeploymentVersion(
                 info.version,
                 deployment_config=info.deployment_config,
                 ray_actor_options=info.replica_config.ray_actor_options,
             )
 
-        return cls(info, num_replicas, version, autoscaling_policy, deleting)
+        return cls(info, num_replicas, version, deleting)
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -376,6 +363,7 @@ class ActorReplicaWrapper:
                 version,
                 self._controller_name,
                 self._detached,
+                deployment_info.app_name,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1068,20 +1056,20 @@ class DeploymentState:
                 "Tracks whether this deployment replica is healthy. 1 means "
                 "healthy, 0 means unhealthy."
             ),
-            tag_keys=("deployment", "replica"),
+            tag_keys=("deployment", "replica", "application"),
         )
 
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
         """
-        return self._target_state.autoscaling_policy is not None
+        return self._target_state.info.autoscaling_policy is not None
 
     def get_autoscale_metric_lookback_period(self) -> float:
         """
         Return the autoscaling metrics look back period
         """
-        return self._target_state.autoscaling_policy.config.look_back_period_s
+        return self._target_state.info.autoscaling_policy.config.look_back_period_s
 
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
@@ -1140,6 +1128,12 @@ class DeploymentState:
     def curr_status_info(self) -> DeploymentStatusInfo:
         return self._curr_status_info
 
+    @property
+    def app_name(self) -> str:
+        if self.target_info.app_name:
+            return self.target_info.app_name
+        return ""
+
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
             replica.get_running_replica_info()
@@ -1175,20 +1169,12 @@ class DeploymentState:
         )
         logger.info(f"Deleting deployment {self._name}.")
 
-    def _set_target_state(
-        self, target_info: DeploymentInfo, num_replicas_from_autoscaling: int = None
-    ) -> None:
+    def _set_target_state(self, target_info: DeploymentInfo) -> None:
         """Set the target state for the deployment to the provided info."""
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        if num_replicas_from_autoscaling is not None:
-            target_state = DeploymentTargetState.from_deployment_info(
-                target_info, num_replicas_from_autoscaling
-            )
-        else:
-            target_state = DeploymentTargetState.from_deployment_info(target_info)
-
+        target_state = DeploymentTargetState.from_deployment_info(target_info)
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
 
         if self._target_state.version == target_state.version:
@@ -1244,20 +1230,19 @@ class DeploymentState:
             ):
                 return False
 
-        # Autoscaling stuff
+        # If autoscaling config is not none, decide initial num replicas
         autoscaling_config = deployment_info.deployment_config.autoscaling_config
         if autoscaling_config is not None:
             if autoscaling_config.initial_replicas is not None:
-                num_replicas = autoscaling_config.initial_replicas
+                autoscaled_num_replicas = autoscaling_config.initial_replicas
             else:
-                if existing_info is None:
-                    num_replicas = autoscaling_config.min_replicas
+                if existing_info is not None:
+                    autoscaled_num_replicas = self._target_state.num_replicas
                 else:
-                    num_replicas = self._target_state.num_replicas
-            self._set_target_state(deployment_info, num_replicas)
-        else:
-            self._set_target_state(deployment_info)
+                    autoscaled_num_replicas = autoscaling_config.min_replicas
+            deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
 
+        self._set_target_state(deployment_info)
         return True
 
     def autoscale(
@@ -1279,7 +1264,7 @@ class DeploymentState:
             return
 
         curr_info = self._target_state.info
-        autoscaling_policy = self._target_state.autoscaling_policy
+        autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
@@ -1289,10 +1274,11 @@ class DeploymentState:
             return
 
         new_config = copy(curr_info)
+        new_config.set_autoscaled_num_replicas(decision_num_replicas)
         if new_config.version is None:
             new_config.version = self._target_state.version.code_version
 
-        self._set_target_state(new_config, decision_num_replicas)
+        self._set_target_state(new_config)
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -1323,8 +1309,7 @@ class DeploymentState:
             # normal scale-up process.
             if replica.version.requires_actor_restart(self._target_state.version):
                 code_version_changes += 1
-                replica.stop()
-                self._replicas.add(ReplicaState.STOPPING, replica)
+                self._stop_replica(replica)
                 replicas_changed = True
             # Otherwise, only lightweight options in deployment config is a mismatch, so
             # we update it dynamically without restarting the replica.
@@ -1503,8 +1488,7 @@ class DeploymentState:
                     f"Adding STOPPING to replica_tag: {replica}, "
                     f"deployment_name: {self._name}"
                 )
-                replica.stop()
-                self._replicas.add(ReplicaState.STOPPING, replica)
+                self._stop_replica(replica)
 
         return replicas_changed
 
@@ -1623,8 +1607,7 @@ class DeploymentState:
                     self._replica_constructor_retry_counter += 1
 
                 replicas_failed = True
-                replica.stop(graceful=False)
-                self._replicas.add(ReplicaState.STOPPING, replica)
+                self._stop_replica(replica)
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
@@ -1637,8 +1620,7 @@ class DeploymentState:
                 # Does it make sense to stop replicas in PENDING_ALLOCATION
                 # state?
                 if is_slow and stop_on_slow:
-                    replica.stop(graceful=False)
-                    self._replicas.add(ReplicaState.STOPPING, replica)
+                    self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
 
@@ -1659,6 +1641,23 @@ class DeploymentState:
 
         return slow_replicas, transitioned_to_running
 
+    def _stop_replica(self, replica, graceful_stop=True):
+        """Stop replica
+        1. Stop the replica.
+        2. Change the replica into stopping state.
+        3. Set the health replica stats to 0.
+        """
+        replica.stop(graceful=graceful_stop)
+        self._replicas.add(ReplicaState.STOPPING, replica)
+        self.health_check_gauge.set(
+            0,
+            tags={
+                "deployment": self._name,
+                "replica": replica.replica_tag,
+                "application": self.app_name,
+            },
+        )
+
     def _check_and_update_replicas(self) -> bool:
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -1673,7 +1672,12 @@ class DeploymentState:
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 self.health_check_gauge.set(
-                    1, tags={"deployment": self._name, "replica": replica.replica_tag}
+                    1,
+                    tags={
+                        "deployment": self._name,
+                        "replica": replica.replica_tag,
+                        "application": self.app_name,
+                    },
                 )
             else:
                 running_replicas_changed = True
@@ -1682,10 +1686,14 @@ class DeploymentState:
                     f"{self._name} failed health check, stopping it."
                 )
                 self.health_check_gauge.set(
-                    0, tags={"deployment": self._name, "replica": replica.replica_tag}
+                    0,
+                    tags={
+                        "deployment": self._name,
+                        "replica": replica.replica_tag,
+                        "application": self.app_name,
+                    },
                 )
-                replica.stop(graceful=False)
-                self._replicas.add(ReplicaState.STOPPING, replica)
+                self._stop_replica(replica, graceful_stop=False)
                 # If this is a replica of the target version, the deployment
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
@@ -1895,8 +1903,7 @@ class DriverDeploymentState(DeploymentState):
                 ReplicaState.RECOVERING,
             ]
         ):
-            replica.stop()
-            self._replicas.add(ReplicaState.STOPPING, replica)
+            self._stop_replica(replica)
             replica_changed = True
         return replica_changed
 
@@ -2121,15 +2128,6 @@ class DeploymentStateManager:
             ),
         )
 
-    def get_deployments_in_application(self, app_name: str) -> List[str]:
-        """Return list of deployment names in application."""
-        states = []
-        for name, deployment_state in self._deployment_states.items():
-            if deployment_state.target_info.app_name == app_name:
-                states.append(name)
-
-        return states
-
     def get_running_replica_infos(
         self,
     ) -> Dict[str, List[RunningReplicaInfo]]:
@@ -2224,6 +2222,15 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
+
+    def get_deployments_in_application(self, app_name: str) -> List[str]:
+        """Return list of deployment names in application."""
+        states = []
+        for name, deployment_state in self._deployment_states.items():
+            if deployment_state.target_info.app_name == app_name:
+                states.append(name)
+
+        return states
 
     def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the

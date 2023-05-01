@@ -603,7 +603,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
@@ -1983,6 +1983,13 @@ py_test(
 )
 
 py_test(
+    name ="tests/test_algorithm_save_load_checkpoint_learner",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
+)
+
+py_test(
     name = "test_bc_algorithm",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -2276,8 +2283,8 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
+    tags = ["team:rllib", "utils", "gpu"],
+    size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
 

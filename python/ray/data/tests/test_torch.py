@@ -319,7 +319,7 @@ def test_iter_torch_batches_tensor_ds(ray_start_regular_shared, pipelined):
     for _ in range(num_epochs):
         iterations = []
         for batch in ds.iter_torch_batches(batch_size=2):
-            iterations.append(batch.numpy())
+            iterations.append(batch["data"].numpy())
         combined_iterations = np.concatenate(iterations)
         np.testing.assert_array_equal(arr, combined_iterations)
 

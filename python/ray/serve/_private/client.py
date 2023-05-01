@@ -154,39 +154,6 @@ class ServeControllerClient:
                 f"Deployments still alive: {live_names}."
             )
 
-    def _wait_for_application_running(self, name: str, timeout_s: int = -1):
-        """Waits for the named application to enter "RUNNING" status.
-
-        Raises RuntimeError if the application enters the "DEPLOY_FAILED" status
-        instead.
-
-        Raises TimeoutError if this doesn't happen before timeout_s.
-        """
-        start = time.time()
-        while time.time() - start < timeout_s or timeout_s < 0:
-
-            status_bytes = ray.get(self._controller.get_serve_status.remote(name))
-            status = StatusOverview.from_proto(
-                StatusOverviewProto.FromString(status_bytes)
-            )
-
-            if status.app_status.status == ApplicationStatus.RUNNING:
-                break
-            elif status.app_status.status == ApplicationStatus.DEPLOY_FAILED:
-                raise RuntimeError(
-                    f"Deploying application {name} failed: {status.app_status.message}"
-                )
-
-            logger.debug(
-                f"Waiting for {name} to be RUNNING, current status: "
-                f"{status.app_status.status}."
-            )
-            time.sleep(CLIENT_POLLING_INTERVAL_S)
-        else:
-            raise TimeoutError(
-                f"Application {name} did not become RUNNING after {timeout_s}s."
-            )
-
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
         """Waits for the named deployment to enter "HEALTHY" status.
 
@@ -209,6 +176,7 @@ class ServeControllerClient:
             status = DeploymentStatusInfo.from_proto(
                 DeploymentStatusInfoProto.FromString(status_bytes)
             )
+
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
@@ -263,6 +231,39 @@ class ServeControllerClient:
         else:
             raise TimeoutError(
                 f"Deployment {name} did not become HEALTHY after {timeout_s}s."
+            )
+
+    def _wait_for_application_running(self, name: str, timeout_s: int = -1):
+        """Waits for the named application to enter "RUNNING" status.
+
+        Raises RuntimeError if the application enters the "DEPLOY_FAILED" status
+        instead.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+
+            status_bytes = ray.get(self._controller.get_serve_status.remote(name))
+            status = StatusOverview.from_proto(
+                StatusOverviewProto.FromString(status_bytes)
+            )
+
+            if status.app_status.status == ApplicationStatus.RUNNING:
+                break
+            elif status.app_status.status == ApplicationStatus.DEPLOY_FAILED:
+                raise RuntimeError(
+                    f"Deploying application {name} failed: {status.app_status.message}"
+                )
+
+            logger.debug(
+                f"Waiting for {name} to be RUNNING, current status: "
+                f"{status.app_status.status}."
+            )
+            time.sleep(CLIENT_POLLING_INTERVAL_S)
+        else:
+            raise TimeoutError(
+                f"Application {name} did not become RUNNING after {timeout_s}s."
             )
 
     @_ensure_connected
@@ -321,6 +322,7 @@ class ServeControllerClient:
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
+                    app_name=name,
                 )
             )
 

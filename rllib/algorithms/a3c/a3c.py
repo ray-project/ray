@@ -67,7 +67,13 @@ class A3CConfig(AlgorithmConfig):
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.lr_schedule = None
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01

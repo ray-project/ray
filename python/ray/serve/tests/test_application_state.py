@@ -1,6 +1,6 @@
 import sys
 import pytest
-from typing import List, Dict
+from typing import List, Tuple, Dict
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
@@ -18,47 +18,52 @@ from ray.serve._private.common import (
 )
 
 
-@pytest.fixture
-def mock_application_state_manager() -> ApplicationStateManager:
-    class MockDeploymentStateManager:
-        def __init__(self):
-            self._deployment_states: Dict[str, DeploymentStatusInfo] = {}
+class MockDeploymentStateManager:
+    def __init__(self):
+        self.deployment_statuses: Dict[str, DeploymentStatusInfo] = dict()
 
-        def get_deployment_statuses(self, names: List[str] = None):
-            return list(self._deployment_states.values())
+    def deploy(self, deployment_name: str, deployment_info: DeploymentInfo):
+        self.deployment_statuses[deployment_name] = DeploymentStatusInfo(
+            name=deployment_name,
+            status=DeploymentStatus.UPDATING,
+            message="",
+        )
 
-        def deploy(
-            self,
-            deployment_name: str,
-            deployment_info: DeploymentInfo,
-        ):
-            self._deployment_states[deployment_name] = DeploymentStatusInfo(
-                name=deployment_name,
-                status=DeploymentStatus.UPDATING,
-                message="",
+    @property
+    def deployments(self) -> List[str]:
+        return list(self.deployment_statuses.keys())
+
+    def set_deployment_statuses_unhealthy(self, name: str):
+        self.deployment_statuses[name].status = DeploymentStatus.UNHEALTHY
+
+    def set_deployment_statuses_healthy(self, name: str):
+        self.deployment_statuses[name].status = DeploymentStatus.HEALTHY
+
+    def get_deployment_statuses(self, deployment_names: List[str]):
+        return list(self.deployment_statuses.values())
+
+    def get_deployment(self, deployment_name: str) -> DeploymentInfo:
+        if deployment_name in self.deployment_statuses:
+            # Return dummy deployment info object
+            return DeploymentInfo(
+                deployment_config=DeploymentConfig(num_replicas=1, user_config={}),
+                replica_config=ReplicaConfig.create(lambda x: x),
+                start_time_ms=0,
+                deployer_job_id="",
             )
 
-        def delete_deployment(self, deployment_name: str):
-            pass
+    def delete_deployment(self, deployment_name: str):
+        pass
 
-        def set_deployment_unhealthy(self, name: str):
-            self._deployment_states[name].status = DeploymentStatus.UNHEALTHY
+    def set_deployment_deleted(self, name: str):
+        del self.deployment_statuses[name]
 
-        def set_deployment_healthy(self, name: str):
-            self._deployment_states[name].status = DeploymentStatus.HEALTHY
 
-        def set_deployment_deleted(self, name: str):
-            del self._deployment_states[name]
-
-        def get_deployment(self, deployment_name: str) -> DeploymentInfo:
-            if deployment_name in self._deployment_states:
-                # Return dummy deployment info object
-                return DeploymentInfo(
-                    deployment_config=DeploymentConfig(num_replicas=1, user_config={}),
-                    replica_config=ReplicaConfig.create(lambda x: x),
-                    start_time_ms=0,
-                    deployer_job_id="",
-                )
+@pytest.fixture
+def mocked_application_state_manager() -> Tuple[
+    ApplicationStateManager, MockDeploymentStateManager
+]:
+    deployment_state_manager = MockDeploymentStateManager()
 
     class MockEndpointState:
         def update_endpoint(self, endpoint, endpoint_info):
@@ -67,18 +72,13 @@ def mock_application_state_manager() -> ApplicationStateManager:
         def delete_endpoint(self, endpoint):
             pass
 
-    mock_deployment_state_manager = MockDeploymentStateManager()
     application_state_manager = ApplicationStateManager(
-        mock_deployment_state_manager, MockEndpointState()
+        deployment_state_manager, MockEndpointState()
     )
+    yield application_state_manager, deployment_state_manager
 
-    yield application_state_manager, mock_deployment_state_manager
 
-
-def deployment_params(
-    name: str,
-    route_prefix: str = None,
-):
+def deployment_params(name: str, route_prefix: str = None):
     return {
         "name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
@@ -94,30 +94,37 @@ def deployment_params(
     }
 
 
-def test_deploy_app(mock_application_state_manager):
+def test_deploy_app(mocked_application_state_manager):
     """Test DEPLOYING status"""
-    app_state_manager, _ = mock_application_state_manager
-    app_state_manager.deploy_application("test_app", {})
+    app_state_manager, _ = mocked_application_state_manager
+    app_state_manager.deploy_application("test_app", [{"name": "d1"}])
 
     app_status = app_state_manager.get_app_status_info("test_app")
     assert app_status.status == ApplicationStatus.DEPLOYING
     assert app_status.deployment_timestamp > 0
 
 
-def test_delete_app(mock_application_state_manager):
+def test_delete_app(mocked_application_state_manager):
     """Test DELETING status"""
-    app_state_manager, _ = mock_application_state_manager
-    app_state_manager.deploy_application("test_app", {})
+    app_state_manager, _ = mocked_application_state_manager
+    app_state_manager.deploy_application("test_app", [{"name": "d1"}])
     app_state_manager.delete_application("test_app")
     assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DELETING
 
 
-def test_update_app_running(mock_application_state_manager):
-    """Test DEPLOYING -> RUNNING"""
-    app_state_manager, deployment_state_manager = mock_application_state_manager
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.NOT_STARTED
+def test_create_app(mocked_application_state_manager):
+    """Test object ref based deploy and set DEPLOYING"""
+    app_state_manager, _ = mocked_application_state_manager
+    app_state_manager.create_application_state("test_app", ray.ObjectRef.nil())
+    app_status = app_state_manager.get_app_status("test_app")
+    assert app_status.status == ApplicationStatus.DEPLOYING
 
-    # Deploy application with two deployments
+
+def test_update_app_running(mocked_application_state_manager):
+    """Test DEPLOYING -> RUNNING"""
+    app_state_manager, deployment_state_manager = mocked_application_state_manager
+    app_status = app_state_manager.get_app_status("test_app")
+    assert app_status.status == ApplicationStatus.NOT_STARTED
     app_state_manager.deploy_application(
         "test_app", [deployment_params("a"), deployment_params("b")]
     )
@@ -138,17 +145,16 @@ def test_update_app_running(mock_application_state_manager):
     assert app_state_manager.get_app_status("test_app") == ApplicationStatus.RUNNING
 
 
-def test_update_app_deploy_failed(
-    mock_application_state_manager: ApplicationStateManager,
-):
+def test_update_app_deploy_failed(mocked_application_state_manager):
     """Test DEPLOYING -> DEPLOY_FAILED"""
-    app_state_manager, deployment_state_manager = mock_application_state_manager
-    app_state_manager.deploy_application("test_app", [deployment_params("a")])
+    app_state_manager, deployment_state_manager = mocked_application_state_manager
+    app_state_manager.deploy_application("test_app", [{"name": "d1"}])
+    # Simulate controller
+    deployment_state_manager.deploy("d1", None)
 
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
-
-    # One deployment is unhealthy
-    deployment_state_manager.set_deployment_unhealthy("a")
+    app_status = app_state_manager.get_app_status("test_app")
+    assert app_status.status == ApplicationStatus.DEPLOYING
+    deployment_state_manager.set_deployment_statuses_unhealthy("d1")
     app_state_manager.update()
     assert (
         app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOY_FAILED
@@ -163,12 +169,12 @@ def test_update_app_deploy_failed(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("fail_deploy", [False, True])
-def test_config_deploy_app(mock_application_state_manager, fail_deploy):
+def test_config_deploy_app(mocked_application_state_manager, fail_deploy):
     """Test config based deploy
     DEPLOYING -> RUNNING
     DEPLOYING -> DEPLOY_FAILED
     """
-    app_state_manager, deployment_state_manager = mock_application_state_manager
+    app_state_manager, deployment_state_manager = mocked_application_state_manager
     signal = SignalActor.remote()
 
     @ray.remote

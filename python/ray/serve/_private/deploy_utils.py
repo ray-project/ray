@@ -26,6 +26,7 @@ def get_deploy_args(
     route_prefix: Optional[str] = None,
     is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
+    app_name: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -82,6 +83,7 @@ def get_deploy_args(
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
+        "app_name": app_name,
     }
 
     return controller_deploy_args
@@ -94,7 +96,7 @@ def deploy_args_to_deployment_info(
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
     is_driver_deployment: Optional[bool] = False,
-    app_name: str = None,
+    app_name: Optional[str] = None,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -114,8 +116,6 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        app_name=app_name,
-        route_prefix=route_prefix,
         actor_name=deployment_name,
         version=version,
         deployment_config=deployment_config,
@@ -123,6 +123,8 @@ def deploy_args_to_deployment_info(
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
         is_driver_deployment=is_driver_deployment,
+        app_name=app_name,
+        route_prefix=route_prefix,
     )
 
 

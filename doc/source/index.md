@@ -75,7 +75,7 @@
         <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
         <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p></a>
   </div>
-  <a class="no-underline" href="https://colab.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb"  target="_blank" 
+  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
         ><div class="info-box">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/code.png" width="44px" height="44px" />
@@ -133,7 +133,7 @@ dataset_transformed = preprocessor.fit_transform(dataset=dataset)
             </code></pre>
               <div class="row" style="padding:16px;">
                 <div class="col-6">
-                  <a href="https://docs.ray.io/en/latest/data/data.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/data/api/api.html" target="_blank"> API references</a>
+                  <a href="./data/data.html" target="_blank">Learn more </a> | <a href="./data/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://colab.research.google.com/github/ray-project/ray/blob/master/doc/source/data/examples/nyc_taxi_basic_processing.ipynb" target="_blank" style="color:black;">
@@ -166,7 +166,7 @@ result = trainer.fit()
             </code></pre>
               <div class="row" style="padding:16px;">
                 <div class="col-6">
-                  <a href="https://docs.ray.io/en/latest/train/train.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/train/api/api.html" target="_blank"> API references</a>
+                  <a href="./train/train.html" target="_blank">Learn more </a> | <a href="./train/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_model_training_colab.ipynb" style="color:black;" target="_blank">
@@ -204,7 +204,7 @@ result_grid = tuner.fit()
             </code></pre>
               <div class="row" style="padding:16px;">
                 <div class="col-6">
-                  <a href="https://docs.ray.io/en/latest/tune/index.html" target="_blank">Learn more </a> | <a href="https://docs.ray.io/en/latest/tune/api/api.html" target="_blank"> API references</a>
+                  <a href="./tune/index.html" target="_blank">Learn more </a> | <a href="./tune/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/lightgbm_example.ipynb" style="color:black;" target="_blank">
@@ -264,7 +264,7 @@ serve.run(
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
                     <a href="https://github.com/ray-project/ray/blob/master/doc/source/ray-air/examples/gptj_serving.ipynb" style="color:black;" target="_blank">
-                        <img src="_static/img/colab.png" height="25px" /> Open in colab
+                        <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
               </div>          
@@ -330,7 +330,7 @@ ppo_algo.evaluate()
             <h3 style="font-size:20px; font-weight:600;">Ray Core</h3>
         </div>
         <p>Scale generic Python code with simple, foundational primitives that enable a high degree of control for building distributed applications or custom platforms.</p>
-        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/installation.html" target="_blank">Learn more about Core ></a>      
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-core/walkthrough.html" target="_blank">Learn more about Core ></a>      
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
@@ -391,7 +391,7 @@ ppo_algo.evaluate()
   </div>
   <div> 
     <h4> Contribute to Ray </h4>
-    <a class="no-underline" href="https://docs.ray.io/en/latest/ray-contribute/getting-involved.html" target="_blank"> <div class="community-box">
+    <a class="no-underline" href="./ray-contribute/getting-involved.html" target="_blank"> <div class="community-box">
         <div class="image-header">
             <img src="_static/img/mail.png" width="24px" height="24px" />
             <p>Contributor's guide</p>

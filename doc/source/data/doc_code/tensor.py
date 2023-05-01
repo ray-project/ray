@@ -9,7 +9,7 @@ import ray
 # Create a Datastream of tensors.
 ds = ray.data.range_tensor(10000, shape=(64, 64))
 # -> Datastream(num_blocks=200, num_rows=10000,
-#            schema={__value__: numpy.ndarray(shape=(64, 64), dtype=int64)})
+#            schema={data: numpy.ndarray(shape=(64, 64), dtype=int64)})
 
 ds.take(2)
 # -> [array([[0, 0, 0, ..., 0, 0, 0],
@@ -35,7 +35,7 @@ import pandas as pd
 import numpy as np
 
 # Start with a tabular base datastream.
-ds = ray.data.range_table(1000)
+ds = ray.data.range(1000)
 
 # Create a single TensorArray column.
 def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
@@ -43,18 +43,18 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
     # Lists of ndarrays are automatically cast to TensorArray.
     arr = [np.zeros((128, 128, 3)) for _ in range(bs)]
-    return pd.DataFrame({"__value__": arr})
+    return pd.DataFrame({"data": arr})
 
     ## Alternatively, manually construct a TensorArray from a single ndarray.
     # from ray.data.extensions.tensor_extension import TensorArray
     # arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-    # return pd.DataFrame({"__value__": arr})
+    # return pd.DataFrame({"data": arr})
 
 
-ds.map_batches(single_col_udf)
+ds.map_batches(single_col_udf, batch_format="pandas")
 ds.materialize()
 # -> Datastream(num_blocks=17, num_rows=1000,
-#            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
+#            schema={data: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
 
 # __create_pandas_2_begin__
@@ -73,7 +73,7 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
     # return pd.DataFrame({"image": image, "embed": embed})
 
 
-ds.map_batches(multi_col_udf)
+ds.map_batches(multi_col_udf, batch_format="pandas")
 ds.materialize()
 # -> Datastream(num_blocks=17, num_rows=1000,
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=int64),
@@ -86,12 +86,12 @@ import ray
 # From in-memory numpy data.
 ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
 # -> Datastream(num_blocks=1, num_rows=1000,
-#            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
+#            schema={data: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 
 # From saved numpy files.
 ray.data.read_numpy("example://mnist_subset.npy")
 # -> Datastream(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 # __create_numpy_end__
 
 # __create_parquet_1_begin__
@@ -198,7 +198,7 @@ ds.materialize()
 # __create_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
 # -> Datastream(num_blocks=3, num_rows=3, 
-#            schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
 # -> [array([[[ 88,  70,  68],
@@ -213,14 +213,16 @@ ds.take(1)
 
 # __consume_native_begin__
 import ray
+from typing import Dict
 
 # Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Datastream(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
-def add_one(batch: np.ndarray) -> np.ndarray:
-    return batch + 1
+def add_one(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    batch["data"] += 1
+    return batch
 
 # This processes batches in numpy.ndarray format.
 ds = ds.map_batches(add_one)
@@ -256,7 +258,7 @@ def add_one(batch: pd.DataFrame) -> pd.DataFrame:
     return batch
 
 # This processes batches in pd.DataFrame format.
-ds = ds.map_batches(add_one)
+ds = ds.map_batches(add_one, batch_format="pandas")
 
 # This returns pandas batches with List[np.ndarray] columns.
 next(ds.iter_batches())
@@ -272,10 +274,10 @@ import ray
 # Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Datastream(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: pd.DataFrame) -> pd.DataFrame:
-    batch["__value__"] += 1
+    batch["data"] += 1
     return batch
 
 # This processes batches in pd.DataFrame format.
@@ -283,7 +285,7 @@ ds = ds.map_batches(add_one, batch_format="pandas")
 
 # This returns pandas batches with List[np.ndarray] columns.
 next(ds.iter_batches(batch_format="pandas"))
-# ->                                            __value__
+# ->                                                 data
 # 0  [[  1,   1,   1,   1,   1,   1,   1,   1,   1,...
 # 1  [[  1,   1,   1,   1,   1,   1,   1,   1,   1,...
 # 2  [[  1,   1,   1,   1,   1,   1,   1,   1,   1,...
@@ -322,20 +324,25 @@ import pyarrow
 # Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Datastream(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 def add_one(batch: pyarrow.Table) -> pyarrow.Table:
+
+    def to_numpy(buf):
+        if not isinstance(buf, np.ndarray):
+            buf = buf.as_py()
+        return buf
+
     np_col = np.array(
         [
-            np.ndarray((28, 28), buffer=buf, dtype=np.uint8)
-            for buf in batch.column("__value__")
+            to_numpy(buf) for buf in batch.column("data")
         ]
     )
     np_col += 1
 
     return batch.set_column(
-        batch._ensure_integer_index("__value__"),
-        "__value__",
+        batch._ensure_integer_index("data"),
+        "data",
         ArrowTensorArray.from_numpy(np_col),
     )
 
@@ -345,9 +352,9 @@ ds = ds.map_batches(add_one, batch_format="pyarrow")
 # This returns batches in pyarrow.Table format.
 next(ds.iter_batches(batch_format="pyarrow"))
 # pyarrow.Table
-# __value__: extension<arrow.py_extension_type<ArrowTensorType>>
+# data: extension<arrow.py_extension_type<ArrowTensorType>>
 # ----
-# __value__: [[[1,1,1,1,1,1,1,1,1,1,...],...,[1,1,1,1,1,1,1,1,1,1,...]]]
+# data: [[[1,1,1,1,1,1,1,1,1,1,...],...,[1,1,1,1,1,1,1,1,1,1,...]]]
 # __consume_pyarrow_end__
 
 # __consume_pyarrow_2_begin__
@@ -357,10 +364,15 @@ ds = ray.data.read_parquet("example://parquet_images_mini")
 #            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8), label: object})
 
 def add_one(batch: pyarrow.Table) -> pyarrow.Table:
+
+    def to_numpy(buf):
+        if not isinstance(buf, np.ndarray):
+            buf = buf.as_py()
+        return buf
+
     np_col = np.array(
         [
-            np.ndarray((128, 128, 3), buffer=buf, dtype=np.uint8)
-            for buf in batch.column("image")
+            to_numpy(buf) for buf in batch.column("image")
         ]
     )
     np_col += 1
@@ -390,10 +402,10 @@ import ray
 # Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Datastream(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
-def add_one(batch: np.ndarray) -> np.ndarray:
-    batch += 1
+def add_one(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    batch["data"] += 1
     return batch
 
 # This processes batches in np.ndarray format.
@@ -475,15 +487,15 @@ shutil.rmtree("/tmp/some_path")
 # Read a single-column example datastream.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Datastream(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#            schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 # You can write the datastream to Parquet.
-ds.write_numpy("/tmp/some_path")
+ds.write_numpy("/tmp/some_path", column="data")
 
 # And you can read it back.
 read_ds = ray.data.read_numpy("/tmp/some_path")
 print(read_ds.schema())
-# -> __value__: extension<arrow.py_extension_type<ArrowTensorType>>
+# -> data: extension<arrow.py_extension_type<ArrowTensorType>>
 # __write_2_end__
 
 # fmt: off
