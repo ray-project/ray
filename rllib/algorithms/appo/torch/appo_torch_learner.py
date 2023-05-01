@@ -77,8 +77,7 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
         # the episode is terminated. In that case, the discount factor should be 0.
         discounts_time_major = (
             1.0
-            -
-            make_time_major(
+            - make_time_major(
                 batch[SampleBatch.TERMINATEDS],
                 trajectory_len=self.hps.rollout_frag_or_episode_len,
                 recurrent_seq_len=self.hps.recurrent_seq_len,
@@ -99,9 +98,7 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
 
         # The policy gradients loss.
         is_ratio = torch.clip(
-            torch.exp(
-                behaviour_actions_logp_time_major - old_actions_logp_time_major
-            ),
+            torch.exp(behaviour_actions_logp_time_major - old_actions_logp_time_major),
             0.0,
             2.0,
         )
@@ -111,9 +108,8 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
 
         surrogate_loss = torch.minimum(
             pg_advantages * logp_ratio,
-            pg_advantages * torch.clip(
-                logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param
-            ),
+            pg_advantages
+            * torch.clip(logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param),
         )
 
         if self.hps.use_kl_loss:

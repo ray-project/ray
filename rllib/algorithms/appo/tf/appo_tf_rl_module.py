@@ -19,7 +19,6 @@ _, tf, _ = try_import_tf()
 
 
 class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
-
     def setup(self):
         super().setup()
         catalog = self.config.get_catalog()

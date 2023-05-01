@@ -452,7 +452,8 @@ class ImpalaConfig(AlgorithmConfig):
         # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
         # through the entire train batch). Otherwise, use user provided setting.
         return (
-            self.train_batch_size if self._minibatch_size == "auto"
+            self.train_batch_size
+            if self._minibatch_size == "auto"
             else self._minibatch_size
         )
 
@@ -957,12 +958,12 @@ class Impala(Algorithm):
                 NUM_AGENT_STEPS_TRAINED
             )
             lg_queue_stats = self.learner_group.get_in_queue_stats()
-            self._counters["learner_group_queue_size"] = (
-                lg_queue_stats["learner_group_queue_size"]
-            )
-            self._counters["learner_group_queue_ts_dropped"] = (
-                lg_queue_stats["learner_group_queue_ts_dropped"]
-            )
+            self._counters["learner_group_queue_size"] = lg_queue_stats[
+                "learner_group_queue_size"
+            ]
+            self._counters["learner_group_queue_ts_dropped"] = lg_queue_stats[
+                "learner_group_queue_ts_dropped"
+            ]
             result = lg_results
 
         return result

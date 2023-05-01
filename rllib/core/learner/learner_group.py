@@ -137,8 +137,7 @@ class LearnerGroup:
             self._in_queue = deque(maxlen=max_queue_len)
 
     def get_in_queue_stats(self) -> Mapping[str, Any]:
-        """Returns the current stats for the input queue for this learner group.
-        """
+        """Returns the current stats for the input queue for this learner group."""
         return {
             "learner_group_queue_size": len(self._in_queue),
             "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,

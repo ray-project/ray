@@ -230,20 +230,18 @@ class APPOConfig(ImpalaConfig):
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
-                APPOTorchRLModule as RLModule
+                APPOTorchRLModule as RLModule,
             )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
-                APPOTfRLModule as RLModule
+                APPOTfRLModule as RLModule,
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
         from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
 
-        return SingleAgentRLModuleSpec(
-            module_class=RLModule, catalog_class=APPOCatalog
-        )
+        return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
     @override(ImpalaConfig)
     def get_learner_hyperparameters(self) -> AppoHyperparameters:
@@ -332,9 +330,9 @@ class APPO(Impala):
                 if self.config.use_kl_loss and train_results:
                     for module_id, module_results in train_results.items():
                         if module_id != ALL_MODULES:
-                            kls_to_update[module_id] = module_results[LEARNER_STATS_KEY][
-                                LEARNER_RESULTS_KL_KEY
-                            ]
+                            kls_to_update[module_id] = module_results[
+                                LEARNER_STATS_KEY
+                            ][LEARNER_RESULTS_KL_KEY]
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
                 self.learner_group.additional_update(sampled_kls=kls_to_update)
@@ -403,7 +401,7 @@ class APPO(Impala):
         if config["framework"] == "torch":
             if config._enable_rl_module_api:
                 from ray.rllib.algorithms.appo.torch.appo_torch_policy_rlm import (
-                    APPOTorchPolicyWithRLModule
+                    APPOTorchPolicyWithRLModule,
                 )
 
                 return APPOTorchPolicyWithRLModule
