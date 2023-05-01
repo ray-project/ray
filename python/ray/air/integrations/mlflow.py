@@ -4,6 +4,7 @@ from types import ModuleType
 from typing import Dict, Optional, Union
 
 import ray
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.air import session
 
 from ray.air._internal.mlflow import _MLflowLoggerUtil
@@ -146,6 +147,8 @@ def setup_mlflow(
         raise RuntimeError(
             "mlflow was not found - please install with `pip install mlflow`"
         )
+
+    record_extra_usage_tag(TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED, "1")
 
     try:
         # Do a try-catch here if we are not in a train session

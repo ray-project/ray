@@ -21,6 +21,7 @@ from ray.tune.experiment import Trial
 from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
@@ -116,6 +117,8 @@ def setup_wandb(
         raise RuntimeError(
             "Wandb was not found - please install with `pip install wandb`"
         )
+
+    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
 
     try:
         # Do a try-catch here if we are not in a train session
