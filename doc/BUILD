@@ -240,6 +240,12 @@ filegroup(
     visibility = ["//doc:__subpackages__"]
 )
 
+filegroup(
+    name = "workspace_templates_requirements",
+    srcs = glob(["source/templates/**/requirements.txt"]),
+    visibility = ["//doc:__subpackages__"]
+)
+
 # Validate that all the paths and yamls within the templates.yaml file are valid.
 
 py_test(
@@ -257,7 +263,7 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["source/templates/tests/many_model_training.ipynb"],
     exclude = [],
-    data = ["//doc:workspace_templates"],
+    data = ["//doc:workspace_templates", "//doc:workspace_templates_requirements"],
     tags = ["exclusive", "team:ml", "ray_air"],
     env = {"SMOKE_TEST": "1"},
 )
@@ -271,7 +277,7 @@ py_test_run_all_notebooks(
         "source/templates/tests/serving_stable_diffusion.ipynb"
     ],
     exclude = [],
-    data = ["//doc:workspace_templates"],
+    data = ["//doc:workspace_templates", "//doc:workspace_templates_requirements"],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
     env = {"SMOKE_TEST": "1"},
 )
