@@ -137,5 +137,5 @@ enum TagKey {
   AIR_SETUP_MLFLOW_INTEGRATION_USED = 504;
   // (AIR) Built-in callbacks, stored in JSON format with callback name -> count.
   // Ex: {"WandbLoggerCallback": 1, "MLflowLoggerCallback": 1, "Custom": 5}
-  AIR_CALLBACKS = 505
+  AIR_CALLBACKS = 505;
 }
