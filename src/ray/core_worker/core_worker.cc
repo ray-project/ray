@@ -785,6 +785,7 @@ void CoreWorker::Exit(
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
           KillChildProcs();
+          // Disconnect here before KillChildProcs to make the Raylet async wait shorter.
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
@@ -831,6 +832,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                    << " Details: " << detail;
   KillChildProcs();
 
+  // Disconnect here before KillChildProcs to make the Raylet async wait shorter.
   Disconnect(exit_type, detail);
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.

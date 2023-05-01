@@ -1568,6 +1568,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
   cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
+  // ReportWorkerFailure should happen after the worker exit completely.
+  // A better way is to monitor the pid exit. But that needs Process.h
+  // support async operation.
+  // Here we monitor the socket to achieve similar result.
+  // When the worker exited, the pid will be disconnected (local stream socket).
   client->AsyncWaitTerminated([client, worker_failure_data_ptr, this] {
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
                                                                  nullptr));
