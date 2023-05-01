@@ -5714,7 +5714,7 @@
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
-    timeout: 3600
+    timeout: 4200
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start

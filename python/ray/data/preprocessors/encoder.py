@@ -547,19 +547,19 @@ def _get_unique_value_indices(
         result = {}
         for col in columns:
             if col in df_columns:
-                result[col] = get_pd_value_counts_per_column(df[col])
+                result[col] = [get_pd_value_counts_per_column(df[col])]
             else:
                 raise ValueError(
                     f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
                 )
-        return [result]
+        return result
 
     value_counts = datastream.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
     for batch in value_counts.iter_batches(batch_size=None):
-        for col_value_counts in batch:
-            for col, value_counts in col_value_counts.items():
-                final_counters[col] += value_counts
+        for col, counters in batch.items():
+            for counter in counters:
+                final_counters[col] += counter
 
     # Inspect if there is any NA values.
     for col in columns:
