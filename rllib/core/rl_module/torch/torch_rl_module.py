@@ -23,13 +23,13 @@ class TorchRLModule(nn.Module, RLModule):
 
         if self.is_compiled:
             self.__compiled_forward_train = torch.compile(
-                super().forward_train, backend="aot_eager"
+                super().forward_train
             )
             self.__compiled_forward_inference = torch.compile(
-                super().forward_inference, backend="aot_eager"
+                super().forward_inference
             )
             self.__compiled_forward_exploration = torch.compile(
-                super().forward_exploration, backend="aot_eager"
+                super().forward_exploration
             )
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
