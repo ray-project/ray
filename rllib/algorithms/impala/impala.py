@@ -414,6 +414,7 @@ class ImpalaConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
         learner_hps = ImpalaHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
             discount_factor=self.gamma,
@@ -422,7 +423,7 @@ class ImpalaConfig(AlgorithmConfig):
             vtrace_drop_last_ts=self.vtrace_drop_last_ts,
             vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
             vtrace_clip_pg_rho_threshold=(self.vtrace_clip_pg_rho_threshold),
-            **dataclasses.asdict(super().get_learner_hyperparameters()),
+            **dataclasses.asdict(base_hps),
         )
         # TODO: We currently do not use the `recurrent_seq_len` property anyways.
         #  We should re-think the handling of RNN/SEQ_LENs/etc.. once we start
