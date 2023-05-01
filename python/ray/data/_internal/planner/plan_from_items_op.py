@@ -1,3 +1,4 @@
+import collections
 from typing import List
 
 import ray
@@ -19,6 +20,7 @@ def _plan_from_items_op(op: FromItems) -> PhysicalOperator:
     """
 
     def get_input_data() -> List[RefBundle]:
+        ctx = ray.data.DataContext.get_current()
         if op._parallelism > 0:
             block_size, remainder = divmod(len(op._items), op._parallelism)
         else:
@@ -34,7 +36,11 @@ def _plan_from_items_op(op: FromItems) -> PhysicalOperator:
             block_start = i * block_size + min(i, remainder)
             block_end = (i + 1) * block_size + min(i + 1, remainder)
             for j in range(block_start, block_end):
-                builder.add(op._items[j])
+                item = op._items[j]
+                if ctx.strict_mode:
+                    if not isinstance(item, collections.abc.Mapping):
+                        item = {"item": item}
+                builder.add(item)
 
             block: Block = builder.build()
             block_metadata: BlockMetadata = BlockAccessor.for_block(block).get_metadata(
