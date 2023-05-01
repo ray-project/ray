@@ -173,5 +173,5 @@ def sort_impl(
     )
 
 
-def _sample_block(block: Block, n_samples: int, key: SortKeyT) -> Block:
+def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
     return BlockAccessor.for_block(block).sample(n_samples, key)

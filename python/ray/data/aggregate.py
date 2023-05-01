@@ -9,6 +9,7 @@ from ray.data.block import (
     BlockAccessor,
     KeyType,
     AggType,
+    KeyFn,
     _validate_key_fn,
 )
 from ray.data._internal.null_aggregate import (
@@ -30,7 +31,7 @@ class AggregateFn(object):
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
         accumulate_row: Callable[[AggType, T], AggType] = None,
-        accumulate_block: Callable[[AggType, Block], AggType] = None,
+        accumulate_block: Callable[[AggType, Block[T]], AggType] = None,
         finalize: Callable[[AggType], U] = lambda a: a,
         name: Optional[str] = None,
     ):
@@ -68,9 +69,9 @@ class AggregateFn(object):
             )
         if accumulate_block is None:
 
-            def accumulate_block(a: AggType, block: Block) -> AggType:
+            def accumulate_block(a: AggType, block: Block[T]) -> AggType:
                 block_acc = BlockAccessor.for_block(block)
-                for r in block_acc.iter_rows(public_row_format=False):
+                for r in block_acc.iter_rows():
                     a = accumulate_row(a, r)
                 return a
 
@@ -86,7 +87,7 @@ class AggregateFn(object):
 
 
 class _AggregateOnKeyBase(AggregateFn):
-    def _set_key_fn(self, on: str):
+    def _set_key_fn(self, on: KeyFn):
         self._key_fn = on
 
     def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
@@ -114,9 +115,9 @@ class Sum(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -145,9 +146,9 @@ class Min(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -176,9 +177,9 @@ class Max(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -207,9 +208,9 @@ class Mean(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -221,7 +222,7 @@ class Mean(_AggregateOnKeyBase):
             ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
         )
 
-        def vectorized_mean(block: Block) -> AggType:
+        def vectorized_mean(block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             count = block_acc.count(on)
             if count == 0 or count is None:
@@ -261,10 +262,10 @@ class Std(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         if alias_name:
@@ -291,7 +292,7 @@ class Std(_AggregateOnKeyBase):
 
         null_merge = _null_wrap_merge(ignore_nulls, merge)
 
-        def vectorized_std(block: Block) -> AggType:
+        def vectorized_std(block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             count = block_acc.count(on)
             if count == 0 or count is None:
@@ -332,9 +333,9 @@ class AbsMax(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
@@ -354,7 +355,7 @@ class AbsMax(_AggregateOnKeyBase):
         )
 
 
-def _to_on_fn(on: Optional[str]):
+def _to_on_fn(on: Optional[KeyFn]):
     if on is None:
         return lambda r: r
     elif isinstance(on, str):
@@ -369,10 +370,10 @@ class Quantile(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: Optional[str] = None,
+        on: Optional[KeyFn] = None,
         q: float = 0.5,
         ignore_nulls: bool = True,
-        alias_name: Optional[str] = None,
+        alias_name: Optional[KeyFn] = None,
     ):
         self._set_key_fn(on)
         self._q = q
@@ -403,10 +404,10 @@ class Quantile(_AggregateOnKeyBase):
 
         null_merge = _null_wrap_merge(ignore_nulls, merge)
 
-        def block_row_ls(block: Block) -> AggType:
+        def block_row_ls(block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             ls = []
-            for row in block_acc.iter_rows(public_row_format=False):
+            for row in block_acc.iter_rows():
                 ls.append(row.get(on))
             return ls
 

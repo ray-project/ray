@@ -190,9 +190,9 @@ def _null_wrap_accumulate_row(
 
 def _null_wrap_accumulate_block(
     ignore_nulls: bool,
-    accum_block: Callable[[AggType, Block], AggType],
+    accum_block: Callable[[AggType, Block[T]], AggType],
     null_merge: Callable[[WrappedAggType, WrappedAggType], WrappedAggType],
-) -> Callable[[WrappedAggType, Block], WrappedAggType]:
+) -> Callable[[WrappedAggType, Block[T]], WrappedAggType]:
     """
     Wrap vectorized aggregate function with null handling.
 
@@ -212,7 +212,7 @@ def _null_wrap_accumulate_block(
         A new vectorized aggregate function that handles nulls.
     """
 
-    def _accum_block_null(a: WrappedAggType, block: Block) -> WrappedAggType:
+    def _accum_block_null(a: WrappedAggType, block: Block[T]) -> WrappedAggType:
         ret = accum_block(block)
         if ret is not None:
             ret = _wrap_acc(ret, has_data=True)

@@ -22,7 +22,7 @@ T = TypeVar("T")
 MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
 
-class TableBlockBuilder(BlockBuilder):
+class TableBlockBuilder(BlockBuilder[T]):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
@@ -180,9 +180,7 @@ class TableBlockAccessor(BlockAccessor):
             return False
         return _is_tensor_schema(self.column_names())
 
-    def iter_rows(
-        self, public_row_format: bool
-    ) -> Iterator[Union[Mapping, np.ndarray]]:
+    def iter_rows(self) -> Iterator[Union[Mapping, np.ndarray]]:
         ctx = ray.data.DataContext.get_current()
         outer = self
 
@@ -197,11 +195,7 @@ class TableBlockAccessor(BlockAccessor):
                 self._cur += 1
                 if self._cur < outer.num_rows():
                     row = outer._get_row(self._cur)
-                    if (
-                        public_row_format
-                        and ctx.strict_mode
-                        and isinstance(row, TableRow)
-                    ):
+                    if ctx.strict_mode and isinstance(row, TableRow):
                         return row.as_pydict()
                     else:
                         return row
@@ -209,10 +203,10 @@ class TableBlockAccessor(BlockAccessor):
 
         return Iter()
 
-    def _zip(self, acc: BlockAccessor) -> "Block":
+    def _zip(self, acc: BlockAccessor) -> "Block[T]":
         raise NotImplementedError
 
-    def zip(self, other: "Block") -> "Block":
+    def zip(self, other: "Block[T]") -> "Block[T]":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
             raise ValueError(

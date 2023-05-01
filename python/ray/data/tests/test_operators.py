@@ -1,5 +1,4 @@
 import collections
-import pandas as pd
 import random
 import pytest
 import numpy as np
@@ -36,12 +35,12 @@ from ray._private.test_utils import wait_for_condition
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
     for block, _ in bundle.blocks:
-        output_list.append(list(ray.get(block)["id"]))
+        output_list.append(ray.get(block))
 
 
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
     for block in block_iter:
-        yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
+        yield [b * 2 for b in block]
 
 
 def _take_outputs(op: PhysicalOperator) -> List[Any]:
@@ -237,7 +236,7 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
             ref = op.get_next()
             assert ref.owns_blocks, ref
             for block, _ in ref.blocks:
-                output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+                output_splits[ref.output_split_idx].extend(ray.get(block))
     op.inputs_done()
     if equal:
         for i in range(3):
@@ -270,7 +269,7 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
         ref = op.get_next()
         assert ref.owns_blocks, ref
         for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+            output_splits[ref.output_split_idx].extend(ray.get(block))
     if equal:
         actual = [len(output_splits[i]) for i in range(3)]
         expected = [num_inputs // 3] * 3
@@ -284,16 +283,13 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     op = OutputSplitter(input_op, 2, equal=False, locality_hints=["node1", "node2"])
 
     def get_fake_loc(item):
-        assert isinstance(item, int), item
         if item in [0, 1, 4, 5, 8]:
             return "node1"
         else:
             return "node2"
 
     def get_bundle_loc(bundle):
-        block = ray.get(bundle.blocks[0][0])
-        fval = list(block["id"])[0]
-        return get_fake_loc(fval)
+        return get_fake_loc(ray.get(bundle.blocks[0][0])[0])
 
     op._get_location = get_bundle_loc
 
@@ -307,7 +303,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
         ref = op.get_next()
         assert ref.owns_blocks, ref
         for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+            output_splits[ref.output_split_idx].extend(ray.get(block))
 
     total = 0
     for i in range(2):
@@ -642,7 +638,7 @@ def test_limit_operator(ray_start_regular_shared):
 def _get_bundles(bundle: RefBundle):
     output = []
     for block, _ in bundle.blocks:
-        output.extend(list(ray.get(block)["id"]))
+        output.extend(ray.get(block))
     return output
 
 
@@ -727,7 +723,7 @@ def test_block_ref_bundler_uniform(
         i
         for bundle in out_bundles
         for block, _ in bundle.blocks
-        for i in list(ray.get(block)["id"])
+        for i in ray.get(block)
     ]
     assert flat_out == list(range(n))
 

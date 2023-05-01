@@ -7,6 +7,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Generic,
     Iterable,
     Iterator,
     List,
@@ -32,9 +33,13 @@ from ray.data._internal.iterator.pipelined_iterator import (
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
 from ray.data.block import (
-    UserDefinedFunction,
+    BatchUDF,
     Block,
     DataBatch,
+    KeyFn,
+    RowUDF,
+    T,
+    U,
     _apply_strict_mode_batch_format,
 )
 from ray.data.context import DataContext
@@ -45,6 +50,7 @@ from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
 )
+from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -66,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class DatasetPipeline:
+class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datastreams.
 
     DatasetPipelines implement pipelined execution. This allows for the
@@ -85,8 +91,8 @@ class DatasetPipeline:
 
     def __init__(
         self,
-        base_iterable: Iterable[Callable[[], Datastream]],
-        stages: List[Callable[[Datastream], Datastream]] = None,
+        base_iterable: Iterable[Callable[[], Datastream[T]]],
+        stages: List[Callable[[Datastream[Any]], Datastream[Any]]] = None,
         length: Optional[int] = None,
         progress_bars: bool = DataContext.get_current().enable_progress_bars,
         _executed: List[bool] = None,
@@ -133,8 +139,12 @@ class DatasetPipeline:
         """
         return PipelinedDataIterator(self)
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
+
+        If the datastream is a tabular datastream (Arrow/Pandas blocks), dict-like
+        mappings :py:class:`~ray.data.row.TableRow` are yielded for each row by the
+        iterator. If the datastream is not tabular, the raw row is yielded.
 
         Examples:
             >>> import ray
@@ -151,7 +161,7 @@ class DatasetPipeline:
             A local iterator over the records in the pipeline.
         """
 
-        def gen_rows() -> Iterator[Dict[str, Any]]:
+        def gen_rows() -> Iterator[Union[T, TableRow]]:
             time_start = time.perf_counter()
 
             for ds in self.iter_datasets():
@@ -197,10 +207,12 @@ class DatasetPipeline:
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
-                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
-                exactly as is with no additional formatting.
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datastreams and
+                ``Dict[str, numpy.ndarray]`` for tabular datastreams, or None to return
+                the underlying block exactly as is with no additional formatting.
+                The default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -254,7 +266,7 @@ class DatasetPipeline:
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
-    ) -> List["DatasetPipeline"]:
+    ) -> List["DatasetPipeline[T]"]:
         """Split the pipeline into ``n`` disjoint pipeline shards.
 
         This returns a list of sub-pipelines that can be passed to Ray tasks
@@ -297,7 +309,7 @@ class DatasetPipeline:
             ),
         )
 
-    def split_at_indices(self, indices: List[int]) -> List["DatasetPipeline"]:
+    def split_at_indices(self, indices: List[int]) -> List["DatasetPipeline[T]"]:
         """Split the datastreams within the pipeline at the given indices
         (like np.split).
 
@@ -342,8 +354,8 @@ class DatasetPipeline:
         return self._split(len(indices) + 1, lambda ds: ds.split_at_indices(indices))
 
     def _split(
-        self, n: int, splitter: Callable[[Datastream], List["Datastream"]]
-    ) -> List["DatasetPipeline"]:
+        self, n: int, splitter: Callable[[Datastream], List["Datastream[T]"]]
+    ) -> List["DatasetPipeline[T]"]:
         ctx = DataContext.get_current()
         scheduling_strategy = ctx.scheduling_strategy
         if not ray.util.client.ray.is_connected():
@@ -411,7 +423,7 @@ class DatasetPipeline:
 
     def rewindow(
         self, *, blocks_per_window: int, preserve_epoch: bool = True
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per datastream) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
@@ -430,9 +442,9 @@ class DatasetPipeline:
         class WindowIterator:
             def __init__(self, original_iter):
                 self._original_iter = original_iter
-                self._buffer: Optional[Datastream] = None
+                self._buffer: Optional[Datastream[T]] = None
 
-            def __next__(self) -> Datastream:
+            def __next__(self) -> Datastream[T]:
                 try:
                     # Merge windows until we meet the requested window size.
                     if self._buffer is None:
@@ -486,7 +498,7 @@ class DatasetPipeline:
             length=length,
         )
 
-    def repeat(self, times: int = None) -> "DatasetPipeline":
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
 
         This operation is only allowed for pipelines of a finite length. An
@@ -514,7 +526,7 @@ class DatasetPipeline:
                 # This is calculated later.
                 self._max_i = None
 
-            def __next__(self) -> Callable[[], Datastream]:
+            def __next__(self) -> Callable[[], Datastream[T]]:
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
@@ -638,14 +650,10 @@ class DatasetPipeline:
         if self._length == float("inf"):
             raise ValueError("Cannot count a pipeline of infinite length.")
 
-        def batch_len(batch):
-            key0 = list(batch.keys())[0]
-            return len(batch[key0])
-
-        pipe = self.map_batches(lambda batch: {"len": np.array([batch_len(batch)])})
+        pipe = self.map_batches(lambda batch: [len(batch)])
         total = 0
         for elem in pipe.iter_rows():
-            total += elem["len"]
+            total += elem
         return total
 
     def sum(self) -> int:
@@ -661,12 +669,10 @@ class DatasetPipeline:
         if self._length == float("inf"):
             raise ValueError("Cannot sum a pipeline of infinite length.")
 
-        pipe = self.map_batches(
-            lambda batch: {"sum": np.array([batch.sum()[0]])}, batch_format="pandas"
-        )
+        pipe = self.map_batches(lambda batch: [batch.sum()[0]], batch_format="pandas")
         total = 0
         for elem in pipe.iter_rows():
-            total += elem["sum"]
+            total += elem
         return total
 
     def show_windows(self, limit_per_datastream: int = 10) -> None:
@@ -686,7 +692,7 @@ class DatasetPipeline:
             print("=== Window {} ===".format(i))
             ds.show(limit_per_datastream)
 
-    def iter_epochs(self, max_epoch: int = -1) -> Iterator["DatasetPipeline"]:
+    def iter_epochs(self, max_epoch: int = -1) -> Iterator["DatasetPipeline[T]"]:
         """Split this pipeline up by epoch.
 
         This allows reading of data per-epoch for repeated Datastreams, which is
@@ -712,7 +718,7 @@ class DatasetPipeline:
         """
 
         class Peekable:
-            def __init__(self, base_iter: Iterator[Datastream]):
+            def __init__(self, base_iter: Iterator[T]):
                 self._iter = base_iter
                 self._buffer = None
 
@@ -724,13 +730,13 @@ class DatasetPipeline:
                     except StopIteration:
                         pass
 
-            def peek(self) -> Datastream:
+            def peek(self) -> T:
                 self._fill_buffer_if_possible()
                 if self._buffer is None:
                     raise StopIteration
                 return self._buffer
 
-            def __next__(self) -> Datastream:
+            def __next__(self) -> T:
                 self._fill_buffer_if_possible()
                 if self._buffer is None:
                     raise StopIteration
@@ -739,11 +745,11 @@ class DatasetPipeline:
                 return item
 
         class SingleEpochIterator:
-            def __init__(self, peekable_iter: Iterator[Datastream], epoch: int):
+            def __init__(self, peekable_iter: Iterator[Datastream[T]], epoch: int):
                 self._iter = peekable_iter
                 self._epoch = epoch
 
-            def __next__(self) -> Datastream:
+            def __next__(self) -> Datastream[T]:
                 if self._iter.peek()._get_epoch() > self._epoch:
                     raise StopIteration
                 ds = next(self._iter)
@@ -758,7 +764,7 @@ class DatasetPipeline:
                 self._cur_epoch = None
                 self._max_epoch = max_epoch
 
-            def __next__(self) -> "DatasetPipeline":
+            def __next__(self) -> "DatasetPipeline[T]":
                 if self._cur_epoch is None:
                     self._cur_epoch = self._iter.peek()._get_epoch()
                 else:
@@ -786,11 +792,11 @@ class DatasetPipeline:
 
     def map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
+        fn: RowUDF,
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.map <ray.data.Datastream.map>` to each datastream/window
         in this pipeline."""
         return self.foreach_window(
@@ -799,7 +805,7 @@ class DatasetPipeline:
 
     def map_batches(
         self,
-        fn: UserDefinedFunction[DataBatch, DataBatch],
+        fn: BatchUDF,
         *,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
@@ -809,7 +815,7 @@ class DatasetPipeline:
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.map_batches <ray.data.Datastream.map_batches>` to each
         datastream/window in this pipeline."""
 
@@ -830,11 +836,11 @@ class DatasetPipeline:
 
     def flat_map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
+        fn: RowUDF,
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.flat_map <ray.data.Datastream.flat_map>` to each
         datastream/window in this pipeline."""
         return self.foreach_window(
@@ -843,11 +849,11 @@ class DatasetPipeline:
 
     def filter(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], bool],
+        fn: RowUDF,
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[T]":
         """Apply :py:meth:`Datastream.filter <ray.data.Datastream.filter>` to each
         datastream/window in this pipeline."""
         return self.foreach_window(
@@ -861,7 +867,7 @@ class DatasetPipeline:
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.add_column <ray.data.Datastream.add_column>` to each
         datastream/window in this pipeline."""
         return self.foreach_window(
@@ -874,7 +880,7 @@ class DatasetPipeline:
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.drop_columns <ray.data.Datastream.drop_columns>` to
         each datastream/window in this pipeline."""
         return self.foreach_window(
@@ -887,7 +893,7 @@ class DatasetPipeline:
         *,
         compute: Optional[str] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.select_columns <ray.data.Datastream.select_columns>` to
         each datastream/window in this pipeline."""
         return self.foreach_window(
@@ -896,7 +902,7 @@ class DatasetPipeline:
 
     def repartition_each_window(
         self, num_blocks: int, *, shuffle: bool = False
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.repartition <ray.data.Datastream.repartition>` to each
         datastream/window in this pipeline."""
         return self.foreach_window(
@@ -909,7 +915,7 @@ class DatasetPipeline:
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.random_shuffle <ray.data.Datastream.random_shuffle>` to
         each datastream/window in this pipeline."""
         return self.foreach_window(
@@ -919,15 +925,15 @@ class DatasetPipeline:
         )
 
     def sort_each_window(
-        self, key: Optional[str] = None, descending: bool = False
-    ) -> "DatasetPipeline":
+        self, key: Optional[KeyFn] = None, descending: bool = False
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.sort <ray.data.Datastream.sort>` to each datastream/window
         in this pipeline."""
         return self.foreach_window(lambda ds: ds.sort(key, descending))
 
     def randomize_block_order_each_window(
         self, *, seed: Optional[int] = None
-    ) -> "DatasetPipeline":
+    ) -> "DatasetPipeline[U]":
         """Apply :py:meth:`Datastream.randomize_block_order
         <ray.data.Datastream.randomize_block_order>` to each datastream/window in this
         pipeline."""
@@ -1039,7 +1045,7 @@ class DatasetPipeline:
 
     def write_datasource(
         self,
-        datasource: Datasource,
+        datasource: Datasource[T],
         *,
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
@@ -1054,22 +1060,15 @@ class DatasetPipeline:
             )
         )
 
-    def take(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def take(self, limit: int = 20) -> List[T]:
         """Call :py:meth:`Datastream.take <ray.data.Datastream.take>` over the stream of
         output batches from the pipeline"""
         return Datastream.take(self, limit)
 
-    def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def take_all(self, limit: Optional[int] = None) -> List[T]:
         """Call :py:meth:`Datastream.take_all <ray.data.Datastream.take_all>` over the stream
         of output batches from the pipeline"""
         return Datastream.take_all(self, limit)
-
-    def take_batch(
-        self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
-    ) -> DataBatch:
-        """Call :py:meth:`Datastream.take_batch <ray.data.Datastream.take_batch>`
-        over the stream of output batches from the pipeline"""
-        return Datastream.take_batch(self, batch_size, batch_format=batch_format)
 
     def show(self, limit: int = 20) -> None:
         """Call :py:meth:`Datastream.show <ray.data.Datastream.show>` over the stream of
@@ -1196,7 +1195,7 @@ class DatasetPipeline:
         return PipelineExecutor(self)
 
     @DeveloperAPI
-    def iter_datasets(self) -> Iterator[Datastream]:
+    def iter_datasets(self) -> Iterator[Datastream[T]]:
         """Iterate over the output datastreams of this pipeline.
 
         Returns:
@@ -1237,8 +1236,8 @@ class DatasetPipeline:
 
     @DeveloperAPI
     def foreach_window(
-        self, fn: Callable[[Datastream], Datastream]
-    ) -> "DatasetPipeline":
+        self, fn: Callable[[Datastream[T]], Datastream[U]]
+    ) -> "DatasetPipeline[U]":
         """Apply a transform to each datastream/window in this pipeline.
 
         Args:
@@ -1271,8 +1270,8 @@ class DatasetPipeline:
 
     @staticmethod
     def from_iterable(
-        iterable: Iterable[Callable[[], Datastream]],
-    ) -> "DatasetPipeline":
+        iterable: Iterable[Callable[[], Datastream[T]]],
+    ) -> "DatasetPipeline[T]":
         """Create a pipeline from an sequence of Datastream producing functions.
 
         Args:
@@ -1338,7 +1337,7 @@ class DatasetPipeline:
             )
         self._optimized_stages = optimized_stages
 
-    def _peek(self) -> Datastream:
+    def _peek(self) -> Datastream[T]:
         if self._first_datastream is None:
             datastream_iter = iter(self._base_iterable)
             first_datastream_gen = next(datastream_iter)
@@ -1357,7 +1356,7 @@ class DatasetPipeline:
 
         return self._first_datastream
 
-    def _write_each_datastream(self, write_fn: Callable[[Datastream], None]) -> None:
+    def _write_each_datastream(self, write_fn: Callable[[Datastream[T]], None]) -> None:
         """Write output for each datastream.
 
         This is utility method used for write_json,

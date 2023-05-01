@@ -19,9 +19,9 @@ class TestTorchVisionPreprocessor:
         preprocessor = TorchVisionPreprocessor(
             columns=["spam"], transform=StubTransform()
         )
-        assert repr(preprocessor) == (
-            "TorchVisionPreprocessor(columns=['spam'], "
-            "output_columns=['spam'], transform=StubTransform())"
+        assert (
+            repr(preprocessor)
+            == "TorchVisionPreprocessor(columns=['spam'], transform=StubTransform())"
         )
 
     @pytest.mark.parametrize(
@@ -112,7 +112,9 @@ class TestTorchVisionPreprocessor:
                 {"image": np.zeros((32, 32, 3)), "label": 1},
             ]
         )
-        transform = transforms.Lambda(lambda tensor: "BLAH BLAH INVALID")
+        # `TorchVisionPreprocessor` expects transforms to return `torch.Tensor`s, but
+        # this `transform` returns a `np.ndarray`.
+        transform = transforms.Lambda(lambda tensor: tensor.numpy())
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         with pytest.raises(ValueError):

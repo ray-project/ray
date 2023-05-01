@@ -32,7 +32,7 @@ def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
     return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
 # Map processing the datastream.
-ds.map_batches(transform_batch, batch_format="pandas").show()
+ds.map_batches(transform_batch).show()
 # -> {'sepal.length': 5.2, 'sepal.width': 2.7,
 #     'petal.length': 3.9, 'petal.width': 1.4, 'variety': 'Versicolor'}
 # -> {'sepal.length': 5.4, 'sepal.width': 3.0,
@@ -80,6 +80,8 @@ import pandas as pd
 
 # Load datastream.
 ds = ray.data.read_csv("example://iris.csv")
+print(ds.default_batch_format())
+# <class 'pandas.core.frame.DataFrame'>
 
 # UDF as a function on Pandas DataFrame batches.
 def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
@@ -93,7 +95,7 @@ def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
     df_batch = df_batch.drop(columns=["sepal.length"])
     return df_batch
 
-ds.map_batches(pandas_transform, batch_format="pandas").show(2)
+ds.map_batches(pandas_transform).show(2)
 # -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
 #     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
 # -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
@@ -105,19 +107,19 @@ ds.map_batches(pandas_transform, batch_format="pandas").show(2)
 # __writing_default_udfs_tensor_begin__
 import ray
 import numpy as np
-from typing import Dict
 
 # Load datastream.
 ds = ray.data.range_tensor(1000, shape=(2, 2))
+print(ds.default_batch_format())
+# <class 'numpy.ndarray'>
 
 # UDF as a function on NumPy ndarray batches.
-def tensor_transform(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def tensor_transform(arr: np.ndarray) -> np.ndarray:
     # Notice here that the ndarray is of shape (batch_size, 2, 2)
     # Multiply each element in the ndarray by a factor of 2
-    arr["data"] *= 2
-    return arr
+    return arr * 2
 
-ds.map_batches(tensor_transform, batch_format="numpy").show(2)
+ds.map_batches(tensor_transform).show(2)
 # [array([[0, 0],
 #         [0, 0]]),
 # array([[2, 2],
@@ -129,19 +131,21 @@ ds.map_batches(tensor_transform, batch_format="numpy").show(2)
 # fmt: off
 # __writing_default_udfs_list_begin__
 import ray
-from typing import Any
 
 # Load datastream.
 ds = ray.data.range(1000)
+print(ds.default_batch_format())
+# <class 'list'>
 
-def list_transform(batch: Dict[str, Any]) -> Dict[str, Any]:
+# UDF as a function on Python list batches.
+def list_transform(list) -> list:
     # Notice here that the list is of length batch_size
     # Multiply each element in the list by a factor of 2
-    return {"id": [x * 2 for x in batch["id"]]}
+    return [x * 2 for x in list]
 
 ds.map_batches(list_transform).show(2)
-# {"id": 0}
-# {"id": 2}
+# 0
+# 2
 
 # __writing_default_udfs_list_end__
 # fmt: on
@@ -164,7 +168,7 @@ def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=["sepal.length"])
     return df
 
-ds.map_batches(pandas_transform, batch_format="pandas").show(2)
+ds.map_batches(pandas_transform).show(2)
 # -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
 #     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
 # -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
@@ -207,8 +211,7 @@ import numpy as np
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 
 # UDF as a function on NumPy ndarray batches.
-def normalize(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    arr = arr["data"]
+def normalize(arr: np.ndarray) -> np.ndarray:
     # Normalizes each image to [0, 1] range.
     mins = arr.min((1, 2))[:, np.newaxis, np.newaxis]
     maxes = arr.max((1, 2))[:, np.newaxis, np.newaxis]
@@ -216,7 +219,7 @@ def normalize(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     idx = np.where(range_ == 0)
     mins[idx] = 0
     range_[idx] = 1
-    return {"data": (arr - mins) / range_}
+    return (arr - mins) / range_
 
 ds = ds.map_batches(normalize, batch_format="numpy")
 # -> MapBatches(normalize)
@@ -246,7 +249,7 @@ class ModelUDF:
         df["output"] = self.model(df)
         return df
 
-ds.map_batches(ModelUDF, batch_format="pandas", compute=ray.data.ActorPoolStrategy(size=2)).show(2)
+ds.map_batches(ModelUDF, compute="actors").show(2)
 # -> {'sepal.length': 7.0, 'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
 #     'variety': 'Versicolor', 'output': True}
 # -> {'sepal.length': 6.4, 'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
@@ -267,7 +270,7 @@ def repeat_dataframe(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
     for _ in range(5):
         yield pd.concat([df]*20)
 
-ds.map_batches(repeat_dataframe, batch_format="pandas", ).show(2)
+ds.map_batches(repeat_dataframe).show(2)
 # -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
 # -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
 # __writing_generator_udfs_end__
@@ -281,15 +284,15 @@ from typing import List
 
 # Load datastream.
 ds = ray.data.from_items(["test", "string", "teststring"])
-# -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
+# -> Datastream(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
-# Convert column name.
-def convert_pandas(batch: pd.DataFrame) -> pd.DataFrame:
-    return pd.DataFrame({"text": batch["item"]}, dtype="string")
+# Convert to Pandas.
+def convert_to_pandas(text: List[str]) -> pd.DataFrame:
+    return pd.DataFrame({"text": text}, dtype="string")
 
-ds = ds.map_batches(convert_pandas, batch_format="pandas")
-# -> MapBatches(convert_pandas)
-#    +- Datastream(num_blocks=3, num_rows=3, schema={item: tsring})
+ds = ds.map_batches(convert_to_pandas)
+# -> MapBatches(convert_to_pandas)
+#    +- Datastream(num_blocks=3, num_rows=3, schema=<class 'str'>)
 
 ds.show(2)
 # -> {'text': 'test'}
@@ -308,15 +311,15 @@ from typing import List
 
 # Load datastream.
 ds = ray.data.from_items(["test", "string", "teststring"])
-# -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
+# -> Datastream(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 # Convert to Arrow.
-def convert_to_arrow(batch: Dict[str, np.ndarray]) -> pa.Table:
-    return pa.table({"text": batch["item"]})
+def convert_to_arrow(text: List[str]) -> pa.Table:
+    return pa.table({"text": text})
 
 ds = ds.map_batches(convert_to_arrow)
 # -> MapBatches(convert_to_arrow)
-#    +- Datastream(num_blocks=1, num_rows=3, schema={text: string})
+#    +- Datastream(num_blocks=1, num_rows=3, schema=<class 'str'>)
 
 ds.show(2)
 # -> {'text': 'test'}
@@ -349,10 +352,10 @@ ds = ray.data.read_csv("example://iris.csv")
 #   )
 
 # Convert to NumPy.
-def convert_to_numpy(df: pd.DataFrame) -> Dict[str, np.ndarray]:
-    return {"data": df[["sepal.length", "sepal.width"]].to_numpy()}
+def convert_to_numpy(df: pd.DataFrame) -> np.ndarray:
+    return df[["sepal.length", "sepal.width"]].to_numpy()
 
-ds = ds.map_batches(convert_to_numpy, batch_format="pandas")
+ds = ds.map_batches(convert_to_numpy)
 # -> MapBatches(convert_to_numpy)
 #    +- Datastream(
 #           num_blocks=1,
@@ -367,8 +370,8 @@ ds = ds.map_batches(convert_to_numpy, batch_format="pandas")
 #      )
 
 ds.show(2)
-# -> {'data': [5.1 3.5]}
-#    {'data': [4.9 3. ]}
+# -> [5.1 3.5]
+#    [4.9 3. ]
 # __writing_numpy_out_udfs_end__
 # fmt: on
 
@@ -401,7 +404,7 @@ def convert_to_numpy(df: pd.DataFrame) -> Dict[str, np.ndarray]:
         "petal_width": df["petal.width"].to_numpy(),
     }
 
-ds = ds.map_batches(convert_to_numpy, batch_format="pandas")
+ds = ds.map_batches(convert_to_numpy)
 # -> MapBatches(convert_to_numpy)
 #    +- Datastream(
 #           num_blocks=1,
@@ -442,10 +445,10 @@ ds = ray.data.read_csv("example://iris.csv")
 #   )
 
 # Convert to list of dicts.
-def convert_to_list(df: pd.DataFrame) -> pd.DataFrame:
-    return df
+def convert_to_list(df: pd.DataFrame) -> List[dict]:
+    return df.to_dict("records")
 
-ds = ds.map_batches(convert_to_list, batch_format="pandas")
+ds = ds.map_batches(convert_to_list)
 # -> MapBatches(convert_to_list)
 #    +- Datastream(
 #           num_blocks=1,
@@ -494,6 +497,7 @@ ds.show(2)
 # fmt: off
 # __writing_table_row_out_row_udfs_begin__
 import ray
+from ray.data.row import TableRow
 import pandas as pd
 from typing import Dict
 
@@ -512,7 +516,8 @@ ds = ray.data.read_csv("example://iris.csv")
 #   )
 
 # Treat row as dict.
-def map_row(row: Dict[str, Any]) -> Dict[str, Any]:
+def map_row(row: TableRow) -> TableRow:
+    row = row.as_pydict()
     row["sepal.area"] = row["sepal.length"] * row["sepal.width"]
     return row
 
@@ -546,25 +551,28 @@ from typing import Dict
 
 # Load datastream.
 ds = ray.data.range(10)
-# -> Datastream(num_blocks=10, num_rows=10, schema={id: int64})
+# -> Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 # Convert row to NumPy ndarray.
-def row_to_numpy(row: Dict[str, Any]) -> Dict[str, np.ndarray]:
-    return {"data": np.full(shape=(2, 2), fill_value=row["id"])}
+def row_to_numpy(row: int) -> np.ndarray:
+    return np.full(shape=(2, 2), fill_value=row)
 
 ds = ds.map(row_to_numpy)
 # -> Map
-#    +- Datastream(num_blocks=10, num_rows=10, schema={data: np.ndarray(shape=(2, 2))})
+#    +- Datastream(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
 ds.show(2)
-# -> {'data': [[0 0], [0 0]]]}
-#    {'data': [[1 1], [1 1]]]}
+# -> [[0 0]
+#     [0 0]]
+#    [[1 1]
+#     [1 1]]
 # __writing_numpy_out_row_udfs_end__
 # fmt: on
 
 # fmt: off
 # __writing_simple_out_row_udfs_begin__
 import ray
+from ray.data.row import TableRow
 from typing import List
 
 # Load datastream.
@@ -582,9 +590,8 @@ ds = ray.data.read_csv("example://iris.csv")
 #   )
 
 # Convert row to simple (opaque) row.
-def map_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    row["petal.random_property"] = random.random()
-    return row
+def map_row(row: TableRow) -> tuple:
+    return tuple(row.items())
 
 ds = ds.map(map_row)
 # -> Map
@@ -599,6 +606,12 @@ ds = ds.map(map_row)
 #               variety: string,
 #          },
 #     )
+
+ds.show(2)
+# -> (('sepal.length', 5.1), ('sepal.width', 3.5), ('petal.length', 1.4),
+#     ('petal.width', 0.2), ('variety', 'Setosa'))
+# -> (('sepal.length', 4.9), ('sepal.width', 3.0), ('petal.length', 1.4),
+#     ('petal.width', 0.2), ('variety', 'Setosa'))
 # __writing_simple_out_row_udfs_end__
 # fmt: on
 
@@ -621,7 +634,7 @@ def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # Have each batch that pandas_transform receives contain 10 rows.
-ds = ds.map_batches(pandas_transform, batch_format="pandas", batch_size=10)
+ds = ds.map_batches(pandas_transform, batch_size=10)
 # -> MapBatches(pandas_transform)
 #    +- Datastream(
 #           num_blocks=1,

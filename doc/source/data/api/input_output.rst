@@ -12,6 +12,7 @@ Synthetic Data
    :toctree: doc/
 
    range
+   range_table
    range_tensor
 
 Python Objects

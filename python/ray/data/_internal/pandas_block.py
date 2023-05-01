@@ -21,6 +21,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockExecStats,
+    KeyFn,
     KeyType,
     U,
 )
@@ -83,7 +84,7 @@ class PandasRow(TableRow):
         return self._row.shape[1]
 
 
-class PandasBlockBuilder(TableBlockBuilder):
+class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
@@ -166,7 +167,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         table.reset_index(drop=True, inplace=True)
         return table
 
-    def select(self, columns: List[str]) -> "pandas.DataFrame":
+    def select(self, columns: List[KeyFn]) -> "pandas.DataFrame":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
                 "Columns must be a list of column name strings when aggregating on "
@@ -263,7 +264,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> PandasBlockBuilder:
+    def builder() -> PandasBlockBuilder[T]:
         return PandasBlockBuilder()
 
     @staticmethod
@@ -274,7 +275,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
 
     def _apply_agg(
-        self, agg_fn: Callable[["pandas.Series", bool], U], on: str
+        self, agg_fn: Callable[["pandas.Series", bool], U], on: KeyFn
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
         pd = lazy_import_pandas()
@@ -302,10 +303,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
         return val
 
-    def count(self, on: str) -> Optional[U]:
+    def count(self, on: KeyFn) -> Optional[U]:
         return self._apply_agg(lambda col: col.count(), on)
 
-    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
+    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
@@ -327,18 +328,18 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
         return val
 
-    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
+    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.min(skipna=ignore_nulls), on)
 
-    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
+    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.max(skipna=ignore_nulls), on)
 
-    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
+    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.mean(skipna=ignore_nulls), on)
 
     def sum_of_squared_diffs_from_mean(
         self,
-        on: str,
+        on: KeyFn,
         ignore_nulls: bool,
         mean: Optional[U] = None,
     ) -> Optional[U]:
@@ -351,7 +352,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List[Block]:
+    ) -> List[Block[T]]:
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet"
@@ -388,7 +389,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -417,7 +418,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows(public_row_format=False)
+            iter = self.iter_rows()
             next_row = None
             while True:
                 try:
@@ -463,7 +464,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block], key: "SortKeyT", _descending: bool
+        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
@@ -480,7 +481,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
-        key: str,
+        key: KeyFn,
         aggs: Tuple[AggregateFn],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
@@ -508,11 +509,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         key_fn = (lambda r: r[r._row.columns[0]]) if key is not None else (lambda r: 0)
 
         iter = heapq.merge(
-            *[
-                PandasBlockAccessor(block).iter_rows(public_row_format=False)
-                for block in blocks
-            ],
-            key=key_fn,
+            *[PandasBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
         )
         next_row = None
         builder = PandasBlockBuilder()

@@ -1,24 +1,22 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Any, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 import ray
-from ray.data.block import BlockAccessor, CallableClass
+from ray.data.block import Block, BlockAccessor, CallableClass
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
-def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
+def make_ref_bundles(simple_data: List[Block]) -> List["RefBundle"]:
     """Create ref bundles from a list of block data.
 
     One bundle is created for each input block.
     """
     from ray.data._internal.execution.interfaces import RefBundle
-    import pandas as pd
 
     output = []
     for block in simple_data:
-        block = pd.DataFrame({"id": block})
         output.append(
             RefBundle(
                 [

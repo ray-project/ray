@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -7,6 +7,7 @@ from pandas.testing import assert_frame_equal
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.preprocessors import BatchMapper
 from ray.tests.conftest import *  # noqa
 
@@ -77,16 +78,26 @@ def test_batch_mapper_basic(ray_start_regular_shared):
 def test_batch_mapper_pandas_data_format(
     ray_start_regular_shared, ds, expected_df, expected_numpy_df
 ):
+    """Tests batch mapper functionality for pandas data format.
+
+    Note:
+        For single column pandas dataframes, we automatically convert it to
+        single column tensor with column name as `__value__`.
+    """
+
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         df["column_1"] = df["column_1"] + 1
         if "column_2" in df:
             df["column_2"] *= 2
         return df
 
-    def add_and_modify_udf_numpy(data: Dict[str, np.ndarray]):
-        data["column_1"] = data["column_1"] + 1
-        if "column_2" in data:
-            data["column_2"] *= 2
+    def add_and_modify_udf_numpy(data: Union[np.ndarray, Dict[str, np.ndarray]]):
+        if isinstance(data, np.ndarray):
+            data += 1
+        else:
+            data["column_1"] = data["column_1"] + 1
+            if "column_2" in data:
+                data["column_2"] *= 2
         return data
 
     # Test map_batches
@@ -162,6 +173,29 @@ def test_batch_mapper_batch_size(ray_start_regular_shared, ds):
             ),
         ),
         (
+            lazy_fixture("ds_arrow_single_column_tensor_format"),
+            pd.DataFrame(
+                {
+                    TENSOR_COLUMN_NAME: [
+                        [[1, 2], [3, 4]],
+                        [[5, 6], [7, 8]],
+                        [[9, 10], [11, 12]],
+                        [[13, 14], [15, 16]],
+                    ]
+                }
+            ),
+            pd.DataFrame(
+                {
+                    TENSOR_COLUMN_NAME: [
+                        [[1, 2], [3, 4]],
+                        [[5, 6], [7, 8]],
+                        [[9, 10], [11, 12]],
+                        [[13, 14], [15, 16]],
+                    ]
+                }
+            ),
+        ),
+        (
             lazy_fixture("ds_arrow_multi_column_format"),
             pd.DataFrame(
                 {
@@ -197,10 +231,13 @@ def test_batch_mapper_arrow_data_format(
             df["column_2"] *= 2
         return df
 
-    def add_and_modify_udf_numpy(data: Dict[str, np.ndarray]):
-        data["column_1"] = data["column_1"] + 1
-        if "column_2" in data:
-            data["column_2"] = data["column_2"] * 2
+    def add_and_modify_udf_numpy(data: Union[np.ndarray, Dict[str, np.ndarray]]):
+        if isinstance(data, np.ndarray):
+            data = data + 1
+        else:
+            data["column_1"] = data["column_1"] + 1
+            if "column_2" in data:
+                data["column_2"] = data["column_2"] * 2
         return data
 
     # Test map_batches
@@ -233,7 +270,7 @@ def test_batch_mapper_arrow_data_format(
             lazy_fixture("ds_numpy_single_column_tensor_format"),
             pd.DataFrame(
                 {
-                    "data": [
+                    TENSOR_COLUMN_NAME: [
                         [[1, 2], [3, 4]],
                         [[5, 6], [7, 8]],
                         [[9, 10], [11, 12]],
@@ -244,18 +281,25 @@ def test_batch_mapper_arrow_data_format(
         ),
         (
             lazy_fixture("ds_numpy_list_of_ndarray_tensor_format"),
-            pd.DataFrame({"data": [[[1, 2], [3, 4]]] * 4}),
+            pd.DataFrame({TENSOR_COLUMN_NAME: [[[1, 2], [3, 4]]] * 4}),
         ),
     ],
 )
 def test_batch_mapper_numpy_data_format(ds, expected_df):
+    """Tests batch mapper functionality for numpy data format.
+
+    Note:
+        For single column pandas dataframes, we automatically convert it to
+        single column tensor with column name as `__value__`.
+    """
+
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         col_name = list(df.columns)[0]
         df[col_name] = df[col_name] + 1
         return df
 
-    def add_and_modify_udf_numpy(data: Dict[str, np.ndarray]):
-        data["data"] = data["data"] + 1
+    def add_and_modify_udf_numpy(data: Union[np.ndarray, Dict[str, np.ndarray]]):
+        data = data + 1
         return data
 
     # Test map_batches

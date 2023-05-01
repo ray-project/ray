@@ -14,7 +14,6 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -68,7 +67,7 @@ def dummy_map(x):
 def test_memory_sanity(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=500e6)
     ds = ray.data.range(10)
-    ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
+    ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds.materialize()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
 
@@ -143,7 +142,7 @@ def test_memory_release_pipeline(shutdown_only, lazy_input):
 
         # TODO(Clark): Remove this sleep once we have fixed memory pressure handling.
         time.sleep(2)
-        return {"id": x["id"] + 1}
+        return x + 1
 
     num_rounds = 10
     for _ in range(num_rounds):
@@ -168,9 +167,9 @@ def test_memory_release_lazy(shutdown_only):
 
     # Should get fused into single stage.
     ds = ds.lazy()
-    ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
-    ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
-    ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
+    ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
+    ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
+    ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds.materialize()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
@@ -188,7 +187,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
 
             # Should get fused into single stage.
             ds = ds.lazy()
-            ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
+            ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
             ds.random_shuffle().materialize()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
             assert "Spilled" not in meminfo, meminfo
@@ -207,6 +206,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     def inc(row):
         map_counter.increment.remote()
+        row = row.as_pydict()
         row["one"] += 1
         return row
 
@@ -245,7 +245,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     def inc(x):
         map_counter.increment.remote()
-        return {"item": x["item"] + 1}
+        return x + 1
 
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
@@ -254,8 +254,8 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
     # Test content.
-    assert extract_values("item", ds2.materialize().take()) == list(range(2, 12))
-    assert extract_values("item", ds3.materialize().take()) == list(range(2, 12))
+    assert ds2.materialize().take() == list(range(2, 12))
+    assert ds3.materialize().take() == list(range(2, 12))
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
@@ -268,8 +268,8 @@ def test_lazy_fanout(shutdown_only, local_path):
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.
-    assert extract_values("item", ds1.materialize().take()) == list(range(2, 12))
-    assert extract_values("item", ds2.materialize().take()) == list(range(2, 12))
+    assert ds1.materialize().take() == list(range(2, 12))
+    assert ds2.materialize().take() == list(range(2, 12))
     # Test that first map is executed twice, because ds1.materialize()
     # clears up the previous snapshot blocks, and ds2.materialize()
     # has to re-execute ds.map(inc) again.
@@ -278,7 +278,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
 def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10).lazy()
-    ds = ds.map(column_udf("id", lambda x: x + 1))
+    ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
     for s in ds._plan._stages_before_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
@@ -301,7 +301,7 @@ def test_stage_linking(ray_start_regular_shared):
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
     assert ds._plan._last_optimized_stages is None
-    ds = ds.map(column_udf("id", lambda x: x + 1))
+    ds = ds.map(lambda x: x + 1)
     assert len(ds._plan._stages_before_snapshot) == 0
     _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
     assert ds._plan._last_optimized_stages is None
@@ -396,10 +396,7 @@ def test_optimize_fuse(ray_start_regular_shared):
         pipe = pipe.map_batches(dummy_map)
         pipe = pipe.map_batches(dummy_map)
         pipe = pipe.random_shuffle_each_window()
-        results = []
-        for p in pipe.iter_epochs():
-            result = sorted(extract_values("id", p.take()))
-            results.append(result)
+        results = [sorted(p.take()) for p in pipe.iter_epochs()]
         assert results == [[0, 1, 2], [0, 1, 2]], results
         return pipe
 
@@ -478,8 +475,8 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
         for kwb in equivalent_kwargs:
             print("CHECKING", kwa, kwb)
             pipe = ray.data.range(3).repeat(2)
-            pipe = pipe.map_batches(dummy_map, batch_size=64, **kwa)
-            pipe = pipe.map_batches(dummy_map, batch_size=64, **kwb)
+            pipe = pipe.map_batches(dummy_map, compute="tasks", **kwa)
+            pipe = pipe.map_batches(dummy_map, compute="tasks", **kwb)
             pipe.take()
             expect_stages(
                 pipe,
@@ -493,7 +490,7 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
         for kwb in equivalent_kwargs:
             print("CHECKING", kwa, kwb)
             pipe = ray.data.range(3).repeat(2)
-            pipe = pipe.map_batches(dummy_map, batch_size=64, **kwa)
+            pipe = pipe.map_batches(dummy_map, compute="tasks", **kwa)
             pipe = pipe.random_shuffle_each_window(**kwb)
             pipe.take()
             expect_stages(
@@ -516,9 +513,9 @@ def test_optimize_incompatible_stages(shutdown_only):
 
     pipe = ray.data.range(3).repeat(2)
     # Should get fused as long as their resource types are compatible.
-    pipe = pipe.map_batches(dummy_map, compute=ray.data.ActorPoolStrategy())
+    pipe = pipe.map_batches(dummy_map, compute="actors")
     # Cannot fuse actors->tasks.
-    pipe = pipe.map_batches(dummy_map)
+    pipe = pipe.map_batches(dummy_map, compute="tasks")
     pipe = pipe.random_shuffle_each_window()
     pipe.take()
     expect_stages(
@@ -532,7 +529,7 @@ def test_optimize_incompatible_stages(shutdown_only):
     )
 
     pipe = ray.data.range(3).repeat(2)
-    pipe = pipe.map_batches(dummy_map)
+    pipe = pipe.map_batches(dummy_map, compute="tasks")
     pipe = pipe.map_batches(dummy_map, num_cpus=0.75)
     pipe = pipe.random_shuffle_each_window()
     pipe.take()
@@ -588,7 +585,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
             CallableFn,
             batch_size=1,
             batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
+            compute="actors",
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
@@ -596,7 +593,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
             CallableFn,
             batch_size=1,
             batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
+            compute="actors",
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
@@ -624,7 +621,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
             lambda df, a, b=None: b * df + a,
             batch_size=1,
             batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
+            compute="actors",
             fn_args=(put(1),),
             fn_kwargs={"b": put(2)},
         )
@@ -632,7 +629,7 @@ def test_optimize_callable_classes(shutdown_only, tmp_path):
             CallableFn,
             batch_size=1,
             batch_format="pandas",
-            compute=ray.data.ActorPoolStrategy(),
+            compute="actors",
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
@@ -691,7 +688,7 @@ def test_optimize_lazy_reuse_base_data(
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
     ds = ds.lazy()
-    ds = ds.map(column_udf("id", lambda x: x))
+    ds = ds.map(lambda x: x)
     if with_shuffle:
         ds = ds.random_shuffle()
     ds.take()
