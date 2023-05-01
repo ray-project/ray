@@ -290,9 +290,9 @@ def check_input_specs(
                         # filtering should happen regardless of cache
                         checked_data = checked_data.filter(spec)
 
+            # If we have encountered an exception from calling `func` already,
+            # we raise it again here and don't need to call func again.
             if initial_exception:
-                # If we have encountered an exception from calling `func` already,
-                # we raise it again here and don't need to call func again.
                 raise initial_exception
 
             return func(self, checked_data, **kwargs)
