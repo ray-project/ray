@@ -334,9 +334,9 @@ just need to be aware of ``Dict[str, Any]`` (non-batched data records) and
 
 **Datasource behavior changes**:
 
-* ``range_tensor``: create ``data``  col instead of ``__value__``.
-* ``from_numpy`` / ``from_numpy_refs`` : create "data" col instead of using ``__value__``.
-* ``from_items``: create ``item`` col instead of using Python objects.
+* ``range_tensor``: create ``data``  column instead of ``__value__``.
+* ``from_numpy`` / ``from_numpy_refs`` : create ``data`` column instead of using ``__value__``.
+* ``from_items``: create ``item`` column instead of using Python objects.
 * ``range``: create ``id`` column instead of using Python objects.
 
 How can I contribute to Ray Data?
