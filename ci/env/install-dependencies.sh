@@ -356,6 +356,9 @@ install_pip_packages() {
     pip install --no-dependencies mlagents==0.28.0
   fi
 
+  # Some Ray Train dependencies have to be installed with --no-deps,
+  # as sub-dependencies conflict. The packages still work for our workflows.
+  # Todo(krfricke): Try to remove once we move to Python 3.8 in CI.
   local install_ml_no_deps=0
 
   # Additional Train test dependencies.
