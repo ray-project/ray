@@ -10,6 +10,16 @@ torch, nn = try_import_torch()
 
 
 class TorchRLModule(nn.Module, RLModule):
+    """A base class for RLlib torch RLModules.
+    
+    Note that the `_forward` methods of this class are meant to be torch.compiled:
+        - TorchRLModule._forward_train()
+        - TorchRLModule._forward_inference()
+        - TorchRLModule._forward_exploration()
+    Generally, they should only contain torch-native tensor manipulations or otherwise they 
+    may yield wrong outputs. In particular, the creation of RLlib distributions inside of 
+    these methods should be avoided when using torch.compile.
+    """
     framwork: str = "torch"
 
     def __init__(self, *args, **kwargs) -> None:
@@ -17,15 +27,11 @@ class TorchRLModule(nn.Module, RLModule):
         RLModule.__init__(self, *args, **kwargs)
 
         if self.config.model_config_dict.get("torch_compile") is True:
-            self.is_compiled = True
-        else:
-            self.is_compiled = False
-
-        if self.is_compiled:
-            self.__compiled_forward_train = torch.compile(super().forward_train)
-            self.__compiled_forward_inference = torch.compile(super().forward_inference)
-            self.__compiled_forward_exploration = torch.compile(
-                super().forward_exploration
+            # Replace original forward methods by compiled versions of themselves
+            self._forward_train = torch.compile(self._forward_train)
+            self._forward_inference = torch.compile(self._forward_inference)
+            self._forward_exploration = torch.compile(
+                self._forward_exploration
             )
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
@@ -35,23 +41,6 @@ class TorchRLModule(nn.Module, RLModule):
         be implemented for backpropagation to work.
         """
         return self.forward_train(batch, **kwargs)
-
-    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        if self.is_compiled:
-            return self.__compiled_forward_inference(batch, **kwargs)
-        return super().forward_inference(batch, **kwargs)
-
-    def forward_exploration(
-        self, batch: SampleBatchType, **kwargs
-    ) -> Mapping[str, Any]:
-        if self.is_compiled:
-            return self.__compiled_forward_exploration(batch, **kwargs)
-        return super().forward_exploration(batch, **kwargs)
-
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        if self.is_compiled:
-            return self.__compiled_forward_train(batch, **kwargs)
-        return super().forward_train(batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
