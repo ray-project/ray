@@ -72,7 +72,6 @@ def main(
     )
 
     print_disk_config()
-    measure_disk_speed()
 
     run_matrix = generate_test_matrix(
         num_cpus_in_cluster,
@@ -91,8 +90,6 @@ def main(
                 test,
             )
         )
-
-    measure_disk_speed()
 
 
 @ray.remote(num_cpus=0)
@@ -152,10 +149,6 @@ class MetricsActor:
 def print_disk_config():
     print("Getting disk sizes via df -h")
     subprocess.check_call("df -h", shell=True)
-
-
-def measure_disk_speed():
-    subprocess.check_call("sudo hdparm -t /dev/nvme0n1", shell=True)
 
 
 def generate_test_matrix(

@@ -1,13 +1,7 @@
 # flake8: noqa
 from ray.rllib.utils.annotations import override
-
-# TODO (Kourosh): Remove this when the location of the import is fixed.
-try:
-    from ray.rllib.models.specs.typing import SpecType
-    from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-except ImportError:
-    from ray.rllib.core.models.specs.typing import SpecType
-    from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 
 # __enabling-rlmodules-in-configs-begin__
@@ -153,6 +147,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     def __init__(self, config: RLModuleConfig) -> None:
         super().__init__(config)
 
+    def setup(self):
         input_dim = self.config.observation_space.shape[0]
         hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
         output_dim = self.config.action_space.n
@@ -194,6 +189,7 @@ class DiscreteBCTfModule(TfRLModule):
     def __init__(self, config: RLModuleConfig) -> None:
         super().__init__(config)
 
+    def setup(self):
         input_dim = self.config.observation_space.shape[0]
         hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
         output_dim = self.config.action_space.n
@@ -265,7 +261,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         # and its value is a torch.Tensor with shape (b, h) where b is the
         # batch size (determined at run-time) and h is the hidden size
         # (fixed at 10).
-        return {"obs": TorchTensorSpec("b, h", h=10)}
+        return {"obs": TensorSpec("b, h", h=10, framework="torch")}
 
 
 # __extend-spec-checking-torch-specs-end__
@@ -336,7 +332,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
     def __init__(self, config: MultiAgentRLModuleConfig) -> None:
         super().__init__(config)
 
-    def build(self):
+    def setup(self):
 
         module_specs = self.config.modules
         module_spec = next(iter(module_specs.values()))

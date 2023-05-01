@@ -23,7 +23,7 @@ from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 
 
 # Logger for this module. It should be configured at the entry point

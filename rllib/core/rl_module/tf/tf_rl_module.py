@@ -12,6 +12,8 @@ _, tf, _ = try_import_tf()
 class TfRLModule(RLModule, tf.keras.Model):
     """Base class for RLlib TF RLModules."""
 
+    framework = "tf2"
+
     def __init__(self, *args, **kwargs) -> None:
         tf.keras.Model.__init__(self)
         RLModule.__init__(self, *args, **kwargs)

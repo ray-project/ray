@@ -3,7 +3,7 @@ import time
 from typing import Dict, List
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # Resource requests are considered stale after this number of seconds, and
@@ -19,7 +19,7 @@ ARTIFICIAL_CPU_SCALING_FACTOR = 1.2
 
 @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
-    """Actor to make resource requests to autoscaler for the datasets.
+    """Actor to make resource requests to autoscaler for the datastreams.
 
     The resource requests are set to timeout after RESOURCE_REQUEST_TIMEOUT seconds.
     For those live requests, we keep track of the last request made for each execution,
@@ -88,7 +88,7 @@ class AutoscalingRequester:
 
 
 def get_or_create_autoscaling_requester_actor():
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     # Pin the stats actor to the local node so it fate-shares with the driver.
     # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
@@ -96,6 +96,7 @@ def get_or_create_autoscaling_requester_actor():
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
         soft=True,
+        _spill_on_unavailable=True,
     )
     return AutoscalingRequester.options(
         name="AutoscalingRequester",

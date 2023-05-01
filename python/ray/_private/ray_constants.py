@@ -400,14 +400,15 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
+IS_WINDOWS_OR_OSX = sys.platform == "darwin" or sys.platform == "win32"
 ENABLE_RAY_CLUSTERS_ENV_VAR = "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"
 ENABLE_RAY_CLUSTER = env_bool(
     ENABLE_RAY_CLUSTERS_ENV_VAR,
-    not (sys.platform == "darwin" or sys.platform == "win32"),
+    not IS_WINDOWS_OR_OSX,
 )
 
 SESSION_LATEST = "session_latest"

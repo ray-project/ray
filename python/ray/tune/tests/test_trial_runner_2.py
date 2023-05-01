@@ -369,7 +369,7 @@ class TrialRunnerTest2(unittest.TestCase):
         #         checkpoint_00000/
         trial = Trial(
             "__fake",
-            local_dir=tempdir,
+            experiment_path=tempdir,
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         )
         trial.init_local_path()

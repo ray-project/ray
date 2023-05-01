@@ -298,7 +298,7 @@ class MinimalClusterManager(ClusterManager):
     def start_cluster(self, timeout: float = 600.0):
         pass
 
-    def terminate_cluster(self):
+    def terminate_cluster_ex(self, wait: bool = False):
         pass
 
     def get_cluster_address(self) -> str:

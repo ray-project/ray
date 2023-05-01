@@ -75,6 +75,8 @@ class _SubscriberBase:
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         self._subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
         self._last_batch_size = 0
+        self._max_processed_sequence_id = 0
+        self._publisher_id = b""
 
     # Batch size of the result from last poll. Used to indicate whether the
     # subscriber can keep up.
@@ -91,7 +93,9 @@ class _SubscriberBase:
 
     def _poll_request(self):
         return gcs_service_pb2.GcsSubscriberPollRequest(
-            subscriber_id=self._subscriber_id
+            subscriber_id=self._subscriber_id,
+            max_processed_sequence_id=self._max_processed_sequence_id,
+            publisher_id=self._publisher_id,
         )
 
     def _unsubscribe_request(self, channels):
@@ -272,7 +276,21 @@ class _SyncSubscriber(_SubscriberBase):
 
             if fut.done():
                 self._last_batch_size = len(fut.result().pub_messages)
+                if fut.result().publisher_id != self._publisher_id:
+                    if self._publisher_id != "":
+                        logger.debug(
+                            f"replied publisher_id {fut.result().publisher_id} "
+                            f"different from {self._publisher_id}, this should "
+                            "only happens during gcs failover."
+                        )
+                    self._publisher_id = fut.result().publisher_id
+                    self._max_processed_sequence_id = 0
+
                 for msg in fut.result().pub_messages:
+                    if msg.sequence_id <= self._max_processed_sequence_id:
+                        logger.warn(f"Ignoring out of order message {msg}")
+                        continue
+                    self._max_processed_sequence_id = msg.sequence_id
                     if msg.channel_type != self._channel:
                         logger.warn(f"Ignoring message from unsubscribed channel {msg}")
                         continue
@@ -538,7 +556,20 @@ class _AioSubscriber(_SubscriberBase):
                 break
             try:
                 self._last_batch_size = len(poll.result().pub_messages)
+                if poll.result().publisher_id != self._publisher_id:
+                    if self._publisher_id != "":
+                        logger.debug(
+                            f"replied publisher_id {poll.result().publisher_id}"
+                            f"different from {self._publisher_id}, this should "
+                            "only happens during gcs failover."
+                        )
+                    self._publisher_id = poll.result().publisher_id
+                    self._max_processed_sequence_id = 0
                 for msg in poll.result().pub_messages:
+                    if msg.sequence_id <= self._max_processed_sequence_id:
+                        logger.warn(f"Ignoring out of order message {msg}")
+                        continue
+                    self._max_processed_sequence_id = msg.sequence_id
                     self._queue.append(msg)
             except grpc.RpcError as e:
                 if self._should_terminate_polling(e):

@@ -50,8 +50,8 @@ from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
-from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -285,6 +285,8 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
 def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
+    from ray.scripts.scripts import main as ray_main
+
     if sys.platform == "win32":
         result = check_call_module(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
@@ -1456,11 +1458,12 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray._private.worker.global_worker.node_ip_address
-    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
+    head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
-        resources={f"node:{head_node_ip}": 0.001},
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            node_id=head_node_id, soft=False
+        ),
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime,

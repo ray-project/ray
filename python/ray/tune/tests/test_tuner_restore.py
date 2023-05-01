@@ -42,6 +42,12 @@ def ray_start_2_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
+
+
 @pytest.fixture(scope="module")
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4, configure_logging=False)
@@ -146,7 +152,7 @@ def test_tuner_restore_num_trials(ray_start_2_cpus, tmpdir):
         _dummy_train_fn,
         tune_config=TuneConfig(num_samples=4, metric="_metric", mode="max"),
         run_config=RunConfig(
-            name="test_tuner_restore_num_trials", local_dir=str(tmpdir)
+            name="test_tuner_restore_num_trials", storage_path=str(tmpdir)
         ),
     )
     results = tuner.fit()
@@ -179,7 +185,7 @@ def test_tuner_restore_resume_errored(ray_start_2_cpus, tmpdir):
             num_samples=1,
         ),
         run_config=RunConfig(
-            name="test_tuner_restore_resume_errored", local_dir=str(tmpdir)
+            name="test_tuner_restore_resume_errored", storage_path=str(tmpdir)
         ),
         param_space={
             # Second and third trial fail
@@ -231,7 +237,7 @@ def test_tuner_restore_restart_errored(ray_start_2_cpus, tmpdir):
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="test_tuner_restore_restart_errored",
-            local_dir=str(tmpdir),
+            storage_path=str(tmpdir),
         ),
         param_space={
             # Second and third trial fail
@@ -284,7 +290,7 @@ def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir):
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="test_tuner_resume_unfinished",
-            local_dir=str(tmpdir),
+            storage_path=str(tmpdir),
             failure_config=FailureConfig(fail_fast=False),
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
@@ -345,12 +351,12 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="test_tuner_resume_errored_only",
-            local_dir=str(tmpdir),
+            storage_path=str(tmpdir),
             failure_config=FailureConfig(fail_fast=False),
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
         param_space={
-            # First trial succeeds, second hangs, third fails, fourth hangs
+            # First trial succeeds, second hangs, third fails, fourth hangs.
             "failing_hanging": tune.grid_search(
                 [
                     (None, None),
@@ -393,20 +399,20 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys):
+def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path):
     """Check that restoring Tuner() objects from cloud storage works"""
     tuner = Tuner(
         _dummy_train_fn,
         run_config=RunConfig(
             name="exp_dir",
+            storage_path=configure_storage_path,
             local_dir=str(tmpdir / "ray_results"),
-            sync_config=tune.SyncConfig(upload_dir="memory:///test/restore"),
         ),
     )
     tuner.fit()
 
     check_path = tmpdir / "check_save"
-    download_from_uri("memory:///test/restore", str(check_path))
+    download_from_uri(storage_path, str(check_path))
     remote_contents = os.listdir(check_path / "exp_dir")
 
     assert "tuner.pkl" in remote_contents
@@ -417,7 +423,7 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
 
     (tmpdir / "ray_results").remove(ignore_errors=True)
 
-    tuner2 = Tuner.restore("memory:///test/restore/exp_dir", trainable=_dummy_train_fn)
+    tuner2 = Tuner.restore(storage_path + "/exp_dir", trainable=_dummy_train_fn)
     results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
@@ -438,8 +444,27 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
     assert prev_lstat.st_size != after_lstat.st_size
 
     # Overwriting should work
-    tuner3 = Tuner.restore("memory:///test/restore/exp_dir", trainable=_dummy_train_fn)
+    tuner3 = Tuner.restore(storage_path + "/exp_dir", trainable=_dummy_train_fn)
     tuner3.fit()
+
+
+def test_tuner_restore_from_cloud_manual_path(
+    ray_start_2_cpus, tmpdir, clear_memory_filesys
+):
+    storage_path = "memory:///test/restore"
+    _test_tuner_restore_from_cloud(
+        tmpdir, configure_storage_path=storage_path, storage_path=storage_path
+    )
+
+
+def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir):
+    storage_path = "mock:///test/restore"
+
+    ray.init(num_cpus=2, configure_logging=False, storage=storage_path)
+
+    _test_tuner_restore_from_cloud(
+        tmpdir / "local", configure_storage_path=None, storage_path=storage_path
+    )
 
 
 @pytest.mark.parametrize(
@@ -460,8 +485,8 @@ def test_tuner_restore_latest_available_checkpoint(
         ),
         run_config=RunConfig(
             name="test_tuner_restore_latest_available_checkpoint",
+            storage_path=upload_uri,
             local_dir=str(tmpdir),
-            sync_config=tune.SyncConfig(upload_dir=upload_uri),
         ),
         param_space={"failing_hanging": (fail_marker, None), "num_epochs": 4},
     )
@@ -556,7 +581,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
             run_config=RunConfig(
                 name="tryout_restore",
                 stop={"training_iteration": 5},
-                local_dir=str(tmpdir),
+                storage_path=str(tmpdir),
                 failure_config=FailureConfig(max_failures=1),
                 checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             ),
@@ -581,7 +606,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
 
     tuner = Tuner(
         train_func_1,
-        run_config=RunConfig(name="overwrite_trainable", local_dir=str(tmpdir)),
+        run_config=RunConfig(name="overwrite_trainable", storage_path=str(tmpdir)),
         param_space={"data": 1},
     )
     tuner.fit()
@@ -667,7 +692,7 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
         create_trainable_with_params(),
         run_config=RunConfig(
             name=exp_name,
-            local_dir=str(tmp_path),
+            storage_path=str(tmp_path),
             stop={"training_iteration": 3},
             failure_config=FailureConfig(max_failures=0),
             checkpoint_config=CheckpointConfig(
@@ -714,7 +739,7 @@ def test_tuner_restore_from_moved_experiment_path(
         ),
         run_config=RunConfig(
             name=old_exp_name,
-            local_dir=str(old_local_dir),
+            storage_path=str(old_local_dir),
             checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
         ),
         param_space={
@@ -743,7 +768,7 @@ def test_tuner_restore_from_moved_experiment_path(
         analysis = tune.run(
             _train_fn_sometimes_failing,
             name=new_exp_name,
-            local_dir=str(new_local_dir),
+            storage_path=str(new_local_dir),
             resume="AUTO+ERRORED",
         )
         results = ResultGrid(analysis)
@@ -790,8 +815,8 @@ def test_tuner_restore_from_moved_cloud_uri(
         failing_fn,
         run_config=RunConfig(
             name="exp_dir",
+            storage_path="memory:///original",
             local_dir=str(tmp_path / "ray_results"),
-            sync_config=tune.SyncConfig(upload_dir="memory:///original"),
         ),
         tune_config=TuneConfig(trial_dirname_creator=lambda _: "test"),
     )
@@ -842,7 +867,7 @@ def test_tuner_restore_from_moved_cloud_uri(
 def test_restore_from_relative_path(ray_start_2_cpus, chdir_tmpdir):
     tuner = Tuner(
         _dummy_train_fn_with_report,
-        run_config=RunConfig(local_dir="relative_dir", name="exp_name"),
+        run_config=RunConfig(storage_path="relative_dir", name="exp_name"),
     )
     tuner.fit()
 
@@ -876,7 +901,7 @@ def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
 
     tuner = Tuner(
         _train_fn_sometimes_failing,
-        run_config=RunConfig(local_dir=str(tmpdir), name="exp_name"),
+        run_config=RunConfig(storage_path=str(tmpdir), name="exp_name"),
         tune_config=TuneConfig(
             search_alg=MockSearcher(),
             scheduler=MockScheduler(),
@@ -959,7 +984,7 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="exp_name",
-            local_dir=str(tmp_path),
+            storage_path=str(tmp_path),
             checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
         ),
         param_space=param_space,
@@ -1008,8 +1033,8 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         lambda config: None,
         run_config=RunConfig(
             name=name,
+            storage_path=upload_dir,
             local_dir=str(tmp_path),
-            sync_config=tune.SyncConfig(upload_dir=upload_dir),
         ),
         tune_config=TuneConfig(trial_dirname_creator=lambda t: "trial_dir"),
     )
@@ -1065,7 +1090,7 @@ def testParamSpaceOverwrite(tmp_path, monkeypatch):
         param_space=param_space,
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
-            local_dir=str(tmp_path),
+            storage_path=str(tmp_path),
             name="param_space_overwrite",
             callbacks=[_FailOnStats(num_trials=4, num_finished=2)],
         ),

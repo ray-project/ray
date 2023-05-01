@@ -75,6 +75,17 @@ py_test(
 )
 
 py_test(
+    name = "test_experiment_restore",
+    size = "medium",
+    srcs = [
+        "tests/test_experiment_restore.py",
+        "tests/_test_experiment_restore_run.py"
+    ],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_errors",
     size = "small",
     srcs = ["tests/test_errors.py"],
@@ -162,6 +173,13 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_util_torch_dist",
+    size = "small",
+    srcs = ["tests/test_util_torch_dist.py"],
+    tags = ["team:ml", "gpu", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/tests/execution directory.

@@ -8,7 +8,6 @@ import pytest
 import ray
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import ReadTask, Reader
@@ -67,7 +66,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.shutdown()
 
     ray.init(num_cpus=8)
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original = ctx.block_splitting_enabled
@@ -99,32 +98,21 @@ def test_enable_in_ray_client(ray_start_cluster_enabled):
     address = "ray://localhost:10004"
 
     # Import of ray.data.context module, and this triggers the initialization of
-    # default configuration values in DatasetContext.
-    from ray.data.context import DatasetContext
+    # default configuration values in DataContext.
+    from ray.data.context import DataContext
 
-    assert DatasetContext.get_current().block_splitting_enabled
+    assert DataContext.get_current().block_splitting_enabled
 
     # Verify Ray client also has dynamic block splitting enabled.
     ray.init(address)
-    assert DatasetContext.get_current().block_splitting_enabled
+    assert DataContext.get_current().block_splitting_enabled
 
 
 @pytest.mark.parametrize(
     "compute",
     [
         "tasks",
-        # TODO(Clark): Remove skip for old execution backend once the old execution
-        # backend is removed.
-        pytest.param(
-            "actors",
-            marks=pytest.mark.skipif(
-                not DatasetContext.get_current().new_execution_backend,
-                reason=(
-                    "Dynamic block splitting for the actor compute strategy is only "
-                    "enabled for the new execution backend."
-                ),
-            ),
-        ),
+        "actors",
     ],
 )
 def test_dataset(
@@ -133,6 +121,10 @@ def test_dataset(
     target_max_block_size,
     compute,
 ):
+    if compute == "tasks":
+        compute = ray.data._internal.compute.TaskPoolStrategy()
+    else:
+        compute = ray.data.ActorPoolStrategy()
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
     ray.init(num_cpus=2)
@@ -193,7 +185,7 @@ def test_dataset(
     assert len(ds.take(5)) == 5
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
     for batch in ds.iter_batches(batch_size=10):
-        assert len(batch) == 10
+        assert len(batch["one"]) == 10
 
 
 def test_dataset_pipeline(
@@ -217,7 +209,7 @@ def test_dataset_pipeline(
     dsp = dsp.map_batches(lambda x: x)
     result_batches = list(ds.iter_batches(batch_size=5))
     for batch in result_batches:
-        assert len(batch) == 5
+        assert len(batch["one"]) == 5
     assert len(result_batches) == num_blocks_per_task * num_tasks / 5
 
     dsp = ds.window(blocks_per_window=2)

@@ -8,6 +8,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
     Filter,
@@ -58,23 +59,22 @@ def _plan_udf_map_op(
 
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
-        fn_ = op._fn
+
+        fn_ = make_callable_class_concurrent(op._fn)
 
         def fn(item: Any) -> Any:
-            # Wrapper providing cached instantiation of stateful callable class
-            # UDFs.
+            assert ray.data._cached_fn is not None
+            assert ray.data._cached_cls == fn_
+            return ray.data._cached_fn(item)
+
+        def init_fn():
             if ray.data._cached_fn is None:
                 ray.data._cached_cls = fn_
                 ray.data._cached_fn = fn_(*fn_constructor_args, **fn_constructor_kwargs)
-            else:
-                # A worker is destroyed when its actor is killed, so we
-                # shouldn't have any worker reuse across different UDF
-                # applications (i.e. different map operators).
-                assert ray.data._cached_cls == fn_
-            return ray.data._cached_fn(item)
 
     else:
         fn = op._fn
+        init_fn = None
     fn_args = (fn,)
     if op._fn_args:
         fn_args += op._fn_args
@@ -86,6 +86,7 @@ def _plan_udf_map_op(
     return MapOperator.create(
         do_map,
         input_physical_dag,
+        init_fn=init_fn,
         name=op.name,
         compute_strategy=compute,
         min_rows_per_bundle=op._target_block_size,

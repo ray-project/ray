@@ -1,0 +1,12 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs:
+    - us-west1-c
+
+max_workers: 0
+
+head_node_type:
+    name: head_node
+    instance_type: n2-standard-4
+
+worker_node_types: []

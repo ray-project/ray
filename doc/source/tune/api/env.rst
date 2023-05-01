@@ -89,6 +89,8 @@ These are the environment variables Ray Tune currently considers:
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state is synced
   multiple times in that many seconds. Defaults to 30 (seconds).
+* **TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state syncing
+  takes longer than this time in seconds. Defaults to 30 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 * **TUNE_RESTORE_RETRY_NUM**: The number of retries that are done before a particular trial's restore is determined
   unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.

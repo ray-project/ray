@@ -5,7 +5,7 @@ Ray Glossary
 
 On this page you find a list of important terminology used throughout the Ray
 documentation, sorted alphabetically. If you're interested in a glossary for
-Ray Data specifically, please see the :ref:`Ray Datasets Glossary<datasets_glossary>`.
+Ray Data specifically, please see the :ref:`Ray Data Glossary<datastreams_glossary>`.
 
 .. glossary::
 
@@ -124,7 +124,7 @@ Ray Data specifically, please see the :ref:`Ray Datasets Glossary<datasets_gloss
 
     .. TODO: Data Shuffling
 
-    .. TODO: Dataset pipeline
+    .. TODO: Datastream pipeline
 
     Deployment
         A deployment is a group of actors that can handle traffic in Ray Serve.
@@ -379,7 +379,7 @@ Ray Data specifically, please see the :ref:`Ray Datasets Glossary<datasets_gloss
         on input data with a trained model.
 
     Preprocessor
-        :ref:`An interface used to preprocess a Ray Dataset<air-preprocessor-ref>` for
+        :ref:`An interface used to preprocess a Datastream<air-preprocessor-ref>` for
         training and inference (prediction) with other AIR components. Preprocessors
         can be stateful, as they can be fitted on the training dataset before being
         used to transform the training and evaluation datasets.

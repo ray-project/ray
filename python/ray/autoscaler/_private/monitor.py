@@ -17,8 +17,8 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_pubsub import GcsPublisher
-from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (

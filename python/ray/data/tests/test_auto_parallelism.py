@@ -2,7 +2,7 @@ import pytest
 from dataclasses import dataclass, astuple
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.util import _autodetect_parallelism
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.tests.conftest import *  # noqa
@@ -89,7 +89,7 @@ def test_autodetect_parallelism(avail_cpus, data_size, expected):
     result, _ = _autodetect_parallelism(
         parallelism=-1,
         cur_pg=None,
-        ctx=DatasetContext.get_current(),
+        ctx=DataContext.get_current(),
         reader=MockReader(),
         avail_cpus=avail_cpus,
     )
@@ -98,7 +98,7 @@ def test_autodetect_parallelism(avail_cpus, data_size, expected):
 
 def test_auto_parallelism_basic(shutdown_only):
     ray.init(num_cpus=8)
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.min_parallelism = 1
     # Datasource bound.
     ds = ray.data.range_tensor(5, shape=(100,), parallelism=-1)
@@ -117,7 +117,7 @@ def test_auto_parallelism_placement_group(shutdown_only):
 
     @ray.remote
     def run():
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         context.min_parallelism = 1
         ds = ray.data.range_tensor(10000, shape=(100,), parallelism=-1)
         return ds.num_blocks()

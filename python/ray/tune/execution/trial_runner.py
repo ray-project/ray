@@ -87,11 +87,9 @@ class _TuneControllerBase:
             Trial objects.
         scheduler: Defaults to FIFOScheduler.
         experiment_path: Path where global experiment state checkpoints
-            are saved and restored from.
+            are saved and restored from. If this is a remote URI,
+            experiment checkpoints will be synced to this location.
         sync_config: See :class:`~ray.tune.syncer.SyncConfig`.
-            Within sync config, the `upload_dir` specifies cloud storage, and
-            experiment state checkpoints will be synced to the `remote_checkpoint_dir`:
-            `{sync_config.upload_dir}/{experiment_name}`.
         experiment_dir_name: Experiment directory name.
             See :class:`~ray.tune.experiment.Experiment`.
         stopper: Custom class for stopping whole experiments. See ``Stopper``.
@@ -317,9 +315,14 @@ class _TuneControllerBase:
 
     @property
     def experiment_state_path(self) -> str:
+        """Returns the local experiment checkpoint path."""
         return os.path.join(
             self._local_experiment_path, self.experiment_state_file_name
         )
+
+    @property
+    def experiment_path(self) -> str:
+        return self._remote_experiment_path or self._local_experiment_path
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
@@ -329,12 +332,6 @@ class _TuneControllerBase:
             sync_config=self._sync_config,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
-
-    @property
-    def _remote_checkpoint_dir(self):
-        if self._sync_config.upload_dir and self._experiment_dir_name:
-            return str(URI(self._sync_config.upload_dir) / self._experiment_dir_name)
-        return None
 
     @classmethod
     def checkpoint_exists(cls, directory: str) -> bool:

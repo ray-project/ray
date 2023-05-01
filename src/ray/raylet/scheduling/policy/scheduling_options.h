@@ -75,12 +75,17 @@ struct SchedulingOptions {
   static SchedulingOptions NodeAffinity(bool avoid_local_node,
                                         bool require_node_available,
                                         std::string node_id,
-                                        bool soft) {
+                                        bool soft,
+                                        bool spill_on_unavailable = false) {
+    if (spill_on_unavailable) {
+      RAY_CHECK(soft);
+    }
     SchedulingOptions scheduling_options =
         Hybrid(avoid_local_node, require_node_available);
     scheduling_options.scheduling_type = SchedulingType::NODE_AFFINITY;
     scheduling_options.node_affinity_node_id = node_id;
     scheduling_options.node_affinity_soft = soft;
+    scheduling_options.node_affinity_spill_on_unavailable = spill_on_unavailable;
     return scheduling_options;
   }
 
@@ -159,6 +164,7 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
+  bool node_affinity_spill_on_unavailable = false;
   // The node where the task is preferred to be placed. By default, this node id
   // is empty, which means no preferred node.
   std::string preferred_node_id;
