@@ -60,7 +60,6 @@ def test_experiment_restore(tmp_path, runner_type):
         - The test will stop the script with a SIGINT at a random time between
         4-8 iterations after each restore.
 
-
     Requirements:
     - Req 1: Reasonable runtime
         - The experiment should finish within 2 * 16 = 32 seconds.
