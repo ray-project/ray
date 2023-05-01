@@ -291,8 +291,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
 
   // Aggregate data to be sent.
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
-  auto to_rpc_event_fn = [this,
-                          &agg_task_events,
+  auto to_rpc_event_fn = [&agg_task_events,
                           &task_attempts_dropped,
                           &profile_events_dropped](std::unique_ptr<TaskEvent> &event) {
     if (task_attempts_dropped.count(event->GetTaskAttempt())) {
