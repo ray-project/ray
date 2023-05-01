@@ -9,15 +9,13 @@ from typing import (
     Union,
 )
 
-import tree  # pip install dm_tree
-
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface
+    RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule

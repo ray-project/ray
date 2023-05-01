@@ -3,7 +3,7 @@ from typing import Any, List, Mapping, Tuple, Union
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface
+    RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
