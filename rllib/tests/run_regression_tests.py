@@ -164,7 +164,13 @@ if __name__ == "__main__":
                         "episode_reward_mean"
                     ]
                     if check_eval
-                    else t.last_result["sampler_results"]["episode_reward_mean"]
+                    else (
+                        # Some algos don't store sampler results under `sampler_results`
+                        # e.g. ARS. Need to keep this logic around for now.
+                        t.last_result["sampler_results"]["episode_reward_mean"]
+                        if "sampler_results" in t.last_result
+                        else t.last_result["episode_reward_mean"]
+                    )
                 )
 
                 # If we are using evaluation workers, we may have
