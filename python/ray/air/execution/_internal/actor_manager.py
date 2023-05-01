@@ -360,6 +360,13 @@ class RayActorManager:
                 # Start Ray actor
                 actor = remote_actor_cls.remote(**kwargs)
 
+                # Track
+                self._live_actors_to_ray_actors_resources[tracked_actor] = (
+                    actor,
+                    acquired_resources,
+                )
+                self._live_resource_cache = None
+
                 # Schedule ready future
                 future = actor.__ray_ready__.remote()
 
@@ -391,12 +398,6 @@ class RayActorManager:
                     on_result=on_actor_start,
                     on_error=on_error,
                 )
-
-                self._live_actors_to_ray_actors_resources[tracked_actor] = (
-                    actor,
-                    acquired_resources,
-                )
-                self._live_resource_cache = None
 
                 self._enqueue_cached_actor_tasks(tracked_actor=tracked_actor)
 
