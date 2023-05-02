@@ -100,17 +100,6 @@ class TunerInternal:
                 param_space=param_space,
             )
 
-        self.trainable = trainable
-        param_space = param_space or {}
-        if isinstance(param_space, _Config):
-            param_space = param_space.to_dict()
-        if not isinstance(param_space, dict):
-            raise ValueError(
-                "The `param_space` passed to the Tuner` must be a dict. "
-                f"Got '{type(param_space)}' instead."
-            )
-        self.param_space = param_space
-
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
@@ -127,6 +116,17 @@ class TunerInternal:
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        self.trainable = trainable
+        param_space = param_space or {}
+        if isinstance(param_space, _Config):
+            param_space = param_space.to_dict()
+        if not isinstance(param_space, dict):
+            raise ValueError(
+                "The `param_space` passed to the Tuner` must be a dict. "
+                f"Got '{type(param_space)}' instead."
+            )
+        self.param_space = param_space
 
         self._is_restored = False
         self._resume_config = None
@@ -146,7 +146,7 @@ class TunerInternal:
         # to restore from.
         experiment_checkpoint_path = Path(self._experiment_checkpoint_dir)
         with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
-            pickle.dump(self, fp)
+            pickle.dump(self.__getstate__(), fp)
 
         try:
             pickle.dumps(self.trainable)
@@ -233,7 +233,7 @@ class TunerInternal:
             )
 
     def _validate_trainable_on_restore(
-        self, new_trainable: TrainableType, old_trainable_name: str
+        self, new_trainable: TrainableType, old_trainable_name: Optional[str]
     ):
         """Determines whether or not the trainable given on restore is valid.
 
@@ -246,6 +246,9 @@ class TunerInternal:
         Raises:
             ValueError: if the trainable name does not match.
         """
+        if not old_trainable_name:
+            return
+
         trainable_name = Experiment.get_trainable_name(new_trainable)
 
         if trainable_name != old_trainable_name:
@@ -257,7 +260,9 @@ class TunerInternal:
             )
 
     def _validate_param_space_on_restore(
-        self, new_param_space: Dict[str, Any], flattened_param_space_keys: List[str]
+        self,
+        new_param_space: Dict[str, Any],
+        flattened_param_space_keys: Optional[List[str]],
     ):
         """Determines whether the (optionally) re-specified `param_space` is valid.
 
@@ -267,6 +272,9 @@ class TunerInternal:
         Raises:
             ValueError: if not all keys match the original param_space.
         """
+        if flattened_param_space_keys is None:
+            return
+
         keys = sorted(flatten_dict(new_param_space).keys())
         if keys != flattened_param_space_keys:
             raise ValueError(
@@ -302,12 +310,13 @@ class TunerInternal:
 
         # Load tuner state
         with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-            restored_tuner: TunerInternal = pickle.load(fp)
-            tuner_state = restored_tuner.__getstate__()
+            tuner_state = pickle.load(fp)
 
             # NOTE: These are magic keys used for validating restore args.
-            old_trainable_name = tuner_state.pop("__trainable_name")
-            flattened_param_space_keys = tuner_state.pop("__flattened_param_space_keys")
+            old_trainable_name = tuner_state.pop("__trainable_name", None)
+            flattened_param_space_keys = tuner_state.pop(
+                "__flattened_param_space_keys", None
+            )
 
             self.__setstate__(tuner_state)
 
@@ -336,7 +345,7 @@ class TunerInternal:
 
             trainer.run_config = self._run_config
 
-        if overwrite_param_space:
+        if overwrite_param_space is not None:
             self.param_space = overwrite_param_space
             self._validate_param_space_on_restore(
                 new_param_space=self.param_space,
@@ -687,7 +696,7 @@ class TunerInternal:
 
     def __setstate__(self, state):
         # Make sure the magic metadata gets removed first.
-        state.pop("__flattened_param_space_keys")
-        state.pop("__trainable_name")
+        state.pop("__flattened_param_space_keys", None)
+        state.pop("__trainable_name", None)
 
         self.__dict__.update(state)
