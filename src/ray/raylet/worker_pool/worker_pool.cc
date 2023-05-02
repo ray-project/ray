@@ -115,10 +115,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
 #endif
 
   cache_size_policy_ = std::make_shared<FutureIdlePoolSizePolicy>(
-    num_workers_soft_limit_,
-    maximum_startup_concurrency_,
-    get_time_
-  );
+      num_workers_soft_limit_, maximum_startup_concurrency_, get_time_);
 
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
@@ -172,93 +169,94 @@ void WorkerPool::Start() {
   cache_size_policy_->OnStart();
   MaybeRefillIdlePool();
 
-  //if (RayConfig::instance().enable_worker_prestart()) {
+  // if (RayConfig::instance().enable_worker_prestart()) {
   //  //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
   //  MaybeRefillIdlePool();
   //}
 }
 
 void WorkerPool::MaybeRefillIdlePool() {
-    //TODO add num_prestart_python_workers_ 
+  // TODO add num_prestart_python_workers_
 
-    size_t num_idle_workers_to_create = cache_size_policy_->GetNumIdleProcsToCreate(
-        idle_of_all_languages_.size(),
-        GetNumRunningWorkers(),
-        GetNumStartingWorkers()
-    );
+  size_t num_idle_workers_to_create = cache_size_policy_->GetNumIdleProcsToCreate(
+      idle_of_all_languages_.size(), GetNumRunningWorkers(), GetNumStartingWorkers());
 
-    RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_idle_workers_to_create: " << num_idle_workers_to_create;
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_idle_workers_to_create);
+  RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_idle_workers_to_create: "
+                 << num_idle_workers_to_create;
+  PrestartDefaultCpuWorkers(Language::PYTHON, num_idle_workers_to_create);
 
-    // TODO(cade) move this around to class member
-    auto GetFateSharingWorkers = [this] (std::shared_ptr<WorkerInterface> worker) {
-      auto process = worker->GetProcess();
-      return GetWorkersByProcess(process);
-    };
+  // TODO(cade) move this around to class member
+  auto GetFateSharingWorkers = [this](std::shared_ptr<WorkerInterface> worker) {
+    auto process = worker->GetProcess();
+    return GetWorkersByProcess(process);
+  };
 
-    // TODO(cade) make this const?
-    auto CanKillFateSharingWorkers = [this] (int64_t now, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers) {
+  // TODO(cade) make this const?
+  auto CanKillFateSharingWorkers =
+      [this](int64_t now,
+             const std::unordered_set<std::shared_ptr<WorkerInterface>> &fate_sharers) {
         // TODO(cade) make const
-        for (auto& worker : fate_sharers) {
-            const auto& worker_state = this->states_by_lang_.at(worker->GetLanguage());
-            {
-                auto worker_startup_token = worker->GetStartupToken();
-                auto it = worker_state.worker_processes.find(worker_startup_token);
-                if (it != worker_state.worker_processes.end() && it->second.is_pending_registration) {
-                    // A Java worker process may hold multiple workers.
-                    // Some workers of this process are pending registration. Skip killing this worker.
-                    return false;
-                }
+        for (auto &worker : fate_sharers) {
+          const auto &worker_state = this->states_by_lang_.at(worker->GetLanguage());
+          {
+            auto worker_startup_token = worker->GetStartupToken();
+            auto it = worker_state.worker_processes.find(worker_startup_token);
+            if (it != worker_state.worker_processes.end() &&
+                it->second.is_pending_registration) {
+              // A Java worker process may hold multiple workers.
+              // Some workers of this process are pending registration. Skip killing this
+              // worker.
+              return false;
             }
-            
-            // Another worker in this process isn't idle, so
-            // this process can't be killed.
-            if (worker_state.idle.count(worker) == 0) {
-                return false;
-            }
+          }
 
-            // Another worker in this process hasn't been idle for a while, so
-            // this process can't be killed.
-            if (now - this->idle_of_all_languages_map_.at(worker) < RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-                return false;
-            }
+          // Another worker in this process isn't idle, so
+          // this process can't be killed.
+          if (worker_state.idle.count(worker) == 0) {
+            return false;
+          }
 
-            // Skip killing the worker process if there's any inflight `Exit` RPC requests to
-            // this worker process.
-            if (this->pending_exit_idle_workers_.count(worker->WorkerId()) > 0) {
-                return false;
-            }
+          // Another worker in this process hasn't been idle for a while, so
+          // this process can't be killed.
+          if (now - this->idle_of_all_languages_map_.at(worker) <
+              RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+            return false;
+          }
+
+          // Skip killing the worker process if there's any inflight `Exit` RPC requests
+          // to this worker process.
+          if (this->pending_exit_idle_workers_.count(worker->WorkerId()) > 0) {
+            return false;
+          }
         }
 
         return true;
-    };
+      };
 
-    // Get running size.
-    // TODO(cade) move this to own function
-    // TODO(cade) consider separating into alive_workers_size and pending_exit_idle_workers
-    size_t running_size = 0;
-    for (const auto &worker : GetAllRegisteredWorkers()) {
-      if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-        running_size++;
-      }
+  // Get running size.
+  // TODO(cade) move this to own function
+  // TODO(cade) consider separating into alive_workers_size and pending_exit_idle_workers
+  size_t running_size = 0;
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+      running_size++;
     }
+  }
 
-    size_t alive_size = running_size;
-    size_t pending_exit_size = pending_exit_idle_workers_.size();
+  size_t alive_size = running_size;
+  size_t pending_exit_size = pending_exit_idle_workers_.size();
 
-    // Subtract the number of pending exit workers first. This will help us killing more
-    // idle workers that it needs to.
-    RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
-    running_size -= pending_exit_idle_workers_.size();
+  // Subtract the number of pending exit workers first. This will help us killing more
+  // idle workers that it needs to.
+  RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
+  running_size -= pending_exit_idle_workers_.size();
 
-    cache_size_policy_->GetIdleProcsToKill(
-        alive_size,
-        pending_exit_size,
-        0,
-        idle_of_all_languages_,
-        GetFateSharingWorkers,
-        CanKillFateSharingWorkers
-    );
+  cache_size_policy_->GetIdleProcsToKill(alive_size,
+                                         pending_exit_size,
+                                         0,
+                                         idle_of_all_languages_,
+                                         GetFateSharingWorkers,
+                                         CanKillFateSharingWorkers);
 }
 
 size_t WorkerPool::GetNumStartingWorkers() {
@@ -956,7 +954,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     cache_size_policy_->OnDriverRegistered();
     MaybeRefillIdlePool();
 
-    //if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+    // if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver()
+    // &&
     //    !RayConfig::instance().enable_worker_prestart()) {
     //  RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
     //  //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
@@ -1502,8 +1501,8 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   }
 
   // TODO(cade) this one requires more work.
-  //cache_size_policy_->OnPrestart();
-  //MaybeRefillIdlePool();
+  // cache_size_policy_->OnPrestart();
+  // MaybeRefillIdlePool();
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
   // The number of available workers that can be used for this task spec.
@@ -1519,9 +1518,9 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-    // musing(cade): I should not use the MaybeRefillIdlePool function here as it's a scheduling hint (not desired state).
-    // We should modify this later, for example with forkserver.
-    // This means that Ray's goodness depends on waiting 2s for killing...
+    // musing(cade): I should not use the MaybeRefillIdlePool function here as it's a
+    // scheduling hint (not desired state). We should modify this later, for example with
+    // forkserver. This means that Ray's goodness depends on waiting 2s for killing...
     PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
   }
 }

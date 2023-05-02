@@ -14,13 +14,13 @@
 
 #pragma once
 
-#include "ray/raylet/worker.h"
-
 #include <cstddef>
-#include <vector>
+#include <list>
 #include <memory>
 #include <unordered_set>
-#include <list>
+#include <vector>
+
+#include "ray/raylet/worker.h"
 
 //#include "gtest/gtest.h"
 
@@ -31,37 +31,38 @@ Goal:
     remove decision making on which processes to kill from the worker pool.
 
 Worker pool policy
-	inputs:
-	* on_start
-	* on_first_driver
-	* on_job_termination
-	* on_prestart
+        inputs:
+        * on_start
+        * on_first_driver
+        * on_job_termination
+        * on_prestart
 
-	outputs:
-	* get_workers_to_create
-	* get_workers_to_kill
+        outputs:
+        * get_workers_to_create
+        * get_workers_to_kill
 
 Current policy:
-	inputs:
-	* on_start. If prestart is enabled, start N workers. Else do nothing.
-	* on_first_driver. If prestart is enabled, start N workers. Else do nothing.
-	* on_job_termination. Do nothing?
-	* on_prestart. Start up min(max_concurrency, missing_idle_workers).
+        inputs:
+        * on_start. If prestart is enabled, start N workers. Else do nothing.
+        * on_first_driver. If prestart is enabled, start N workers. Else do nothing.
+        * on_job_termination. Do nothing?
+        * on_prestart. Start up min(max_concurrency, missing_idle_workers).
 
-	outputs:
-	* get_workers_to_create. The ones specified by on_prestart.
-	* get_workers_to_kill. Any that are >2 seconds old + other conditions.
+        outputs:
+        * get_workers_to_create. The ones specified by on_prestart.
+        * get_workers_to_kill. Any that are >2 seconds old + other conditions.
 
 Future policy:
-	inputs:
-	* on_start. Set desired number to 64.
-	* on_first_driver. Set desired number to 64.
-	* on_job_termination. Add terminated job to list of dead jobs.
-	* on_prestart. Make sure there are enough idle workers. If not, temporarily boost the number of idle workers.
+        inputs:
+        * on_start. Set desired number to 64.
+        * on_first_driver. Set desired number to 64.
+        * on_job_termination. Add terminated job to list of dead jobs.
+        * on_prestart. Make sure there are enough idle workers. If not, temporarily boost
+the number of idle workers.
 
-	outputs:
-	* get_workers_to_create. Anything less than pool size, limited by max_concurrency.
-	* get_workers_to_kill. Anything greater than pool size.
+        outputs:
+        * get_workers_to_create. Anything less than pool size, limited by max_concurrency.
+        * get_workers_to_kill. Anything greater than pool size.
 */
 
 namespace ray {
@@ -76,16 +77,20 @@ class IdlePoolSizePolicyInterface {
   virtual void OnPrestart() = 0;
 
   virtual size_t GetNumIdleProcsToCreate(size_t idle_size,
-                                               size_t running_size,
-                                               size_t starting_size) = 0;
+                                         size_t running_size,
+                                         size_t starting_size) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(
-                                             size_t alive_size,
-                                             size_t pending_exit_size,
-                                             size_t starting_size,
-                                             const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>& idle_of_all_languages,
-                                             std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
-                                             std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers) = 0;
+      size_t alive_size,
+      size_t pending_exit_size,
+      size_t starting_size,
+      const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
+          &idle_of_all_languages,
+      std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(
+          std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+      std::function<bool(int64_t,
+                         const std::unordered_set<std::shared_ptr<WorkerInterface>>
+                             &fate_sharers)> CanKillFateSharingWorkers) = 0;
 };
 
 class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
@@ -97,30 +102,37 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
   std::function<double()> get_time_;
 
   void Populate(
-    std::vector<std::shared_ptr<WorkerInterface>>& idle_workers_to_remove,
-    size_t alive_size,
-    size_t pending_exit_size,
-    const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>& idle_of_all_languages,
-    std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
-    std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers
-    );
+      std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_remove,
+      size_t alive_size,
+      size_t pending_exit_size,
+      const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
+          &idle_of_all_languages,
+      std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(
+          std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+      std::function<bool(int64_t,
+                         const std::unordered_set<std::shared_ptr<WorkerInterface>>
+                             &fate_sharers)> CanKillFateSharingWorkers);
 
  public:
   FutureIdlePoolSizePolicy(size_t desired_cache_size,
-                     size_t max_starting_size,
-                     const std::function<double()> get_time_);
+                           size_t max_starting_size,
+                           const std::function<double()> get_time_);
 
   size_t GetNumIdleProcsToCreate(size_t idle_size,
-                                       size_t running_size,
-                                       size_t starting_size);
+                                 size_t running_size,
+                                 size_t starting_size);
 
   std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(
-                                             size_t alive_size,
-                                             size_t pending_exit_size,
-                                             size_t starting_size,
-                                             const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>& idle_of_all_languages,
-                                     std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
-                                     std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers);
+      size_t alive_size,
+      size_t pending_exit_size,
+      size_t starting_size,
+      const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
+          &idle_of_all_languages,
+      std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(
+          std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+      std::function<bool(int64_t,
+                         const std::unordered_set<std::shared_ptr<WorkerInterface>>
+                             &fate_sharers)> CanKillFateSharingWorkers);
   // Set desired to 64
   void OnStart();
 
@@ -130,8 +142,8 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
   // Add terminated job to list of dead jobs.
   void OnJobTermination();
 
-  // Make sure there are enough idle workers. If not, temporarily boost the number of idle workers.
-  // (Maybe not temporarily?)
+  // Make sure there are enough idle workers. If not, temporarily boost the number of idle
+  // workers. (Maybe not temporarily?)
   void OnPrestart();
 };
 
