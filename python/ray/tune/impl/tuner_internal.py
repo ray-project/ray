@@ -7,7 +7,17 @@ import warnings
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Type,
+    Union,
+    TYPE_CHECKING,
+    Tuple,
+)
 
 import ray
 import ray.cloudpickle as pickle
@@ -23,6 +33,7 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
+from ray.tune.utils import flatten_dict
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -221,46 +232,51 @@ class TunerInternal:
                 stacklevel=4,
             )
 
-    def _validate_overwrite_trainable(
-        self,
-        original_trainable: TrainableTypeOrTrainer,
-        overwrite_trainable: Optional[TrainableTypeOrTrainer],
+    def _validate_trainable_on_restore(
+        self, new_trainable: TrainableType, old_trainable_name: str
     ):
-        """Determines whether the new `overwrite_trainable` is compatible
-        with the restored experiment with some basic sanity checks
-        (ensuring same type and name as the original trainable).
+        """Determines whether or not the trainable given on restore is valid.
+
+        This validation is needed due to an implementation detail
+        where the trainable name (which is differently generated depending on
+        the trainable type) is saved in the Trial metadata and needs to match
+        upon restoration. This does not affect the typical path, since `Tuner.restore`
+        expects the exact same trainable (which will have the same name).
+
+        Returns:
+            bool: True if the trainable name matches.
         """
+        trainable_name = Experiment.get_trainable_name(new_trainable)
 
-        error_message = (
-            "Invalid trainable input. To avoid errors, pass in the same trainable "
-            "that was used to initialize the Tuner."
-        )
-
-        if type(original_trainable) != type(overwrite_trainable):
+        if trainable_name != old_trainable_name:
             raise ValueError(
-                f"{error_message}\n"
-                f"Got new trainable of type {type(overwrite_trainable)} "
-                f"but expected {type(original_trainable)}."
+                "Invalid `trainable` input to `Tuner.restore()`. To fix this error, "
+                "pass in the same trainable that was used to initialize the Tuner. "
+                "Got a trainable with identifier "
+                f"'{trainable_name}' but expected '{old_trainable_name}'."
             )
 
-        from ray.train.trainer import BaseTrainer
+    def _validate_param_space_on_restore(
+        self, new_param_space: Dict[str, Any], flattened_param_space_keys: List[str]
+    ):
+        """Determines whether the (optionally) re-specified `param_space` is valid.
 
-        if isinstance(overwrite_trainable, BaseTrainer):
-            if overwrite_trainable.run_config != original_trainable.run_config:
-                warnings.warn(
-                    "Overwriting the AIR Trainer with a new `RunConfig` is not "
-                    "supported - the restored experiment will continue with the old "
-                    "config. To avoid this warning, revert changes made to `RunConfig`."
-                )
-                overwrite_trainable.run_config = original_trainable.run_config
-        else:
-            original_name = Experiment.get_trainable_name(original_trainable)
-            overwrite_name = Experiment.get_trainable_name(overwrite_trainable)
-            if original_name != overwrite_name:
-                raise ValueError(
-                    f"{error_message}\nGot new trainable with identifier "
-                    f"{overwrite_name} but expected {original_name}."
-                )
+        This method performs very loose validation on the new param_space to
+        prevent users from trying to specify new hyperparameters to tune over.
+
+        Returns:
+            bool: True if all the keys match in the newly given param_space.
+        """
+        keys = sorted(flatten_dict(new_param_space).keys())
+        if keys != flattened_param_space_keys:
+            raise ValueError(
+                "Invalid `param_space` input to `Tuner.restore()`. To fix this error, "
+                "pass in the same `param_space` that was used to initialize the Tuner. "
+                "Only re-specify the `param_space` to refresh Ray object references "
+                "that no longer exist due to restoring from a new Ray cluster session. "
+                "It should not be used to introduce new hyperparameters to tune."
+                f"\n\nGot: {keys}\nExpected: {flattened_param_space_keys}"
+            )
 
     def _restore_from_path_or_uri(
         self,
@@ -269,6 +285,8 @@ class TunerInternal:
         resume_config: Optional[_ResumeConfig],
         overwrite_param_space: Optional[Dict[str, Any]],
     ):
+        from ray.train.trainer import BaseTrainer
+
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
             path_or_uri
@@ -284,13 +302,47 @@ class TunerInternal:
 
         # Load tuner state
         with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-            tuner_state = pickle.load(fp)
-            self.__dict__.update(tuner_state.__dict__)
+            restored_tuner: TunerInternal = pickle.load(fp)
+            tuner_state = restored_tuner.__getstate__()
+
+            # NOTE: These are magic keys used for validating restore args.
+            old_trainable_name = tuner_state.pop("__trainable_name")
+            flattened_param_space_keys = tuner_state.pop("__flattened_param_space_keys")
+
+            self.__setstate__(tuner_state)
 
         self._is_restored = True
+
         self.trainable = trainable
+        assert self.converted_trainable
+        self._validate_trainable_on_restore(
+            new_trainable=self.converted_trainable,
+            old_trainable_name=old_trainable_name,
+        )
+
+        if isinstance(self.trainable, BaseTrainer):
+            # Log a warning in case the user tries to modify the
+            # `RunConfig` from the Trainer
+            trainer: BaseTrainer = self.trainable
+
+            # Only log if the Trainer has a non-default RunConfig
+            if trainer.run_config != RunConfig():
+                logger.warning(
+                    "The Tune experiment will restore using the original run's "
+                    "`RunConfig`. If you made any changes to the `RunConfig` "
+                    "within the Trainer you passed into `Tuner.restore`, "
+                    "they will be ignored in the resumed run."
+                )
+
+            trainer.run_config = self._run_config
+
         if overwrite_param_space:
             self.param_space = overwrite_param_space
+            self._validate_param_space_on_restore(
+                new_param_space=self.param_space,
+                flattened_param_space_keys=flattened_param_space_keys,
+            )
+
         self._resume_config = resume_config
 
         if not synced:
@@ -624,10 +676,18 @@ class TunerInternal:
         state["_tuner_kwargs"] = state["_tuner_kwargs"].copy()
         state["_tuner_kwargs"].pop("_remote_string_queue", None)
         state.pop(_TRAINABLE_KEY, None)
-        state.pop(_CONVERTED_TRAINABLE_KEY, None)
-        state.pop(_PARAM_SPACE_KEY, None)
+        trainable = state.pop(_CONVERTED_TRAINABLE_KEY, None)
+        param_space = state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
+
+        state["__flattened_param_space_keys"] = sorted(flatten_dict(param_space).keys())
+        state["__trainable_name"] = Experiment.get_trainable_name(trainable)
+
         return state
 
     def __setstate__(self, state):
+        # Make sure the magic metadata gets removed first.
+        state.pop("__flattened_param_space_keys")
+        state.pop("__trainable_name")
+
         self.__dict__.update(state)
