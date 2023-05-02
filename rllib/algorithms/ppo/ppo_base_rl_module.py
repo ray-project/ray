@@ -35,6 +35,13 @@ class PPORLModuleBase(RLModule, abc.ABC):
         assert isinstance(self.encoder, ActorCriticEncoder)
 
     @override(RLModule)
+    def get_initial_state(self) -> dict:
+        if hasattr(self.encoder, "get_initial_state"):
+            return self.encoder.get_initial_state()
+        else:
+            return {}
+
+    @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
         return self.input_specs_exploration()
 
