@@ -55,7 +55,7 @@ DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 DEFAULT_MIN_PARALLELISM = 200
 
 # Wether to use actor based block prefetcher.
-DEFAULT_ACTOR_PREFETCHER_ENABLED = True
+DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 # Whether to use push-based shuffle by default.
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
