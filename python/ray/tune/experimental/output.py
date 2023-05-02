@@ -464,6 +464,31 @@ class ProgressReporter:
         self._start_time = time.time()
         self._last_heartbeat_time = 0
 
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        self._experiment_start_paths(
+            experiment_path=experiment_path, tensorboard_path=tensorboard_path
+        )
+
+    def _experiment_start_paths(self, experiment_path: str, tensorboard_path: str):
+        print(f"\nView detailed results here: {experiment_path}")
+
+        if tensorboard_path:
+            print(
+                f"To visualize your results with TensorBoard, run: "
+                f"`tensorboard --logdir {tensorboard_path}`"
+            )
+
+        print("")
+
     @property
     def _time_heartbeat_str(self):
         current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
@@ -518,47 +543,6 @@ class TuneReporterBase(ProgressReporter):
         # will be populated when first result comes in.
         self._inferred_metric = None
         super(TuneReporterBase, self).__init__(verbosity=verbosity)
-
-    def experiment_started(
-        self,
-        experiment_name: str,
-        experiment_path: str,
-        searcher_str: str,
-        scheduler_str: str,
-        total_num_samples: int,
-        tensorboard_path: Optional[str] = None,
-        **kwargs,
-    ):
-        if total_num_samples > sys.maxsize:
-            total_num_samples_str = "infinite"
-        else:
-            total_num_samples_str = str(total_num_samples)
-
-        print(
-            tabulate(
-                [
-                    ["Search algorithm", searcher_str],
-                    ["Scheduler", scheduler_str],
-                    ["Number of trials", total_num_samples_str],
-                ],
-                headers=["Configuration for experiment", experiment_name],
-                tablefmt=AIR_TABULATE_TABLEFMT,
-            )
-        )
-        self._experiment_start_paths(
-            experiment_path=experiment_path, tensorboard_path=tensorboard_path
-        )
-
-    def _experiment_start_paths(self, experiment_path: str, tensorboard_path: str):
-        print(f"\nView detailed results here: {experiment_path}")
-
-        if tensorboard_path:
-            print(
-                f"To visualize your results with TensorBoard, run: "
-                f"`tensorboard --logdir {tensorboard_path}`"
-            )
-
-        print("")
 
     def _get_overall_trial_progress_str(self, trials):
         result = " | ".join(
