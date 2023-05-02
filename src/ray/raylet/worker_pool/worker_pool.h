@@ -395,6 +395,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Try killing idle workers to ensure the running workers are in a
   /// reasonable size.
   void TryKillingIdleWorkers();
+  void TryKillingIdleWorkersReplacement(
+      const std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_kill);
 
  protected:
   void update_worker_startup_token_counter();
@@ -779,7 +781,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   // TODO move these to where they go
   std::shared_ptr<IdlePoolSizePolicyInterface> cache_size_policy_;
-  void MaybeRefillIdlePool();
+  void MaybeRefillIdlePool(bool create, bool kill);
   size_t GetNumStartingWorkers();
   size_t GetNumRunningWorkers();
 
