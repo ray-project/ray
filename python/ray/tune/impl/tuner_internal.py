@@ -29,7 +29,6 @@ if TYPE_CHECKING:
     from ray.util.queue import Queue
 
 
-_TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
 _CONVERTED_TRAINABLE_KEY = "_converted_trainable"
@@ -104,14 +103,12 @@ class TunerInternal:
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
-        self._missing_params_error_message = None
-
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
                 path_or_uri=restore_path,
+                trainable=trainable,
                 resume_config=resume_config,
-                overwrite_trainable=trainable,
                 overwrite_param_space=param_space,
             )
             return
@@ -141,8 +138,7 @@ class TunerInternal:
             pickle.dump(self, fp)
 
         try:
-            with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
-                pickle.dump(self.trainable, fp)
+            pickle.dumps(self.trainable)
         except TypeError as e:
             sio = io.StringIO()
             inspect_serializability(self.trainable, print_file=sio)
@@ -153,7 +149,7 @@ class TunerInternal:
                 "objects that were found in your trainable:\n"
                 f"{sio.getvalue()}"
             )
-            raise TypeError(msg) from e
+            raise TuneError(msg) from e
 
         self._maybe_warn_resource_contention()
 
@@ -235,30 +231,6 @@ class TunerInternal:
         (ensuring same type and name as the original trainable).
         """
 
-        # TODO(ml-team): Remove (https://github.com/ray-project/ray/issues/33546)
-        # Check if the trainable was wrapped with `tune.with_parameters`,
-        # Set the Tuner to fail on fit if the trainable is not re-specified.
-        trainable_wrapped_params = getattr(
-            original_trainable, "_attached_param_names", None
-        )
-        if trainable_wrapped_params and not overwrite_trainable:
-            self._missing_params_error_message = (
-                "The original trainable cannot be used to resume training, since "
-                "`tune.with_parameters` attached references to objects "
-                "in the Ray object store that may not exist anymore. "
-                "You must re-supply the trainable with the same parameters "
-                f"{trainable_wrapped_params} attached:\n\n"
-                "from ray import tune\n\n"
-                "# Reconstruct the trainable with the same parameters\n"
-                "trainable_with_params = tune.with_parameters(trainable, ...)\n"
-                "tuner = tune.Tuner.restore(\n"
-                "    ..., trainable=trainable_with_params\n"
-                ")\n\nSee https://docs.ray.io/en/latest/tune/api/doc/"
-                "ray.tune.with_parameters.html for more details."
-            )
-        if not overwrite_trainable:
-            return
-
         error_message = (
             "Invalid trainable input. To avoid errors, pass in the same trainable "
             "that was used to initialize the Tuner."
@@ -293,8 +265,8 @@ class TunerInternal:
     def _restore_from_path_or_uri(
         self,
         path_or_uri: str,
+        trainable: TrainableTypeOrTrainer,
         resume_config: Optional[_ResumeConfig],
-        overwrite_trainable: Optional[TrainableTypeOrTrainer],
         overwrite_param_space: Optional[Dict[str, Any]],
     ):
         # Sync down from cloud storage if needed
@@ -303,27 +275,17 @@ class TunerInternal:
         )
         experiment_checkpoint_path = Path(experiment_checkpoint_dir)
 
-        if (
-            not (experiment_checkpoint_path / _TRAINABLE_PKL).exists()
-            or not (experiment_checkpoint_path / _TUNER_PKL).exists()
-        ):
+        if not (experiment_checkpoint_path / _TUNER_PKL).exists():
             raise RuntimeError(
                 f"Could not find Tuner state in restore directory. Did you pass"
-                f"the correct path (including experiment directory?) Got: "
+                f"the correct path (the top-level experiment directory?) Got: "
                 f"{path_or_uri}"
             )
 
-        # Load trainable and tuner state
-        with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
-            trainable = pickle.load(fp)
-
+        # Load tuner state
         with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-            tuner = pickle.load(fp)
-            self.__dict__.update(tuner.__dict__)
-
-        self._validate_overwrite_trainable(trainable, overwrite_trainable)
-        if overwrite_trainable:
-            trainable = overwrite_trainable
+            tuner_state = pickle.load(fp)
+            self.__dict__.update(tuner_state.__dict__)
 
         self._is_restored = True
         self.trainable = trainable
@@ -382,9 +344,6 @@ class TunerInternal:
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
         restore_uri = URI(restore_path)
-        download_from_uri(
-            str(restore_uri / _TRAINABLE_PKL), str(tempdir / _TRAINABLE_PKL)
-        )
         download_from_uri(str(restore_uri / _TUNER_PKL), str(tempdir / _TUNER_PKL))
         return True, str(tempdir)
 
