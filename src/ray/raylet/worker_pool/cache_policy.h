@@ -20,6 +20,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "ray/common/id.h"
 #include "ray/raylet/worker.h"
 
 //#include "gtest/gtest.h"
@@ -73,7 +75,8 @@ class IdlePoolSizePolicyInterface {
  public:
   virtual void OnStart() = 0;
   virtual void OnDriverRegistered() = 0;
-  virtual void OnJobTermination() = 0;
+  virtual void OnJobTermination() = 0;  // TODO reconcile these two?
+  virtual void OnJobFinish(const JobID &job_id) = 0;
   virtual void OnPrestart() = 0;
 
   virtual size_t GetNumIdleProcsToCreate(size_t idle_size,
@@ -97,6 +100,7 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
  private:
   size_t desired_cache_size_;
   size_t max_starting_size_;
+  absl::flat_hash_set<JobID> finished_jobs_;
 
   // TODO make these const
   std::function<double()> get_time_;
@@ -141,6 +145,7 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
 
   // Add terminated job to list of dead jobs.
   void OnJobTermination();
+  void OnJobFinish(const JobID &job_id);
 
   // Make sure there are enough idle workers. If not, temporarily boost the number of idle
   // workers. (Maybe not temporarily?)

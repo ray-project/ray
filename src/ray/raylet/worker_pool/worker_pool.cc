@@ -832,6 +832,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
     DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
   }
   finished_jobs_.insert(job_id);
+  cache_size_policy_->OnJobFinish(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -1261,6 +1262,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         RAY_CHECK(running_size > 0);
         running_size--;
         rpc::ExitRequest request;
+        // TODO need to return force exit from list
         if (finished_jobs_.contains(job_id) &&
             RayConfig::instance().kill_idle_workers_of_terminated_job()) {
           RAY_LOG(INFO) << "Force exiting worker whose job has exited "
@@ -1753,6 +1755,7 @@ std::unordered_set<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersByPro
 
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
+  // TODO add debug string to policy
   result << "WorkerPool:";
   result << "\n- registered jobs: " << all_jobs_.size() - finished_jobs_.size();
   result << "\n- process_failed_job_config_missing: "
