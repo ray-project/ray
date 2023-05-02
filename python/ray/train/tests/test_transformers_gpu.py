@@ -9,7 +9,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 
 import ray
-from ray.train.transformers import (
+from ray.train.hf_transformers import (
     TransformersCheckpoint,
     TransformersPredictor,
 )

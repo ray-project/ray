@@ -2,9 +2,9 @@ import warnings
 
 deprecation_msg = (
     "`ray.train.huggingface.accelerate` has been renamed to "
-    "`ray.train.accelerate`. This import path is left as an alias "
+    "`ray.train.hf_accelerate`. This import path is left as an alias "
     "but will be removed in the future."
 )
 warnings.warn(deprecation_msg, DeprecationWarning)
 
-from ray.train.accelerate import *  # noqa
+from ray.train.hf_accelerate import *  # noqa

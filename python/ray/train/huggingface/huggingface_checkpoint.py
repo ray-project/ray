@@ -1,7 +1,7 @@
 import warnings
 from ray.util.annotations import Deprecated
 
-from ray.train.transformers.transformers_checkpoint import (
+from ray.train.hf_transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
 

@@ -25,7 +25,7 @@ from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
 
 try:
-    from ray.train.accelerate._accelerate_utils import (
+    from ray.train.hf_accelerate._accelerate_utils import (
         launch_command,
         AccelerateDefaultNamespace,
         AccelerateConfigWrapper,
@@ -125,7 +125,7 @@ class AccelerateTrainer(TorchTrainer):
 
             import ray
             from ray.air import session, Checkpoint
-            from ray.train.accelerate import AccelerateTrainer
+            from ray.train.hf_accelerate import AccelerateTrainer
             from ray.air.config import ScalingConfig
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig

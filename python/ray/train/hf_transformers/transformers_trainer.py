@@ -27,7 +27,7 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.transformers._transformers_utils import (
+from ray.train.hf_transformers._transformers_utils import (
     TrainReportCallback,
     process_datasets,
     wrap_transformers_trainer,
@@ -126,7 +126,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
             import ray
-            from ray.train.transformers import TransformersTrainer
+            from ray.train.hf_transformers import TransformersTrainer
             from ray.air.config import ScalingConfig
 
             # If using GPUs, set this to True.
