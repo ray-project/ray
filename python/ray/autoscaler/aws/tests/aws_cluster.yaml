@@ -8,6 +8,8 @@ provider:
     type: aws
     region: us-west-2
     cache_stopped_nodes: False
+    key_pair:
+        key_name: aws-cluster-launcher-test
 
 available_node_types:
     ray.head.default:

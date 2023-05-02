@@ -114,6 +114,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
+            .framework(eager_tracing=True)
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=frag_length,
@@ -134,13 +135,13 @@ class TestAPPOTfLearner(unittest.TestCase):
             )
             .exploration(exploration_config={})
         )
-        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
+        for _ in framework_iterator(config, frameworks="tf2"):
             algo = config.build()
             # Call train while results aren't returned because this is
             # a asynchronous trainer and results are returned asynchronously.
-            while 1:
+            while True:
                 results = algo.train()
-                if results and "info" in results and LEARNER_INFO in results["info"]:
+                if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_POLICY_ID):
                     break
             curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                 LEARNER_STATS_KEY

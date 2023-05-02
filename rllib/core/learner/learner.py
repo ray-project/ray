@@ -68,7 +68,7 @@ ENTROPY_KEY = "entropy"
 
 
 @dataclass
-class FrameworkHPs:
+class FrameworkHyperparameters:
     """The framework specific hyper-parameters.
 
     Args:
@@ -83,15 +83,19 @@ class FrameworkHPs:
 
 
 @dataclass
-class LearnerHPs:
-    """The hyper-parameters for Learner.
+class LearnerHyperparameters:
+    """Hyperparameters for a Learner, derived from a subset of AlgorithmConfig values.
 
-    When creating a new Learner, the new hyper-parameters have to be defined by
-    subclassing this class and adding the new hyper-parameters as fields.
+    Instances of this class should only be created via calling
+    `get_learner_hyperparameters()` on a frozen AlgorithmConfig object and should always
+    considered read-only.
 
-    # TODO (Kourosh, Avnish): The things that could be part of the base class:
-    - a function, `validate` that runs some validation on the hyper-parameters.
+    When creating a new Learner, you should also define a new sub-class of this class
+    and make sure the respective AlgorithmConfig sub-class has a proper implementation
+    of the `get_learner_hyperparameters` method.
 
+    Validation of the values of these hyperparameters should be done by the
+    respective AlgorithmConfig class.
     """
 
     pass
@@ -111,7 +115,6 @@ class Learner:
     the TF or Torch specific sub-classes to implement their algorithm-specific update
     logic.
 
-
     Args:
         module_spec: The module specification for the RLModule that is being trained.
             If the module is a single agent module, after building the module it will
@@ -130,11 +133,12 @@ class Learner:
             Algorithm specific learner hyper-parameters will passed in via this
             argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
             passed in via this argument. Refer to
-            ray.rllib.core.learner.learner.LearnerHPs for more info.
+            ray.rllib.core.learner.learner.LearnerHyperparameters for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
             creation. For example eager_tracing in TF or compile in Torch.
-            Refer to ray.rllib.core.learner.learner.FrameworkHPs for more info.
+            Refer to ray.rllib.core.learner.learner.FrameworkHyperparameters for
+            more info.
 
 
     Usage pattern:
@@ -199,7 +203,7 @@ class Learner:
 
             def compute_loss(self, fwd_out, batch):
                 # compute the loss based on batch and output of the forward pass
-                # to access the learner hyper-parameters use `self.hps`
+                # to access the learner hyper-parameters use `self._hps`
 
                 return {self.TOTAL_LOSS_KEY: loss}
     """
@@ -215,9 +219,9 @@ class Learner:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        learner_scaling_config: LearnerGroupScalingConfig = LearnerGroupScalingConfig(),
-        learner_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        learner_group_scaling_config: Optional[LearnerGroupScalingConfig] = None,
+        learner_hyperparameters: Optional[LearnerHyperparameters] = None,
+        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
     ):
         # TODO (Kourosh): convert optimizer configs to dataclasses
         if module_spec is not None and module is not None:
@@ -233,13 +237,20 @@ class Learner:
         self._module_spec = module_spec
         self._module_obj = module
         self._optimizer_config = optimizer_config
-        self._hps = learner_hyperparameters
+        self._hps = learner_hyperparameters or LearnerHyperparameters()
 
         # pick the configs that we need for the learner from scaling config
-        self._distributed = learner_scaling_config.num_workers > 1
-        self._use_gpu = learner_scaling_config.num_gpus_per_worker > 0
+        self._learner_group_scaling_config = (
+            learner_group_scaling_config or LearnerGroupScalingConfig()
+        )
+        self._distributed = self._learner_group_scaling_config.num_workers > 1
+        self._use_gpu = self._learner_group_scaling_config.num_gpus_per_worker > 0
         # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_idx = learner_scaling_config.local_gpu_idx
+        self._local_gpu_idx = self._learner_group_scaling_config.local_gpu_idx
+
+        self._framework_hyperparameters = (
+            framework_hyperparameters or FrameworkHyperparameters()
+        )
 
         # whether self.build has already been called
         self._is_built = False
@@ -263,7 +274,7 @@ class Learner:
         return self._module
 
     @property
-    def hps(self) -> LearnerHPs:
+    def hps(self) -> LearnerHyperparameters:
         """The hyper-parameters for the learner."""
         return self._hps
 
@@ -1069,9 +1080,9 @@ class Learner:
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        self._check_result(result)
-        return convert_to_numpy(result)
+        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        self._check_result(results)
+        return convert_to_numpy(results)
 
     def _check_is_built(self):
         if self._module is None:
@@ -1103,27 +1114,31 @@ class LearnerSpec:
         backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
         learner_hyperparameters: The extra config for the loss/additional update. This
-            should be a subclass of LearnerHPs. This is useful for passing in
-            algorithm configs that contains the hyper-parameters for loss computation,
-            change of training behaviors, etc. e.g lr, entropy_coeff.
+            should be a subclass of LearnerHyperparameters. This is useful for passing
+            in algorithm configs that contains the hyper-parameters for loss
+            computation, change of training behaviors, etc. e.g lr, entropy_coeff.
     """
 
     learner_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    learner_scaling_config: LearnerGroupScalingConfig = field(
+    learner_group_scaling_config: LearnerGroupScalingConfig = field(
         default_factory=LearnerGroupScalingConfig
     )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    learner_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
-    framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
+    learner_hyperparameters: LearnerHyperparameters = field(
+        default_factory=LearnerHyperparameters
+    )
+    framework_hyperparameters: FrameworkHyperparameters = field(
+        default_factory=FrameworkHyperparameters
+    )
 
     def get_params_dict(self) -> Dict[str, Any]:
         """Returns the parameters than be passed to the Learner constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "learner_scaling_config": self.learner_scaling_config,
+            "learner_group_scaling_config": self.learner_group_scaling_config,
             "optimizer_config": self.optimizer_config,
             "learner_hyperparameters": self.learner_hyperparameters,
             "framework_hyperparameters": self.framework_hyperparameters,
