@@ -18,37 +18,94 @@
 
 //#include "gtest/gtest.h"
 
+/*
+
+Goal:
+    remove decision making on how many processes to create from worker pool.
+    remove decision making on which processes to kill from the worker pool.
+
+Worker pool policy
+	inputs:
+	* on_start
+	* on_first_driver
+	* on_job_termination
+	* on_prestart
+
+	outputs:
+	* get_workers_to_create
+	* get_workers_to_kill
+
+Current policy:
+	inputs:
+	* on_start. If prestart is enabled, start N workers. Else do nothing.
+	* on_first_driver. If prestart is enabled, start N workers. Else do nothing.
+	* on_job_termination. Do nothing?
+	* on_prestart. Start up min(max_concurrency, missing_idle_workers).
+
+	outputs:
+	* get_workers_to_create. The ones specified by on_prestart.
+	* get_workers_to_kill. Any that are >2 seconds old + other conditions.
+
+Future policy:
+	inputs:
+	* on_start. Set desired number to 64.
+	* on_first_driver. Set desired number to 64.
+	* on_job_termination. Add terminated job to list of dead jobs.
+	* on_prestart. Make sure there are enough idle workers. If not, temporarily boost the number of idle workers.
+
+	outputs:
+	* get_workers_to_create. Anything less than pool size, limited by max_concurrency.
+	* get_workers_to_kill. Anything greater than pool size.
+*/
+
 namespace ray {
 
 namespace raylet {
 
 class IdlePoolSizePolicyInterface {
  public:
-  virtual const size_t GetNumIdleProcsToCreate(size_t idle_size,
+  virtual void OnStart() = 0;
+  virtual void OnDriverRegistered() = 0;
+  virtual void OnJobTermination() = 0;
+  virtual void OnPrestart() = 0;
+
+  virtual size_t GetNumIdleProcsToCreate(size_t idle_size,
                                                size_t running_size,
                                                size_t starting_size) = 0;
 
-  virtual const size_t GetNumIdleProcsToKill(size_t idle_size,
+  virtual size_t GetNumIdleProcsToKill(size_t idle_size,
                                              size_t running_size,
                                              size_t starting_size) = 0;
 };
 
-class IdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
+class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
  private:
-  const size_t desired_cache_size_;
-  const size_t max_starting_size_;
+  size_t desired_cache_size_;
+  size_t max_starting_size_;
 
  public:
-  IdlePoolSizePolicy(size_t desired_cache_size,
+  FutureIdlePoolSizePolicy(size_t desired_cache_size,
                      size_t max_starting_size);
 
-  const size_t GetNumIdleProcsToCreate(size_t idle_size,
+  size_t GetNumIdleProcsToCreate(size_t idle_size,
                                        size_t running_size,
                                        size_t starting_size);
 
-  const size_t GetNumIdleProcsToKill(size_t idle_size,
+  size_t GetNumIdleProcsToKill(size_t idle_size,
                                      size_t running_size,
                                      size_t starting_size);
+  // Set desired to 64
+  void OnStart();
+
+  // Set desired to 64
+  void OnDriverRegistered();
+
+  // Add terminated job to list of dead jobs.
+  void OnJobTermination();
+
+  // Make sure there are enough idle workers. If not, temporarily boost the number of idle workers.
+  // (Maybe not temporarily?)
+  void OnPrestart();
 };
 
 // class WorkerPool : public WorkerPoolInterface {

@@ -114,7 +114,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   signal(SIGCHLD, SIG_IGN);
 #endif
   
-  cache_size_policy_ = std::make_shared<IdlePoolSizePolicy>(
+  cache_size_policy_ = std::make_shared<FutureIdlePoolSizePolicy>(
     num_workers_soft_limit_,
     maximum_startup_concurrency_
   );
@@ -168,10 +168,13 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  if (RayConfig::instance().enable_worker_prestart()) {
-    //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
-    MaybeRefillIdlePool();
-  }
+  cache_size_policy_->OnStart();
+  MaybeRefillIdlePool();
+
+  //if (RayConfig::instance().enable_worker_prestart()) {
+  //  //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+  //  MaybeRefillIdlePool();
+  //}
 }
 
 void WorkerPool::MaybeRefillIdlePool() {
@@ -879,13 +882,16 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
-    if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
-        !RayConfig::instance().enable_worker_prestart()) {
-      RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
-      // TODO reconcile with java codepath.
-      MaybeRefillIdlePool();
-    }
+    cache_size_policy_->OnDriverRegistered();
+    MaybeRefillIdlePool();
+
+    //if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+    //    !RayConfig::instance().enable_worker_prestart()) {
+    //  RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
+    //  //PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    //  // TODO reconcile with java codepath.
+    //  MaybeRefillIdlePool();
+    //}
 
     // Invoke the `send_reply_callback` later to only finish driver
     // registration after all prestarted workers are registered to Raylet.
@@ -1423,6 +1429,10 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
   }
+
+  // TODO(cade) this one requires more work.
+  //cache_size_policy_->OnPrestart();
+  //MaybeRefillIdlePool();
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
   // The number of available workers that can be used for this task spec.

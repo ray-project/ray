@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+
+import os
+with_prestart = os.environ['WITH_PRESTART'].lower() == 'true'
+
+import subprocess
+
+cmd = "bash prestart_start_ray" if with_prestart else "bash no_prestart_start_ray"
+subprocess.run(cmd, shell=True)
+
+input('waiting for key')
+
+del os.environ['RAY_RUNTIME_ENV_HOOK']
+del os.environ['RAY_JOB_SUBMIT_HOOK']
+
+import ray
+import time
+
+@ray.remote(num_cpus=0.01)
+def task(t):
+    out = time.time()
+    time.sleep(1)
+    return out - t
+
+t = time.time()
+fut = [task.remote(t) for _ in range(os.cpu_count())]
+times = ray.get(fut)
+times.sort()
+print(times)
