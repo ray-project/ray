@@ -1606,12 +1606,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       ObjectID object_id,
                       void *py_future);
 
-  /// we are shutting down and not running further tasks.
-  /// when exiting_ is set to true HandlePushTask and ExecuteTask becomes no-op.
-  std::atomic<bool> exiting_ = false;
-
   /// The detail reason why the core worker has exited.
-  /// This must be set only when `exiting_` is true.
+  /// If this value is set, it means the exit process has begun.
   std::string exiting_detail_ GUARDED_BY(mutex_);
 
   std::atomic<bool> is_shutdown_ = false;

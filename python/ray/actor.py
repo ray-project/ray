@@ -1367,11 +1367,15 @@ def _make_actor(cls, actor_options):
 def exit_actor():
     """Intentionally exit the current actor.
 
-    This function is used to disconnect an actor and exit the worker.
-    Any ``atexit`` handlers installed in the actor will be run.
+    This API can be used only inside an actor. Use ray.kill
+    API if you'd like to kill an actor using actor handle.
+
+    When the API is called, the actor raises an exception and exits.
+    Any queued methods will fail. Any ``atexit``
+    handlers installed in the actor will be run.
 
     Raises:
-        Exception: An exception is raised if this is a driver or this
+        TypeError: An exception is raised if this is a driver or this
             worker is not an actor.
     """
     worker = ray._private.worker.global_worker
@@ -1390,4 +1394,8 @@ def exit_actor():
         raise exit
         assert False, "This process should have terminated."
     else:
-        raise TypeError("exit_actor called on a non-actor worker.")
+        raise TypeError(
+            "exit_actor API is called on a non-actor worker, "
+            f"{worker.mode}. Call this API inside an actor methods"
+            "if you'd like to exit the actor gracefully."
+        )

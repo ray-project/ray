@@ -765,9 +765,9 @@ void CoreWorker::Exit(
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
-  exiting_ = true;
   {
     absl::MutexLock lock(&mutex_);
+    RAY_CHECK_NE(detail, "");
     exiting_detail_ = detail;
   }
   // Release the resources early in case draining takes a long time.
@@ -3843,11 +3843,8 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
 }
 
 bool CoreWorker::IsExiting() const {
-  if (exiting_) {
-    absl::MutexLock lock(&mutex_);
-    RAY_CHECK(exiting_detail_ != "");
-  }
-  return exiting_;
+  absl::MutexLock lock(&mutex_);
+  return exiting_detail_ != "";
 }
 
 std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
