@@ -52,9 +52,9 @@ def test_tag_env_vars(ray_start_2_cpus, mock_record, tuner):
         "RAY_AIR_LOCAL_CACHE_DIR": "~/ray_results",
         "TUNE_DISABLE_AUTO_CALLBACK_SYNCER": "1",
     }
-    other_env_vars = {"RANDOM_USER_ENV_VAR": "asdf"}
+    untracked_env_vars = {"RANDOM_USER_ENV_VAR": "asdf"}
 
-    with mock.patch.dict(os.environ, {**env_vars_to_record, **other_env_vars}):
+    with mock.patch.dict(os.environ, {**env_vars_to_record, **untracked_env_vars}):
         tuner.fit()
 
     recorded_env_vars = json.loads(mock_record[TagKey.AIR_ENV_VARS])
