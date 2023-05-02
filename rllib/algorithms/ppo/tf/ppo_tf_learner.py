@@ -103,7 +103,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.curr_kl_coeff * mean_kl_loss
+            total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,

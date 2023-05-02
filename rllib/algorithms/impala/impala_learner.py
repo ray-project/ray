@@ -36,7 +36,6 @@ class ImpalaHyperparameters(LearnerHyperparameters):
     discount_factor: float = None
     vtrace_clip_rho_threshold: float = None
     vtrace_clip_pg_rho_threshold: float = None
-    vtrace_drop_last_ts: bool = None
     vf_loss_coeff: float = None
     entropy_coeff: float = None
 

@@ -46,9 +46,7 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTfRLModule)
     def _forward_train(self, batch: NestedDict):
         outs = super()._forward_train(batch)
-        old_pi_inputs_encoded = tf.stop_gradient(
-            self.old_encoder(batch)[ENCODER_OUT][ACTOR]
-        )
+        old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
         old_action_dist_logits = tf.stop_gradient(self.old_pi(old_pi_inputs_encoded))
         old_action_dist = self.action_dist_cls.from_logits(old_action_dist_logits)
         outs[OLD_ACTION_DIST_KEY] = old_action_dist

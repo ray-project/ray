@@ -99,7 +99,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.curr_kl_coeff * mean_kl_loss
+            total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
@@ -112,7 +112,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             ENTROPY_KEY: mean_entropy,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
             LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: self.hps.entropy_coeff,
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY: self.curr_kl_coeff,
+            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+                self.curr_kl_coeffs_per_module[module_id]
+            ),
         }
 
     @override(PPOLearner)

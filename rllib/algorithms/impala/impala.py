@@ -111,6 +111,8 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace_clip_pg_rho_threshold = 1.0
         # TODO (sven): Deprecate this setting. It makes no sense to drop the last ts.
         #  It's actually dangerous if there are important rewards "hiding" in that ts.
+        #  This setting is already ignored (always False) on the new Learner API
+        #  (if _enable_learner_api=True).
         self.vtrace_drop_last_ts = False
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
@@ -422,7 +424,6 @@ class ImpalaConfig(AlgorithmConfig):
             discount_factor=self.gamma,
             entropy_coeff=self.entropy_coeff,
             vf_loss_coeff=self.vf_loss_coeff,
-            vtrace_drop_last_ts=self.vtrace_drop_last_ts,
             vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
             vtrace_clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
             **dataclasses.asdict(base_hps),
@@ -957,13 +958,7 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
                 NUM_AGENT_STEPS_TRAINED
             )
-            lg_queue_stats = self.learner_group.get_in_queue_stats()
-            self._counters["learner_group_queue_size"] = lg_queue_stats[
-                "learner_group_queue_size"
-            ]
-            self._counters["learner_group_queue_ts_dropped"] = lg_queue_stats[
-                "learner_group_queue_ts_dropped"
-            ]
+            self._counters.update(self.learner_group.get_in_queue_stats())
             result = lg_results
 
         return result

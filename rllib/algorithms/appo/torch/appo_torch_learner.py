@@ -13,7 +13,14 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.rl_module.marl_module import ModuleID
+from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchDDPRLModuleWithTargetNetworksInterface,
+    TorchRLModule,
+)
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
@@ -46,32 +53,27 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
             behaviour_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         old_actions_logp_time_major = make_time_major(
             old_target_policy_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         values_time_major = make_time_major(
             values,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
 
         # the discount factor that is used should be gamma except for timesteps where
@@ -82,7 +84,6 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
                 batch[SampleBatch.TERMINATEDS],
                 trajectory_len=self.hps.rollout_frag_or_episode_len,
                 recurrent_seq_len=self.hps.recurrent_seq_len,
-                drop_last=self.hps.vtrace_drop_last_ts,
             ).float()
         ) * self.hps.discount_factor
 
@@ -146,6 +147,39 @@ class APPOTorchLearner(TorchLearner, AppoLearner):
                 self.curr_kl_coeffs_per_module[module_id]
             ),
         }
+
+    @override(TorchLearner)
+    def _make_modules_ddp_if_necessary(self) -> None:
+        """Logic for (maybe) making all Modules within self._module DDP.
+
+        This implementation differs from the super's default one in using the special
+        TorchDDPRLModuleWithTargetNetworksInterface wrapper, instead of the default
+        TorchDDPRLModule one.
+        """
+
+        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # all the submodules are registered. Otherwise, we need to loop through
+        # each submodule and move it to the correct device.
+        # TODO (Kourosh): This can result in missing modules if the user does not
+        #  register them in the MultiAgentRLModule. We should find a better way to
+        #  handle this.
+        if self._distributed:
+            # Single agent module: Convert to
+            # `TorchDDPRLModuleWithTargetNetworksInterface`.
+            if isinstance(self._module, RLModuleWithTargetNetworksInterface):
+                self._module = TorchDDPRLModuleWithTargetNetworksInterface(self._module)
+            # Multi agent module: Convert each submodule to
+            # `TorchDDPRLModuleWithTargetNetworksInterface`.
+            else:
+                assert isinstance(self._module, MultiAgentRLModule)
+                for key, sub_module in self._module.copy().items():
+                    if isinstance(sub_module, TorchRLModule):
+                        # Wrap and override the module ID key in self._module.
+                        self._module.add_module(
+                            key,
+                            TorchDDPRLModuleWithTargetNetworksInterface(sub_module),
+                            override=True,
+                        )
 
     @override(AppoLearner)
     def _update_module_target_networks(self, module_id: ModuleID):

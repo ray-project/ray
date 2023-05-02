@@ -41,26 +41,22 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
             target_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         values_time_major = make_time_major(
             values,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
 
         # the discount factor that is used should be gamma except for timesteps where
@@ -71,7 +67,6 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
                 batch[SampleBatch.TERMINATEDS],
                 trajectory_len=self.hps.rollout_frag_or_episode_len,
                 recurrent_seq_len=self.hps.recurrent_seq_len,
-                drop_last=self.hps.vtrace_drop_last_ts,
             ).type(dtype=torch.float32)
         ) * self.hps.discount_factor
 

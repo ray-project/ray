@@ -187,7 +187,7 @@ class APPOTfPolicyWithRLModule(
         mean_vf_loss = 0.5 * tf.math.reduce_mean(delta**2)
 
         # The entropy loss.
-        mean_entropy_loss = -tf.math.reduce_mean(target_actions_logp_time_major)
+        mean_entropy_loss = -tf.math.reduce_mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (

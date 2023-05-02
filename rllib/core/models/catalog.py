@@ -314,8 +314,9 @@ class Catalog:
         activation = model_config_dict["fcnet_activation"]
         output_activation = model_config_dict["fcnet_activation"]
         fcnet_hiddens = model_config_dict["fcnet_hiddens"]
-        # TODO (sven): We should only use fcnet_hiddens[-1] for MLP encoders.
-        #  Never for LSTM/CNN-based encoders.
+        # TODO (sven): Move to a new ModelConfig object (dataclass) asap, instead of
+        #  "linking" into the old ModelConfig (dict)! This just causes confusion as to
+        #  which old keys now mean what for the new RLModules-based default models.
         encoder_latent_dim = (
             model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
         )
