@@ -66,7 +66,7 @@ def DoConsume(split, rank, use_gpu):
                 batch_iterator = epoch_data.iter_torch_batches(
                     prefetch_batches=prefetch_batches,
                     batch_size=batch_size,
-                    device="gpu",
+                    device="cuda",
                 )
 
         for batch in batch_iterator:
@@ -74,17 +74,14 @@ def DoConsume(split, rank, use_gpu):
             batch_delays.append(batch_delay)
             batches_read += 1
             if isinstance(batch, pd.DataFrame):
-                print("DataFrame")
                 bytes_read += int(batch.memory_usage(index=True, deep=True).sum())
             elif isinstance(batch, np.ndarray):
-                print("ndarray")
                 bytes_read += batch.nbytes
             elif isinstance(batch, dict) and isinstance(
                 batch.get("data"), torch.Tensor
             ):
                 tensor = batch["data"]
                 bytes_read += tensor.element_size() * tensor.nelement()
-                print("===", bytes_read)
             else:
                 # NOTE: This isn't recursive and will just return the size of
                 # the object pointers if list of non-primitive types.
@@ -124,7 +121,7 @@ def make_ds(size_gb: int, parallelism: int = -1):
 def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu):
     ds = make_ds(dataset_size_gb)
     resources = {"num_cpus": 0.5}
-    if not use_gpu:
+    if use_gpu:
         resources["num_gpus"] = 0.5
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD", **resources).remote(
