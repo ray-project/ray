@@ -123,7 +123,9 @@ def make_ds(size_gb: int, parallelism: int = -1):
 
 def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu):
     ds = make_ds(dataset_size_gb)
-    resources = {"num_cpus": 0.5} if not use_gpu else {"num_gpus": 0.5}
+    resources = {"num_cpus": 0.5}
+    if not use_gpu:
+        resources["num_gpus"] = 0.5
     consumers = [
         ConsumingActor.options(scheduling_strategy="SPREAD", **resources).remote(
             i, use_gpu
