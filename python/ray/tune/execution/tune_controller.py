@@ -382,8 +382,6 @@ class TuneController(_TuneControllerBase):
     def _cleanup_trials(self):
         logger.debug("CLEANING UP all trials")
 
-        self._cleanup_cached_actors(force_all=True)
-
         for tracked_actor in list(self._actor_to_trial):
             trial = self._actor_to_trial[tracked_actor]
             logger.debug(
@@ -391,6 +389,9 @@ class TuneController(_TuneControllerBase):
                 f"{tracked_actor}"
             )
             self._schedule_trial_stop(trial)
+
+        # Clean up cached actors now
+        self._cleanup_cached_actors(force_all=True)
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
