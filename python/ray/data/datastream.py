@@ -436,7 +436,7 @@ class Datastream:
 
             Here ``fn`` returns the same batch type as the input, but your ``fn`` can
             also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`transforming data <transforming_data>`.
+            :ref:`Transforming Data <transforming_data>`.
 
             >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:

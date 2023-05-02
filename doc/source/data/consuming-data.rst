@@ -36,7 +36,7 @@ Datastreams can be consumed a row at a time using the
 
 or a batch at a time using the
 :meth:`ds.iter_batches() <ray.data.Datastream.iter_batches>` API, where you can specify
-batch size as well as the desired batch format. By default, the batches will have type
+batch size as well as the desired batch format. By default, the batches have type
 ``Dict[str, np.ndarray]`` (NumPy format).
 
 .. literalinclude:: ./doc_code/consuming_data.py

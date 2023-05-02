@@ -14,7 +14,7 @@ express a chain of computations.
 Overview
 --------
 
-There are two main types of supported transforms, summarized in the below table:
+There are two main types of supported transforms:
 
 * One-to-one: each input block will contribute to only one output
   block, such as :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`.
@@ -57,8 +57,8 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
 .. tab-set::
 
     .. tab-item:: Map Batches
-        
-      Records can be transformed in batches of ``Dict[str, np.ndarray]`` using the ``map_batches`` function. The below example shows how to use ``map_batches`` to convert text records to lowercase:
+
+      Call `map_batches`` to transform batches of records. Each batch has type``Dict[str, np.ndarray]``. The below example shows how to use ``map_batches`` to convert text records to lowercase:
 
       .. literalinclude:: ./doc_code/transforming_data.py
         :language: python
@@ -77,7 +77,7 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
 Configuring resources
 =====================
 
-By default, each task used for  (e.g., `map` or `map_batches`) will request 1 CPU from Ray.
+By default, each task used for  (e.g., `map` or `map_batches`) requests 1 CPU from Ray.
 To increase the resources reserved per task, you can increase the CPU request by specifying
 ``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task:
 
@@ -168,8 +168,8 @@ Reduce setup overheads using actors
 ===================================
 
 Data transforms can be executed by either :ref:`Ray tasks <ray-remote-functions>`
-or :ref:`Ray actors <actor-guide>`. By default, tasks are
-used. For transforms that require expensive setup,
+or :ref:`Ray actors <actor-guide>`. By default, ``map_batches`` uses tasks.
+For transforms that require expensive setup,
 it's preferrable to use actors, which are stateful and allow setup to be reused
 for efficiency. For a fixed-size actor pool, specify ``compute=ActorPoolStrategy(size=n)``.
 For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size=m, max_size=n)``.

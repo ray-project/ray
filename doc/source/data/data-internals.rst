@@ -20,8 +20,7 @@ Ray Data and Tune
 
 When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune will try to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
 
-By limiting the number of concurrent Tune trials, we ensure CPU resources are always available for Ray Data execution.
-This can be done using the ``max_concurrent_trials`` Tune option.
+To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials. This can be done using the ``max_concurrent_trials`` Tune option.
 
 .. literalinclude:: ./doc_code/key_concepts.py
   :language: python
