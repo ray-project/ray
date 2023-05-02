@@ -22,13 +22,13 @@ class ConsumingActor:
         self._use_gpu = use_gpu
 
     def consume(self, split):
-        DoConsume(split, self._rank, self._use_gpu)
+        do_consume(split, self._rank, self._use_gpu)
 
     def get_location(self):
         return ray.get_runtime_context().get_node_id()
 
 
-def DoConsume(split, rank, use_gpu):
+def do_consume(split, rank, use_gpu):
     prefetch_batches = 1
     batch_size = 4096
     num_epochs = 1
