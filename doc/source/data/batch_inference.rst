@@ -315,7 +315,7 @@ After loading your data, it often needs to be preprocessed prior to inference.
 This may include cropping or resizing images, or tokenizing raw text.
 
 To introduce common terminology, with :ref:`Ray Data <data>` you can define
-:term:`user-defined functions<User-defined function (UDF)>` (UDFs) that transform batches of your data.
+user-defined functions that transform batches of your data.
 As you've seen before, applying these UDFs via
 :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` outputs a new, transformed dataset.
 
