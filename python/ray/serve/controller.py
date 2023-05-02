@@ -443,28 +443,18 @@ class ServeController:
 
         return updating
 
-    def deploy_application(
-        self, name: str, deployment_args_list: List[Dict]
-    ) -> List[bool]:
+    def deploy_application(self, name: str, deployment_args_list: List[Dict]) -> None:
         """
-        Takes in a list of dictionaries that contain keyword arguments for the
-        controller's deploy() function. Calls deploy on all the argument
-        dictionaries in the list. Effectively executes an atomic deploy on a
-        group of deployments.
+        Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
 
         Args:
             name: Application name.
             deployment_args_list: List of deployment infomation, each item in the list
                 contains all the information for the single deployment.
-
-        Returns: list of deployment status to indicate whether each deployment is
-            deployed successfully or not.
         """
 
-        return self.application_state_manager.deploy_application(
-            name, deployment_args_list
-        )
+        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
 
     def deploy_apps(
         self,

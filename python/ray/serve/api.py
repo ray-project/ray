@@ -507,12 +507,6 @@ def run(
             "deployment like: `app = Deployment.bind(my_dag_output)`. "
         raise TypeError(msg)
 
-    # when name provided, keep all existing applications
-    # otherwise, delete all of them.
-    remove_past_deployments = True
-    if name:
-        remove_past_deployments = False
-
     parameter_group = []
 
     for deployment in deployments:
@@ -537,7 +531,6 @@ def run(
         name,
         parameter_group,
         _blocking=_blocking,
-        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:

@@ -306,7 +306,6 @@ class ServeControllerClient:
         name,
         deployments: List[Dict],
         _blocking: bool = True,
-        remove_past_deployments: bool = True,
     ):
         deployment_args_list = []
         for deployment in deployments:
@@ -326,40 +325,18 @@ class ServeControllerClient:
                 )
             )
 
-        updating_list = ray.get(
-            self._controller.deploy_application.remote(name, deployment_args_list)
-        )
-
-        tags = []
-        for i, updating in enumerate(updating_list):
-            deployment = deployments[i]
-            deployment_name, version = deployment["name"], deployment["version"]
-
-            tags.append(
-                self.log_deployment_update_status(deployment_name, version, updating)
-            )
-
+        ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
             self._wait_for_application_running(name, timeout_s=15)
 
-        for i, deployment in enumerate(deployments):
-            deployment_name = deployment["name"]
-            url = deployment["url"]
-
-            if _blocking:
-                self.log_deployment_ready(deployment_name, version, url, tags[i])
-
-        if remove_past_deployments:
-            # clean up the old deployments
-            new_deployments_names = set()
+        if _blocking:
             for deployment in deployments:
-                new_deployments_names.add(deployment["name"])
+                deployment_name = deployment["name"]
+                tag = f"component=serve deployment={deployment_name}"
+                url = deployment["url"]
+                version = deployment["version"]
 
-            all_deployments_names = set(self.list_deployments().keys())
-            deployment_names_to_delete = all_deployments_names.difference(
-                new_deployments_names
-            )
-            self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
+                self.log_deployment_ready(deployment_name, version, url, tag)
 
     @_ensure_connected
     def deploy_apps(

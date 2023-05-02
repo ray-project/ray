@@ -166,15 +166,12 @@ class ApplicationState:
 
         return updating
 
-    def apply_deployment_args(self, deployment_params: List[Dict]) -> List[bool]:
-        """Deploy the application.
+    def apply_deployment_args(self, deployment_params: List[Dict]) -> None:
+        """Set deployment args in application target state.
 
         Args:
             deployment_params: list of deployment parameters, including all deployment
             information.
-
-        Returns: a list of booleans indicating whether each deployment is being updated
-            or not.
         """
         # Update route prefix for application
         num_route_prefixes = 0
@@ -211,13 +208,12 @@ class ApplicationState:
             for params in deployment_params
         }
         self._set_target_state(deployment_infos=deployment_infos)
-        return [True for _ in deployment_params]
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
         self._deploy_obj_ref = deploy_obj_ref
         self._deployment_timestamp = deployment_time
-        self._set_target_state(deployment_infos=None)
         self._status = ApplicationStatus.DEPLOYING
+        self._set_target_state(deployment_infos=None)
 
     def update(self):
         """Update the application status, maintain the ApplicationStatus.
@@ -362,15 +358,12 @@ class ApplicationStateManager:
             return
         self._application_states[name].delete()
 
-    def deploy_application(self, name: str, deployment_args: List[Dict]) -> List[bool]:
-        """Deploy single application
+    def apply_deployment_args(self, name: str, deployment_args: List[Dict]) -> None:
+        """Apply list of deployment arguments to application target state.
 
         Args:
             name: application name
-            deployment_args_list: deployment arguments needed for deploying a list of
-                deployments.
-        Returns:
-            Returns a list indicating whether each deployment is being updated.
+            deployment_args_list: arguments for deploying a list of deployments.
         """
 
         # Make sure route_prefix is not being used by other application.
@@ -401,7 +394,7 @@ class ApplicationStateManager:
         record_extra_usage_tag(
             TagKey.SERVE_NUM_APPS, str(len(self._application_states))
         )
-        return self._application_states[name].apply_deployment_args(deployment_args)
+        self._application_states[name].apply_deployment_args(deployment_args)
 
     def get_deployments(self, app_name: str) -> List[str]:
         """Return all deployment names by app name"""
