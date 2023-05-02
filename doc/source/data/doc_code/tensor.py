@@ -21,6 +21,8 @@ ds.take(1)
 # __create_range_end__
 
 # __create_pandas_2_begin__
+import pandas as pd
+
 # Create multiple TensorArray columns.
 def gen_image_and_embed(batch: pd.DataFrame) -> pd.DataFrame:
     bs = len(batch)
@@ -34,7 +36,6 @@ def gen_image_and_embed(batch: pd.DataFrame) -> pd.DataFrame:
     # image = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
     # embed = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
     # return pd.DataFrame({"image": image, "embed": embed})
-
 
 ds.map_batches(gen_image_and_embed, batch_format="pandas")
 ds.materialize()
