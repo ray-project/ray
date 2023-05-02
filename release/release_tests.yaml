@@ -4277,7 +4277,7 @@
       env: gce
       frequency: manual
       cluster:
-        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # TODO(https://github.com/ray-project/ray/issues/34591)
         # Revert to the comment below once ^ closed.
         # cluster_env: app_config.yaml
         cluster_env: debug_app_config.yaml
@@ -5328,6 +5328,31 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
     wait_for_nodes:
       num_nodes: 20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
+- name: streaming_data_ingest_benchmark_100gb_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu
+    wait_for_nodes:
+      num_nodes: 3
 
   variations:
     - __suffix__: aws
