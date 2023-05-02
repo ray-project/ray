@@ -1061,6 +1061,9 @@ void WorkerPool::TryKillingIdleWorkers() {
       RAY_LOG(DEBUG) << "idle worker is already dead. Not going to kill worker "
                      << idle_worker->WorkerId();
       // This worker has already been killed.
+      // It will be removed from idle_of_all_languages_ later.
+      // This happens when ExitReply is received but the worker is not removed from
+      // idle_of_all_languages_ yet.
       continue;
     }
 
