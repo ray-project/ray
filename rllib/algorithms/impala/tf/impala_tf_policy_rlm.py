@@ -60,7 +60,7 @@ class ImpalaTfPolicyWithRLModule(
         values = fwd_out[SampleBatch.VF_PREDS]
         action_dist_class = model.get_action_dist_cls()
         target_policy_dist = action_dist_class.from_logits(
-            [SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         # this is probably a horribly inefficient way to do this. I should be able to

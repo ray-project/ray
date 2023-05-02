@@ -1104,12 +1104,16 @@ class TorchPolicyV2(Policy):
 
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
-                action_dist = action_dist_class(fwd_out[SampleBatch.ACTION_DIST_INPUTS])
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
                 fwd_out = self.model.forward_inference(input_dict)
-                action_dist = action_dist_class(fwd_out[SampleBatch.ACTION_DIST_INPUTS])
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
                 action_dist.to_deterministic()
                 actions = action_dist.sample()
                 logp = None
