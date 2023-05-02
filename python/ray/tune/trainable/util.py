@@ -408,9 +408,6 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             trainable_with_params._resources = trainable._resources
 
     trainable_with_params.__name__ = trainable_name
-
-    # Mark this trainable as being wrapped by saving the attached parameter names
-    trainable_with_params._attached_param_names = keys
     return trainable_with_params
 
 
