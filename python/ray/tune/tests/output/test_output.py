@@ -13,6 +13,7 @@ from ray.tune.experimental.output import (
     _current_best_trial,
     _best_trial_str,
     _get_trial_table_data,
+    _get_dict_as_table_data,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -162,6 +163,61 @@ def test_get_trial_table_data_more_than_20():
     assert table_data[0].more_info == "... and 5 more RUNNING ..."
     assert table_data[1].more_info == "... and 5 more TERMINATED ..."
     assert table_data[2].more_info == "... and 5 more PENDING ..."
+
+
+def test_result_table_no_divison():
+    data = _get_dict_as_table_data(
+        {
+            "b": 6,
+            "a": 8,
+            "x": 19.123123123,
+            "c": 5,
+            "ignore": 9,
+            "y": 20,
+            "z": {"m": 4, "n": {"o": "p"}},
+        },
+        exclude={"ignore"},
+    )
+
+    assert data == [
+        ["a", 8],
+        ["b", 6],
+        ["c", 5],
+        ["x", "19.12312"],
+        ["y", 20],
+        ["z", None],
+        ["/m", 4],
+        ["/n", None],
+        ["//o", "p"],
+    ]
+
+
+def test_result_table_divison():
+    data = _get_dict_as_table_data(
+        {
+            "b": 6,
+            "a": 8,
+            "x": 19.123123123,
+            "c": 5,
+            "ignore": 9,
+            "y": 20,
+            "z": {"m": 4, "n": {"o": "p"}},
+        },
+        exclude={"ignore"},
+        upper_keys={"x", "y", "z"},
+    )
+
+    assert data == [
+        ["x", "19.12312"],
+        ["y", 20],
+        ["z", None],
+        ["/m", 4],
+        ["/n", None],
+        ["//o", "p"],
+        ["a", 8],
+        ["b", 6],
+        ["c", 5],
+    ]
 
 
 if __name__ == "__main__":
