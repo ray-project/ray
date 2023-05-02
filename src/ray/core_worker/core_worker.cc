@@ -57,8 +57,8 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
 namespace {
 
 void SerializeReturnObject(const ObjectID &object_id,
-                          const std::shared_ptr<RayObject> &return_object,
-                          rpc::ReturnObject *return_object_proto) {
+                           const std::shared_ptr<RayObject> &return_object,
+                           rpc::ReturnObject *return_object_proto) {
   return_object_proto->set_object_id(object_id.Binary());
 
   if (!return_object) {
@@ -1683,7 +1683,9 @@ void CoreWorker::TriggerGlobalGC() {
       });
 }
 
-Status CoreWorker::ObjectRefStreamWrite(const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object, int64_t finished_idx) {
+Status CoreWorker::ObjectRefStreamWrite(
+    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    int64_t finished_idx) {
   RAY_LOG(DEBUG) << "Write the object ref stream";
   rpc::WriteObjectRefStreamRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
@@ -1701,14 +1703,14 @@ Status CoreWorker::ObjectRefStreamWrite(const std::pair<ObjectID, std::shared_pt
       {dynamic_return_object.first}, &borrowed_refs, &deleted);
   memory_store_->Delete(deleted);
 
-  client->WriteObjectRefStream(request, [](
-            const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
-          if (status.ok()) {
-            RAY_LOG(DEBUG) << "Succeeded to send the object ref";
-          } else {
-            RAY_LOG(DEBUG) << "Failed to send the object ref";
-          }
-        });
+  client->WriteObjectRefStream(
+      request, [](const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Succeeded to send the object ref";
+        } else {
+          RAY_LOG(DEBUG) << "Failed to send the object ref";
+        }
+      });
   return Status::OK();
 }
 
@@ -2794,7 +2796,8 @@ void CoreWorker::DelGenerator(const ObjectID &generator_id) {
   task_manager_->DelGenerator(generator_id);
 }
 
-Status CoreWorker::GetNextObjectRef(const ObjectID &generator_id, rpc::ObjectReference *object_ref_out) {
+Status CoreWorker::GetNextObjectRef(const ObjectID &generator_id,
+                                    rpc::ObjectReference *object_ref_out) {
   ObjectID object_id;
   const auto &status = task_manager_->GetNextObjectRef(generator_id, &object_id);
   if (!status.ok()) {
@@ -3418,10 +3421,9 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
-void CoreWorker::HandleWriteObjectRefStream(
-    rpc::WriteObjectRefStreamRequest request,
-    rpc::WriteObjectRefStreamReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
+                                            rpc::WriteObjectRefStreamReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "SANG-TODO HandleWriteObjectRefStream";
   task_manager_->HandleIntermediateResult(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);

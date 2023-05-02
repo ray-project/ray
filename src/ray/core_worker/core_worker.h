@@ -356,7 +356,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void DelGenerator(const ObjectID &generator_id);
 
-  Status GetNextObjectRef(const ObjectID &generator_id, rpc::ObjectReference *object_ref_out);
+  Status GetNextObjectRef(const ObjectID &generator_id,
+                          rpc::ObjectReference *object_ref_out);
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -702,7 +703,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
 
-  Status ObjectRefStreamWrite(const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object, int64_t finished_idx);
+  Status ObjectRefStreamWrite(
+      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      int64_t finished_idx);
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -1043,8 +1046,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Implements gRPC server handler.
   void HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
-                                     rpc::WriteObjectRefStreamReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) override;
+                                  rpc::WriteObjectRefStreamReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(rpc::KillActorRequest request,

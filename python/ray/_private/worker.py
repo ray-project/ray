@@ -2519,6 +2519,8 @@ def get(
         if is_individual_id:
             object_refs = [object_refs]
 
+        if isinstance(object_refs, ray._raylet.StreamingObjectRefGeneratorV2):
+            return object_refs
         if not isinstance(object_refs, list):
             raise ValueError(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs."

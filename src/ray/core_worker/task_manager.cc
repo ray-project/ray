@@ -315,7 +315,8 @@ void TaskManager::DelGenerator(const ObjectID &generator_id) {
   RAY_LOG(INFO) << "SANG-TODO Delete generator from " << generator_id;
 }
 
-Status TaskManager::GetNextObjectRef(const ObjectID &generator_id, ObjectID *object_id_out) {
+Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
+                                     ObjectID *object_id_out) {
   absl::MutexLock lock(&mu_);
   RAY_CHECK(object_id_out != nullptr);
   RAY_LOG(INFO) << "SANG-TODO Get the next object ref from " << generator_id;
@@ -340,8 +341,10 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id, ObjectID *obj
   return Status::OK();
 }
 
-void TaskManager::HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) {
-  const auto &sample_object_id = ObjectID::FromBinary(request.dynamic_return_objects(0).object_id());
+void TaskManager::HandleIntermediateResult(
+    const rpc::WriteObjectRefStreamRequest &request) {
+  const auto &sample_object_id =
+      ObjectID::FromBinary(request.dynamic_return_objects(0).object_id());
 
   TaskSpecification spec;
   // Every generated object has the same task id.
@@ -376,9 +379,9 @@ void TaskManager::HandleIntermediateResult(const rpc::WriteObjectRefStreamReques
       reader.refs.push(object_id);
     }
     HandleTaskReturn(object_id,
-                          return_object,
-                          NodeID::FromBinary(request.worker_addr().raylet_id()),
-                          store_in_plasma_ids.count(object_id));
+                     return_object,
+                     NodeID::FromBinary(request.worker_addr().raylet_id()),
+                     store_in_plasma_ids.count(object_id));
   }
   RAY_LOG(INFO) << "SANG-TODO Finished handling intermediate result";
 }
