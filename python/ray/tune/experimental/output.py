@@ -118,20 +118,20 @@ def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
     rest -= hours * (60 * 60)
     minutes = int(rest // 60)
 
-    seconds = rest - minutes * 60
+    seconds = int(rest - minutes * 60)
 
     if days > 0:
-        running_for_str = f"{days:d}d, "
+        running_for_str = f"{days:d}d "
     else:
         running_for_str = ""
 
     if hours > 0 or days > 0:
-        running_for_str += f"{hours:d}hr, "
+        running_for_str += f"{hours:d}hr "
 
     if minutes > 0 or hours > 0 or days > 0:
-        running_for_str += f"{minutes:d}min, "
+        running_for_str += f"{minutes:d}min "
 
-    running_for_str += f"{seconds:05.2f}s"
+    running_for_str += f"{seconds:d}s"
 
     return f"{current_time_dt:%Y-%m-%d %H:%M:%S}", running_for_str
 
