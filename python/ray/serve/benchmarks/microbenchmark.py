@@ -7,7 +7,6 @@ import asyncio
 import logging
 import time
 from typing import Dict
-import requests
 
 import numpy as np
 
@@ -58,6 +57,7 @@ class Client:
     async def do_queries(self, num, data):
         for _ in range(num):
             await fetch(self.session, data)
+
 
 def build_app(
     sync_callable: bool,
@@ -115,6 +115,7 @@ def build_app(
 
     return app
 
+
 async def trial(
     result_json: Dict,
     intermediate_handles: bool,
@@ -130,20 +131,27 @@ async def trial(
 
     trial_key_base = (
         f"replica:{num_replicas}/batch_size:{max_batch_size}/"
-        f"concurrent_queries:{max_concurrent_queries}/"
+        f"concurrent_queries:{max_concurrent_queries}/sync_callable:{sync_callable}"
         f"data_size:{data_size}/intermediate_handle:{intermediate_handles}"
     )
 
     print(
         f"intermediate_handles={intermediate_handles},"
+        f"sync_callable={sync_callable},"
         f"num_replicas={num_replicas},"
         f"max_batch_size={max_batch_size},"
         f"max_concurrent_queries={max_concurrent_queries},"
         f"data_size={data_size}"
     )
 
-    app = build_app(sync_callable, intermediate_handles, num_replicas, max_batch_size, max_concurrent_queries)
-    serve.run(app)
+    app = build_app(
+        sync_callable,
+        intermediate_handles,
+        num_replicas,
+        max_batch_size,
+        max_concurrent_queries,
+    )
+    serve.run(app, name="microbenchmark", route_prefix="/")
 
     if data_size == "small":
         data = None
@@ -181,6 +189,7 @@ async def trial(
     result_json.update({key: multi_client_avg_tps})
 
     print(result_json)
+    serve.delete("microbenchmark")
 
 
 async def main():
