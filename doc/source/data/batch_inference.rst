@@ -199,6 +199,15 @@ Once you have your Ray Datastream ``ds`` and your predictor class, you can use
 In the example below, we use two CPUs to run inference in parallel and then print the results.
 We cover resource allocation in more detail in :ref:`the configuration section of this guide <batch_inference_config>`.
 
+.. note::
+
+    Defining your :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` function requires
+    you to write a Python function that takes a batch of data and returns a batch of predictions.
+    An easy way to do this and validate it is to use ``ds.take_batch(N)`` to get a batch of data
+    first, and then locally test your predictor function on that batch, without using Ray.
+    Once you are happy with the results, you can use the same function in ``map_batches``
+    on the full dataset. The examples below show you how.
+
 .. tabs::
 
     .. group-tab:: HuggingFace
@@ -446,7 +455,7 @@ Working with batch formats
 --------------------------
 
 Now that you've seen examples of batch inference with Ray, let's have a closer look
-at how to deal with different data formats.
+at how to deal with different data formats for batches.
 First of all, you need to distinguish between two types of batch formats:
 
 - Input batch formats: This is the format of the input to your UDFs. You will often have to
@@ -462,47 +471,34 @@ but it's good to be aware of the differences.
     We often use batch format names and the libraries they represent interchangeably.
 
 Let's focus on the three available input batch formats first,
-namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
+namely NumPy, Pandas and Arrow, and how they're used in Ray Data.
+By default, the batch format will be ``"numpy"``, but you can specify other formats
+as you see fit.
 
-.. tabbed:: Pandas
+.. tabbed:: NumPy (default)
 
-  The ``"pandas"`` batch format presents batches in
-  `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format. If converting a simple dataset to Pandas DataFrame batches, a single-column
-  dataframe with the column ``"__value__"`` will be created.
-
-  .. literalinclude:: ./doc_code/batch_formats.py
-    :language: python
-    :start-after: __simple_pandas_start__
-    :end-before: __simple_pandas_end__
-
-.. tabbed:: NumPy
-
-  The ``"numpy"`` batch format presents batches in
-  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-  format as follows:
-
-  * **Tabular datasets**: Each batch will be a dictionary of NumPy
-    ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
-    in the table.
-
-  * **Tensor datasets** (single-column): Each batch will be a single
-    `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single tensor column for this batch.
-
-  * **Simple datasets**: Each batch will be a single NumPy ndarray, where Ray Data will
-    attempt to convert each list-batch to an ndarray.
+  The ``"numpy"`` batch format presents batches as dictionary of
+  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
 
   .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
     :start-after: __simple_numpy_start__
     :end-before: __simple_numpy_end__
 
+.. tabbed:: Pandas
+
+  The ``"pandas"`` batch format presents batches in
+  `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+  format.
+
+  .. literalinclude:: ./doc_code/batch_formats.py
+    :language: python
+    :start-after: __simple_pandas_start__
+    :end-before: __simple_pandas_end__
+
 .. tabbed:: Arrow
 
     The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
-    If converting a simple dataset to Arrow Table batches, a single-column table
-    with the column ``"__value__"`` will be created.
 
     .. literalinclude:: ./doc_code/batch_formats.py
         :language: python
@@ -510,9 +506,8 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
         :end-before: __simple_pyarrow_end__
 
 When defining the return value of your UDF, you can choose between
-Pandas dataframes (``pandas.DataFrame``), NumPy arrays (``numpy.ndarray``), Arrow tables
-(``pyarrow.Table``), dictionaries of NumPy arrays (``Dict[str, np.ndarray]``) or simple
-Python lists (``list``).
+Pandas dataframes (``pandas.DataFrame``), Arrow tables
+(``pyarrow.Table``), or dictionaries of NumPy arrays (``Dict[str, np.ndarray]``).
 You can learn more about output formats in :ref:`the output format guide<transform_datasets_batch_output_types>`.
 
 .. important::
@@ -521,50 +516,6 @@ You can learn more about output formats in :ref:`the output format guide<transfo
     the underlying APIs used to represent your data. For instance, if you use the
     ``"pandas"`` batch format, you will need to know the basics of interacting with
     dataframes to make your batch inference jobs work.
-
-Default data formats
-~~~~~~~~~~~~~~~~~~~~
-
-In all the examples we've seen so far, we didn't have to specify the batch format.
-In fact, the format is inferred from the input dataset, which can be straightforward.
-For instance, when loading a NumPy array with :meth:`ray.data.from_numpy() <ray.data.from_numpy>`,
-the batch format will be ``"numpy"``, but it's not always that easy.
-
-In any case, Ray Data has a ``"default"`` batch format that is computed per data type
-as follows:
-
-.. tabbed:: Tabular data
-
-    Each batch will be a
-    `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
-    This may incur a conversion cost if the underlying Datastream block is not
-    zero-copy convertible from an Arrow table.
-
-    .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_default_udfs_tabular_begin__
-        :end-before: __writing_default_udfs_tabular_end__
-
-.. tabbed:: Tensor data (single-column)
-
-    Each batch will be a single
-    `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single tensor column for this batch.
-
-    .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_default_udfs_tensor_begin__
-        :end-before: __writing_default_udfs_tensor_end__
-
-.. tabbed:: Simple data
-
-    Each batch will be a Python list.
-
-    .. literalinclude:: ./doc_code/transforming_datastreams.py
-        :language: python
-        :start-after: __writing_default_udfs_list_begin__
-        :end-before: __writing_default_udfs_list_end__
-
 
 .. seealso::
 
@@ -584,7 +535,6 @@ as follows:
             :language: python
             :start-after: __hf_quickstart_air_start__
             :end-before: __hf_quickstart_air_end__
-
 
 .. _batch_inference_config:
 Configuration & Troubleshooting
