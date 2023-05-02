@@ -18,7 +18,6 @@
 #include <list>
 #include <memory>
 #include <unordered_set>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -83,7 +82,8 @@ class IdlePoolSizePolicyInterface {
                                          size_t running_size,
                                          size_t starting_size) = 0;
 
-  virtual std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(
+  // TODO enum to replace bool
+  virtual std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>> GetIdleProcsToKill(
       size_t alive_size,
       size_t pending_exit_size,
       size_t starting_size,
@@ -106,7 +106,9 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
   std::function<double()> get_time_;
 
   void Populate(
-      std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_remove,
+      // std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_remove,
+      std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &idle_workers_to_remove,
       size_t alive_size,
       size_t pending_exit_size,
       const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
@@ -126,7 +128,7 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
                                  size_t running_size,
                                  size_t starting_size);
 
-  std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>> GetIdleProcsToKill(
       size_t alive_size,
       size_t pending_exit_size,
       size_t starting_size,

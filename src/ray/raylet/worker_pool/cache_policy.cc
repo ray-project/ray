@@ -62,7 +62,7 @@ size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
 // So we can either go with a very simple policy, or very simple policy plus policy which
 // determines
 //      which workers to kill.
-std::vector<std::shared_ptr<WorkerInterface>>
+std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 FutureIdlePoolSizePolicy::GetIdleProcsToKill(
     size_t alive_size,
     size_t pending_exit_size,
@@ -74,7 +74,7 @@ FutureIdlePoolSizePolicy::GetIdleProcsToKill(
     std::function<bool(int64_t,
                        const std::unordered_set<std::shared_ptr<WorkerInterface>>
                            &fate_sharers)> CanKillFateSharingWorkers) {
-  std::vector<std::shared_ptr<WorkerInterface>> to_kill;
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>> to_kill;
   Populate(to_kill,
            alive_size,
            pending_exit_size,
@@ -128,7 +128,8 @@ FutureIdlePoolSizePolicy::GetIdleProcsToKill(
 //
 //
 void FutureIdlePoolSizePolicy::Populate(
-    std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_remove,
+    // std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_remove,
+    std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>> &idle_workers_to_remove,
     size_t alive_size,
     size_t pending_exit_size,
     const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
@@ -206,8 +207,9 @@ void FutureIdlePoolSizePolicy::Populate(
                      << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
                      << " with pid " << idle_worker->GetProcess().GetId()
                      << " has been idle for a a while. Kill it.";
-
-      idle_workers_to_remove.push_back(worker);
+      bool force_kill = finished_jobs_.contains(worker->GetAssignedJobId()) &&
+                        RayConfig::instance().kill_idle_workers_of_terminated_job();
+      idle_workers_to_remove.push_back(std::make_pair(worker, force_kill));
       running_size--;
     }
   }

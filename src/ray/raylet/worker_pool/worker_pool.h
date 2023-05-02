@@ -396,7 +396,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
   void TryKillingIdleWorkersReplacement(
-      const std::vector<std::shared_ptr<WorkerInterface>> &idle_workers_to_kill);
+      const std::list<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &idle_workers_to_kill);
 
  protected:
   void update_worker_startup_token_counter();
