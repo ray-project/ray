@@ -20,6 +20,7 @@ from ray._private.usage.usage_lib import (
 )
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
+
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
     DeploymentInfo,
@@ -97,7 +98,12 @@ class DeploymentTargetState:
             num_replicas = 0
             version = None
         else:
-            num_replicas = info.deployment_config.num_replicas
+            # If autoscaling config is not none, num replicas should be decided based on
+            # the autoscaling policy and passed in as autoscaled_num_replicas
+            if info.autoscaled_num_replicas is not None:
+                num_replicas = info.autoscaled_num_replicas
+            else:
+                num_replicas = info.deployment_config.num_replicas
             version = DeploymentVersion(
                 info.version,
                 deployment_config=info.deployment_config,
@@ -1224,6 +1230,18 @@ class DeploymentState:
             ):
                 return False
 
+        # If autoscaling config is not none, decide initial num replicas
+        autoscaling_config = deployment_info.deployment_config.autoscaling_config
+        if autoscaling_config is not None:
+            if autoscaling_config.initial_replicas is not None:
+                autoscaled_num_replicas = autoscaling_config.initial_replicas
+            else:
+                if existing_info is not None:
+                    autoscaled_num_replicas = self._target_state.num_replicas
+                else:
+                    autoscaled_num_replicas = autoscaling_config.min_replicas
+            deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
+
         self._set_target_state(deployment_info)
         return True
 
@@ -1248,15 +1266,15 @@ class DeploymentState:
         curr_info = self._target_state.info
         autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-            curr_target_num_replicas=curr_info.deployment_config.num_replicas,
+            curr_target_num_replicas=self._target_state.num_replicas,
             current_num_ongoing_requests=current_num_ongoing_requests,
             current_handle_queued_queries=current_handle_queued_queries,
         )
-        if decision_num_replicas == curr_info.deployment_config.num_replicas:
+        if decision_num_replicas == self._target_state.num_replicas:
             return
 
         new_config = copy(curr_info)
-        new_config.deployment_config.num_replicas = decision_num_replicas
+        new_config.set_autoscaled_num_replicas(decision_num_replicas)
         if new_config.version is None:
             new_config.version = self._target_state.version.code_version
 
@@ -2203,6 +2221,15 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
+
+    def get_deployments_in_application(self, app_name: str) -> List[str]:
+        """Return list of deployment names in application."""
+        states = []
+        for name, deployment_state in self._deployment_states.items():
+            if deployment_state.target_info.app_name == app_name:
+                states.append(name)
+
+        return states
 
     def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the
