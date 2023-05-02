@@ -477,20 +477,8 @@ as you see fit.
 
 .. tabbed:: NumPy (default)
 
-  The ``"numpy"`` batch format presents batches in
-  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-  format as follows:
-
-  * **Tabular datasets**: Each batch will be a dictionary of NumPy
-    ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
-    in the table.
-
-  * **Tensor datasets** (single-column): Each batch will be a single
-    `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single tensor column for this batch.
-
-  * **Simple datasets**: Each batch will be a single NumPy ndarray, where Ray Data will
-    attempt to convert each list-batch to an ndarray.
+  The ``"numpy"`` batch format presents batches as dictionary of
+  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
 
   .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
@@ -501,8 +489,7 @@ as you see fit.
 
   The ``"pandas"`` batch format presents batches in
   `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format. If converting a simple dataset to Pandas DataFrame batches, a single-column
-  dataframe with the column ``"__value__"`` will be created.
+  format.
 
   .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
@@ -512,8 +499,6 @@ as you see fit.
 .. tabbed:: Arrow
 
     The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
-    If converting a simple dataset to Arrow Table batches, a single-column table
-    with the column ``"__value__"`` will be created.
 
     .. literalinclude:: ./doc_code/batch_formats.py
         :language: python
@@ -521,9 +506,8 @@ as you see fit.
         :end-before: __simple_pyarrow_end__
 
 When defining the return value of your UDF, you can choose between
-Pandas dataframes (``pandas.DataFrame``), NumPy arrays (``numpy.ndarray``), Arrow tables
-(``pyarrow.Table``), dictionaries of NumPy arrays (``Dict[str, np.ndarray]``) or simple
-Python lists (``list``).
+Pandas dataframes (``pandas.DataFrame``), Arrow tables
+(``pyarrow.Table``), or dictionaries of NumPy arrays (``Dict[str, np.ndarray]``).
 You can learn more about output formats in :ref:`the output format guide<transform_datasets_batch_output_types>`.
 
 .. important::

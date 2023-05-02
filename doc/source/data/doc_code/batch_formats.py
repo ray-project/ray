@@ -37,15 +37,17 @@ ds.map_batches(transform_pandas, batch_format="pandas").show(1)
 # __simple_pandas_end__
 
 # __simple_numpy_start__
+from typing import Dict
+
 import ray
 import numpy as np
 
+
 ds = ray.data.range_tensor(1000, shape=(2, 2))
-# 'numpy.ndarray'
 
-
-def transform_numpy(arr: np.ndarray) -> np.ndarray:
-    return arr * 2
+def transform_numpy(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    arr["data"] = arr["data"] * 2
+    return arr
 
 
 # test map function on a batch
