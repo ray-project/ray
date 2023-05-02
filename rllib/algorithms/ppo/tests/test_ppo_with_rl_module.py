@@ -217,8 +217,7 @@ class TestPPO(unittest.TestCase):
             .training(_enable_learner_api=True)
         )
 
-        # TODO(Artur): Enable this test for tf2 once we support CNNs
-        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             trainer = config.build()
             policy = trainer.get_policy()
 

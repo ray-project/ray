@@ -88,10 +88,14 @@ class APPOTfPolicyWithRLModule(
 
         target_policy_fwd_out = model.forward_train(train_batch)
         values = target_policy_fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = target_policy_fwd_out[SampleBatch.ACTION_DIST]
+        target_policy_dist = model.action_dist_class(
+            target_policy_fwd_out[SampleBatch.ACTION_DIST_INPUTS], model
+        )
 
         old_target_policy_fwd_out = self.target_model.forward_train(train_batch)
-        old_target_policy_dist = old_target_policy_fwd_out[SampleBatch.ACTION_DIST]
+        old_target_policy_dist = model.action_dist_class(
+            old_target_policy_fwd_out[SampleBatch.ACTION_DIST_INPUTS], self.target_model
+        )
 
         behaviour_actions_logp = train_batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(train_batch[SampleBatch.ACTIONS])
