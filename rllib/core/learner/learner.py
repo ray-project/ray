@@ -97,7 +97,6 @@ class LearnerHyperparameters:
     Validation of the values of these hyperparameters should be done by the
     respective AlgorithmConfig class.
     """
-
     pass
 
 
@@ -1072,7 +1071,7 @@ class Learner:
     ) -> Mapping[str, Any]:
         """Performs a single update given a batch of data."""
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from the base class.
+        #  NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)

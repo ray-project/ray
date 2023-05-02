@@ -110,7 +110,7 @@ class TestImpalaLearner(unittest.TestCase):
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
+            results = learner_group.update(batches=[train_batch.as_multi_agent()])
 
             learner_group_loss = results[ALL_MODULES]["total_loss"]
 

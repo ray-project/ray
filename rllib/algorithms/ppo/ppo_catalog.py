@@ -89,8 +89,9 @@ class PPOCatalog(Catalog):
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dims=None,  # We don't know the output dimension yet, because it
-            # depends on the action distribution input dimension
+            # We don't know the output dimension yet, because it depends on the
+            # action distribution input dimension.
+            output_dims=None,
         )
 
         self.vf_head_config = MLPHeadConfig(

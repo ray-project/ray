@@ -205,7 +205,7 @@ class TorchLearner(Learner):
         """Builds the TorchLearner.
 
         This method is specific to TorchLearner. Before running super() it will
-        initialze the device properly based on the `_use_gpu` and `_distributed`
+        initialize the device properly based on the `_use_gpu` and `_distributed`
         flags, so that `_make_module()` can place the created module on the correct
         device. After running super() it will wrap the module in a TorchDDPRLModule
         if `_distributed` is True.

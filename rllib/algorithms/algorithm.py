@@ -1393,7 +1393,7 @@ class Algorithm(Trainable):
             if self.config._enable_learner_api:
                 is_module_trainable = self.workers.local_worker().is_policy_to_train
                 self.learner_group.set_is_module_trainable(is_module_trainable)
-                train_results = self.learner_group.update(train_batch)
+                train_results = self.learner_group.update(batches=[train_batch])
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
