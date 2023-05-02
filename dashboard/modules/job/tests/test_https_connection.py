@@ -1,5 +1,6 @@
 import pytest
 import ssl
+import sys
 import trustme
 
 import ray
@@ -39,3 +40,7 @@ def test_mock_https_connection(httpserver, ca):
     # Connection with SSL verification should succeed
     with ca.cert_pem.tempfile() as ca_temp_path:
         JobSubmissionClient(mock_url, verify=ca_temp_path)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
