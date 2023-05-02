@@ -11,6 +11,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
     ReplicaState,
     ServeDeployMode,
+    HTTPProxyStatus,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
@@ -758,6 +759,10 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
         )
 
 
+class HTTPProxyDetails(BaseModel):
+    status: HTTPProxyStatus
+
+
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
@@ -776,6 +781,9 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    http_proxy_details: Optional[Dict[str, HTTPProxyDetails]] = Field(
+        description="Info about HTTP Proxies."
+    )
     deploy_mode: ServeDeployMode = Field(
         description=(
             "Whether a single-app config of format ServeApplicationSchema or multi-app "

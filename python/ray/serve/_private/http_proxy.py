@@ -25,7 +25,12 @@ from ray.serve._private.http_util import (
     Response,
     set_socket_reuse_port,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
+from ray.serve._private.common import (
+    EndpointInfo,
+    EndpointTag,
+    ApplicationName,
+    HTTP_PROXY_HEALTH_CHECK_CONCURRENCY_GROUP,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -459,7 +464,9 @@ class HTTPProxy:
             )
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(
+    num_cpus=0, concurrency_groups={HTTP_PROXY_HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+)
 class HTTPProxyActor:
     def __init__(
         self,
@@ -549,3 +556,7 @@ Please make sure your http-host and http-port are specified correctly."""
 
         self.setup_complete.set()
         await server.serve(sockets=[sock])
+
+    @ray.method(concurrency_group=HTTP_PROXY_HEALTH_CHECK_CONCURRENCY_GROUP)
+    async def check_health(self):
+        pass
