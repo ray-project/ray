@@ -688,7 +688,7 @@ class ProgressReporterTest(unittest.TestCase):
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 # New execution path is too fast, trials are already terminated
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
                 assert "(raylet)" not in output, "Unexpected raylet log messages"
@@ -713,7 +713,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -725,14 +725,14 @@ class ProgressReporterTest(unittest.TestCase):
             output = run_string_as_driver(verbose_1_cmd)
             try:
                 # New execution path is too fast, trials are already terminated
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -743,7 +743,7 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_2_cmd = VERBOSE_CMD + "verbose=2)"
             output = run_string_as_driver(verbose_2_cmd)
             try:
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_1, output)
@@ -760,14 +760,14 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_3_cmd = VERBOSE_CMD + "verbose=3)"
             output = run_string_as_driver(verbose_3_cmd)
             try:
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_TRIAL_DETAIL, output)
                 # Check that we don't print duplicate results at the end
                 self.assertTrue(output.count(VERBOSE_TRIAL_WITH_ONCE_RESULT) == 1)

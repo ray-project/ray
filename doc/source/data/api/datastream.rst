@@ -77,7 +77,7 @@ Converting to Pipeline
    Datastream.repeat
    Datastream.window
 
-Consuming Datastreams
+Consuming Data
 ---------------------
 
 .. autosummary::
@@ -138,9 +138,10 @@ Execution
 ---------
 
 .. autosummary::
-   :toctree: doc/
+    :toctree: doc/
 
-   Datastream.materialize
+    Datastream.materialize
+    ActorPoolStrategy
 
 Serialization
 -------------

@@ -3,7 +3,9 @@
 Ray Use Cases
 =============
 
-This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
+This page indexes common Ray use cases for scaling ML.
+It contains highlighted references to blogs, examples, and tutorials also located
+elsewhere in the Ray documentation.
 
 .. _ref-use-cases-llm:
 
@@ -98,15 +100,15 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
 Batch Inference
 ---------------
 
-Batch inference refers to generating model predictions over a set of input observations. The model could be a regression model, neural network, or simply a Python function. Ray can scale batch inference from single GPU machines to large clusters.
+Batch inference is the process of generating model predictions on a large "batch" of input data.
+Ray for batch inference works with any cloud provider and ML framework,
+and is fast and cheap for modern deep learning applications.
+It scales from single machines to large clusters with minimal code changes.
+As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray.
+To learn more about running batch inference with Ray, see the :ref:`batch inference guide<batch_inference_home>`.
 
-Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's :ref:`Batch Predictor <air-predictors>` scales predictions on batches across workers.
+.. figure:: batch_inference/images/batch_inference.png
 
-.. figure:: /images/batch_inference.png
-  
-  Using Ray AIR's ``BatchPredictor`` for batch inference.
-
-Learn more about batch inference with the following resources.
 
 .. grid:: 1 2 3 4
     :gutter: 1
@@ -151,6 +153,7 @@ Learn more about batch inference with the following resources.
         .. button-ref:: /data/examples/ocr_example
 
             [Example] Batch OCR processing using Ray Data
+
 
 
 .. _ref-use-cases-mmt:
