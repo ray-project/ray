@@ -46,19 +46,32 @@ export const ServeStatusIcon = ({
     case "RUNNING":
       return (
         <RiCheckboxCircleFill
+          data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorSuccess)}
         />
       );
     case "NOT_STARTED":
-      return <RiStopCircleFill className={classes.icon} />;
+      return (
+        <RiStopCircleFill
+          data-testid="serve-status-icon"
+          className={classes.icon}
+        />
+      );
     case "DEPLOY_FAILED":
       return (
         <RiCloseCircleFill
+          data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorError)}
         />
       );
     default:
       // DEPLOYING || DELETEING
-      return <JobRunningIcon className={className} small={small} />;
+      return (
+        <JobRunningIcon
+          data-testid="serve-status-icon"
+          className={className}
+          small={small}
+        />
+      );
   }
 };

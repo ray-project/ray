@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import fireEvent from "@testing-library/user-event";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { useJobList } from "../../job/hook/useJobList";
