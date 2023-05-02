@@ -68,7 +68,7 @@ ENTROPY_KEY = "entropy"
 
 
 @dataclass
-class FrameworkHPs:
+class FrameworkHyperparameters:
     """The framework specific hyper-parameters.
 
     Args:
@@ -83,15 +83,19 @@ class FrameworkHPs:
 
 
 @dataclass
-class LearnerHPs:
-    """The hyper-parameters for Learner.
+class LearnerHyperparameters:
+    """Hyperparameters for a Learner, derived from a subset of AlgorithmConfig values.
 
-    When creating a new Learner, the new hyper-parameters have to be defined by
-    subclassing this class and adding the new hyper-parameters as fields.
+    Instances of this class should only be created via calling
+    `get_learner_hyperparameters()` on a frozen AlgorithmConfig object and should always
+    considered read-only.
 
-    # TODO (Kourosh, Avnish): The things that could be part of the base class:
-    - a function, `validate` that runs some validation on the hyper-parameters.
+    When creating a new Learner, you should also define a new sub-class of this class
+    and make sure the respective AlgorithmConfig sub-class has a proper implementation
+    of the `get_learner_hyperparameters` method.
 
+    Validation of the values of these hyperparameters should be done by the
+    respective AlgorithmConfig class.
     """
 
     pass
@@ -111,7 +115,6 @@ class Learner:
     the TF or Torch specific sub-classes to implement their algorithm-specific update
     logic.
 
-
     Args:
         module_spec: The module specification for the RLModule that is being trained.
             If the module is a single agent module, after building the module it will
@@ -130,11 +133,12 @@ class Learner:
             Algorithm specific learner hyper-parameters will passed in via this
             argument. For example in PPO the `vf_loss_coeff` hyper-parameter will be
             passed in via this argument. Refer to
-            ray.rllib.core.learner.learner.LearnerHPs for more info.
+            ray.rllib.core.learner.learner.LearnerHyperparameters for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
             creation. For example eager_tracing in TF or compile in Torch.
-            Refer to ray.rllib.core.learner.learner.FrameworkHPs for more info.
+            Refer to ray.rllib.core.learner.learner.FrameworkHyperparameters for
+            more info.
 
 
     Usage pattern:
@@ -199,7 +203,7 @@ class Learner:
 
             def compute_loss(self, fwd_out, batch):
                 # compute the loss based on batch and output of the forward pass
-                # to access the learner hyper-parameters use `self.hps`
+                # to access the learner hyper-parameters use `self._hps`
 
                 return {self.TOTAL_LOSS_KEY: loss}
     """
@@ -215,9 +219,9 @@ class Learner:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        learner_scaling_config: LearnerGroupScalingConfig = LearnerGroupScalingConfig(),
-        learner_hyperparameters: Optional[LearnerHPs] = LearnerHPs(),
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        learner_group_scaling_config: Optional[LearnerGroupScalingConfig] = None,
+        learner_hyperparameters: Optional[LearnerHyperparameters] = None,
+        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
     ):
         # TODO (Kourosh): convert optimizer configs to dataclasses
         if module_spec is not None and module is not None:
@@ -233,13 +237,20 @@ class Learner:
         self._module_spec = module_spec
         self._module_obj = module
         self._optimizer_config = optimizer_config
-        self._hps = learner_hyperparameters
+        self._hps = learner_hyperparameters or LearnerHyperparameters()
 
         # pick the configs that we need for the learner from scaling config
-        self._distributed = learner_scaling_config.num_workers > 1
-        self._use_gpu = learner_scaling_config.num_gpus_per_worker > 0
+        self._learner_group_scaling_config = (
+            learner_group_scaling_config or LearnerGroupScalingConfig()
+        )
+        self._distributed = self._learner_group_scaling_config.num_workers > 1
+        self._use_gpu = self._learner_group_scaling_config.num_gpus_per_worker > 0
         # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_idx = learner_scaling_config.local_gpu_idx
+        self._local_gpu_idx = self._learner_group_scaling_config.local_gpu_idx
+
+        self._framework_hyperparameters = (
+            framework_hyperparameters or FrameworkHyperparameters()
+        )
 
         # whether self.build has already been called
         self._is_built = False
@@ -263,7 +274,7 @@ class Learner:
         return self._module
 
     @property
-    def hps(self) -> LearnerHPs:
+    def hps(self) -> LearnerHyperparameters:
         """The hyper-parameters for the learner."""
         return self._hps
 
@@ -522,14 +533,14 @@ class Learner:
 
         # We put the stats for all modules under the ALL_MODULES key. e.g. average of
         # the gradients across all modules will go here.
-        mean_grads = [
-            np.mean(grad)
+        mean_abs_grads = [
+            np.mean(np.abs(grad))
             for grad in convert_to_numpy(postprocessed_gradients.values())
             if grad is not None
         ]
 
         module_learner_stats[ALL_MODULES] = {
-            "mean_gradient": np.mean(mean_grads),
+            "mean_abs_postprocessed_gradients": np.mean(mean_abs_grads),
             self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
         }
 
@@ -754,19 +765,21 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     def postprocess_gradients(
-        self, gradients_dict: Mapping[str, Any]
+        self,
+        gradients_dict: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        """Applies potential postprocessings to the gradients.
+        """Applies potential postprocessing operations on the gradients.
 
-        In some algorithms, we may want to perform some postprocessing on the
-        gradients before they are applied. This method is called after gradients
-        have been computed, and modifies them before they are applied.
+        This method is called after gradients have been computed, and modifies them
+        before they are applied to the respective module(s).
+        This includes grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
 
         Args:
             gradients_dict: A dictionary of gradients.
 
         Returns:
-            A dictionary of updated gradients.
+            A dictionary with the updated gradients.
         """
         return gradients_dict
 
@@ -776,7 +789,9 @@ class Learner:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
     ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -845,14 +860,29 @@ class Learner:
 
         Args:
             state: The state of the optimizer and module. Can be obtained
-                from `get_state`.
+                from `get_state`. State is a dictionary with two keys:
+                "module_state" and "optimizer_state". The value of each key
+                is a dictionary that can be passed to `set_weights` and
+                `set_optimizer_weights` respectively.
 
         """
         # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
         # having both can become confusing. Can we simplify this API requirement?
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        self._module.set_state(state.get("module_state", {}))
+        if "module_state" not in state:
+            raise ValueError(
+                "state must have a key 'module_state' for the module weights"
+            )
+        if "optimizer_state" not in state:
+            raise ValueError(
+                "state must have a key 'optimizer_state' for the optimizer weights"
+            )
+
+        module_state = state.get("module_state")
+        optimizer_state = state.get("optimizer_state")
+        self.set_weights(module_state)
+        self.set_optimizer_weights(optimizer_state)
 
     def get_state(self) -> Mapping[str, Any]:
         """Get the state of the learner.
@@ -863,7 +893,29 @@ class Learner:
         """
         self._check_is_built()
         # TODO: once we figure out the optimizer format, we can set/get the state
-        return {"module_state": self._module.get_state()}
+        return {
+            "module_state": self.get_weights(),
+            "optimizer_state": self.get_optimizer_weights(),
+        }
+        # return {"module_state": self.get_weights(), "optimizer_state": {}}
+
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        """Set the weights of the optimizer.
+
+        Args:
+            weights: The weights of the optimizer.
+
+        """
+        raise NotImplementedError
+
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        """Get the weights of the optimizer.
+
+        Returns:
+            The weights of the optimizer.
+
+        """
+        raise NotImplementedError
 
     def _get_metadata(self) -> Dict[str, Any]:
         metadata = {
@@ -902,6 +954,16 @@ class Learner:
         NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
         will be appended to.
 
+        the state of the learner is saved in the following format:
+
+        checkpoint_dir/
+            learner_state.json
+            module_state/
+                module_1/
+                    ...
+            optimizer_state/
+                optimizers_module_1/
+                    ...
 
         Args:
             path: The path to the directory to save the state to.
@@ -957,17 +1019,17 @@ class Learner:
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
         module. If the module_class is a single agent RL module it will be wrapped to a
-        multi-agent RL module. Override this method if there are other things than
-        needs to happen for instantiation of the module.
-
+        multi-agent RL module. Override this method if there are other things that
+        need to happen for instantiation of the module.
 
         Returns:
-            The constructed module.
+            A constructed MultiAgentRLModule.
         """
         if self._module_obj is not None:
             module = self._module_obj
         else:
             module = self._module_spec.build()
+        # If not already, convert to MultiAgentRLModule.
         module = module.as_multi_agent()
         return module
 
@@ -975,11 +1037,11 @@ class Learner:
         """Checks whether the result has the correct format.
 
         All the keys should be referencing the module ids that got updated. There is a
-        special key `__all__` that hold any extra information that is not specific to a
-        module.
+        special key `ALL_MODULES` that hold any extra information that is not specific
+        to a module.
 
         Args:
-            results: The result of the update.
+            result: The result of the update.
 
         Raises:
             ValueError: If the result are not in the correct format.
@@ -1000,7 +1062,7 @@ class Learner:
                 if key not in self.module.keys():
                     raise ValueError(
                         f"The key {key} in the result of the update is not a valid "
-                        f"module id. Valid module ids are: {self.module.keys()}"
+                        f"module id. Valid module ids are: {list(self.module.keys())}."
                     )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1018,9 +1080,9 @@ class Learner:
         gradients = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        self._check_result(result)
-        return convert_to_numpy(result)
+        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        self._check_result(results)
+        return convert_to_numpy(results)
 
     def _check_is_built(self):
         if self._module is None:
@@ -1052,27 +1114,31 @@ class LearnerSpec:
         backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
         learner_hyperparameters: The extra config for the loss/additional update. This
-            should be a subclass of LearnerHPs. This is useful for passing in
-            algorithm configs that contains the hyper-parameters for loss computation,
-            change of training behaviors, etc. e.g lr, entropy_coeff.
+            should be a subclass of LearnerHyperparameters. This is useful for passing
+            in algorithm configs that contains the hyper-parameters for loss
+            computation, change of training behaviors, etc. e.g lr, entropy_coeff.
     """
 
     learner_class: Type["Learner"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    learner_scaling_config: LearnerGroupScalingConfig = field(
+    learner_group_scaling_config: LearnerGroupScalingConfig = field(
         default_factory=LearnerGroupScalingConfig
     )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    learner_hyperparameters: LearnerHPs = field(default_factory=LearnerHPs)
-    framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
+    learner_hyperparameters: LearnerHyperparameters = field(
+        default_factory=LearnerHyperparameters
+    )
+    framework_hyperparameters: FrameworkHyperparameters = field(
+        default_factory=FrameworkHyperparameters
+    )
 
     def get_params_dict(self) -> Dict[str, Any]:
         """Returns the parameters than be passed to the Learner constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "learner_scaling_config": self.learner_scaling_config,
+            "learner_group_scaling_config": self.learner_group_scaling_config,
             "optimizer_config": self.optimizer_config,
             "learner_hyperparameters": self.learner_hyperparameters,
             "framework_hyperparameters": self.framework_hyperparameters,

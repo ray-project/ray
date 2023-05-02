@@ -293,6 +293,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      io_service,
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
       /*is_node_available_fn*/
@@ -373,23 +374,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
   if (RayConfig::instance().use_ray_syncer()) {
-    periodical_runner_.RunFnPeriodically(
-        [this]() {
-          auto now = absl::Now();
-          auto threshold =
-              now - absl::Milliseconds(
-                        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
-          auto &resource_manager =
-              cluster_resource_scheduler_->GetClusterResourceManager();
-          for (auto &[node_id, resource] : resource_message_udpated_) {
-            auto modified_ts = resource_manager.GetNodeResourceModifiedTs(
-                scheduling::NodeID(node_id.Binary()));
-            if (modified_ts && *modified_ts < threshold) {
-              UpdateResourceUsage(node_id, resource);
-            }
-          }
-        },
-        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
@@ -1048,10 +1032,6 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
-
-  // Remove the messages received
-  resource_message_udpated_.erase(node_id);
-
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
           scheduling::NodeID(node_id.Binary()))) {
@@ -2790,7 +2770,6 @@ void NodeManager::ConsumeSyncMessage(
     }
     // Message view shouldn't carry this field.
     RAY_CHECK(!data.should_global_gc());
-    resource_message_udpated_[node_id] = std::move(data);
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());

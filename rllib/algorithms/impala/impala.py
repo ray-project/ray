@@ -1,4 +1,6 @@
 import copy
+import dataclasses
+from functools import partial
 import logging
 import platform
 import queue
@@ -10,15 +12,11 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala_base_learner import (
-    ImpalaHPs,
+from ray.rllib.algorithms.impala.impala_learner import (
+    ImpalaHyperparameters,
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.learner.learner_group_config import (
-    LearnerGroupConfig,
-    ModuleSpec,
-)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -108,7 +106,6 @@ class ImpalaConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
 
         # IMPALA specific settings:
-        self._learner_hps = ImpalaHPs()
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
@@ -125,7 +122,13 @@ class ImpalaConfig(AlgorithmConfig):
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.opt_type = "adam"
         self.lr_schedule = None
         self.decay = 0.99
@@ -138,7 +141,7 @@ class ImpalaConfig(AlgorithmConfig):
         self._lr_vf = 0.0005
         self.after_train_step = None
 
-        # Override some of AlgorithmConfig's default values with ARS-specific values.
+        # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.minibatch_size = self.train_batch_size
@@ -395,6 +398,7 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+        # Learner API specific checks.
         if self._enable_learner_api:
             if not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
@@ -407,30 +411,31 @@ class ImpalaConfig(AlgorithmConfig):
                     f"{self.train_batch_size}, and rollout_fragment_length="
                     f"{self.get_rollout_fragment_length()}"
                 )
-        # learner hps need to be updated inside of config.validate in order to have
-        # the correct values for when a user starts an experiment from a dict. This is
-        # as oppposed to assigning the values inthe builder functions such as `training`
-        self._learner_hps.rollout_frag_or_episode_len = (
-            self.get_rollout_fragment_length()
-        )
-        self._learner_hps.discount_factor = self.gamma
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.vtrace_drop_last_ts = self.vtrace_drop_last_ts
-        self._learner_hps.vtrace_clip_rho_threshold = self.vtrace_clip_rho_threshold
-        self._learner_hps.vtrace_clip_pg_rho_threshold = (
-            self.vtrace_clip_pg_rho_threshold
-        )
 
     @override(AlgorithmConfig)
-    def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-        lg_config = super().get_learner_group_config(module_spec)
-        optim_config = lg_config.optimizer_config
-        # TODO(avnishn): Make grad_clip a default parameter in algorithm_config's base
-        #  class
-        optim_config.update({"grad_clip": self.grad_clip})
-        lg_config = lg_config.learner(optimizer_config=optim_config)
-        return lg_config
+    def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        learner_hps = ImpalaHyperparameters(
+            rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
+            discount_factor=self.gamma,
+            entropy_coeff=self.entropy_coeff,
+            vf_loss_coeff=self.vf_loss_coeff,
+            vtrace_drop_last_ts=self.vtrace_drop_last_ts,
+            vtrace_clip_rho_threshold=self.vtrace_clip_rho_threshold,
+            vtrace_clip_pg_rho_threshold=(self.vtrace_clip_pg_rho_threshold),
+            **dataclasses.asdict(base_hps),
+        )
+        # TODO: We currently do not use the `recurrent_seq_len` property anyways.
+        #  We should re-think the handling of RNN/SEQ_LENs/etc.. once we start
+        #  supporting them in RLModules and then revisit this check here.
+        #  Also, such a check should be moved into `IMPALAConfig.validate()`.
+        assert (learner_hps.rollout_frag_or_episode_len is None) != (
+            learner_hps.recurrent_seq_len is None
+        ), (
+            "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
+            "None in ImpalaHyperparameters!"
+        )
+        return learner_hps
 
     def get_replay_ratio(self) -> float:
         """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
@@ -441,16 +446,16 @@ class ImpalaConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
-
-            return ImpalaTfLearner
-        elif self.framework_str == "torch":
+        if self.framework_str == "torch":
             from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
                 ImpalaTorchLearner,
             )
 
             return ImpalaTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+
+            return ImpalaTfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -599,9 +604,11 @@ class Impala(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
+        # Queue of batches to be sent to the Learner.
+        self.batches_to_place_on_learner = []
+
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
-        self.batches_to_place_on_learner = []
         self.batch_being_built = []
         if self.config.num_aggregation_workers > 0:
             # This spawns `num_aggregation_workers` actors that aggregate
@@ -675,7 +682,8 @@ class Impala(Algorithm):
             and self._aggregator_actor_manager.num_healthy_actors() > 0
         )
 
-        # Get references to sampled SampleBatches from our workers.
+        # Get sampled SampleBatches from our workers (by ray references if we use
+        # tree-aggregation).
         unprocessed_sample_batches = self.get_samples_from_workers(
             return_object_refs=use_tree_aggregation,
         )
@@ -1051,6 +1059,10 @@ class Impala(Algorithm):
             workers.
 
         """
+
+        def _process_episodes(actor, batch):
+            return actor.process_episodes(ray.get(batch))
+
         for _, batch in worker_to_sample_batches_refs:
             assert isinstance(batch, ObjectRef), (
                 "For efficiency, process_experiences_tree_aggregation should "
@@ -1061,7 +1073,7 @@ class Impala(Algorithm):
                 self._aggregator_actor_manager.healthy_actor_ids()
             )
             calls_placed = self._aggregator_actor_manager.foreach_actor_async(
-                lambda actor: actor.process_episodes(ray.get(batch)),
+                partial(_process_episodes, batch=batch),
                 remote_actor_ids=[aggregator_id],
             )
             if calls_placed <= 0:

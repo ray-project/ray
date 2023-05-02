@@ -147,32 +147,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_table = self.global_state_accessor.get_node_table()
-
-        results = []
-        for node_info_item in node_table:
-            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
-            node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
-                "Alive": item.state
-                == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
-                "NodeManagerAddress": item.node_manager_address,
-                "NodeManagerHostname": item.node_manager_hostname,
-                "NodeManagerPort": item.node_manager_port,
-                "ObjectManagerPort": item.object_manager_port,
-                "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name,
-                "MetricsExportPort": item.metrics_export_port,
-                "NodeName": item.node_name,
-            }
-            node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = (
-                {key: value for key, value in item.resources_total.items()}
-                if node_info["Alive"]
-                else {}
-            )
-            results.append(node_info)
-        return results
+        return self.global_state_accessor.get_node_table()
 
     def job_table(self):
         """Fetch and parse the gcs job table.
@@ -749,10 +724,9 @@ class GlobalState:
     def get_node_to_connect_for_driver(self, node_ip_address):
         """Get the node to connect for a Ray driver."""
         self._check_connected()
-        node_info_str = self.global_state_accessor.get_node_to_connect_for_driver(
+        return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
-        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
 
 
 state = GlobalState()

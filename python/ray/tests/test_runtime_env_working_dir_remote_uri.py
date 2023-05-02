@@ -97,7 +97,7 @@ def test_multi_node(start_cluster, option: str, source: str):
             import test_module
 
             test_module.one()
-            return ray.get_runtime_context().node_id
+            return ray.get_runtime_context().get_node_id()
 
     num_cpus = int(ray.available_resources()["CPU"])
     actors = [A.remote() for _ in range(num_cpus)]
