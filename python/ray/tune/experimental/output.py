@@ -529,7 +529,36 @@ class TuneReporterBase(ProgressReporter):
         tensorboard_path: Optional[str] = None,
         **kwargs,
     ):
-        raise NotImplementedError
+        if total_num_samples > sys.maxsize:
+            total_num_samples_str = "infinite"
+        else:
+            total_num_samples_str = str(total_num_samples)
+
+        print(
+            tabulate(
+                [
+                    ["Search algorithm", searcher_str],
+                    ["Scheduler", scheduler_str],
+                    ["Number of trials", total_num_samples_str],
+                ],
+                headers=["Configuration for experiment", experiment_name],
+                tablefmt=AIR_TABULATE_TABLEFMT,
+            )
+        )
+        self._experiment_start_paths(
+            experiment_path=experiment_path, tensorboard_path=tensorboard_path
+        )
+
+    def _experiment_start_paths(self, experiment_path: str, tensorboard_path: str):
+        print(f"\nView detailed results here: {experiment_path}")
+
+        if tensorboard_path:
+            print(
+                f"To visualize your results with TensorBoard, run: "
+                f"`tensorboard --logdir {tensorboard_path}`"
+            )
+
+        print("")
 
     def _get_overall_trial_progress_str(self, trials):
         result = " | ".join(
@@ -596,14 +625,9 @@ class TuneTerminalReporter(TuneReporterBase):
                 tablefmt=AIR_TABULATE_TABLEFMT,
             )
         )
-        print(f"\nView detailed results here: {experiment_path}")
-
-        if tensorboard_path:
-            print(
-                f"To visualize your results with TensorBoard, run: `tensorboard --logdir {tensorboard_path}`"
-            )
-
-        print("")
+        self._experiment_start_paths(
+            experiment_path=experiment_path, tensorboard_path=tensorboard_path
+        )
 
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
@@ -643,18 +667,6 @@ class TuneRichReporter(TuneReporterBase):
 
     # since sticky table, we can afford to do that more often.
     _heartbeat_freq = 5
-
-    def experiment_started(
-        self,
-        experiment_name: str,
-        experiment_path: str,
-        searcher_str: str,
-        scheduler_str: str,
-        total_num_samples: int,
-        tensorboard_path: Optional[str] = None,
-        **kwargs,
-    ):
-        pass
 
     @contextlib.contextmanager
     def with_live(self):
