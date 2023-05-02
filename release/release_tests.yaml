@@ -5361,7 +5361,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
+        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
 
 - name: aggregate_benchmark
   group: data-tests
