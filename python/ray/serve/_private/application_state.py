@@ -65,7 +65,6 @@ class ApplicationState:
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
         # This set tracks old deployments that are being deleted
-        self._deployments_to_delete = set()
         self._ready_to_be_deleted = False
         self._route_prefix = None
         self._docs_path = None
@@ -204,6 +203,7 @@ class ApplicationState:
 
         for params in deployment_params:
             params["deployment_name"] = params.pop("name")
+            params["app_name"] = self._name
 
         deployment_infos = {
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
