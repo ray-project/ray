@@ -1,3 +1,4 @@
+import sys
 from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING, Collection
 
 import contextlib
@@ -518,6 +519,18 @@ class TuneReporterBase(ProgressReporter):
         self._inferred_metric = None
         super(TuneReporterBase, self).__init__(verbosity=verbosity)
 
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        raise NotImplementedError
+
     def _get_overall_trial_progress_str(self, trials):
         result = " | ".join(
             [
@@ -557,6 +570,41 @@ class TuneReporterBase(ProgressReporter):
 
 
 class TuneTerminalReporter(TuneReporterBase):
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        if total_num_samples > sys.maxsize:
+            total_num_samples_str = "infinite"
+        else:
+            total_num_samples_str = str(total_num_samples)
+
+        print(
+            tabulate(
+                [
+                    ["Search algorithm", searcher_str],
+                    ["Scheduler", scheduler_str],
+                    ["Number of trials", total_num_samples_str],
+                ],
+                headers=["Configuration for experiment", experiment_name],
+                tablefmt=AIR_TABULATE_TABLEFMT,
+            )
+        )
+        print(f"\nView detailed results here: {experiment_path}")
+
+        if tensorboard_path:
+            print(
+                f"To visualize your results with TensorBoard, run: `tensorboard --logdir {tensorboard_path}`"
+            )
+
+        print("")
+
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
             return
@@ -575,7 +623,7 @@ class TuneTerminalReporter(TuneReporterBase):
             tabulate(
                 all_infos,
                 headers=header,
-                tablefmt="simple",
+                tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
         )
@@ -595,6 +643,18 @@ class TuneRichReporter(TuneReporterBase):
 
     # since sticky table, we can afford to do that more often.
     _heartbeat_freq = 5
+
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        pass
 
     @contextlib.contextmanager
     def with_live(self):
