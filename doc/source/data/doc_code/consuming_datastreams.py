@@ -40,7 +40,7 @@ num_rows = 0
 
 # Consume all rows in the Datastream.
 for row in ds.iter_rows():
-    assert isinstance(row, int)
+    assert isinstance(row, dict)
     num_rows += 1
 
 print(num_rows)
@@ -58,7 +58,7 @@ num_batches = 0
 
 # Consume all batches in the Datastream.
 for batch in ds.iter_batches(batch_size=2):
-    assert isinstance(batch, list)
+    assert isinstance(batch, dict)
     num_batches += 1
 
 print(num_batches)
@@ -69,7 +69,7 @@ cum_sum = 0
 for batch in ds.iter_batches(batch_size=2, batch_format="pandas"):
     assert isinstance(batch, pd.DataFrame)
     # Simple integer Datastream is converted to a single-column Pandas DataFrame.
-    cum_sum += batch["value"]
+    cum_sum += batch["id"]
 print(cum_sum)
 # -> 49995000
 
@@ -81,11 +81,11 @@ print(cum_sum)
 import ray
 
 @ray.remote
-def consume(data: ray.data.Datastream[int]) -> int:
+def consume(data: ray.data.Datastream) -> int:
     num_batches = 0
     # Consume data in 2-record batches.
     for batch in data.iter_batches(batch_size=2):
-        assert len(batch) == 2
+        assert len(batch["id"]) == 2
         num_batches += 1
     return num_batches
 
@@ -106,7 +106,7 @@ class Worker:
     def train(self, shard: ray.data.DataIterator) -> int:
         total = 0
         for batch in shard.iter_torch_batches(batch_size=256):
-            total += len(batch)
+            total += len(batch["id"])
         return total
 
 workers = [Worker.remote(i) for i in range(4)]

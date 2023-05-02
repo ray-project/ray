@@ -20,6 +20,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -1451,20 +1452,11 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
-    auto ready_iter = ready.find(mem_id);
-    if (ready_iter != ready.end()) {
-      std::vector<std::shared_ptr<RayObject>> found;
-      RAY_CHECK_OK(memory_store->Get({mem_id},
-                                     /*num_objects=*/1,
-                                     /*timeout=*/0,
-                                     worker_context,
-                                     /*remote_after_get=*/false,
-                                     &found));
-      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        plasma_object_ids.insert(mem_id);
-        ready.erase(ready_iter);
-        memory_object_ids.erase(current);
-      }
+    auto found = memory_store->GetIfExists(mem_id);
+    if (found != nullptr && found->IsInPlasmaError()) {
+      plasma_object_ids.insert(mem_id);
+      ready.erase(mem_id);
+      memory_object_ids.erase(current);
     }
   }
 }
@@ -2175,17 +2167,27 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   }
 }
 
-std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
-    const ActorID &actor_id,
-    const RayFunction &function,
-    const std::vector<std::unique_ptr<TaskArg>> &args,
-    const TaskOptions &task_options) {
+Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
+                                   const RayFunction &function,
+                                   const std::vector<std::unique_ptr<TaskArg>> &args,
+                                   const TaskOptions &task_options,
+                                   std::vector<rpc::ObjectReference> &task_returns) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
+  task_returns.clear();
+  if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
+    std::string err_msg = absl::StrFormat(
+        "Can't find actor %s. It might be dead or it's from a different cluster",
+        actor_id.Hex());
+    return Status::NotFound(std::move(err_msg));
+  }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
                    << ". " << direct_actor_submitter_->DebugString(actor_id);
-    return std::nullopt;
+    return Status::OutOfResource(absl::StrFormat(
+        "Too many tasks (%d) pending to be executed for actor %s. Please try later",
+        direct_actor_submitter_->NumPendingTasks(actor_id),
+        actor_id.Hex()));
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
@@ -2248,7 +2250,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  return {std::move(returned_refs)};
+  task_returns = std::move(returned_refs);
+  return Status::OK();
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id,

@@ -23,13 +23,13 @@ from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
 )
+from ray.data._internal.util import _truncated_repr
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
-    KeyFn,
     KeyType,
     U,
 )
@@ -105,7 +105,7 @@ class ArrowRow(TableRow):
         return self._row.num_columns
 
 
-class ArrowBlockBuilder(TableBlockBuilder[T]):
+class ArrowBlockBuilder(TableBlockBuilder):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
@@ -153,7 +153,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def numpy_to_block(
-        batch: Union[np.ndarray, Dict[str, np.ndarray]],
+        batch: Union[np.ndarray, Dict[str, np.ndarray], Dict[str, list]],
         passthrough_arrow_not_implemented_errors: bool = False,
     ) -> "pyarrow.Table":
         import pyarrow as pa
@@ -163,14 +163,27 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}
         elif not isinstance(batch, collections.abc.Mapping) or any(
-            not isinstance(col, np.ndarray) for col in batch.values()
+            not isinstance(col, (list, np.ndarray)) for col in batch.values()
         ):
             raise ValueError(
                 "Batch must be an ndarray or dictionary of ndarrays when converting "
-                f"a numpy batch to a block, got: {type(batch)}"
+                f"a numpy batch to a block, got: {type(batch)} "
+                f"({_truncated_repr(batch)})"
             )
         new_batch = {}
         for col_name, col in batch.items():
+            if isinstance(col, list):
+                # Try to convert list values into an numpy array via
+                # np.array(), so users don't need to manually cast.
+                # NOTE: we don't cast generic iterables, since types like
+                # `str` are also Iterable.
+                try:
+                    col = np.array(col)
+                except Exception:
+                    raise ValueError(
+                        "Failed to convert column values to numpy array: "
+                        f"({_truncated_repr(col)})."
+                    )
             # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.dtype.type is np.object_ or col.ndim > 1:
                 try:
@@ -293,7 +306,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def _zip(self, acc: BlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "Block":
         r = self.to_arrow()
         s = acc.to_arrow()
         for col_name in s.column_names:
@@ -310,7 +323,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> ArrowBlockBuilder[T]:
+    def builder() -> ArrowBlockBuilder:
         return ArrowBlockBuilder()
 
     @staticmethod
@@ -328,7 +341,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
         return transform_pyarrow.take_table(self._table, indices)
 
-    def select(self, columns: List[KeyFn]) -> "pyarrow.Table":
+    def select(self, columns: List[str]) -> "pyarrow.Table":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
                 "Columns must be a list of column name strings when aggregating on "
@@ -341,7 +354,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = self._table.select([k[0] for k in key])
         return transform_pyarrow.take_table(table, indices)
 
-    def count(self, on: KeyFn) -> Optional[U]:
+    def count(self, on: str) -> Optional[U]:
         """Count the number of non-null values in the provided column."""
         import pyarrow.compute as pac
 
@@ -358,7 +371,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return pac.count(col).as_py()
 
     def _apply_arrow_compute(
-        self, compute_fn: Callable, on: KeyFn, ignore_nulls: bool
+        self, compute_fn: Callable, on: str, ignore_nulls: bool
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
         import pyarrow as pa
@@ -378,29 +391,29 @@ class ArrowBlockAccessor(TableBlockAccessor):
         else:
             return compute_fn(col, skip_nulls=ignore_nulls).as_py()
 
-    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
         import pyarrow.compute as pac
 
         return self._apply_arrow_compute(pac.sum, on, ignore_nulls)
 
-    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
         import pyarrow.compute as pac
 
         return self._apply_arrow_compute(pac.min, on, ignore_nulls)
 
-    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
         import pyarrow.compute as pac
 
         return self._apply_arrow_compute(pac.max, on, ignore_nulls)
 
-    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
         import pyarrow.compute as pac
 
         return self._apply_arrow_compute(pac.mean, on, ignore_nulls)
 
     def sum_of_squared_diffs_from_mean(
         self,
-        on: KeyFn,
+        on: str,
         ignore_nulls: bool,
         mean: Optional[U] = None,
     ) -> Optional[U]:
@@ -422,7 +435,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet"
@@ -461,7 +474,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         partitions.append(table.slice(last_idx))
         return partitions
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
+    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -490,7 +503,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows()
+            iter = self.iter_rows(public_row_format=False)
             next_row = None
             while True:
                 try:
@@ -540,8 +553,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List[Block], key: "SortKeyT", _descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -553,11 +566,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block[ArrowRow]],
-        key: KeyFn,
+        blocks: List[Block],
+        key: str,
         aggs: Tuple[AggregateFn],
         finalize: bool,
-    ) -> Tuple[Block[ArrowRow], BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -584,7 +597,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
         )
 
         iter = heapq.merge(
-            *[ArrowBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+            *[
+                ArrowBlockAccessor(block).iter_rows(public_row_format=False)
+                for block in blocks
+            ],
+            key=key_fn,
         )
         next_row = None
         builder = ArrowBlockBuilder()

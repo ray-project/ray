@@ -22,7 +22,7 @@ class Model:
 ds = (
     ds.window(blocks_per_window=10)
     .map(preprocess)
-    .map(Model, compute="actors", num_gpus=1)
+    .map(Model, compute=ray.data.ActorPoolStrategy(), num_gpus=1)
 )
 
 for x in ds.iter_rows():

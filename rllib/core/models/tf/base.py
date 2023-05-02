@@ -1,4 +1,5 @@
 import abc
+import logging
 from typing import Tuple
 
 import numpy as np
@@ -6,18 +7,18 @@ import numpy as np
 from ray.rllib.core.models.base import (
     Model,
     ModelConfig,
-    _raise_not_decorated_exception,
 )
 from ray.rllib.core.models.specs.checker import (
     check_input_specs,
-    check_output_specs,
     is_input_decorated,
     is_output_decorated,
+    check_output_specs,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.util import log_once
 
+logger = logging.getLogger(__name__)
 _, tf, _ = try_import_tf()
 
 
@@ -33,15 +34,26 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
         tf.keras.Model.__init__(self)
         Model.__init__(self, config)
 
-        # Raise errors if forward method is not decorated to check specs.
+        # Raise errors if forward method is not decorated to check input specs.
         if not is_input_decorated(self.call):
-            _raise_not_decorated_exception(type(self).__name__ + ".call()", "input")
-        if not is_output_decorated(self.call):
-            _raise_not_decorated_exception(type(self).__name__ + ".call()", "output")
+            raise ValueError(
+                f"`{type(self).__name__}.call()` not decorated with input "
+                f"specification. Decorate it with @check_input_specs() to define a "
+                f"specification and resolve this Error. If you don't want to check "
+                f"anything, you can use an empty spec."
+            )
+
+        if is_output_decorated(self.call):
+            if log_once("tf_model_forward_output_decorated"):
+                logger.warning(
+                    f"`{type(self).__name__}.call()` decorated with output "
+                    f"specification. This is not recommended because it can lead to "
+                    f"slower execution. Remove @check_output_specs() from the "
+                    f"forward method to resolve this."
+                )
 
     @check_input_specs("input_specs")
-    @check_output_specs("output_specs")
-    def call(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def call(self, input_dict: dict, **kwargs) -> dict:
         """Returns the output of this model for the given input.
 
         This method only makes sure that we have a spec-checked _forward() method.
@@ -51,8 +63,21 @@ class TfModel(Model, tf.keras.Model, abc.ABC):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            NestedDict: The output tensors.
+            dict: The output tensors.
         """
+
+        # When `always_check_shapes` is set, we always check input and output specs.
+        # Note that we check the input specs twice because we need the following
+        # check to always check the input specs.
+        if self.config.always_check_shapes:
+
+            @check_input_specs("input_specs", only_check_on_retry=False)
+            @check_output_specs("output_specs")
+            def checked_forward(self, input_data, **kwargs):
+                return self._forward(input_data, **kwargs)
+
+            return checked_forward(self, input_dict, **kwargs)
+
         return self._forward(input_dict, **kwargs)
 
     @override(Model)

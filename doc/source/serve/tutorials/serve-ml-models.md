@@ -7,9 +7,9 @@ In this guide, we will show you how to train models from various machine learnin
 
 Please see the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
 
+:::{tab-set} 
 
-::::{tabbed} Keras and Tensorflow
-
+::::{tab-item} Keras and Tensorflow
 
 Let's train and deploy a simple Tensorflow neural net.
 In particular, we will show:
@@ -17,7 +17,7 @@ In particular, we will show:
 - How to train a Tensorflow model and load the model from your file system in your Ray Serve deployment.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework agnostic -- you can use any version of Tensorflow.
+Ray Serve is framework-agnostic -- you can use any version of Tensorflow.
 However, for this tutorial, we will use Tensorflow 2 and Keras. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install Tensorflow 2 and requests by running:
 
 ```console
@@ -116,7 +116,7 @@ You should get an output like the following (the exact prediction may vary):
 ```
 ::::
 
-::::{tabbed} Pytorch
+::::{tab-item} Pytorch
 
 Let's load and deploy a PyTorch Resnet Model.
 In particular, we will show:
@@ -185,7 +185,7 @@ You should get an output like the following (the exact number may vary):
 ```
 ::::
 
-::::{tabbed} Scikit-Learn
+::::{tab-item} Scikit-Learn
 
 Let's train and deploy a simple Scikit-Learn classifier.
 In particular, we will show:
@@ -283,3 +283,5 @@ You should get an output like the following (the exact prediction may vary):
 {"result": "versicolor"}
 ```
 ::::
+
+:::

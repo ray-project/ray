@@ -6,6 +6,7 @@ import {
 } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -99,7 +100,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
         },
         {
           label: "Status",
-          content: <StatusChip type="job" status={job.status} />,
+          content: <JobStatusWithIcon job={job} />,
         },
         {
           label: "Job ID",

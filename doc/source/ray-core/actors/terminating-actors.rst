@@ -18,33 +18,35 @@ be reserved for cases where an actor is unexpectedly hanging or leaking
 resources, and for :ref:`detached actors <actor-lifetimes>`, which must be
 manually destroyed.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: Python
 
-        ray.kill(actor_handle)
-        # This will not go through the normal Python sys.exit
-        # teardown logic, so any exit handlers installed in
-        # the actor using ``atexit`` will not be called.
+        .. code-block:: python
+
+            ray.kill(actor_handle)
+            # This will not go through the normal Python sys.exit
+            # teardown logic, so any exit handlers installed in
+            # the actor using ``atexit`` will not be called.
 
 
-.. tabbed:: Java
+    .. tab-item:: Java
 
-    .. code-block:: java
+        .. code-block:: java
 
-        actorHandle.kill();
-        // This will not go through the normal Java System.exit teardown logic, so any
-        // shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
-        // not be called.
+            actorHandle.kill();
+            // This will not go through the normal Java System.exit teardown logic, so any
+            // shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
+            // not be called.
 
-.. tabbed:: C++
+    .. tab-item:: C++
 
-    .. code-block:: c++
+        .. code-block:: c++
 
-        actor_handle.Kill();
-        // This will not go through the normal C++ std::exit
-        // teardown logic, so any exit handlers installed in
-        // the actor using ``std::atexit`` will not be called.
+            actor_handle.Kill();
+            // This will not go through the normal C++ std::exit
+            // teardown logic, so any exit handlers installed in
+            // the actor using ``std::atexit`` will not be called.
 
 
 This will cause the actor to immediately exit its process, causing any current,
@@ -63,37 +65,39 @@ Manual termination within the actor
 If necessary, you can manually terminate an actor from within one of the actor methods.
 This will kill the actor process and release resources associated/assigned to the actor.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: Python
 
-        ray.actor.exit_actor()
+        .. code-block:: python
 
-    This approach should generally not be necessary as actors are automatically garbage
-    collected. The ``ObjectRef`` resulting from the task can be waited on to wait
-    for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
+            ray.actor.exit_actor()
 
-.. tabbed:: Java
+        This approach should generally not be necessary as actors are automatically garbage
+        collected. The ``ObjectRef`` resulting from the task can be waited on to wait
+        for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 
-    .. code-block:: java
+    .. tab-item:: Java
 
-        Ray.exitActor();
+        .. code-block:: java
 
-    Garbage collection for actors haven't been implemented yet, so this is currently the
-    only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
-    can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
-    throw a ``RayActorException``).
+            Ray.exitActor();
 
-.. tabbed:: C++
+        Garbage collection for actors haven't been implemented yet, so this is currently the
+        only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
+        can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
+        throw a ``RayActorException``).
 
-    .. code-block:: c++
+    .. tab-item:: C++
 
-        ray::ExitActor();
+        .. code-block:: c++
 
-    Garbage collection for actors haven't been implemented yet, so this is currently the
-    only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
-    can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
-    throw a ``RayActorException``).
+            ray::ExitActor();
+
+        Garbage collection for actors haven't been implemented yet, so this is currently the
+        only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
+        can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
+        throw a ``RayActorException``).
 
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
