@@ -123,7 +123,11 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
     ) -> Dict[str, Any]:
         assert sampled_kl_values, "Sampled KL values are empty."
 
-        results = super().additional_update_per_module(module_id, sampled_kl_values)
+        results = super().additional_update_per_module(
+            module_id,
+            sampled_kl_values,
+            timestep=timestep,
+        )
 
         sampled_kl = sampled_kl_values[module_id]
         curr_val = self.curr_kl_coeffs_per_module[module_id]

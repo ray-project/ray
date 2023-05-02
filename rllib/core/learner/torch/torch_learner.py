@@ -254,7 +254,8 @@ class TorchLearner(Learner):
             # Multi agent module: Convert each submodule to `TorchDDPRLModule`.
             else:
                 assert isinstance(self._module, MultiAgentRLModule)
-                for key, sub_module in self._module.copy().items():
+                for key in self._module.keys():
+                    sub_module = self._module[key]
                     if isinstance(sub_module, TorchRLModule):
                         # Wrap and override the module ID key in self._module.
                         self._module.add_module(

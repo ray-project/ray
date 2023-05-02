@@ -63,8 +63,8 @@ class TorchMLPEncoder(TorchModel, Encoder):
                 SampleBatch.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="torch"
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
+                # STATE_IN: None,
+                # SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -75,7 +75,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: None,
+                # STATE_OUT: None,
             }
         )
 
@@ -84,7 +84,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
+                # STATE_OUT: inputs[STATE_IN],
             }
         )
 
@@ -136,8 +136,8 @@ class TorchCNNEncoder(TorchModel, Encoder):
                     c=self.config.input_dims[2],
                     framework="torch",
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
+                # STATE_IN: None,
+                # SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -148,7 +148,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: None,
+                # STATE_OUT: None,
             }
         )
 
@@ -157,7 +157,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
+                # STATE_OUT: inputs[STATE_IN],
             }
         )
 
