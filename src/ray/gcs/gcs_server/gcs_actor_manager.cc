@@ -779,6 +779,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           RAY_LOG(WARMING) << "Failed to wait for actor " << actor_id
                            << " out of scope, job id = " << actor_id.JobId()
                            << ", error: " << status.ToString();
+          // TODO(iycheng): Retry it in other PR.
           return;
         }
         RAY_LOG(INFO) << "Actor " << actor_id
