@@ -3,19 +3,9 @@ import os
 from functools import wraps
 
 
-should_auto_init = True
-
-
-def disable_auto_init():
-    global should_auto_init
-    should_auto_init = False
-
-
 def auto_init_ray():
-    global should_auto_init
     if (
-        should_auto_init
-        and os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
+        os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
         and not ray.is_initialized()
     ):
         ray.init()

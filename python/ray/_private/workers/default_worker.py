@@ -10,7 +10,6 @@ import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
-from ray._private.auto_init_hook import disable_auto_init
 
 
 parser = argparse.ArgumentParser(
@@ -164,9 +163,6 @@ parser.add_argument(
 )
 
 if __name__ == "__main__":
-    # Disable auto_init for the workers.
-    # This should be called as early as possible.
-    disable_auto_init()
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
     # as a step function. For more details, check out
