@@ -53,8 +53,8 @@ def test_strict_map_output(ray_start_regular_shared, enable_strict_mode):
 
     with pytest.raises(StrictModeError):
         ds.map_batches(lambda x: np.array([0]), max_retries=0).materialize()
-    ds.map_batches(lambda x: {"id": np.array([0])}).materialize()
-    ds.map_batches(lambda x: UserDict({"id": np.array([0])})).materialize()
+    ds.map_batches(lambda x: {"id": [0]}).materialize()
+    ds.map_batches(lambda x: UserDict({"id": [0]})).materialize()
 
     with pytest.raises(StrictModeError):
         ds.map(lambda x: np.ones(10), max_retries=0).materialize()
@@ -71,8 +71,8 @@ def test_strict_map_output(ray_start_regular_shared, enable_strict_mode):
         ds.map_batches(lambda x: object(), max_retries=0).materialize()
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: {"x": object()}, max_retries=0).materialize()
-    ds.map_batches(lambda x: {"x": np.array([object()])}).materialize()
-    ds.map_batches(lambda x: UserDict({"x": np.array([object()])})).materialize()
+    ds.map_batches(lambda x: {"x": [object()]}).materialize()
+    ds.map_batches(lambda x: UserDict({"x": [object()]})).materialize()
 
     with pytest.raises(StrictModeError):
         ds.map(lambda x: object(), max_retries=0).materialize()
