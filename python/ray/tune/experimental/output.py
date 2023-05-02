@@ -420,6 +420,7 @@ AIR_TABULATE_TABLEFMT = TableFormat(
 )
 
 
+# Copied/adjusted from tabulate
 AIR_TABULATE_TABLEFMT = TableFormat(
     lineabove=Line("╭", "─", "─", "╮"),
     linebelowheader=Line("├", "─", "─", "┤"),
