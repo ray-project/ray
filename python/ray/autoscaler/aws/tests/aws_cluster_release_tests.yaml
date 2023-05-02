@@ -1,0 +1,18 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: nightly-test-minimal
+max_workers: 0
+idle_timeout_minutes: 2
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    cache_stopped_nodes: False
+    key_pair:
+        key_name: aws-cluster-launcher-test
+
+available_node_types:
+    ray.head.default:
+        resources: {}
+        node_config:
+            InstanceType: t3.large
