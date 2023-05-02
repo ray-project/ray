@@ -97,8 +97,8 @@ class Application(DAGNodeBase):
 class Deployment:
     """Class (or function) decorated with the `@serve.deployment` decorator.
 
-    This class will be run by a number of actor replicas and called to handle requests
-    to those replicas.
+    This class will be run on a number of replica actors. Requests to those replicas
+    will call this class.
 
     One or more deployments can be composed together into an `Application` which is
     then run via `serve.run` or a config file.
