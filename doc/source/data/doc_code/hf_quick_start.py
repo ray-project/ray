@@ -19,12 +19,17 @@ class HuggingFacePredictor:
         self.model = pipeline("text-generation", model="gpt2")
 
     def __call__(self, batch):  # <2>
+        # TODO make this run with "numpy" format
         return self.model(list(batch["text"]), max_length=20)
 # __hf_quickstart_model_end__
 
 
 # __hf_quickstart_prediction_start__
-scale = ray.data.ActorPoolStrategy(2)
+hfp = HuggingFacePredictor()
+batch = ds.take_batch(10)
+test = hfp(batch)
+
+scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
 
 predictions.show(limit=1)
