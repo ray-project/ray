@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
     import pyarrow
     import pandas
-    from ray.data._internal.arrow_block import ArrowRow
     from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
@@ -436,7 +435,7 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
@@ -451,11 +450,13 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     )
 
 
-def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block[np.ndarray]":
+def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    DataContext._set_current(ctx)
+
     stats = BlockExecStats.builder()
-    if strict_mode:
+    if ctx.strict_mode:
         block = BlockAccessor.batch_to_block({"data": ndarray})
     else:
         block = BlockAccessor.batch_to_block(ndarray)

@@ -300,7 +300,7 @@ def _make_iterable(block: BlockAccessor):
     Returns:
         Iterable[Dict[str,Any]]: Iterable of samples
     """
-    return block.iter_rows()
+    return block.iter_rows(public_row_format=False)
 
 
 @PublicAPI(stability="alpha")
@@ -337,6 +337,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         Yields:
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
+        import pandas as pd
 
         files = _tar_file_iterator(
             stream,
@@ -348,7 +349,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         for sample in samples:
             if decoder is not None:
                 sample = _apply_list(decoder, sample, default=_default_decoder)
-            yield [sample]
+            yield pd.DataFrame({k: [v] for k, v in sample.items()})
 
     def _write_block(
         self,

@@ -290,6 +290,8 @@ def get_variable(
         )
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
+        if not isinstance(value, np.ndarray):
+            value = np.array(value)
         var_ = torch.from_numpy(value)
         if dtype in [torch.float32, np.float32]:
             var_ = var_.float()

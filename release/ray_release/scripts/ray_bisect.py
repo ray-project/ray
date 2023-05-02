@@ -104,12 +104,14 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
     )
     outcomes = _run_test(test, [passing_revision, failing_revision])
     return (
-        outcomes[passing_revision] == "passed"
-        and outcomes[failing_revision] != "passed"
+        outcomes[passing_revision][0] == "passed"
+        and outcomes[failing_revision][0] != "passed"
     )
 
 
-def _run_test(test: Test, commits: Set[str], run_per_commit: int) -> Dict[str, str]:
+def _run_test(
+    test: Test, commits: Set[str], run_per_commit: int = 1
+) -> Dict[str, Dict[int, str]]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
         _trigger_test_run(test, commit, run_per_commit)
@@ -140,7 +142,9 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
         pipeline.stdout.close()
 
 
-def _obtain_test_result(commits: Set[str], run_per_commit: int) -> Dict[str, str]:
+def _obtain_test_result(
+    commits: Set[str], run_per_commit: int
+) -> Dict[str, Dict[int, str]]:
     outcomes = {}
     wait = 5
     total_wait = 0
