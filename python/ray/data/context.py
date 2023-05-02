@@ -98,9 +98,7 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
-DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
-)
+DEFAULT_OPTIMIZER_ENABLED = True
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -214,7 +212,6 @@ class DataContext:
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DataContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
