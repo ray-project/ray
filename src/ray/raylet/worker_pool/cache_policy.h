@@ -28,8 +28,9 @@
 /*
 
 Goal:
-    remove decision making on how many processes to create from worker pool.
-    remove decision making on which processes to kill from the worker pool.
+    * Implement the current policy behind new interface.
+        Prestarting is behind the flag -- so "desired" is zero? and prestart schedules
+creation
 
 Worker pool policy
         inputs:

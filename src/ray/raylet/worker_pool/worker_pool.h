@@ -754,9 +754,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
 
-  /// Set of jobs whose drivers have exited.
-  //absl::flat_hash_set<JobID> finished_jobs_;
-
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
   absl::flat_hash_map<std::shared_ptr<WorkerInterface>, int64_t>
