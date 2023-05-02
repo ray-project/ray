@@ -92,7 +92,8 @@ class PPOTfPolicyWithRLModule(
         )
 
         logp_ratio = tf.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - train_batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+            - train_batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -103,7 +104,7 @@ class PPOTfPolicyWithRLModule(
         else:
             mean_kl_loss = tf.constant(0.0)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(

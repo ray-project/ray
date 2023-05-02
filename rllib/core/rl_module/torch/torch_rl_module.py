@@ -28,7 +28,7 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-        if self.config.model_config_dict.get("torch_compile") is True:
+        if self.config and self.config.model_config_dict.get("torch_compile") is True:
             # Replace original forward methods by compiled versions of themselves
             self._forward_train = torch.compile(
                 self._forward_train, backend="aot_eager"
