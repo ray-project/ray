@@ -160,3 +160,5 @@ MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
 )
+
+RAY_SERVE_REQUEST_MODEL_ID = "ray_serve_request_model_id"

@@ -43,6 +43,8 @@ class RequestMetadata:
     # Application Name
     app_name: str = ""
 
+    model_id: str = ""
+
 
 @dataclass
 class Query:

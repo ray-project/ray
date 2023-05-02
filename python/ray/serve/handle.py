@@ -240,6 +240,7 @@ class RayServeHandle:
             http_arg_is_pickled=self._pickled_http_request,
             route=_request_context.route,
             app_name=_request_context.app_name,
+            model_id=_request_context.model_id,
         )
         self.request_counter.inc(
             tags={

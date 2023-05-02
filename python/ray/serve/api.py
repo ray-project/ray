@@ -2,6 +2,7 @@ import collections
 import inspect
 import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union
+from functools import wraps
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -45,9 +46,16 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
+    _extract_self_if_method_call,
 )
 
 from ray.serve._private import api as _private_api
+
+import ray
+from ray.serve import context
+from inspect import iscoroutinefunction
+from ray._private.async_compat import sync_to_async
+
 
 logger = logging.getLogger(__file__)
 
@@ -571,3 +579,88 @@ def delete(name: str, _blocking: bool = True):
     """
     client = get_global_client()
     client.delete_apps([name], blocking=_blocking)
+
+
+from collections import OrderedDict
+
+
+@PublicAPI(stability="alpha")
+def multiplexed(func=None, num_models_per_replica: int = 0):
+    """Multiplex a model to multiple replicas.
+
+    Args:
+        num_models_per_replica: number of models to be loaded on each replica. By default,
+            it is 0, which means all models will be loaded on all replicas.
+    """
+    if func is not None:
+        if not callable(func):
+            raise TypeError(
+                "@serve.multiplex can only be used to decorate functions or methods."
+            )
+
+    signature = inspect.signature(func)
+    if len(signature.parameters) == 0:
+        raise ValueError(
+            "@serve.multiplex can only be used to decorate functions or methods "
+            "with at least one 'model_id: str' argument."
+        )
+
+    class ModelMultiplexWrapper:
+        def __init__(self, model_load_func, self_args, num_models_per_replica=0):
+            self.models = OrderedDict()
+            self._func = sync_to_async(model_load_func)
+            self.self_args = self_args
+
+        async def load_model(self, model_id: str, *args, **kwargs):
+            if type(model_id) != str:
+                raise TypeError(
+                    "The first argument of the decorated function must be a string "
+                    "representing the model ID. Got type '{}' instead.".format(
+                        type(model_id)
+                    )
+                )
+
+            if model_id in self.models:
+                return self.models[model_id]
+            if self.self_args is None:
+                self.models[model_id] = await self._func(model_id, *args, **kwargs)
+            else:
+                self.models[model_id] = await self._func(
+                    self.self_args, model_id, *args, **kwargs
+                )
+            return self.models[model_id]
+
+        def unload_model(self):
+            tag, _ = self.models.popitem(last=False)
+            del self.models[tag]
+
+    def _multiplex_decorator(func):
+        @wraps(func)
+        async def _multiplex_wrapper(*args, **kwargs):
+            self = _extract_self_if_method_call(args, func)
+
+            if self is None:
+                multiplex_object = func
+            else:
+                multiplex_object = self
+                args = args[1:]
+            multiplex_attr = f"__serve_multiplex_{func.__name__}"
+            if not hasattr(multiplex_object, multiplex_attr):
+                model_multiplex_wrapper = ModelMultiplexWrapper(
+                    func, self, num_models_per_replica
+                )
+                setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
+            else:
+                model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
+            return await model_multiplex_wrapper.load_model(*args, **kwargs)
+
+        return _multiplex_wrapper
+
+    return _multiplex_decorator(func) if callable(func) else _multiplex_decorator
+
+
+@PublicAPI(stability="alpha")
+def get_model_id() -> str:
+    """Returns the model id of the current request."""
+    _request_context = ray.serve.context._serve_request_context.get()
+    return _request_context.model_id
