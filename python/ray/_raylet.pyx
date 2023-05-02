@@ -174,6 +174,11 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
+cdef extern from "ray/common/constants.h" nogil:
+    cdef int kResourceUnitScaling
+
+RESOURCE_UNIT_SCALING = kResourceUnitScaling
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
