@@ -18,6 +18,7 @@ from ray._private.runtime_env.conda_utils import (
     create_conda_env_if_needed,
     delete_conda_env,
     get_conda_activate_commands,
+    get_conda_env_list,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -319,18 +320,35 @@ class CondaPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
-        if uri is None:
-            # The "conda" field is the name of an existing conda env, so no
-            # need to create one.
-            # TODO(architkulkarni): Try "conda activate" here to see if the
-            # env exists, and raise an exception if it doesn't.
-            return 0
-
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
         def _create():
+            if uri is None:
+                # The "conda" field is the name of an existing conda env, so no
+                # need to create one.
+                # TODO(architkulkarni): Try "conda activate" here to see if the
+                # env exists, and raise an exception if it doesn't.
+                conda_env_name = runtime_env.get("conda")
+                if conda_env_name is None or not isinstance(conda_env_name, str):
+                    raise ValueError(
+                        "Unexpected conda environment was specified "
+                        f"from a runtime env. {runtime_env}. It must "
+                        "be an existing env, a yaml file, or a "
+                        "corresponding dict."
+                    )
+
+                # Make sure the conda env exists.
+                conda_env_list = get_conda_env_list()
+                logger.info(conda_env_list)
+                envs = [Path(env).name for env in conda_env_list]
+                if conda_env_name not in envs:
+                    raise ValueError(
+                        f"The given conda environment '{conda_env_name}' "
+                        f"from a runtime env {runtime_env} doesn't "
+                        "exist from the output of `conda env list --json`. "
+                        "You can only specify the env that already exists. "
+                        f"Please make sure to create a env {conda_env_name} "
+                    )
+                return 0
+
             logger.debug(
                 "Setting up conda for runtime_env: " f"{runtime_env.serialize()}"
             )
