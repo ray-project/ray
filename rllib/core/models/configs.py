@@ -159,11 +159,11 @@ class MLPHeadConfig(_MLPConfig):
         self._validate(framework=framework)
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchMLPHead
+            from ray.rllib.core.models.torch.heads import TorchMLPHead
 
             return TorchMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfMLPHead
+            from ray.rllib.core.models.tf.heads import TfMLPHead
 
             return TfMLPHead(self)
 
@@ -246,13 +246,189 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
         self._validate(framework=framework)
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.mlp import TorchFreeLogStdMLPHead
+            from ray.rllib.core.models.torch.heads import TorchFreeLogStdMLPHead
 
             return TorchFreeLogStdMLPHead(self)
         else:
-            from ray.rllib.core.models.tf.mlp import TfFreeLogStdMLPHead
+            from ray.rllib.core.models.tf.heads import TfFreeLogStdMLPHead
 
             return TfFreeLogStdMLPHead(self)
+
+
+@ExperimentalAPI
+@dataclass
+class CNNTransposeHeadConfig(ModelConfig):
+    """Configuration for a convolutional transpose head (decoder) network.
+
+    The configured Model transforms 1D-observations into an image space.
+    The stack of layers is composed of an initial Dense layer, followed by a sequence
+    of Conv2DTranspose layers.
+    `input_dims` describes the shape of the (1D) input tensor,
+    `initial_image_dims` describes the input into the first Conv2DTranspose
+    layer, where the translation from `input_dim` to `initial_image_dims` is done
+    via the initial Dense layer (w/o activation, w/o layer-norm, and w/ bias).
+
+    Beyond that, each layer specified by `cnn_transpose_filter_specifiers`
+    is followed by an activation function according to `cnn_transpose_activation`.
+
+    `output_dims` is reached after the final Conv2DTranspose layer.
+    Not that the last Conv2DTranspose layer is never activated and never layer-norm'd
+    regardless of the other settings.
+
+    An example for a single conv2d operation is as follows:
+    Input "image" is (4, 4, 24) (not yet strided), padding is "same", stride=2,
+    kernel=5.
+
+    First, the input "image" is strided (with stride=2):
+
+    Input image (4x4 (x24)):
+    A B C D
+    E F G H
+    I J K L
+    M N O P
+
+    Stride with stride=2 -> (7x7 (x24))
+    A 0 B 0 C 0 D
+    0 0 0 0 0 0 0
+    E 0 F 0 G 0 H
+    0 0 0 0 0 0 0
+    I 0 J 0 K 0 L
+    0 0 0 0 0 0 0
+    M 0 N 0 O 0 P
+
+    Then this strided "image" (strided_size=7x7) is padded (exact padding values will be
+    computed by the model):
+
+    Padding -> (left=3, right=2, top=3, bottom=2)
+
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 A 0 B 0 C 0 D 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 E 0 F 0 G 0 H 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 I 0 J 0 K 0 L 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 M 0 N 0 O 0 P 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0 0 0
+
+    Then deconvolution with kernel=5 yields an output "image" of 8x8 (x num output
+    filters).
+
+    Attributes:
+        input_dims: The input dimensions of the network. This must be a 1D tensor.
+        initial_image_dims: The shape of the input to the first
+            Conv2DTranspose layer. We will make sure the input is transformed to
+            these dims via a preceding initial Dense layer, followed by a reshape,
+            before entering the Conv2DTranspose stack.
+        cnn_transpose_filter_specifiers: A list of lists, where each element of an inner
+            list contains elements of the form
+            `[number of channels/filters, [kernel width, kernel height], stride]` to
+            specify a convolutional layer stacked in order of the outer list.
+        cnn_transpose_activation: The activation function to use after each layer
+            (except for the output).
+        cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
+            in between each Conv2DTranspose layer's output and its activation.
+        use_bias: Whether to use bias on all Conv2D layers.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = CNNTransposeHeadConfig(
+            input_dims=[10],  # 1D input vector (possibly coming from another NN)
+            initial_image_dims=[4, 4, 96],  # first image input to deconv stack
+            cnn_transpose_filter_specifiers=[
+                [48, [4, 4], 2],
+                [24, [4, 4], 2],
+                [3, [4, 4], 2],
+            ],
+            cnn_transpose_activation="silu",  # or "swish", which is the same
+            cnn_transpose_use_layernorm=False,
+            use_bias=True,
+        )
+        model = config.build(framework="torch)
+
+        # Resulting stack in pseudocode:
+        # Linear(10, 4*4*24)
+        # Conv2DTranspose(
+        #   in_channels=96, out_channels=48,
+        #   kernel_size=[4, 4], stride=2, bias=True,
+        # )
+        # Swish()
+        # Conv2DTranspose(
+        #   in_channels=48, out_channels=24,
+        #   kernel_size=[4, 4], stride=2, bias=True,
+        # )
+        # Swish()
+        # Conv2DTranspose(
+        #   in_channels=24, out_channels=3,
+        #   kernel_size=[4, 4], stride=2, bias=True,
+        # )
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = CNNTransposeHeadConfig(
+            input_dims=[128],  # 1D input vector (possibly coming from another NN)
+            initial_image_dims=[4, 4, 32],  # first image input to deconv stack
+            cnn_transpose_filter_specifiers=[
+                [16, 4, 2],
+                [3, 4, 2],
+            ],
+            cnn_transpose_activation="relu",
+            cnn_transpose_use_layernorm=True,
+            use_bias=False,
+        )
+        model = config.build(framework="torch)
+
+        # Resulting stack in pseudocode:
+        # Linear(128, 4*4*32, bias=True)  # bias always True for initial dense layer
+        # Conv2DTranspose(
+        #   in_channels=32, out_channels=16,
+        #   kernel_size=[4, 4], stride=2, bias=False,
+        # )
+        # LayerNorm((-3, -2, -1))  # layer normalize over last 3 axes
+        # ReLU()
+        # Conv2DTranspose(
+        #   in_channels=16, out_channels=3,
+        #   kernel_size=[4, 4], stride=2, bias=False,
+        # )
+    """
+
+    input_dims: Union[List[int], Tuple[int]] = None
+    initial_image_dims: Union[List[int], Tuple[int]] = field(
+        default_factory=lambda: [4, 4, 96]
+    )
+    cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
+        default_factory=lambda: [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]]
+    )
+    cnn_transpose_activation: str = "relu"
+    cnn_transpose_use_layernorm: bool = False
+    use_bias: bool = True
+
+    def _validate(self, framework: str = "torch"):
+        if len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of CNNTransposeHeadConfig must be a "
+                "3D tensor (image-like) with the dimensions meaning: width x height x "
+                "num_filters, e.g. `[4, 4, 92]`!"
+            )
+
+    @_framework_implemented()
+    def build(self, framework: str = "torch") -> Model:
+        self._validate()
+
+        if framework == "torch":
+            from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
+
+            return TorchCNNTransposeHead(self)
+
+        elif framework == "tf2":
+            from ray.rllib.core.models.tf.heads import TfCNNTransposeHead
+
+            return TfCNNTransposeHead(self)
 
 
 @ExperimentalAPI
@@ -433,18 +609,69 @@ class MLPEncoderConfig(_MLPConfig):
 
 @ExperimentalAPI
 @dataclass
-class LSTMEncoderConfig(ModelConfig):
-    """Configuration for a LSTM encoder.
+class RecurrentEncoderConfig(ModelConfig):
+    """Configuration for an LSTM-based or a GRU-based encoder.
 
-    See ModelConfig for usage details.
+    The encoder consists of N LSTM/GRU layers stacked on top of each other and feeding
+    their outputs as inputs to the respective next layer. The internal state is
+    structued as (num_layers, B, hidden-size) for all hidden state components, e.g.
+    h- and c-states of the LSTM layer(s) or h-state of the GRU layer(s).
+    For example, the hidden states of an LSTMEncoder with num_layers=2 and hidden_dim=8
+    would be: {"h": (2, B, 8), "c": (2, B, 8)}.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = RecurrentEncoderConfig(
+            recurrent_layer_type="lstm",
+            input_dims=[16],  # must be 1D tensor
+            hidden_dim=128,
+            num_layers=2,
+            output_dims=[256],  # maybe None or a 1D tensor
+            output_activation="linear",
+            use_bias=True,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # LSTM(16, 128, bias=True)
+        # LSTM(128, 128, bias=True)
+        # Linear(128, 256, bias=True)
+
+        # Resulting shape of the internal states (c- and h-states):
+        # (2, B, 128) for each c- and h-states.
+
+    Example:
+    .. code-block:: python
+        # Configuration:
+        config = RecurrentEncoderConfig(
+            recurrent_layer_type="gru",
+            input_dims=[32],  # must be 1D tensor
+            hidden_dim=64,
+            num_layers=1,
+            output_dims=None,  # maybe None or a 1D tensor
+            use_bias=False,
+        )
+        model = config.build(framework="torch")
+
+        # Resulting stack in pseudocode:
+        # GRU(32, 64, bias=False)
+
+        # Resulting shape of the internal state:
+        # (1, B, 64)
 
     Attributes:
-        hidden_dim: The size of the hidden layer.
-        num_layers: The number of LSTM layers.
-        batch_first: Wether the input is batch first or not.
-        output_activation: The activation function to use for the output layer.
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
+        recurrent_layer_type: The type of the recurrent layer(s).
+            Either "lstm" or "gru".
+        input_dims: The input dimensions. Must be 1D. This is the 1D shape of the tensor
+            that goes into the first recurrent layer.
+        hidden_dim: The size of the hidden internal state(s) of the recurrent layer(s).
+            For example, for an LSTM, this would be the size of the c- and h-tensors.
+        num_layers: The number of recurrent (LSTM or GRU) layers to stack.
+        batch_major: Wether the input is batch major (B, T, ..) or
+            time major (T, B, ..).
+        output_activation: The activation function to use for the linear output layer.
+        use_bias: Whether to use bias on all layers in the network.
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
@@ -453,32 +680,59 @@ class LSTMEncoderConfig(ModelConfig):
             other spaces that might be present in the view_requirements_dict.
     """
 
+    recurrent_layer_type: str = "lstm"
     hidden_dim: int = None
     num_layers: int = None
-    batch_first: bool = True
+    batch_major: bool = True
     output_activation: str = "linear"
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
+    use_bias: bool = True
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
 
-    @_framework_implemented(tf2=False)
+    def _validate(self, framework: str = "torch"):
+        """Makes sure that settings are valid."""
+        if self.recurrent_layer_type not in ["gru", "lstm"]:
+            raise ValueError(
+                f"`recurrent_layer_type` ({self.recurrent_layer_type}) of "
+                "RecurrentEncoderConfig must be 'gru' or 'lstm'!"
+            )
+        if self.input_dims is not None and len(self.input_dims) != 1:
+            raise ValueError(
+                f"`input_dims` ({self.input_dims}) of RecurrentEncoderConfig must be "
+                "1D, e.g. `[32]`!"
+            )
+
+        # Call these already here to catch errors early on.
+        get_activation_fn(self.output_activation, framework=framework)
+
+    @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
         if (
             self.get_tokenizer_config is not None
             or self.view_requirements_dict is not None
         ):
             raise NotImplementedError(
-                "LSTMEncoderConfig does not support configuring LSTMs that encode "
-                "depending on view_requirements or have a custom tokenizer. "
+                "RecurrentEncoderConfig does not support configuring Models that "
+                "encode depending on view_requirements or have a custom tokenizer. "
                 "Therefore, this config expects `view_requirements_dict=None` and "
                 "`get_tokenizer_config=None`."
             )
 
         if framework == "torch":
-            from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
+            from ray.rllib.core.models.torch.encoder import (
+                TorchGRUEncoder as GRU,
+                TorchLSTMEncoder as LSTM,
+            )
+        else:
+            from ray.rllib.core.models.tf.encoder import (
+                TfGRUEncoder as GRU,
+                TfLSTMEncoder as LSTM,
+            )
 
-            return TorchLSTMEncoder(self)
+        if self.recurrent_layer_type == "lstm":
+            return LSTM(self)
+        else:
+            return GRU(self)
 
 
 @ExperimentalAPI

@@ -12,6 +12,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     validator,
+    Field,
 )
 
 from ray import cloudpickle
@@ -23,7 +24,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -141,21 +142,37 @@ class DeploymentConfig(BaseModel):
             The names of options manually configured by the user.
     """
 
-    num_replicas: NonNegativeInt = 1
-    max_concurrent_queries: Optional[int] = None
-    user_config: Any = None
-
-    graceful_shutdown_timeout_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S  # noqa: E501
+    num_replicas: NonNegativeInt = Field(
+        default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
+    max_concurrent_queries: Optional[int] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
+    )
+    user_config: Any = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
-    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
-    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    graceful_shutdown_timeout_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
 
-    autoscaling_config: Optional[AutoscalingConfig] = None
+    health_check_period_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_PERIOD_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    health_check_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+
+    autoscaling_config: Optional[AutoscalingConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.LightWeight
+    )
 
     # This flag is used to let replica know they are deplyed from
     # a different language.
@@ -165,7 +182,10 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
-    version: Optional[str] = None
+    version: Optional[str] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()

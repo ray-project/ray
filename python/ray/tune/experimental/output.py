@@ -11,7 +11,7 @@ import numbers
 import numpy as np
 import os
 import pandas as pd
-from tabulate import tabulate
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 import textwrap
 import time
 
@@ -736,7 +736,8 @@ class AirResultProgressCallback(Callback):
                 ]
             )
         )
-        self._print_config(trial)
+        if has_config:
+            self._print_config(trial)
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):

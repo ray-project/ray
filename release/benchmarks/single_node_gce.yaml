@@ -20,9 +20,4 @@ head_node_type:
       # 128 GB
       object_store_memory: 128000000000
 
-worker_node_types:
-    - name: worker_node
-      instance_type: n2-standard-32
-      min_workers: 0
-      max_workers: 0
-      use_spot: false
+worker_node_types: []

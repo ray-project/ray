@@ -84,78 +84,84 @@ First, let's start by loading a dataset from storage:
 
 Then, we define a ``Preprocessor`` pipeline for our task:
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_preprocess_start__
-        :end-before: __air_xgb_preprocess_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_starter.py
+            :language: python
+            :start-after: __air_xgb_preprocess_start__
+            :end-before: __air_xgb_preprocess_end__
 
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_preprocess_start__
-        :end-before: __air_pytorch_preprocess_end__
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_starter.py
+            :language: python
+            :start-after: __air_pytorch_preprocess_start__
+            :end-before: __air_pytorch_preprocess_end__
 
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_preprocess_start__
-        :end-before: __air_tf_preprocess_end__
+    .. tab-item:: Tensorflow
+
+        .. literalinclude:: examples/tf_tabular_starter.py
+            :language: python
+            :start-after: __air_tf_preprocess_start__
+            :end-before: __air_tf_preprocess_end__
 
 Training
 ~~~~~~~~
 
 Train a model with a ``Trainer`` with common ML frameworks:
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_train_start__
-        :end-before: __air_xgb_train_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_starter.py
+            :language: python
+            :start-after: __air_xgb_train_start__
+            :end-before: __air_xgb_train_end__
 
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_train_start__
-        :end-before: __air_pytorch_train_end__
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_starter.py
+            :language: python
+            :start-after: __air_pytorch_train_start__
+            :end-before: __air_pytorch_train_end__
 
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_train_start__
-        :end-before: __air_tf_train_end__
+    .. tab-item:: Tensorflow
+
+        .. literalinclude:: examples/tf_tabular_starter.py
+            :language: python
+            :start-after: __air_tf_train_start__
+            :end-before: __air_tf_train_end__
 
 Hyperparameter Tuning
 ~~~~~~~~~~~~~~~~~~~~~
 
 You can specify a hyperparameter space to search over for each trainer:
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_tuner_start__
-        :end-before: __air_xgb_tuner_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_starter.py
+            :language: python
+            :start-after: __air_xgb_tuner_start__
+            :end-before: __air_xgb_tuner_end__
 
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_tuner_start__
-        :end-before: __air_pytorch_tuner_end__
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_starter.py
+            :language: python
+            :start-after: __air_pytorch_tuner_start__
+            :end-before: __air_pytorch_tuner_end__
 
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_tuner_start__
-        :end-before: __air_tf_tuner_end__
+    .. tab-item:: Tensorflow
+
+        .. literalinclude:: examples/tf_tabular_starter.py
+            :language: python
+            :start-after: __air_tf_tuner_start__
+            :end-before: __air_tf_tuner_end__
 
 Then use the ``Tuner`` to run the search:
 
@@ -169,27 +175,28 @@ Batch Inference
 
 Use the trained model for scalable batch prediction with a ``BatchPredictor``.
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_batchpred_start__
-        :end-before: __air_xgb_batchpred_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_starter.py
+            :language: python
+            :start-after: __air_xgb_batchpred_start__
+            :end-before: __air_xgb_batchpred_end__
 
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_batchpred_start__
-        :end-before: __air_pytorch_batchpred_end__
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_starter.py
+            :language: python
+            :start-after: __air_pytorch_batchpred_start__
+            :end-before: __air_pytorch_batchpred_end__
 
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_batchpred_start__
-        :end-before: __air_tf_batchpred_end__
+    .. tab-item:: Tensorflow
 
+        .. literalinclude:: examples/tf_tabular_starter.py
+            :language: python
+            :start-after: __air_tf_batchpred_start__
+            :end-before: __air_tf_batchpred_end__
 
 Project Status
 --------------

@@ -122,7 +122,7 @@ for instructions on this step.
 Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
 a Fluent Bit sidecar.
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 ```
 
 Determine the Ray pod's name with
@@ -142,4 +142,4 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [Fluentd]: https://docs.fluentd.org/
 [Promtail]: https://grafana.com/docs/loki/latest/clients/promtail/
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
-[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml

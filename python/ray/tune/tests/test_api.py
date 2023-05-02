@@ -667,7 +667,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             train,
             config={"t1": tune.grid_search([1, 2, 3])},
             trial_dirname_creator=custom_trial_dir,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
         ).trials
         logdirs = {t.local_path for t in trials}
         assert len(logdirs) == 3
@@ -679,7 +679,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 reporter(test=i)
 
         trials = tune.run(
-            train, config={"t1": tune.grid_search([1, 2, 3])}, local_dir=self.tmpdir
+            train, config={"t1": tune.grid_search([1, 2, 3])}, storage_path=self.tmpdir
         ).trials
         logdirs = {t.local_path for t in trials}
         for i in [1, 2, 3]:
@@ -734,7 +734,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "id": tune.grid_search(list(range(5))),
             },
             verbose=1,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
@@ -1066,9 +1066,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             exp = Experiment(
                 name="test_durable_sync",
                 run=trainable_cls,
-                sync_config=tune.SyncConfig(
-                    syncer=sync_to_cloud, upload_dir=upload_dir
-                ),
+                storage_path=upload_dir,
+                sync_config=tune.SyncConfig(syncer=sync_to_cloud),
             )
 
             searchers = BasicVariantGenerator()
@@ -1318,7 +1317,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Per default, the directory should be named `test_trial_dir_{date}`
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tune.run(test_trial_dir, local_dir=tmp_dir)
+            tune.run(test_trial_dir, storage_path=tmp_dir)
 
             subdirs = list(os.listdir(tmp_dir))
             self.assertNotIn("test_trial_dir", subdirs)
@@ -1331,7 +1330,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # If we set an explicit name, no date should be appended
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tune.run(test_trial_dir, local_dir=tmp_dir, name="my_test_exp")
+            tune.run(test_trial_dir, storage_path=tmp_dir, name="my_test_exp")
 
             subdirs = list(os.listdir(tmp_dir))
             self.assertIn("my_test_exp", subdirs)
@@ -1345,7 +1344,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # Don't append date if we set the env variable
         os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tune.run(test_trial_dir, local_dir=tmp_dir)
+            tune.run(test_trial_dir, storage_path=tmp_dir)
 
             subdirs = list(os.listdir(tmp_dir))
             self.assertIn("test_trial_dir", subdirs)

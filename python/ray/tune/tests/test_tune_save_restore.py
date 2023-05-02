@@ -74,7 +74,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             name=exp_name,
             stop={"training_iteration": 1},
             checkpoint_freq=1,
-            local_dir=local_dir,
+            storage_path=local_dir,
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
 

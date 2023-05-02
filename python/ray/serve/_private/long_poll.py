@@ -166,7 +166,8 @@ class LongPollClient:
 
         logger.debug(
             f"LongPollClient {self} received updates for keys: "
-            f"{list(updates.keys())}."
+            f"{list(updates.keys())}.",
+            extra={"log_to_stderr": False},
         )
         for key, update in updates.items():
             self.object_snapshots[key] = update.object_snapshot

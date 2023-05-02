@@ -219,7 +219,9 @@ class Trainable:
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
         return TrainableUtil.get_remote_storage_path(
-            local_path, self.logdir, self.remote_checkpoint_dir
+            local_path=local_path,
+            local_path_prefix=self.logdir,
+            remote_path_prefix=self.remote_checkpoint_dir,
         )
 
     @classmethod

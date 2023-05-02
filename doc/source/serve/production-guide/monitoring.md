@@ -71,13 +71,12 @@ Run this deployment using the `serve run` CLI command:
 ```console
 $ serve run monitoring:say_hello
 
-2022-08-10 22:58:55,963	INFO scripts.py:294 -- Deploying from import path: "monitoring:say_hello".
-2022-08-10 22:58:57,886	INFO worker.py:1481 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265.
-(ServeController pid=63881) INFO 2022-08-10 22:58:59,365 controller 63881 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-1252fc7fbbb16ca6a80c45cbb5fe4ef182030b95aa60b62604151168' on node '1252fc7fbbb16ca6a80c45cbb5fe4ef182030b95aa60b62604151168' listening on '127.0.0.1:8000'
-The new client HTTP config differs from the existing one in the following fields: ['location']. The new HTTP config is ignored.
-(ServeController pid=63881) INFO 2022-08-10 22:58:59,999 controller 63881 deployment_state.py:1232 - Adding 1 replicas to deployment 'SayHello'.
-(HTTPProxyActor pid=63883) INFO:     Started server process [63883]
-2022-08-10 22:59:00,979	SUCC scripts.py:315 -- Deployed successfully.
+2023-04-10 15:57:32,100	INFO scripts.py:380 -- Deploying from import path: "monitoring:say_hello".
+[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+(ServeController pid=63503) INFO 2023-04-10 15:57:35,822 controller 63503 deployment_state.py:1168 - Deploying new version of deployment SayHello.
+(HTTPProxyActor pid=63513) INFO:     Started server process [63513]
+(ServeController pid=63503) INFO 2023-04-10 15:57:35,882 controller 63503 deployment_state.py:1386 - Adding 1 replica to deployment SayHello.
+2023-04-10 15:57:36,840	SUCC scripts.py:398 -- Deployed Serve app successfully.
 ```
 
 `serve run` prints a few log messages immediately. Note that a few of these messages start with identifiers such as
@@ -97,10 +96,13 @@ curl -X GET http://localhost:8000/
 This causes the HTTP proxy and deployment replica to print log statements to the terminal running `serve run`:
 
 ```console
-(HTTPProxyActor pid=63883) INFO 2022-08-10 23:10:08,005 http_proxy 127.0.0.1 http_proxy.py:315 - GET / 200 2.4ms
-(ServeReplica:SayHello pid=63885) INFO 2022-08-10 23:10:08,004 SayHello SayHello#JYbzqP monitoring.py:15 - Hello world!
-(ServeReplica:SayHello pid=63885) INFO 2022-08-10 23:10:08,004 SayHello SayHello#JYbzqP replica.py:482 - HANDLE __call__ OK 0.2ms
+(ServeReplica:SayHello pid=63520) INFO 2023-04-10 15:59:45,403 SayHello SayHello#kTBlTj HzIYOzaEgN / monitoring.py:16 - Hello world!
+(ServeReplica:SayHello pid=63520) INFO 2023-04-10 15:59:45,403 SayHello SayHello#kTBlTj HzIYOzaEgN / replica.py:527 - __CALL__ OK 0.5ms
 ```
+
+:::{note}
+Log messages include the logging level, timestamp, deployment name, replica tag, request ID, route, file name, and line number.
+:::
 
 Find a copy of these logs at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to be able to search by deployment or replica.
 
@@ -241,32 +243,39 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * replica
        * route
+       * application
      - The number of queries that have been processed in this replica.
    * - ``serve_deployment_error_counter`` [**]
      - * deployment
        * replica
        * route
+       * application
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts`` [**]
      - * deployment
        * replica
+       * application
      - The number of times this replica has been restarted due to failure.
    * - ``serve_deployment_replica_healthy``
      - * deployment
        * replica
+       * application
      - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
    * - ``serve_deployment_processing_latency_ms`` [**]
      - * deployment
        * replica
        * route
+       * application
      - The latency for queries to be processed.
    * - ``serve_replica_processing_queries`` [**]
      - * deployment
        * replica
+       * application
      - The current number of queries being processed.
    * - ``serve_num_http_requests`` [*]
      - * route
        * method
+       * application
      - The number of HTTP requests processed.
    * - ``serve_num_http_error_requests`` [*]
      - * route
@@ -276,11 +285,13 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_num_router_requests`` [*]
      - * deployment
        * route
+       * application
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
+       * application
      - The number of requests processed by this ServeHandle.
    * - ``serve_deployment_queued_queries`` [*]
      - * deployment
@@ -291,9 +302,12 @@ The following metrics are exposed by Ray Serve:
        * error_code
        * method
        * route
+       * application
      - The number of non-200 HTTP responses returned by each deployment.
    * - ``serve_http_request_latency_ms`` [*]
      - * route
+       * application
+
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
 ```
 [*] - only available when using HTTP calls
@@ -341,7 +355,7 @@ The emitted logs include:
 ```
 # HELP ray_my_counter The number of odd-numbered requests to this deployment.
 # TYPE ray_my_counter gauge
-ray_my_counter{..., deployment="MyDeployment"} 5.0
+ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
 ```
 
 See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.

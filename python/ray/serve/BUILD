@@ -26,7 +26,7 @@ py_test(
 )
 
 py_test(
-    name = "test_application",
+    name = "test_built_application",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

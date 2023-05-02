@@ -55,12 +55,9 @@ class MultiAgentRLModule(RLModule):
 
         super().__init__(config)
 
-        # self.build() will abstract the construction of rl_modules
+    def setup(self):
+        """Sets up the underlying RLModules."""
         self._rl_modules = {}
-        self.build()
-
-    def build(self):
-        """Builds the underlying RLModules."""
         self.__check_module_configs(self.config.modules)
         for module_id, module_spec in self.config.modules.items():
             self._rl_modules[module_id] = module_spec.build()
@@ -485,8 +482,12 @@ class MultiAgentRLModuleSpec:
         Returns:
             The MultiAgentRLModuleSpec.
         """
+        # we want to get the spec of the underlying unwrapped module that way we can
+        # easily reconstruct it. The only wrappers that we expect to support today are
+        # wrappers that allow us to do distributed training. Those will be added back
+        # by the learner if necessary.
         module_specs = {
-            module_id: SingleAgentRLModuleSpec.from_module(rl_module)
+            module_id: SingleAgentRLModuleSpec.from_module(rl_module.unwrapped())
             for module_id, rl_module in module._rl_modules.items()
         }
         marl_module_class = module.__class__

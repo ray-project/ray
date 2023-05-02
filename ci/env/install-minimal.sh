@@ -4,9 +4,7 @@
 if [ -z "$1" ]; then
     PYTHON_VERSION=${PYTHON-3.7}
 else
-    if [ "$1" = "3.6" ]; then
-        PYTHON_VERSION="3.6"
-    elif [ "$1" = "3.7" ]; then
+    if [ "$1" = "3.7" ]; then
         PYTHON_VERSION="3.7"
     elif [ "$1" = "3.8" ]; then
         PYTHON_VERSION="3.8"
