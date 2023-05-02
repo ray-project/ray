@@ -25,16 +25,16 @@ class TorchPredictor:
         self.model.eval()
 
     def __call__(self, batch):  # <2>
-        tensor = torch.as_tensor(batch, dtype=torch.float32)
+        tensor = torch.as_tensor(batch["data"], dtype=torch.float32)
         with torch.inference_mode():
-            return self.model(tensor).detach().numpy()
+            return {"output": self.model(tensor).detach().numpy()}
 # __pt_quickstart_model_end__
 
 
 # __pt_quickstart_prediction_start__
-scale = ray.data.ActorPoolStrategy(2)
+scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(TorchPredictor, compute=scale)
 predictions.show(limit=1)
-# [0.45092654]
+# {'output': array([0.45092654])}
 # __pt_quickstart_prediction_end__
 # fmt: on

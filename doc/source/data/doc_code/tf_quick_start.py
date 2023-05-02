@@ -21,15 +21,15 @@ class TFPredictor:
         self.model = keras.Sequential([input_layer, output_layer])
 
     def __call__(self, batch: np.ndarray):  # <2>
-        return self.model(batch).numpy()
+        return {"output": self.model(batch["data"]).numpy()}
 # __tf_quickstart_model_end__
 
 
 # __tf_quickstart_prediction_start__
-scale = ray.data.ActorPoolStrategy(2)
+scale = ray.data.ActorPoolStrategy(size=2)
 
 predicted_probabilities = ds.map_batches(TFPredictor, compute=scale)
 predicted_probabilities.show(limit=1)
-# [0.45119727]
+# {'output': array([0.45119727])}
 # __tf_quickstart_prediction_end__
 # fmt: on
