@@ -116,7 +116,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
 
   cache_size_policy_ = std::make_shared<FutureIdlePoolSizePolicy>(
     num_workers_soft_limit_,
-    maximum_startup_concurrency_
+    maximum_startup_concurrency_,
+    get_time_
   );
 
   for (const auto &entry : worker_commands) {
@@ -189,7 +190,7 @@ void WorkerPool::MaybeRefillIdlePool() {
     RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_idle_workers_to_create: " << num_idle_workers_to_create;
     PrestartDefaultCpuWorkers(Language::PYTHON, num_idle_workers_to_create);
 
-    // TODO(cade) move this around
+    // TODO(cade) move this around to class member
     auto GetFateSharingWorkers = [this] (std::shared_ptr<WorkerInterface> worker) {
       auto process = worker->GetProcess();
       return GetWorkersByProcess(process);
@@ -232,7 +233,32 @@ void WorkerPool::MaybeRefillIdlePool() {
         return true;
     };
 
-    cache_size_policy_->GetIdleProcsToKill(0, 0, 0, GetFateSharingWorkers, CanKillFateSharingWorkers);
+    // Get running size.
+    // TODO(cade) move this to own function
+    // TODO(cade) consider separating into alive_workers_size and pending_exit_idle_workers
+    size_t running_size = 0;
+    for (const auto &worker : GetAllRegisteredWorkers()) {
+      if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+        running_size++;
+      }
+    }
+
+    size_t alive_size = running_size;
+    size_t pending_exit_size = pending_exit_idle_workers_.size();
+
+    // Subtract the number of pending exit workers first. This will help us killing more
+    // idle workers that it needs to.
+    RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
+    running_size -= pending_exit_idle_workers_.size();
+
+    cache_size_policy_->GetIdleProcsToKill(
+        alive_size,
+        pending_exit_size,
+        0,
+        idle_of_all_languages_,
+        GetFateSharingWorkers,
+        CanKillFateSharingWorkers
+    );
 }
 
 size_t WorkerPool::GetNumStartingWorkers() {

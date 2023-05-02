@@ -28,10 +28,12 @@ namespace raylet {
 //                                       size_t max_starting_size) : desired_cache_size_(desired_cache_size), max_starting_size_(max_starting_size) {}
 
 FutureIdlePoolSizePolicy::FutureIdlePoolSizePolicy(size_t desired_cache_size,
-                                       size_t max_starting_size) {
+                                       size_t max_starting_size,
+                                       const std::function<double()> get_time) {
     // TODO(cade) rename
     desired_cache_size_ = 0;
     max_starting_size_ = max_starting_size;
+    get_time_ = get_time;
 }
 
 size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
@@ -54,13 +56,15 @@ size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
 // We need to determine which workers to kill...
 // So we can either go with a very simple policy, or very simple policy plus policy which determines
 //      which workers to kill. 
-std::vector<std::shared_ptr<WorkerInterface>> FutureIdlePoolSizePolicy::GetIdleProcsToKill(size_t idle_size,
-                                                       size_t running_size,
-                                                       size_t starting_size,
-                                                       std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
-                                                       std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers) {
+std::vector<std::shared_ptr<WorkerInterface>> FutureIdlePoolSizePolicy::GetIdleProcsToKill(
+    size_t alive_size,
+    size_t pending_exit_size,
+    size_t starting_size,
+    const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>& idle_of_all_languages,
+    std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+    std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers) {
   std::vector<std::shared_ptr<WorkerInterface>> to_kill;
-  Populate(to_kill, GetFateSharingWorkers, CanKillFateSharingWorkers);
+  Populate(to_kill, alive_size, pending_exit_size, idle_of_all_languages, GetFateSharingWorkers, CanKillFateSharingWorkers);
   return to_kill;
 }
 
@@ -102,23 +106,49 @@ std::vector<std::shared_ptr<WorkerInterface>> FutureIdlePoolSizePolicy::GetIdleP
 //              Easy
 //      
 //      
-void FutureIdlePoolSizePolicy::Populate(std::vector<std::shared_ptr<WorkerInterface>>& idle_workers_to_remove,
+void FutureIdlePoolSizePolicy::Populate(
+std::vector<std::shared_ptr<WorkerInterface>>& idle_workers_to_remove,
+size_t alive_size,
+size_t pending_exit_size,
+const std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>& idle_of_all_languages,
 std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
 std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers
 ) {
-  //int64_t now = worker_pool_.get_time_();
-  //size_t running_size = 0;
+  int64_t now = get_time_();
 
-  //for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-  //  if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-  //    running_size++;
-  //  }
-  //}
+  // Subtract the number of pending exit workers first. This will help us killing more
+  // idle workers that it needs to.
+  RAY_CHECK(alive_size >= pending_exit_size);
+  size_t running_size = alive_size - pending_exit_size;
 
-  //// Subtract the number of pending exit workers first. This will help us killing more
-  //// idle workers that it needs to.
-  //RAY_CHECK(running_size >= worker_pool_.pending_exit_idle_workers_.size());
-  //running_size -= worker_pool_.pending_exit_idle_workers_.size();
+  // TODO move
+  size_t num_workers_soft_limit_ = 64;
+
+  for (const auto &idle_pair : idle_of_all_languages) {
+    const auto &idle_worker = idle_pair.first;
+    //const auto &job_id = idle_worker->GetAssignedJobId();
+
+    RAY_LOG(DEBUG) << " Checking idle worker "
+                   << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString()
+                   << " worker id " << idle_worker->WorkerId();
+
+    if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+      //if (!worker_pool_.finished_jobs_.contains(job_id)) {
+      //  // Ignore the soft limit for jobs that have already finished, as we
+      //  // should always clean up these workers.
+      //  RAY_LOG(DEBUG) << "job not finished. Not going to kill worker "
+      //                 << idle_worker->WorkerId();
+      //  continue;
+      //}
+      continue;
+    }
+
+    if (now - idle_pair.second <
+        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+      break;
+    }
+    
+  }
 
   //// Kill idle workers in FIFO order.
   //for (const auto &idle_pair : worker_pool_.idle_of_all_languages_) {
