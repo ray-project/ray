@@ -16,16 +16,37 @@ del os.environ['RAY_JOB_SUBMIT_HOOK']
 import ray
 import time
 
-#input('waiting for key')
+@ray.remote
+class Latch:
+    def __init__(self, count):
+        self.count = count
+        self.original_count = count
+
+    def is_ready(self):
+        return self.count == 0
+
+    def count_down(self):
+        self.count = max(self.count - 1, 0)
+
+    def reset(self):
+        self.count = self.original_count
 
 @ray.remote(num_cpus=0.01)
-def task(t):
+def task(t, latch):
     out = time.time()
-    time.sleep(1)
-    return out - t
+    dur_s = out - t
+
+    ray.get(latch.count_down.remote())
+    while not ray.get(latch.is_ready.remote()):
+        time.sleep(1)
+
+    return dur_s
+
+num_to_launch = os.cpu_count() - 1
+latch = Latch.remote(num_to_launch)
 
 t = time.time()
-fut = [task.remote(t) for _ in range(os.cpu_count())]
+fut = [task.remote(t, latch) for _ in range(num_to_launch)]
 times = ray.get(fut)
 times.sort()
 print(times)

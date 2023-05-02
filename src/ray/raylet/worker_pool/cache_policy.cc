@@ -37,6 +37,7 @@ FutureIdlePoolSizePolicy::FutureIdlePoolSizePolicy(
   desired_cache_size_ = 0;
   max_starting_size_ = max_starting_size;
   get_time_ = get_time;
+  prestart_requests_ = 0;
 }
 
 size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
