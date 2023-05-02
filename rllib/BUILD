@@ -603,7 +603,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
@@ -1866,6 +1866,13 @@ py_test(
 )
 
 # Default Models
+py_test(
+    name = "test_base_models",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_base_models.py"]
+)
+
 py_test(
     name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],

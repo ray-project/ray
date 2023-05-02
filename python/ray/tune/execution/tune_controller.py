@@ -14,6 +14,7 @@ from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
+from ray.exceptions import RayActorError
 from ray.tune.error import _AbortTrialExecution
 from ray.tune.execution.ray_trial_executor import _class_cache
 from ray.tune.execution.trial_runner import _TuneControllerBase, TrialRunnerWrapper
@@ -215,6 +216,11 @@ class TuneController(_TuneControllerBase):
                 continue
 
             _, tracked_actor = times.popleft()
+
+            if tracked_actor not in self._stopping_actors:
+                # Actor stopping has been handled by the block above
+                continue
+
             if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
                 logger.debug(f"Forcefully killing actor: {tracked_actor}")
                 self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
@@ -376,8 +382,6 @@ class TuneController(_TuneControllerBase):
     def _cleanup_trials(self):
         logger.debug("CLEANING UP all trials")
 
-        self._cleanup_cached_actors(force_all=True)
-
         for tracked_actor in list(self._actor_to_trial):
             trial = self._actor_to_trial[tracked_actor]
             logger.debug(
@@ -385,6 +389,9 @@ class TuneController(_TuneControllerBase):
                 f"{tracked_actor}"
             )
             self._schedule_trial_stop(trial)
+
+        # Clean up cached actors now
+        self._cleanup_cached_actors(force_all=True)
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
@@ -518,6 +525,7 @@ class TuneController(_TuneControllerBase):
         if trial in self._trial_to_actor:
             original_actor = self._trial_to_actor.pop(trial)
             self._actor_to_trial.pop(original_actor)
+
             logger.debug(f"Removing ORIGINAL ACTOR for trial {trial}: {original_actor}")
             self._remove_actor(tracked_actor=original_actor)
 
@@ -742,6 +750,14 @@ class TuneController(_TuneControllerBase):
             self._unstage_trial_with_resources(trial)
             self._trial_task_failure(trial, exception=exception)
 
+        self._actor_manager.clear_actor_task_futures(tracked_actor)
+
+        # Clean up actor
+        tracked_actor.set_on_stop(None)
+        tracked_actor.set_on_error(None)
+        self._actor_manager.remove_actor(tracked_actor, kill=False)
+
+        # Trigger actor stopped callback
         self._actor_stopped(tracked_actor)
 
     def _schedule_trial_task(
@@ -794,7 +810,12 @@ class TuneController(_TuneControllerBase):
         if on_error:
 
             def _on_error(tracked_actor: TrackedActor, exception: Exception):
-                assert trial == self._actor_to_trial[tracked_actor]
+                # If the actor failed, it has already been cleaned up.
+                if tracked_actor not in self._actor_to_trial:
+                    assert isinstance(exception, RayActorError), type(exception)
+                else:
+                    assert trial == self._actor_to_trial[tracked_actor]
+
                 logger.debug(
                     f"Future {method_name.upper()} FAILED for trial {trial}: "
                     f"{exception}"
