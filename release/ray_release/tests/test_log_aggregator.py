@@ -28,7 +28,7 @@ def test_compute_signature():
                 "Exception: yaya45",
             ]
         )
-        == "somethingline -abcException: yaya"
+        == "somethingline another-abcException: yaya"
     )
 
 
