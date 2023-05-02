@@ -6016,7 +6016,7 @@
 
   run:
     timeout: 1200
-    script: cd tests && python aws_launch_and_verify_cluster.py aws_cluster_release_tests.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py aws_cluster.yaml
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -6032,7 +6032,7 @@
 
   run:
     timeout: 1200
-    script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal_release_tests.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal.yaml
 
 - name: aws_cluster_launcher_full
   group: cluster-launcher-test
@@ -6048,4 +6048,4 @@
 
   run:
     timeout: 1200
-    script: cd tests && python aws_launch_and_verify_cluster.py ../example-full_release_tests.yaml
+    script: cd tests && python aws_launch_and_verify_cluster.py ../example-full.yaml
