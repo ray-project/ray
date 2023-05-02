@@ -648,9 +648,6 @@ class TunerInternal:
         self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
-        if self._missing_params_error_message:
-            raise ValueError(self._missing_params_error_message)
-
         resume = "AUTO"
 
         if self._resume_config:
