@@ -786,7 +786,7 @@ void CoreWorker::Exit(
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
           KillChildProcs();
-          // Disconnect here before KillChildProcs to make the Raylet async wait shorter.
+          // Disconnect here after KillChildProcs to make the Raylet async wait shorter.
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
