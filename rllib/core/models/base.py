@@ -8,7 +8,6 @@ from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 # Top level keys that unify model i/o.
@@ -18,13 +17,6 @@ ENCODER_OUT: str = "encoder_out"
 # For Actor-Critic algorithms, these signify data related to the actor and critic
 ACTOR: str = "actor"
 CRITIC: str = "critic"
-
-
-def _raise_not_decorated_exception(class_and_method, input_or_output):
-    raise ValueError(
-        f"`{class_and_method}()` not decorated with {input_or_output} specification. "
-        f"Decorate it with @check_{input_or_output}_specs() to define a specification."
-    )
 
 
 @ExperimentalAPI
@@ -45,10 +37,16 @@ class ModelConfig(abc.ABC):
     Attributes:
         input_dims: The input dimensions of the network
         output_dims: The output dimensions of the network.
+        always_check_shapes: Whether to always check the inputs and outputs of the
+            model for the specifications. Input specifications are checked on failed
+            forward passes of the model regardless of this flag. If this flag is set
+            to `True`, inputs and outputs are checked on every call. This leads to
+            a slow-down and should only be used for debugging.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
     output_dims: Union[List[int], Tuple[int]] = None
+    always_check_shapes: bool = False
 
     @abc.abstractmethod
     def build(self, framework: str):
@@ -181,15 +179,15 @@ class Model(abc.ABC):
             "you want to override this behavior."
         )
 
-    def get_initial_state(self) -> Union[NestedDict, List[TensorType]]:
+    def get_initial_state(self) -> Union[dict, List[TensorType]]:
         """Returns the initial state of the Model.
 
         It can be left empty if this Model is not stateful.
         """
-        return NestedDict()
+        return dict()
 
     @abc.abstractmethod
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, input_dict: dict, **kwargs) -> dict:
         """Returns the output of this model for the given input.
 
         This method is called by the forwarding method of the respective framework
@@ -200,7 +198,7 @@ class Model(abc.ABC):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            NestedDict: The output tensors.
+            dict: The output tensors.
         """
 
     @abc.abstractmethod
@@ -308,7 +306,7 @@ class Encoder(Model, abc.ABC):
         return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
 
     @abc.abstractmethod
-    def _forward(self, input_dict: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, input_dict: dict, **kwargs) -> dict:
         """Returns the latent of the encoder for the given inputs.
 
         This method is called by the forwarding method of the respective framework
@@ -320,7 +318,7 @@ class Encoder(Model, abc.ABC):
         (None for stateless encoders).
         To establish an agreement between the encoder and RLModules, these values
         have the fixed keys `SampleBatch.OBS` and `STATE_IN` for the `input_dict`,
-        and `STATE_OUT` and `ENCODER_OUT` for the returned NestedDict.
+        and `STATE_OUT` and `ENCODER_OUT` for the returned dict.
 
         Args:
             input_dict: The input tensors. Must contain at a minimum the keys
@@ -329,8 +327,8 @@ class Encoder(Model, abc.ABC):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            NestedDict: The output tensors. Must contain at a minimum the keys
-                ENCODER_OUT and STATE_OUT (which might be None for stateless encoders).
+            The output tensors. Must contain at a minimum the keys ENCODER_OUT and
+            STATE_OUT (which might be None for stateless encoders).
         """
         raise NotImplementedError
 
@@ -410,32 +408,26 @@ class ActorCriticEncoder(Encoder):
             }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: dict, **kwargs) -> dict:
         if self.config.shared:
             outs = self.encoder(inputs, **kwargs)
-            return NestedDict(
-                {
-                    ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
-                    STATE_OUT: outs[STATE_OUT],
-                }
-            )
+            return {
+                ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
+                STATE_OUT: outs[STATE_OUT],
+            }
         else:
-            actor_inputs = NestedDict({**inputs})
-            # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
-            critic_inputs = NestedDict(
-                {**inputs}  # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
-            )
+            actor_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
+            critic_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
-            return NestedDict(
-                {
-                    ENCODER_OUT: {
-                        ACTOR: actor_out[ENCODER_OUT],
-                        CRITIC: critic_out[ENCODER_OUT],
-                    },
-                    STATE_OUT: {
-                        ACTOR: actor_out[STATE_OUT],
-                        CRITIC: critic_out[STATE_OUT],
-                    },
-                }
-            )
+            return {
+                ENCODER_OUT: {
+                    ACTOR: actor_out[ENCODER_OUT],
+                    CRITIC: critic_out[ENCODER_OUT],
+                },
+                STATE_OUT: {
+                    ACTOR: actor_out[STATE_OUT],
+                    CRITIC: critic_out[STATE_OUT],
+                },
+            }

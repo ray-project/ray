@@ -6,7 +6,6 @@ from typing import Any, List, Dict, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.autoscaling_policy import AutoscalingPolicy
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -16,6 +15,7 @@ from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusOverview as StatusOverviewProto,
 )
+from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 
 EndpointTag = str
 ReplicaTag = str
@@ -188,9 +188,9 @@ class DeploymentInfo:
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        autoscaling_policy: Optional[AutoscalingPolicy] = None,
         is_driver_deployment: Optional[bool] = False,
         app_name: Optional[str] = None,
+        route_prefix: str = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -201,7 +201,6 @@ class DeploymentInfo:
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
-        self.autoscaling_policy = autoscaling_policy
 
         # ephermal state
         self._cached_actor_def = None
@@ -209,6 +208,17 @@ class DeploymentInfo:
         self.is_driver_deployment = is_driver_deployment
 
         self.app_name = app_name
+        self.route_prefix = route_prefix
+        if deployment_config.autoscaling_config is not None:
+            self.autoscaling_policy = BasicAutoscalingPolicy(
+                deployment_config.autoscaling_config
+            )
+        else:
+            self.autoscaling_policy = None
+        # Num replicas decided by the autoscaling policy. This is mutually exclusive
+        # from deployment_config.num_replicas. This value is updated through
+        # set_autoscaled_num_replicas()
+        self.autoscaled_num_replicas = None
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
@@ -218,6 +228,9 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
+
+    def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
+        self.autoscaled_num_replicas = autoscaled_num_replicas
 
     @property
     def actor_def(self):
