@@ -487,8 +487,12 @@ class ProgressReporter:
 
     @property
     def _time_heartbeat_str(self):
-        current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
-        return f"Current time: {current_time_str} " f"(running for {running_for_str})"
+        current_time_str, running_time_str = _get_time_str(
+            self._start_time, time.time()
+        )
+        return (
+            f"Current time: {current_time_str}. Total running time: " + running_time_str
+        )
 
     def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
