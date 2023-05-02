@@ -367,7 +367,9 @@ def _render_table_item(key: str, item: Any, prefix: str = ""):
         # numbers ourselves.
         yield key, f"{item:.5f}".rstrip("0")
     elif isinstance(item, list):
-        yield key, str(item)
+        yield key, None
+        for sv in item:
+            yield from _render_table_item("", sv, prefix=prefix + "-")
     elif isinstance(item, Dict):
         yield key, None
         for sk, sv in item.items():
