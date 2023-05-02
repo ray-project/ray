@@ -776,14 +776,14 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << owner_id
-                        << " failed, destroying actor child, job id = "
-                        << actor_id.JobId();
-        } else {
-          RAY_LOG(INFO) << "Actor " << actor_id
-                        << " is out of scope, destroying actor, job id = "
-                        << actor_id.JobId();
+          RAY_LOG(WARMING) << "Failed to wait for actor " << actor_id
+                           << " out of scope, job id = " << actor_id.JobId()
+                           << ", error: " << status.ToString();
+          return;
         }
+        RAY_LOG(INFO) << "Actor " << actor_id
+                      << " is out of scope, destroying actor, job id = "
+                      << actor_id.JobId();
 
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
