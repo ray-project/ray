@@ -121,7 +121,7 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is not stable or jailed, allow to soft fail
+    # If a test is jailed or not stable, allow to soft fail
     stable = test.get("stable", True)
     jailed = test.get("jailed", False)
     full_label = ""
