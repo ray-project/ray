@@ -61,7 +61,10 @@ class ImpalaTorchPolicyWithRLModule(
         fwd_out = model.forward_train(train_batch)
 
         values = fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class = model.get_action_dist_cls
+        target_policy_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
 
         # this is probably a horribly inefficient way to do this. I should be able to
         # compute this in a batch fashion

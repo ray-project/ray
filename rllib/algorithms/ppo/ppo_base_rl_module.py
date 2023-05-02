@@ -5,7 +5,6 @@ This file holds framework-agnostic components for PPO's RLModules.
 import abc
 
 from ray.rllib.core.models.base import ActorCriticEncoder
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
@@ -35,12 +34,16 @@ class PPORLModuleBase(RLModule, abc.ABC):
         assert isinstance(self.encoder, ActorCriticEncoder)
 
     @override(RLModule)
+    def get_action_dist_cls(self) -> Distribution:
+        return self.action_dist_cls
+
+    @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
         return self.input_specs_exploration()
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return SpecDict({SampleBatch.ACTION_DIST: Distribution})
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def input_specs_exploration(self):
@@ -50,7 +53,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
     def output_specs_exploration(self) -> SpecDict:
         return [
             SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST,
             SampleBatch.ACTION_DIST_INPUTS,
         ]
 
@@ -64,12 +66,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
-        spec = SpecDict(
-            {
-                SampleBatch.ACTION_DIST: Distribution,
-                SampleBatch.ACTION_LOGP: TensorSpec("b", framework=self.framework),
-                SampleBatch.VF_PREDS: TensorSpec("b", framework=self.framework),
-                "entropy": TensorSpec("b", framework=self.framework),
-            }
-        )
-        return spec
+        return [
+            SampleBatch.VF_PREDS,
+            SampleBatch.ACTION_DIST_INPUTS,
+        ]

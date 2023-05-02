@@ -31,8 +31,10 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
+        action_dist_class = self._module[module_id].action_dist_class
+        curr_action_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         prev_action_dist = action_dist_class.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )

@@ -22,7 +22,10 @@ class ImpalaTfLearner(TfLearner, ImpalaBaseLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class = self._module.get_action_dist_cls()
+        target_policy_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         values = fwd_out[SampleBatch.VF_PREDS]
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]

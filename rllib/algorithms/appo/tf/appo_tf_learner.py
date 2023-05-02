@@ -85,7 +85,10 @@ class APPOTfLearner(ImpalaTfLearner):
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class = self._module.get_action_dist_cls()
+        target_policy_dist = action_dist_class.from_logits(
+            [SampleBatch.ACTION_DIST_INPUTS]
+        )
         old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
 
         old_target_policy_actions_logp = old_target_policy_dist.logp(

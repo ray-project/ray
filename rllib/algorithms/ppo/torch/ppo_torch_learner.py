@@ -35,8 +35,11 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         if self.kl_coeff.device != self._device:
             self.kl_coeff = self.kl_coeff.to(self._device)
 
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
+        action_dist_class = self._module[module_id].action_dist_class
+
+        curr_action_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         prev_action_dist = action_dist_class.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )

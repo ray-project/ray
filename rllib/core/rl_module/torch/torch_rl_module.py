@@ -1,9 +1,10 @@
+import abc
 import pathlib
-from typing import Any, Mapping, Union
+from typing import Any, Mapping, Union, Type
 
 from ray.rllib.core.rl_module import RLModule
+from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -11,15 +12,16 @@ torch, nn = try_import_torch()
 
 class TorchRLModule(nn.Module, RLModule):
     """A base class for RLlib torch RLModules.
-    
+
     Note that the `_forward` methods of this class are meant to be torch.compiled:
         - TorchRLModule._forward_train()
         - TorchRLModule._forward_inference()
         - TorchRLModule._forward_exploration()
-    Generally, they should only contain torch-native tensor manipulations or otherwise they 
-    may yield wrong outputs. In particular, the creation of RLlib distributions inside of 
-    these methods should be avoided when using torch.compile.
+    Generally, they should only contain torch-native tensor manipulations, or
+    otherwise they may yield wrong outputs. In particular, the creation of RLlib
+    distributions inside these methods should be avoided when using torch.compile.
     """
+
     framwork: str = "torch"
 
     def __init__(self, *args, **kwargs) -> None:
@@ -28,11 +30,27 @@ class TorchRLModule(nn.Module, RLModule):
 
         if self.config.model_config_dict.get("torch_compile") is True:
             # Replace original forward methods by compiled versions of themselves
-            self._forward_train = torch.compile(self._forward_train)
-            self._forward_inference = torch.compile(self._forward_inference)
-            self._forward_exploration = torch.compile(
-                self._forward_exploration
+            self._forward_train = torch.compile(
+                self._forward_train, backend="aot_eager"
             )
+            self._forward_inference = torch.compile(
+                self._forward_inference, backend="aot_eager"
+            )
+            self._forward_exploration = torch.compile(
+                self._forward_exploration, backend="aot_eager"
+            )
+
+    @abc.abstractmethod
+    def get_action_dist_cls(self) -> Type[TorchDistribution]:
+        """Returns the action distribution class for this RL Module.
+
+        This class is used to create action distributions from outputs of the forward
+        methods. A distribution class returned by this method should abide to RLlib's
+        Distribution API.
+
+        If the rare case that no action distribution class is needed, this method can
+        return None.
+        """
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.

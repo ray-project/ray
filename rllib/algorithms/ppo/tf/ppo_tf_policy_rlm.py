@@ -82,9 +82,11 @@ class PPOTfPolicyWithRLModule(
     ) -> Union[TensorType, List[TensorType]]:
 
         fwd_out = model.forward_train(train_batch)
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
 
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
+        action_dist_class = model.get_action_dist_cls()
+        curr_action_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         prev_action_dist = action_dist_class.from_logits(
             train_batch[SampleBatch.ACTION_DIST_INPUTS]
         )
