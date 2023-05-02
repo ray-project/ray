@@ -85,14 +85,6 @@ pytest-forked==1.4.0
 # For dataset tests
 polars==0.14.21
 
-# Dependencies from requirements.txt that are pinned
-# in library requirements
-botocore==1.27.59
-protobuf==3.19.6
-typer==0.6.1
-uvicorn==0.16.0
-responses==0.13.4
-rich==12.0.1
 # ale-py requires 4.10.0. It's also compatible with flake8.
 # It's not compatible with mosaicml though
 importlib-metadata==4.10.0
