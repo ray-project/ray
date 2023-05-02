@@ -94,7 +94,7 @@ We start with very simple use cases here and build up to more complex ones in ot
 
 For this quick start guide we use very small, in-memory data sets by
 leveraging common Python libraries like NumPy and Pandas.
-In general, once you load your datasets using Ray Data, you also want to apply some preprocessing steps.
+In general, once you load your data using Ray Data, you also want to apply some preprocessing steps.
 We skip this step here for simplicity.
 In any case, the result of this step is a Ray Datastream ``ds`` that we can use to run inference on.
 
@@ -271,23 +271,23 @@ Loading data with Ray Data
 In the quick start guide we glossed over the details of loading data with Ray Data.
 Your data might be stored in a variety of formats, and you might want to load it from different sources.
 Ray Data supports multiple formats and sources out of the box.
-The :ref:`guide to creating datasets <creating_datasets>` is the ultimate resource
+The :ref:`guide to loading data <loading_data>` is the ultimate resource
 to learn more about loading data with Ray Data, but we'll cover the basics here, too.
 
 .. hint::
 
-    With Ray Data, you can :ref:`create synthetic data in Python<dataset_generate_data>`,
-    :ref:`load data from various storage solutions<dataset_reading_from_storage>` such as S3,
+    With Ray Data, you can :ref:`create synthetic data in Python <datastream_generate_data>`,
+    :ref:`load data from various storage solutions <datastream_reading_from_storage>` such as S3,
     HDFS, or GCS, using common formats such as CSV, JSON, Text, Images, Binary,
     TFRecords, Parquet, and more. Ray Data also supports reading from common SQL and NoSQL
     databases, and allows you to define your own, custom data sources.
 
-    You can also read :ref:`common Python library formats <dataset_from_in_memory_data_single_node>`
+    You can also read :ref:`common Python library formats <datastream_from_in_memory_data_single_node>`
     such as Pandas, NumPy, Arrow, or plain Python objects, as well as from
-    :ref:`distributed data processing frameworks <dataset_from_in_memory_data_distributed>`
+    :ref:`distributed data processing frameworks <datastream_from_in_memory_data_distributed>`
     such as Spark, Dask, Modin, or Mars.
 
-    Of course, Ray Data also supports :ref:`reading data from common ML frameworks <dataset_from_torch_tf>`
+    Of course, Ray Data also supports :ref:`reading data from common ML frameworks <datastream_from_torch_tf>`
     like PyTorch, TensorFlow or HuggingFace.
 
 .. callout::
@@ -306,7 +306,7 @@ The process of loading data with Ray Data is as diverse as the data you have.
 For instance, in the example above we didn't load the text labels for our images,
 which would require a different data source and loading function.
 For any advanced use cases, we recommend you read the
-:ref:`guide to creating datasets <creating_datasets>`.
+:ref:`guide to loading data <loading_data>`.
 
 Preprocessing with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -314,7 +314,7 @@ Preprocessing with Ray Data
 After loading your data, it often needs to be preprocessed prior to inference.
 This may include cropping or resizing images, or tokenizing raw text.
 
-To introduce common terminology, with :ref:`Ray Data <datasets>` you can define
+To introduce common terminology, with :ref:`Ray Data <data>` you can define
 :term:`user-defined functions<User-defined function (UDF)>` (UDFs) that transform batches of your data.
 As you've seen before, applying these UDFs via
 :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` outputs a new, transformed dataset.
@@ -348,12 +348,12 @@ the ``torchvision`` package to define a UDF called ``preprocess_images``.
 .. tip::
 
     For the full suite of transformations available in Ray Data, read
-    :ref:`the data transformation guide <transforming_datasets>`.
+    :ref:`the data transformation guide <transforming_data>`.
 
 .. caution::
 
     Depending on how you load your data and what input data format you use, the dataset
-    loaded with :ref:`Ray Data <datasets>` will have different *batch formats*.
+    loaded with :ref:`Ray Data <data>` will have different *batch formats*.
     For instance, image data might be naturally stored in NumPy format, while tabular
     data makes much more sense as a Pandas DataFrame.
     What (default) batch format your data has and how to deal with it is explained in
@@ -468,8 +468,7 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
 
   The ``"pandas"`` batch format presents batches in
   `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format. If converting a simple dataset to Pandas DataFrame batches, a single-column
-  dataframe with the column ``"__value__"`` will be created.
+  format.
 
   .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
@@ -478,20 +477,7 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
 
 .. tabbed:: NumPy
 
-  The ``"numpy"`` batch format presents batches in
-  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-  format as follows:
-
-  * **Tabular datasets**: Each batch will be a dictionary of NumPy
-    ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
-    in the table.
-
-  * **Tensor datasets** (single-column): Each batch will be a single
-    `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single tensor column for this batch.
-
-  * **Simple datasets**: Each batch will be a single NumPy ndarray, where Ray Data will
-    attempt to convert each list-batch to an ndarray.
+  The ``"numpy"`` batch format presents batches in ``Dict[str, np.ndarray]`` format.
 
   .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
@@ -501,8 +487,6 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
 .. tabbed:: Arrow
 
     The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
-    If converting a simple dataset to Arrow Table batches, a single-column table
-    with the column ``"__value__"`` will be created.
 
     .. literalinclude:: ./doc_code/batch_formats.py
         :language: python
@@ -510,10 +494,10 @@ namely Pandas, NumPy, and Arrow, and how they're used in Ray Data:
         :end-before: __simple_pyarrow_end__
 
 When defining the return value of your UDF, you can choose between
-Pandas dataframes (``pandas.DataFrame``), NumPy arrays (``numpy.ndarray``), Arrow tables
-(``pyarrow.Table``), dictionaries of NumPy arrays (``Dict[str, np.ndarray]``) or simple
-Python lists (``list``).
-You can learn more about output formats in :ref:`the output format guide<transform_datasets_batch_output_types>`.
+Pandas dataframes (``pandas.DataFrame``), Arrow tables (``pyarrow.Table``), and
+dictionaries of NumPy arrays (``Dict[str, np.ndarray]``).
+
+You can learn more about output formats in :ref:`the transforming data guide <transforming_data>`.
 
 .. important::
 
