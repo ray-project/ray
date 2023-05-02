@@ -1,7 +1,7 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

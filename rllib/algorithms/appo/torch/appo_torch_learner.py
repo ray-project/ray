@@ -31,10 +31,6 @@ torch, nn = try_import_torch()
 class APPOTorchLearner(TorchLearner, AppoLearner):
     """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
 
-    def __init__(self, *args, **kwargs):
-        TorchLearner.__init__(self, *args, **kwargs)
-        AppoLearner.__init__(self, *args, **kwargs)
-
     @override(TorchLearner)
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]

@@ -15,10 +15,6 @@ _, tf, _ = try_import_tf()
 class ImpalaTfLearner(TfLearner, ImpalaLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
-    def __init__(self, *args, **kwargs):
-        TfLearner.__init__(self, *args, **kwargs)
-        ImpalaLearner.__init__(self, *args, **kwargs)
-
     @override(TfLearner)
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]

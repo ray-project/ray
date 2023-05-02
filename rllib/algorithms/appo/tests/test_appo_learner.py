@@ -1,6 +1,8 @@
 import unittest
 import numpy as np
 
+import tree  # pip install dm_tree
+
 import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
@@ -12,6 +14,7 @@ from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
 tf1, tf, _ = try_import_tf()
@@ -81,10 +84,12 @@ class TestAPPOTfLearner(unittest.TestCase):
 
             if fw == "tf2":
                 train_batch = SampleBatch(
-                    tf.nest.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
+                    tree.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
                 )
             else:
-                train_batch = SampleBatch(FAKE_BATCH)
+                train_batch = SampleBatch(
+                    tree.map_structure(lambda x: convert_to_torch_tensor(x), FAKE_BATCH)
+                )
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             algo_config = config.copy(copy_frozen=False)

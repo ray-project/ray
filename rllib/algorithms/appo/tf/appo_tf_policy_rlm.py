@@ -11,12 +11,10 @@ from ray.rllib.policy.tf_mixins import (
     GradStatsMixin,
     TargetNetworkMixin,
 )
-
 from ray.rllib.algorithms.impala.impala_tf_policy import (
     VTraceClipGradients,
     VTraceOptimizer,
 )
-
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -61,7 +59,7 @@ class APPOTfPolicyWithRLModule(
         KLCoeffMixin.__init__(self, config)
         GradStatsMixin.__init__(self)
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
-        # construct the target model and make its weights the same as the model
+        # Construct the target model and make its weights the same as the model.
         self.target_model = self.make_rl_module()
         self.target_model.set_weights(self.model.get_weights())
 

@@ -21,10 +21,6 @@ _, tf, _ = try_import_tf()
 class APPOTfLearner(TfLearner, AppoLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
-    def __init__(self, *args, **kwargs):
-        TfLearner.__init__(self, *args, **kwargs)
-        AppoLearner.__init__(self, *args, **kwargs)
-
     @override(TfLearner)
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]

@@ -4,12 +4,25 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
 )
+from ray.rllib.policy.torch_mixins import (
+    EntropyCoeffSchedule,
+    LearningRateSchedule,
+    KLCoeffMixin,
+    TargetNetworkMixin,
+)
+from ray.rllib.algorithms.impala.impala_torch_policy import (
+    VTraceOptimizer,
+)
 from ray.rllib.algorithms.ppo.ppo_torch_policy import validate_config
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import explained_variance, global_norm
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    explained_variance,
+    global_norm,
+)
 
 torch, _ = try_import_torch()
 
@@ -18,11 +31,37 @@ logger = logging.getLogger(__name__)
 
 # TODO: Remove once we have a RLModule capable sampler class that can replace
 #  `Policy.compute_actions_from_input_dict()`.
-class APPOTorchPolicyWithRLModule(TorchPolicyV2):
+class APPOTorchPolicyWithRLModule(
+    VTraceOptimizer,
+    LearningRateSchedule,
+    KLCoeffMixin,
+    EntropyCoeffSchedule,
+    TargetNetworkMixin,
+    TorchPolicyV2,
+):
     def __init__(self, observation_space, action_space, config):
         validate_config(config)
+        # Initialize MixIns before super().__init__ because base class will call
+        # self.loss, which requires these MixIns to be initialized.
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
+        # Although this is a no-op, we call __init__ here to make it clear
+        # that base.__init__ will use the make_model() call.
+        # VTraceClipGradients.__init__(self)
+        VTraceOptimizer.__init__(self)
+        self.framework = "tf2"
+        KLCoeffMixin.__init__(self, config)
+        # GradStatsMixin.__init__(self)
         TorchPolicyV2.__init__(self, observation_space, action_space, config)
+        # Construct the target model and make its weights the same as the model.
+        self.target_model = self.make_rl_module()
+        self.target_model.load_state_dict(self.model.state_dict())
+
+        # Initiate TargetNetwork ops after loss initialization.
         self._initialize_loss_from_dummy_batch()
+        TargetNetworkMixin.__init__(self)
 
     @override(TorchPolicyV2)
     def loss(self, model, dist_class, train_batch):
@@ -119,10 +158,7 @@ class APPOTorchPolicyWithRLModule(TorchPolicyV2):
         clip_param = self.config["clip_param"]
         surrogate_loss = torch.minimum(
             pg_advantages * logp_ratio,
-            (
-                pg_advantages
-                * torch.clip(logp_ratio, 1 - clip_param, 1 + clip_param)
-            ),
+            (pg_advantages * torch.clip(logp_ratio, 1 - clip_param, 1 + clip_param)),
         )
         action_kl = old_target_policy_dist.kl(target_policy_dist)
         mean_kl_loss = torch.mean(action_kl)
@@ -157,11 +193,13 @@ class APPOTorchPolicyWithRLModule(TorchPolicyV2):
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch):
         return {
-            "cur_lr": self.cur_lr,
+            "cur_lr": convert_to_torch_tensor(self.cur_lr).type(torch.float64),
             "policy_loss": self.stats["policy_loss"],
             "entropy": self.stats["entropy_loss"],
-            "entropy_coeff": self.entropy_coeff,
-            "var_gnorm": global_norm(self.model.trainable_variables),
+            "entropy_coeff": convert_to_torch_tensor(self.entropy_coeff).type(
+                torch.float64
+            ),
+            "var_gnorm": global_norm(self.model.parameters()),
             "vf_loss": self.stats["vf_loss"],
             "vf_explained_var": explained_variance(
                 torch.reshape(self.stats["vtrace_adjusted_target_values"], [-1]),

@@ -2,7 +2,7 @@ import itertools
 import unittest
 
 from ray.rllib.core.models.configs import MLPEncoderConfig
-from ray.rllib.core.models.base import STATE_OUT, ENCODER_OUT
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
 
