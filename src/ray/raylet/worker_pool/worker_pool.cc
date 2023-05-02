@@ -839,7 +839,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   if (NeedToEagerInstallRuntimeEnv(*job_config)) {
     DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
   }
-  finished_jobs_.insert(job_id);
+  //finished_jobs_.insert(job_id);
   cache_size_policy_->OnJobFinish(job_id);
 }
 
@@ -1672,7 +1672,7 @@ std::string WorkerPool::DebugString() const {
   std::stringstream result;
   // TODO add debug string to policy
   result << "WorkerPool:";
-  result << "\n- registered jobs: " << all_jobs_.size() - finished_jobs_.size();
+  //result << "\n- registered jobs: " << all_jobs_.size() - finished_jobs_.size(); // TODO(cade)
   result << "\n- process_failed_job_config_missing: "
          << process_failed_job_config_missing_;
   result << "\n- process_failed_rate_limited: " << process_failed_rate_limited_;
