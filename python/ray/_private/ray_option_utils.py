@@ -3,7 +3,8 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-import ray._private.ray_constants as ray_constants
+import ray
+from ray._private import ray_constants
 from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
@@ -17,9 +18,9 @@ class Option:
     # Type constraint of an option.
     type_constraint: Optional[Union[type, Tuple[type]]] = None
     # Value constraint of an option.
-    value_constraint: Optional[Callable[[Any], bool]] = None
-    # Error message for value constraint.
-    error_message_for_value_constraint: Optional[str] = None
+    # The callable should return None if there is no error.
+    # Otherwise, return the error message.
+    value_constraint: Optional[Callable[[Any], Optional[str]]] = None
     # Default value.
     default_value: Any = None
 
@@ -32,8 +33,9 @@ class Option:
                     f"but received type {type(value)}"
                 )
         if self.value_constraint is not None:
-            if not self.value_constraint(value):
-                raise ValueError(self.error_message_for_value_constraint)
+            possible_error_message = self.value_constraint(value)
+            if possible_error_message:
+                raise ValueError(possible_error_message)
 
 
 def _counting_option(name: str, infinite: bool = True, default_value: Any = None):
@@ -47,27 +49,61 @@ def _counting_option(name: str, infinite: bool = True, default_value: Any = None
     if infinite:
         return Option(
             (int, type(None)),
-            lambda x: x is None or x >= -1,
-            f"The keyword '{name}' only accepts None, 0, -1 or a positive integer, "
-            "where -1 represents infinity.",
+            lambda x: None
+            if (x is None or x >= -1)
+            else f"The keyword '{name}' only accepts None, 0, -1"
+            " or a positive integer, where -1 represents infinity.",
             default_value=default_value,
         )
     return Option(
         (int, type(None)),
-        lambda x: x is None or x >= 0,
-        f"The keyword '{name}' only accepts None, 0 or a positive integer.",
+        lambda x: None
+        if (x is None or x >= 0)
+        else f"The keyword '{name}' only accepts None, 0 or a positive integer.",
         default_value=default_value,
     )
+
+
+def _validate_resource_quantity(name, quantity):
+    if quantity < 0:
+        return f"The quantity of resource {name} cannot be negative"
+    if (
+        isinstance(quantity, float)
+        and quantity != 0.0
+        and int(quantity * ray._raylet.RESOURCE_UNIT_SCALING) == 0
+    ):
+        return (
+            f"The precision of the fractional quantity of resource {name}"
+            " cannot go beyond 0.0001"
+        )
+    return None
 
 
 def _resource_option(name: str, default_value: Any = None):
-    """This is used for non-negative options, typically for defining resources."""
+    """This is used for resource related options."""
     return Option(
         (float, int, type(None)),
-        lambda x: x is None or x >= 0,
-        f"The keyword '{name}' only accepts None, 0 or a positive number",
+        lambda x: None if (x is None) else _validate_resource_quantity(name, x),
         default_value=default_value,
     )
+
+
+def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
+    if resources is None:
+        return None
+
+    if "CPU" in resources or "GPU" in resources:
+        return (
+            "Use the 'num_cpus' and 'num_gpus' keyword instead of 'CPU' and 'GPU' "
+            "in 'resources' keyword"
+        )
+
+    for name, quantity in resources.items():
+        possible_error_message = _validate_resource_quantity(name, quantity)
+        if possible_error_message:
+            return possible_error_message
+
+    return None
 
 
 _common_options = {
@@ -85,12 +121,7 @@ _common_options = {
     ),
     "placement_group_bundle_index": Option(int, default_value=-1),
     "placement_group_capture_child_tasks": Option((bool, type(None))),
-    "resources": Option(
-        (dict, type(None)),
-        lambda x: x is None or ("CPU" not in x and "GPU" not in x),
-        "Use the 'num_cpus' and 'num_gpus' keyword instead of 'CPU' and 'GPU' "
-        "in 'resources' keyword",
-    ),
+    "resources": Option((dict, type(None)), lambda x: _validate_resources(x)),
     "runtime_env": Option((dict, type(None))),
     "scheduling_strategy": Option(
         (
@@ -122,26 +153,29 @@ _task_only_options = {
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": Option(
         (int, str, type(None)),
-        lambda x: x is None or x == "dynamic" or x >= 0,
-        "The keyword 'num_returns' only accepts None, a non-negative integer, or "
+        lambda x: None
+        if (x is None or x == "dynamic" or x >= 0)
+        else "The keyword 'num_returns' only accepts None, a non-negative integer, or "
         '"dynamic" (for generators)',
         default_value=1,
     ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
-        lambda x: x is None,
-        "Setting 'object_store_memory' is not implemented for tasks",
+        lambda x: None
+        if (x is None)
+        else "Setting 'object_store_memory' is not implemented for tasks",
     ),
     "retry_exceptions": Option(
         (bool, list, tuple),
-        lambda x: (
+        lambda x: None
+        if (
             isinstance(x, bool)
             or (
                 isinstance(x, (list, tuple))
                 and all(issubclass_safe(x_, Exception) for x_ in x)
             )
-        ),
-        "retry_exceptions must be either a boolean or a list of exceptions",
+        )
+        else "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,
     ),
 }
@@ -150,8 +184,9 @@ _actor_only_options = {
     "concurrency_groups": Option((list, dict, type(None))),
     "lifetime": Option(
         (str, type(None)),
-        lambda x: x in (None, "detached", "non_detached"),
-        "actor `lifetime` argument must be one of 'detached', "
+        lambda x: None
+        if x in (None, "detached", "non_detached")
+        else "actor `lifetime` argument must be one of 'detached', "
         "'non_detached' and 'None'.",
     ),
     "max_concurrency": _counting_option("max_concurrency", False),

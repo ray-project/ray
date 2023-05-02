@@ -396,6 +396,7 @@ parts:
             sections:
               - file: ray-contribute/development
               - file: ray-contribute/docs
+              - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
           - file: ray-core/configure

@@ -12,24 +12,28 @@ pip install gradio
 ```
 
 Additionally, you can optionally install `pydot` and `graphviz`. This will allow this tool to incorporate the complementary [graphical illustration](pydot-visualize-dag) of the nodes and edges.
-::::{tabbed} MacOS
+
+:::{tab-set}
+
+::::{tab-item} MacOS
 ```
 pip install -U pydot && brew install graphviz
 ```
 ::::
 
-::::{tabbed} Windows
+::::{tab-item} Windows
 ```
 pip install -U pydot && winget install graphviz
 ```
 ::::
 
-::::{tabbed} Linux
+::::{tab-item} Linux
 ```
 pip install -U pydot && sudo apt-get install -y graphviz
 ```
 ::::
 
+:::
 
 Also, for the [quickstart example](gradio-vis-quickstart), install the `transformers` module to pull models through [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines).
 ```console
