@@ -320,6 +320,54 @@ class TunerInternal:
                 flattened_param_space_keys=flattened_param_space_keys,
             )
 
+    def _load_tuner_state(
+        self, tuner_pkl_path: Path
+    ) -> Tuple[Optional[str], Optional[List[str]]]:
+        """Loads Tuner state from the previously saved `tuner.pkl`.
+
+        Args:
+            tuner_pkl_path: pathlib.Path of the `tuner.pkl` file saved during the
+                original Tuner initialization.
+
+        Returns:
+            tuple: of `(old_trainable_name, flattened_param_space_keys)` used for
+                validating the re-specified `trainable` and `param_space`.
+        """
+        if not tuner_pkl_path.exists():
+            raise RuntimeError(
+                f"Could not find Tuner state in restore directory. Did you pass"
+                f"the correct path (the top-level experiment directory?) Got: "
+                f"{tuner_pkl_path.parent}"
+            )
+
+        with open(tuner_pkl_path, "rb") as fp:
+            tuner_state = pickle.load(fp)
+
+            if isinstance(tuner_state, TunerInternal):
+                # TODO(ml-team): Remove in 2.7.
+                # Backwards compatibility: ray<=2.4 pickles the full Tuner object
+                # within `tuner.pkl`. ray>=2.5 pickles the object state as a dict.
+                tuner: TunerInternal = tuner_state
+                self.__setstate__(tuner.__getstate__())
+
+                logger.warning(
+                    "You are restoring a Tune experiment that was run with an older "
+                    "version of Ray. Note that backwards compatibility for experiment "
+                    "restoration will only be guaranteed for 2 minor versions."
+                )
+
+                old_trainable_name, flattened_param_space_keys = None, None
+            else:
+                # NOTE: These are magic keys used for validating restore args.
+                old_trainable_name = tuner_state.pop("__trainable_name", None)
+                flattened_param_space_keys = tuner_state.pop(
+                    "__flattened_param_space_keys", None
+                )
+
+                self.__setstate__(tuner_state)
+
+        return old_trainable_name, flattened_param_space_keys
+
     def _restore_from_path_or_uri(
         self,
         path_or_uri: str,
@@ -334,24 +382,9 @@ class TunerInternal:
         ) = self._maybe_sync_down_tuner_state(path_or_uri)
         experiment_checkpoint_path = Path(local_experiment_checkpoint_dir)
 
-        if not (experiment_checkpoint_path / _TUNER_PKL).exists():
-            raise RuntimeError(
-                f"Could not find Tuner state in restore directory. Did you pass"
-                f"the correct path (the top-level experiment directory?) Got: "
-                f"{path_or_uri}"
-            )
-
-        # Load tuner state
-        with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-            tuner_state = pickle.load(fp)
-
-            # NOTE: These are magic keys used for validating restore args.
-            old_trainable_name = tuner_state.pop("__trainable_name", None)
-            flattened_param_space_keys = tuner_state.pop(
-                "__flattened_param_space_keys", None
-            )
-
-            self.__setstate__(tuner_state)
+        old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
+            experiment_checkpoint_path / _TUNER_PKL
+        )
 
         # Perform validation and set the re-specified `trainable` and `param_space`
         self._set_trainable_on_restore(
@@ -709,7 +742,9 @@ class TunerInternal:
         param_space = state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
 
-        state["__trainable_name"] = Experiment.get_trainable_name(trainable)
+        state["__trainable_name"] = (
+            Experiment.get_trainable_name(trainable) if trainable else None
+        )
         state["__flattened_param_space_keys"] = (
             sorted(flatten_dict(param_space).keys())
             if param_space is not None
