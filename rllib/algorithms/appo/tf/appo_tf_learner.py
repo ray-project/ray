@@ -5,7 +5,7 @@ from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
-    OLD_ACTION_DIST_KEY,
+    OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
@@ -30,11 +30,13 @@ class APPOTfLearner(TfLearner, AppoLearner):
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
-        action_dist_class = self._module.get_action_dist_cls()
+        action_dist_class = self._module[module_id].get_action_dist_cls()
         target_policy_dist = action_dist_class.from_logits(
-            [SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-        old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
+        old_target_policy_dist = action_dist_class.from_logits(
+            fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
+        )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )
