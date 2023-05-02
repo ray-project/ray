@@ -1,9 +1,16 @@
+import ray
+from ray.air import session
+from ray.air.constants import MODEL_KEY
+from ray.data.datastream import DataIterator
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+
 import logging
 import shutil
 import torch
 import tempfile
 from packaging.version import Version
 from typing import Any, Dict, Optional
+from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -26,12 +33,6 @@ if _TORCH_FSDP_AVAILABLE:
         StateDictType,
     )
 
-import ray
-from ray.air import session
-from ray.air.constants import MODEL_KEY
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
-from torch.utils.data import IterableDataset, DataLoader
-from ray.data.datastream import DataIterator
 
 logger = logging.getLogger(__name__)
 
