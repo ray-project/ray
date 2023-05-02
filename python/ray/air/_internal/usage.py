@@ -169,7 +169,7 @@ def tag_env_vars() -> bool:
     user_supplied_env_vars = []
 
     for env_var in all_env_vars:
-        if os.environ.get(env_var):
+        if env_var in os.environ:
             user_supplied_env_vars.append(env_var)
 
     if user_supplied_env_vars:
