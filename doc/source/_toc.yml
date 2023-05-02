@@ -90,7 +90,6 @@ parts:
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
-#            TODO add sections here
           - file: data/examples/index
             sections:
               - file: data/examples/nyc_taxi_basic_processing
