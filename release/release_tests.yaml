@@ -4277,7 +4277,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
+        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # Revert to the comment below once ^ closed.
+        # cluster_env: app_config.yaml
+        cluster_env: debug_app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
