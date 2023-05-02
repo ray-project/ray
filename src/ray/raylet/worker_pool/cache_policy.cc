@@ -56,9 +56,180 @@ size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
 //      which workers to kill. 
 std::vector<std::shared_ptr<WorkerInterface>> FutureIdlePoolSizePolicy::GetIdleProcsToKill(size_t idle_size,
                                                        size_t running_size,
-                                                       size_t starting_size) {
-  // 
-  return {};
+                                                       size_t starting_size,
+                                                       std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+                                                       std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers) {
+  std::vector<std::shared_ptr<WorkerInterface>> to_kill;
+  Populate(to_kill, GetFateSharingWorkers, CanKillFateSharingWorkers);
+  return to_kill;
+}
+
+// TODO name
+// Inputs:
+// get_time_
+// GetAllRegisteredWorkers (for running_size calc)
+// pending_exit_idle_workers_ (assertion, for running_size calc)
+// idle_of_all_languages_ (for scanning which workers to remove)
+// finished_jobs_ (for scanning which jobs are finished)
+// worker_pool_.states_by_lang_.at (worker_state.worker_processes.find(worker_startup_token); for some java stuff) (also non java stuff) (Make sure all workers in this worker process are idle.)
+// worker_pool_.GetWorkersByProcess (multiple java workers per worker)
+// worker_pool_.idle_of_all_languages_map_.at(worker) (for idle timeout)
+// worker_pool_.pending_exit_idle_workers_ (can't kill these)
+// num_workers_soft_limit_ (easy)
+//
+// Synthesizing:
+// now_time
+// running_size (requires GetAllRegisteredWorkers + pending_exit_idle_workers_)
+// candidates (idle_of_all_languages_)
+// 
+// For each idle worker
+//      If the job is done, kill.
+//              Pass finished jobs
+//      If the worker is not idle for long enough, skip.
+//              Check via worker
+//      If the worker is already dead, ignore (java can have dead workers and live workers in same proc?)
+//              Check via worker
+//      If the worker process is pending registration, ignore (java can have other workers pending registration)
+//              Have callback that determines if a worker can be killed?
+//              std::optional<std::vector<WorkerInterface>> GetFateSharingWorkers() [const WorkerPool&]
+//              GetFateSharingWorkers -> std:vector<WorkerInterface>
+//              CanKillFateSharingWorkers -> bool
+//      If there are other workers in the same process that are recently active, skip.
+//              Same as above
+//      If there are other workers in the same process that are pending exit, skip.
+//              Same as above
+//      If killing all workers in the process kill too many workers, skip. (likely broken in current impl).
+//              Easy
+//      
+//      
+void FutureIdlePoolSizePolicy::Populate(std::vector<std::shared_ptr<WorkerInterface>>& idle_workers_to_remove,
+std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers
+) {
+  //int64_t now = worker_pool_.get_time_();
+  //size_t running_size = 0;
+
+  //for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
+  //  if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+  //    running_size++;
+  //  }
+  //}
+
+  //// Subtract the number of pending exit workers first. This will help us killing more
+  //// idle workers that it needs to.
+  //RAY_CHECK(running_size >= worker_pool_.pending_exit_idle_workers_.size());
+  //running_size -= worker_pool_.pending_exit_idle_workers_.size();
+
+  //// Kill idle workers in FIFO order.
+  //for (const auto &idle_pair : worker_pool_.idle_of_all_languages_) {
+  //  const auto &idle_worker = idle_pair.first;
+  //  const auto &job_id = idle_worker->GetAssignedJobId();
+
+  //  RAY_LOG(DEBUG) << " Checking idle worker "
+  //                 << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString()
+  //                 << " worker id " << idle_worker->WorkerId();
+
+  //  if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+  //    if (!worker_pool_.finished_jobs_.contains(job_id)) {
+  //      // Ignore the soft limit for jobs that have already finished, as we
+  //      // should always clean up these workers.
+  //      RAY_LOG(DEBUG) << "job not finished. Not going to kill worker "
+  //                     << idle_worker->WorkerId();
+  //      continue;
+  //    }
+  //  }
+
+  //  if (now - idle_pair.second <
+  //      RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+  //    break;
+  //  }
+
+  //  if (idle_worker->IsDead()) {
+  //    RAY_LOG(DEBUG) << "idle worker is already dead. Not going to kill worker "
+  //                   << idle_worker->WorkerId();
+  //    // This worker has already been killed.
+  //    // This is possible because a Java worker process may hold multiple workers.
+  //    continue;
+  //  }
+  //  
+
+  //  // Java can have multiple workers per process.
+  //  // We need three checks:
+  //  //  1. is there any worker process that is associated with the worker that is pending registration?
+  //  //  2. is there any worker_in_same_proc that is active in last idle_worker_killing_time_threshold_ms (or currently?)
+  //  //  3. is there any worker_in_same_proc that is pending exit?
+  //  // If any are true, we can't kill the process.
+  //  // 
+  //  // Seems these should be filtered before we enter this logic?
+
+  //  // Anyways, after this, we check if the number of workers to be killed is greater than
+  //  // required. If so we don't kill, because that would slow down the job too much.
+  //  {
+  //    auto worker_startup_token = idle_worker->GetStartupToken();
+  //    const auto& worker_state = worker_pool_.states_by_lang_.at(idle_worker->GetLanguage());
+
+  //    auto it = worker_state.worker_processes.find(worker_startup_token);
+  //    if (it != worker_state.worker_processes.end() && it->second.is_pending_registration) {
+  //      // A Java worker process may hold multiple workers.
+  //      // Some workers of this process are pending registration. Skip killing this worker.
+  //      continue;
+  //    }
+  //  }
+  //  const auto& worker_state = worker_pool_.states_by_lang_.at(idle_worker->GetLanguage());
+
+  //  // TODO(clarng): get rid of multiple workers per process code here, as that is
+  //  // not longer supported.
+  //  auto process = idle_worker->GetProcess();
+  //  // Make sure all workers in this worker process are idle.
+  //  // This block of code is needed by Java workers.
+  //  auto workers_in_the_same_process = worker_pool_.GetWorkersByProcess(process);
+  //  bool can_be_killed = true;
+  //  for (const auto &worker : workers_in_the_same_process) {
+  //    if (worker_state.idle.count(worker) == 0 ||
+  //        now - worker_pool_.idle_of_all_languages_map_.at(worker) <
+  //            RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+  //      // Another worker in this process isn't idle, or hasn't been idle for a while, so
+  //      // this process can't be killed.
+  //      can_be_killed = false;
+  //      break;
+  //    }
+
+  //    // Skip killing the worker process if there's any inflight `Exit` RPC requests to
+  //    // this worker process.
+  //    if (worker_pool_.pending_exit_idle_workers_.count(worker->WorkerId())) {
+  //      can_be_killed = false;
+  //      break;
+  //    }
+  //  }
+  //  if (!can_be_killed) {
+  //    continue;
+  //  }
+
+  //  RAY_CHECK(running_size >= workers_in_the_same_process.size());
+  //  if (running_size - workers_in_the_same_process.size() <
+  //      static_cast<size_t>(num_workers_soft_limit_)) {
+  //    // A Java worker process may contain multiple workers. Killing more workers than we
+  //    // expect may slow the job.
+  //    // Semantics: if the job has not finished, return. (Unclear why?)
+  //    if (worker_pool_.finished_jobs_.count(job_id) == 0) {
+  //      // Ignore the soft limit for jobs that have already finished, as we
+  //      // should always clean up these workers.
+  //      return;
+  //    }
+  //  }
+
+  //  for (const auto &worker : workers_in_the_same_process) {
+  //    RAY_LOG(DEBUG) << "The worker pool has " << running_size
+  //                   << " registered workers which exceeds the soft limit of "
+  //                   << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
+  //                   << " with pid " << process.GetId()
+  //                   << " has been idle for a a while. Kill it.";
+
+  //    idle_workers_to_remove.push_back(worker);
+  //    running_size--;
+  //  }
+  //}
+
 }
 
 void FutureIdlePoolSizePolicy::OnStart() {

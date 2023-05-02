@@ -113,7 +113,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
 #endif
-  
+
   cache_size_policy_ = std::make_shared<FutureIdlePoolSizePolicy>(
     num_workers_soft_limit_,
     maximum_startup_concurrency_
@@ -188,6 +188,51 @@ void WorkerPool::MaybeRefillIdlePool() {
 
     RAY_LOG(DEBUG) << "MaybeRefillIdlePool num_idle_workers_to_create: " << num_idle_workers_to_create;
     PrestartDefaultCpuWorkers(Language::PYTHON, num_idle_workers_to_create);
+
+    // TODO(cade) move this around
+    auto GetFateSharingWorkers = [this] (std::shared_ptr<WorkerInterface> worker) {
+      auto process = worker->GetProcess();
+      return GetWorkersByProcess(process);
+    };
+
+    // TODO(cade) make this const?
+    auto CanKillFateSharingWorkers = [this] (int64_t now, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers) {
+        // TODO(cade) make const
+        for (auto& worker : fate_sharers) {
+            const auto& worker_state = this->states_by_lang_.at(worker->GetLanguage());
+            {
+                auto worker_startup_token = worker->GetStartupToken();
+                auto it = worker_state.worker_processes.find(worker_startup_token);
+                if (it != worker_state.worker_processes.end() && it->second.is_pending_registration) {
+                    // A Java worker process may hold multiple workers.
+                    // Some workers of this process are pending registration. Skip killing this worker.
+                    return false;
+                }
+            }
+            
+            // Another worker in this process isn't idle, so
+            // this process can't be killed.
+            if (worker_state.idle.count(worker) == 0) {
+                return false;
+            }
+
+            // Another worker in this process hasn't been idle for a while, so
+            // this process can't be killed.
+            if (now - this->idle_of_all_languages_map_.at(worker) < RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+                return false;
+            }
+
+            // Skip killing the worker process if there's any inflight `Exit` RPC requests to
+            // this worker process.
+            if (this->pending_exit_idle_workers_.count(worker->WorkerId()) > 0) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    cache_size_policy_->GetIdleProcsToKill(0, 0, 0, GetFateSharingWorkers, CanKillFateSharingWorkers);
 }
 
 size_t WorkerPool::GetNumStartingWorkers() {

@@ -79,13 +79,21 @@ class IdlePoolSizePolicyInterface {
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(size_t idle_size,
                                              size_t running_size,
-                                             size_t starting_size) = 0;
+                                             size_t starting_size,
+                                             std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+                                             std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers) = 0;
 };
 
 class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
  private:
   size_t desired_cache_size_;
   size_t max_starting_size_;
+
+  void Populate(
+    std::vector<std::shared_ptr<WorkerInterface>>& idle_workers_to_remove,
+    std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+    std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers
+    );
 
  public:
   FutureIdlePoolSizePolicy(size_t desired_cache_size,
@@ -97,7 +105,9 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
 
   std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(size_t idle_size,
                                      size_t running_size,
-                                     size_t starting_size);
+                                     size_t starting_size,
+                                     std::function<std::unordered_set<std::shared_ptr<WorkerInterface>>(std::shared_ptr<WorkerInterface>)> GetFateSharingWorkers,
+                                     std::function<bool(int64_t, const std::unordered_set<std::shared_ptr<WorkerInterface>>& fate_sharers)> CanKillFateSharingWorkers);
   // Set desired to 64
   void OnStart();
 
