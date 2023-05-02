@@ -426,6 +426,7 @@ class _FileBasedDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
+        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
         partitioning = self._partitioning
@@ -446,9 +447,9 @@ class _FileBasedDatasourceReader(Reader):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            DataContext._set_current(ctx)
             logger.debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            ctx = DataContext.get_current()
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
