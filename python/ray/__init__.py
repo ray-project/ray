@@ -227,17 +227,13 @@ RAY_APIS = {
 
 # Public APIs that should automatically trigger ray.init().
 AUTO_INIT_APIS = {
-    "available_resources",
     "cancel",
-    "cluster_resources",
     "get",
     "get_actor",
     "get_gpu_ids",
     "get_runtime_context",
     "kill",
-    "nodes",
     "put",
-    "timeline",
     "wait",
 }
 
@@ -251,16 +247,20 @@ NON_AUTO_INIT_APIS = {
     "__version__",
     "_config",
     "autoscaler",
+    "available_resources",
     "client",
+    "cluster_resources",
     "cpp_function",
     "init",
     "is_initialized",
     "java_actor_class",
     "java_function",
     "method",
+    "nodes",
     "remote",
     "show_in_dashboard",
     "shutdown",
+    "timeline",
 }
 
 assert RAY_APIS == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
