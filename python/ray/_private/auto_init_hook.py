@@ -14,9 +14,9 @@ def disable_auto_init():
 def auto_init_ray():
     global should_auto_init
     if (
-        os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
+        should_auto_init
+        and os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
         and not ray.is_initialized()
-        and should_auto_init
     ):
         ray.init()
 
