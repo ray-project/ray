@@ -5,3 +5,5 @@ cluster_name: aws-example-minimal
 provider:
     type: aws
     region: us-west-2
+    key_pair:
+        key_name: aws-cluster-launcher-test

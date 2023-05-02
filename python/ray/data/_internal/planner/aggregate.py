@@ -17,13 +17,12 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data.aggregate import AggregateFn
-from ray.data.block import KeyFn
 from ray.data.context import DataContext
 from ray.data._internal.util import unify_block_metadata_schema
 
 
 def generate_aggregate_fn(
-    key: Optional[KeyFn],
+    key: Optional[str],
     aggs: List[AggregateFn],
 ) -> AllToAllTransformFn:
     """Generate function to aggregate blocks by the specified key column or key

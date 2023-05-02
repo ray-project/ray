@@ -34,13 +34,16 @@ class LimitOperator(PhysicalOperator):
         self._buffer: Deque[RefBundle] = deque()
         self._name = f"Limit[limit={limit}]"
         self._output_metadata: List[BlockMetadata] = []
-        self._num_outputs_total = input_op.num_outputs_total()
-        if self._num_outputs_total is not None:
-            self._num_outputs_total = min(self._num_outputs_total, limit)
+        self._cur_output_bundles = 0
         super().__init__(self._name, [input_op])
+        if self._limit <= 0:
+            self.inputs_done()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
+
+    def need_more_inputs(self) -> bool:
+        return not self._limit_reached()
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -77,11 +80,14 @@ class LimitOperator(PhysicalOperator):
                 self._output_metadata.append(metadata)
                 self._consumed_rows = self._limit
                 break
+        self._cur_output_bundles += 1
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
         )
         self._buffer.append(out_refs)
+        if self._limit_reached():
+            self.inputs_done()
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0
@@ -93,7 +99,10 @@ class LimitOperator(PhysicalOperator):
         return {self._name: self._output_metadata}
 
     def num_outputs_total(self) -> Optional[int]:
-        if self._limit_reached():
-            return self._limit
+        # Before inputs are completed (either because the limit is reached or
+        # because the inputs operators are done), we don't know how many output
+        # bundles we will have.
+        if self._inputs_complete:
+            return self._cur_output_bundles
         else:
-            return self._num_outputs_total
+            return None
