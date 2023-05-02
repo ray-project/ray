@@ -5,6 +5,7 @@
 # __pt_quickstart_load_start__
 import ray
 import numpy as np
+from typing import Dict
 
 
 ds = ray.data.from_numpy(np.ones((1, 100)))
@@ -24,7 +25,7 @@ class TorchPredictor:
         )
         self.model.eval()
 
-    def __call__(self, batch):  # <2>
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:  # <2>
         tensor = torch.as_tensor(batch["data"], dtype=torch.float32)
         with torch.inference_mode():
             return {"output": self.model(tensor).detach().numpy()}

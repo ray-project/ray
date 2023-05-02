@@ -5,6 +5,7 @@
 # __tf_quickstart_load_start__
 import ray
 import numpy as np
+from typing import Dict
 
 
 ds = ray.data.from_numpy(np.ones((1, 100)))
@@ -20,7 +21,7 @@ class TFPredictor:
         output_layer = keras.layers.Dense(1, activation="sigmoid")
         self.model = keras.Sequential([input_layer, output_layer])
 
-    def __call__(self, batch: np.ndarray):  # <2>
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:  # <2>
         return {"output": self.model(batch["data"]).numpy()}
 # __tf_quickstart_model_end__
 
