@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import os
 from typing import Any, Dict, Iterator, List, Optional, Union
 import ray
 from pkg_resources import packaging
@@ -11,14 +10,12 @@ from ray.dashboard.modules.job.utils import strip_keys_with_value_none
 try:
     import aiohttp
     import requests
-    import ssl
     from ray.dashboard.modules.job.pydantic_models import (
         JobDetails,
     )
 except ImportError:
     aiohttp = None
     requests = None
-    ssl = None
     JobDetails = None
 
 from ray.dashboard.modules.job.common import (
@@ -63,7 +60,8 @@ class JobSubmissionClient(SubmissionClient):
             via a simple dict update.
         headers: Headers to use when sending requests to the HTTP job server, used
             for cases like authentication to a remote cluster.
-        verify: Path to a file or directory of trusted certificates for HTTPS.
+        verify: Boolean indication to verify the server's TLS certificate or a path to
+            a file or directory of trusted certificates.
     """
 
     def __init__(
@@ -73,7 +71,7 @@ class JobSubmissionClient(SubmissionClient):
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
-        verify: Optional[Union[str, bool]] = None,
+        verify: Optional[Union[str, bool]] = True,
     ):
         self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
@@ -96,9 +94,7 @@ class JobSubmissionClient(SubmissionClient):
             raise TypeError(f"metadata must be a dict, got {type(metadata)}")
         if headers is not None and not isinstance(headers, dict):
             raise TypeError(f"headers must be a dict, got {type(headers)}")
-        if verify is not None and not (
-            isinstance(verify, str) or isinstance(verify, bool)
-        ):
+        if not (isinstance(verify, str) or isinstance(verify, bool)):
             raise TypeError(f"verify must be a str or bool, got {type(verify)}")
 
         api_server_url = get_address_for_submission_client(address)
@@ -459,21 +455,11 @@ class JobSubmissionClient(SubmissionClient):
             RuntimeError: If the job does not exist or if the request to the
                 job server fails.
         """
-        if isinstance(self._verify, bool):
-            ssl_context = self._verify
-        elif self._verify is not None:
-            if os.path.isdir(self._verify):
-                cafile, capath = None, self._verify
-            else:
-                cafile, capath = self._verify, None
-            ssl_context = ssl.create_default_context(cafile=cafile, capath=capath)
-        else:
-            ssl_context = None
         async with aiohttp.ClientSession(
             cookies=self._cookies, headers=self._headers
         ) as session:
             ws = await session.ws_connect(
-                f"{self._address}/api/jobs/{job_id}/logs/tail", ssl=ssl_context
+                f"{self._address}/api/jobs/{job_id}/logs/tail", ssl=self._ssl_context
             )
 
             while True:

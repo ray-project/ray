@@ -2,6 +2,7 @@ import dataclasses
 import importlib
 import logging
 import json
+import os
 import yaml
 from pathlib import Path
 import tempfile
@@ -11,8 +12,10 @@ import ray
 
 try:
     import requests
+    import ssl
 except ImportError:
     requests = None
+    ssl = None
 
 
 from ray._private.runtime_env.packaging import (
@@ -202,9 +205,8 @@ class SubmissionClient:
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
-        verify: Optional[Union[str, bool]] = None,
+        verify: Optional[Union[str, bool]] = True,
     ):
-
         # Remove any trailing slashes
         if address is not None and address.endswith("/"):
             address = address.rstrip("/")
@@ -213,7 +215,6 @@ class SubmissionClient:
                 f'them from the requested submission address of "{address}".'
             )
 
-        self._verify = verify
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
         )
@@ -223,6 +224,20 @@ class SubmissionClient:
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers
+        # Set SSL verify parameter for the requests library and create an ssl_context
+        # object when needed for the aiohttp library.
+        self._verify = verify
+        if isinstance(self._verify, str):
+            if os.path.isdir(self._verify):
+                cafile, capath = None, self._verify
+            else:
+                cafile, capath = self._verify, None
+            self._ssl_context = ssl.create_default_context(cafile=cafile, capath=capath)
+        else:
+            if self._verify is False:
+                self._ssl_context = False
+            else:
+                self._ssl_context = None
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
