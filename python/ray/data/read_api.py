@@ -1674,10 +1674,7 @@ def from_numpy_refs(
     ctx = DataContext.get_current()
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-    res = [
-        ndarray_to_block_remote.remote(ndarray, strict_mode=ctx.strict_mode)
-        for ndarray in ndarrays
-    ]
+    res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
