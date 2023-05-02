@@ -216,6 +216,11 @@ class TuneController(_TuneControllerBase):
                 continue
 
             _, tracked_actor = times.popleft()
+
+            if tracked_actor not in self._stopping_actors:
+                # Actor stopping has been handled by the block above
+                continue
+
             if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
                 logger.debug(f"Forcefully killing actor: {tracked_actor}")
                 self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
