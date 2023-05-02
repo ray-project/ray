@@ -281,18 +281,24 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
 
     def completed(self) -> bool:
-        """Return True when this operator is done and all outputs are taken."""
+        """Return True when this operator is completed.
+
+        An operator is completed if any of the following conditions are met:
+        - All upstream operators are completed and all outputs are taken.
+        - All downstream operators are completed.
+        """
         return (
             self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
-        )
+        ) or self._dependents_complete
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatastreamStats."""
@@ -345,6 +351,13 @@ class PhysicalOperator(Operator):
         """
         return True
 
+    def need_more_inputs(self) -> bool:
+        """Return true if the operator still needs more inputs.
+
+        Once this return false, it should never return true again.
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -366,6 +379,13 @@ class PhysicalOperator(Operator):
         via `add_input` for any input index.
         """
         self._inputs_complete = True
+
+    def all_dependents_complete(self) -> None:
+        """Called when all downstream operators have completed().
+
+        After this is called, the operator is marked as completed.
+        """
+        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.

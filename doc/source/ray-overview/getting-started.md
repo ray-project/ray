@@ -139,7 +139,7 @@ Use the trained model for batch prediction with a ``BatchPredictor``.
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
 Simply click on the dropdowns below to see examples of our most popular libraries.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datastreams
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Distributed ML Preprocessing
 :animate: fade-in-slide-down
 
 Ray Data is the standard way to load and exchange data in Ray libraries and applications.
@@ -195,7 +195,9 @@ Datastreams also supports ``.filter()`` and ``.flat_map()``.
 Ray Train abstracts away the complexity of setting up a distributed training
 system. Let's take following simple examples:
 
-````{tabbed} PyTorch
+````{tab-set}
+
+````{tab-item} PyTorch
 
 This example shows how you can use Ray Train with PyTorch.
 
@@ -249,7 +251,7 @@ with 4 workers, and use it to run the new training function!
 ```
 ````
 
-````{tabbed} TensorFlow
+````{tab-item} TensorFlow
 
 This example shows how you can use Ray Train to set up `Multi-worker training
 with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_.
@@ -302,6 +304,7 @@ with 4 workers, and use it to run the new training function!
 :end-before: __tf_trainer_end__
 :dedent: 0
 ```
+````
 ````
 
 ```{link-button} ../train/train
@@ -415,7 +418,9 @@ for both Python and Java.
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
 
-````{tabbed} Python
+````{tab-set}
+
+````{tab-item} Python
 
 First, you import Ray and and initialize it with `ray.init()`.
 Then you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
@@ -437,7 +442,7 @@ print(ray.get(futures)) # [0, 1, 4, 9]
 ```
 ````
 
-````{tabbed} Java
+````{tab-item} Java
 
 First, use `Ray.init` to initialize Ray runtime.
 Then you can use `Ray.task(...).remote()` to convert any Java static method into a Ray task. 
@@ -472,6 +477,8 @@ public class RayDemo {
 }
 ````
 
+````
+
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
@@ -491,7 +498,9 @@ When you instantiate a class that is a Ray actor, Ray will start a remote instan
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
-````{tabbed} Python
+````{tab-set}
+
+````{tab-item} Python
 
 ```{code-block} python
 
@@ -516,7 +525,7 @@ print(ray.get(futures)) # [1, 1, 1, 1]
 ```
 ````
 
-````{tabbed} Java
+````{tab-item} Java
 ```{code-block} java
 
 import io.ray.api.ActorHandle;
@@ -565,6 +574,9 @@ public class RayDemo {
 }
 
 ````
+
+````
+
 ```{link-button} ../ray-core/walkthrough
 :type: ref
 :text: Learn more about Ray Core

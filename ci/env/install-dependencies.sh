@@ -353,7 +353,6 @@ install_pip_packages() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
       pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
@@ -407,7 +406,7 @@ install_pip_packages() {
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
+    pip install -U "statsforecast==1.5.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.
