@@ -123,9 +123,9 @@ def get_step(
 
     # If a test is not stable or jailed, allow to soft fail
     stable = test.get("stable", True)
-    jailed = test.get("jailed", True)
+    jailed = test.get("jailed", False)
     full_label = ""
-    if not stable or jailed:
+    if jailed or not stable:
         step["soft_fail"] = True
     if not stable:
         full_label += "[unstable]"
