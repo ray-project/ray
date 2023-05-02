@@ -42,18 +42,53 @@ FutureIdlePoolSizePolicy::FutureIdlePoolSizePolicy(
 size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
                                                          size_t running_size,
                                                          size_t starting_size) {
-  // Running: means that the process is running
-  // Idle: Usually running. Means that the process doesn't have any task.
-  // Starting: Process that was started but hasn't finished initialization.
-  // Pending exit: Process that is exiting but hasn't confirmed.
+  bool use_new_policy = false;
+  if (use_new_policy) {
+    // Running: means that the process is running
+    // Idle: Usually running. Means that the process doesn't have any task.
+    // Starting: Process that was started but hasn't finished initialization.
+    // Pending exit: Process that is exiting but hasn't confirmed.
 
-  RAY_LOG(DEBUG) << "Idle size: " << idle_size << ", running_size: " << running_size
-                 << ", starting_size: " << starting_size;
-  auto to_add = desired_cache_size_ - running_size;
+    RAY_LOG(DEBUG) << "Idle size: " << idle_size << ", running_size: " << running_size
+                   << ", starting_size: " << starting_size;
+    auto to_add = desired_cache_size_ - running_size;
 
-  auto to_add_capped =
-      (size_t)std::min(max_starting_size_, (size_t)std::max((size_t)0, to_add));
-  return to_add_capped;
+    auto to_add_capped =
+        (size_t)std::min(max_starting_size_, (size_t)std::max((size_t)0, to_add));
+    return to_add_capped;
+  } else {
+    size_t num_available_cpus = 64;  // TODO
+    auto num_usable_workers = idle_size + starting_size;
+    auto num_desired_workers = std::min<size_t>(prestart_requests_, num_available_cpus);
+    auto num_missing_workers = num_desired_workers - num_usable_workers;
+
+    auto num_to_create = std::max<size_t>(num_missing_workers, 0);
+    // this->prestart_requests_ -= num_to_create;
+    this->prestart_requests_ = 0;
+    return num_to_create;
+
+    // auto &state = GetStateForLanguage(task_spec.GetLanguage());
+    //// The number of available workers that can be used for this task spec.
+    // int num_usable_workers = state.idle.size();
+    // for (auto &entry : state.worker_processes) {
+    //  num_usable_workers += entry.second.is_pending_registration ? 1 : 0;
+    //}
+    //// Some existing workers may be holding less than 1 CPU each, so we should
+    //// start as many workers as needed to fill up the remaining CPUs.
+    // auto desired_usable_workers = std::min<int64_t>(num_available_cpus, backlog_size);
+    // if (num_usable_workers < desired_usable_workers) {
+    //  // Account for workers that are idle or already starting.
+    //  int64_t num_needed = desired_usable_workers - num_usable_workers;
+    //  RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog
+    //  size "
+    //                 << backlog_size << " and available CPUs " << num_available_cpus;
+    //  // musing(cade): I should not use the MaybeRefillIdlePool function here as it's a
+    //  // scheduling hint (not desired state). We should modify this later, for example
+    //  with
+    //  // forkserver. This means that Ray's goodness depends on waiting 2s for killing...
+    //  PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+    //}
+  }
 }
 
 // How to get this in incrementally?
@@ -235,10 +270,74 @@ void FutureIdlePoolSizePolicy::OnDriverRegistered() {
 }
 
 void FutureIdlePoolSizePolicy::OnJobTermination() {}
+
 void FutureIdlePoolSizePolicy::OnJobFinish(const JobID &job_id) {
   finished_jobs_.insert(job_id);
 }
-void FutureIdlePoolSizePolicy::OnPrestart() {}
+
+void FutureIdlePoolSizePolicy::OnPrestart(const TaskSpecification &task_spec,
+                                          int64_t backlog_size,
+                                          int64_t num_available_cpus) {
+  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+      task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
+    return;  // Not handled.
+    // TODO(architkulkarni): We'd eventually like to prestart workers with the same
+    // runtime env to improve initial startup performance.
+  }
+
+  // What do I need?
+  // I need to distinguish between soft limit and desired creation.
+  // This will change desired creation to nonzero.
+  // this->desired_cache_size_ = std::min<int64_t>(num_available_cpus, backlog_size);
+  this->prestart_requests_ += backlog_size;
+
+  // If the prestart request is for dynamic options, or actor creation, or runtime env, or
+  // not python, then skip. Get number of existing idle workers that can be used for this
+  // task spec Get number of desired workers, limited by available CPUs (or backlog size,
+  // which ever is smaller) If the number of existing idle workers is smaller than desired
+  // workers, then prestart the delta.
+  //
+
+  // Number of usable workers is idle size plus starting size.
+  // I should modify the get num idle proc to create function to understand the idle size
+  // and starting size. then this logic just goes there -- we save the number of prestart
+  // backlog,
+
+  // Okay, what if I remove the num_available_cpus here, and pass the
+  // cluster_resource_scheduler to the policy?
+  // Then this becomes MaybeRefill(create=true), with GetNumIdleProcsToCreate takes in
+  // idle size, starting size, available cpus
+
+  // Current behavior:
+  // Pool doesn't eagerly grow. Processes are created once the reequest is known.
+  // The PrestartWorkers feature pre-starts processes once many tasks are known
+  // (backlog>1). This means that the desired pool size grows to 64-in_use. After that,
+  // the pool shrinks.. So, current logic should take the spike. No levelling behavior.
+
+  // TODO(cade) this one requires more work.
+
+  // auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  //// The number of available workers that can be used for this task spec.
+  // int num_usable_workers = state.idle.size();
+  // for (auto &entry : state.worker_processes) {
+  //  num_usable_workers += entry.second.is_pending_registration ? 1 : 0;
+  //}
+  //// Some existing workers may be holding less than 1 CPU each, so we should
+  //// start as many workers as needed to fill up the remaining CPUs.
+  // auto desired_usable_workers = std::min<int64_t>(num_available_cpus, backlog_size);
+  // if (num_usable_workers < desired_usable_workers) {
+  //  // Account for workers that are idle or already starting.
+  //  int64_t num_needed = desired_usable_workers - num_usable_workers;
+  //  RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size
+  //  "
+  //                 << backlog_size << " and available CPUs " << num_available_cpus;
+  //  // musing(cade): I should not use the MaybeRefillIdlePool function here as it's a
+  //  // scheduling hint (not desired state). We should modify this later, for example
+  //  with
+  //  // forkserver. This means that Ray's goodness depends on waiting 2s for killing...
+  //  PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+  //}
+}
 
 }  // namespace raylet
 

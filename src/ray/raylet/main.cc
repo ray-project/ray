@@ -164,6 +164,8 @@ int main(int argc, char *argv[]) {
           RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
           static_resource_conf[resource_name] = std::stod(resource_quantity);
         }
+        // TODO(cade) is it common to have num_cpus 0 here? (if static resource not
+        // available)
         auto num_cpus_it = static_resource_conf.find("CPU");
         int num_cpus = num_cpus_it != static_resource_conf.end()
                            ? static_cast<int>(num_cpus_it->second)

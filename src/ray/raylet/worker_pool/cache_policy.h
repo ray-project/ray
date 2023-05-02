@@ -77,7 +77,9 @@ class IdlePoolSizePolicyInterface {
   virtual void OnDriverRegistered() = 0;
   virtual void OnJobTermination() = 0;  // TODO reconcile these two?
   virtual void OnJobFinish(const JobID &job_id) = 0;
-  virtual void OnPrestart() = 0;
+  virtual void OnPrestart(const TaskSpecification &task_spec,
+                          int64_t backlog_size,
+                          int64_t num_available_cpus) = 0;
 
   virtual size_t GetNumIdleProcsToCreate(size_t idle_size,
                                          size_t running_size,
@@ -101,6 +103,7 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
  private:
   size_t desired_cache_size_;
   size_t max_starting_size_;
+  size_t prestart_requests_;
   absl::flat_hash_set<JobID> finished_jobs_;
 
   // TODO make these const
@@ -152,7 +155,9 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
 
   // Make sure there are enough idle workers. If not, temporarily boost the number of idle
   // workers. (Maybe not temporarily?)
-  void OnPrestart();
+  void OnPrestart(const TaskSpecification &task_spec,
+                  int64_t backlog_size,
+                  int64_t num_available_cpus);
 };
 
 // class WorkerPool : public WorkerPoolInterface {
