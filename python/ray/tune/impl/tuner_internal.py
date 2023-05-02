@@ -243,8 +243,8 @@ class TunerInternal:
         upon restoration. This does not affect the typical path, since `Tuner.restore`
         expects the exact same trainable (which will have the same name).
 
-        Returns:
-            bool: True if the trainable name matches.
+        Raises:
+            ValueError: if the trainable name does not match.
         """
         trainable_name = Experiment.get_trainable_name(new_trainable)
 
@@ -264,8 +264,8 @@ class TunerInternal:
         This method performs very loose validation on the new param_space to
         prevent users from trying to specify new hyperparameters to tune over.
 
-        Returns:
-            bool: True if all the keys match in the newly given param_space.
+        Raises:
+            ValueError: if not all keys match the original param_space.
         """
         keys = sorted(flatten_dict(new_param_space).keys())
         if keys != flattened_param_space_keys:
