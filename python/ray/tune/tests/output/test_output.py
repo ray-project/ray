@@ -214,7 +214,6 @@ def test_result_table_divison():
         ["/m", 4],
         ["/n", None],
         ["//o", "p"],
-        [None, None],
         ["a", 8],
         ["b", 6],
         ["c", 5],
