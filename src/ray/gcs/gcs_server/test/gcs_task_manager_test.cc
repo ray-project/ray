@@ -275,7 +275,7 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
 
   // Assert on actual data.
   {
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_task_events);
+    EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), num_task_events);
     EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_task_events);
     EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_dropped);
@@ -300,9 +300,9 @@ TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
 
   // Assert on actual data
   {
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), 1);
+    EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), 1);
     // Assert on events
-    auto task_events = task_manager->task_event_storage_->task_events_[0];
+    auto task_events = task_manager->task_event_storage_->GetTaskEvents()[0];
     // Sort and assert profile events merged matched
     std::sort(task_events.mutable_profile_events()->mutable_events()->begin(),
               task_events.mutable_profile_events()->mutable_events()->end(),
@@ -502,8 +502,9 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
 
   // Mark task attempt failed if needed for each task.
   for (auto &task : tasks) {
+    auto loc = task_manager->task_event_storage_->GetTaskEventLocator({task, 0});
     task_manager->task_event_storage_->MarkTaskAttemptFailedIfNeeded(
-        {task, 0},
+        loc,
         /* failed time stamp ms*/ 4,
         rpc::RayErrorInfo());
   }
@@ -654,16 +655,15 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
   }
   // Assert on the indexes and the storage
   {
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), num_limit);
     EXPECT_EQ(task_manager->task_event_storage_->stats_counter_.Get(kTotalNumNormalTask),
               task_ids.size() + num_limit);
 
     // Only in memory entries.
-    EXPECT_EQ(task_manager->task_event_storage_->task_to_task_attempt_index_.size(),
-              num_limit);
-    EXPECT_EQ(task_manager->task_event_storage_->job_to_task_attempt_index_.size(), 1);
-    EXPECT_EQ(task_manager->task_event_storage_->task_attempt_index_.size(), num_limit);
-    EXPECT_EQ(task_manager->task_event_storage_->worker_to_task_attempt_index_.size(), 0);
+    EXPECT_EQ(task_manager->task_event_storage_->task_index_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->job_index_.size(), 1);
+    EXPECT_EQ(task_manager->task_event_storage_->primary_index_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->worker_index_.size(), 0);
   }
 }
 
@@ -715,7 +715,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_batch1 + num_batch2);
 
     std::sort(expected_events.begin(), expected_events.end(), SortByTaskAttempt);
-    auto actual_events = task_manager->task_event_storage_->task_events_;
+    auto actual_events = task_manager->task_event_storage_->GetTaskEvents();
     std::sort(actual_events.begin(), actual_events.end(), SortByTaskAttempt);
     EXPECT_EQ(actual_events.size(), expected_events.size());
     for (size_t i = 0; i < actual_events.size(); ++i) {
