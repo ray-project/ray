@@ -5,7 +5,7 @@ from accelerate import Accelerator
 
 import ray
 from ray.air import session, Checkpoint
-from ray.train.huggingface.accelerate import AccelerateTrainer
+from ray.train.accelerate import AccelerateTrainer
 from ray.air.config import ScalingConfig
 
 

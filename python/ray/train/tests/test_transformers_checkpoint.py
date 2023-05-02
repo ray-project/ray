@@ -3,7 +3,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
 import ray
-from ray.train.huggingface.transformers import (
+from ray.train.transformers import (
     TransformersCheckpoint,
     TransformersPredictor,
 )

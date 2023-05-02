@@ -1,7 +1,7 @@
 import warnings
 from ray.util.annotations import Deprecated
 
-from ray.train.huggingface.transformers.transformers_trainer import (
+from ray.train.transformers.transformers_trainer import (
     TransformersTrainer,
 )
 

@@ -159,8 +159,8 @@ Transformers
 .. autosummary::
     :toctree: doc/
 
-    ~train.huggingface.transformers.TransformersTrainer
-    ~train.huggingface.transformers.TransformersCheckpoint
+    ~train.transformers.TransformersTrainer
+    ~train.transformers.TransformersCheckpoint
 
 Accelerate
 **********
@@ -168,7 +168,7 @@ Accelerate
 .. autosummary::
     :toctree: doc/
 
-    ~train.huggingface.accelerate.AccelerateTrainer
+    ~train.accelerate.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~
@@ -229,7 +229,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
-    train.huggingface.transformers.TransformersTrainer.restore
+    train.transformers.TransformersTrainer.restore
 
 .. note::
 

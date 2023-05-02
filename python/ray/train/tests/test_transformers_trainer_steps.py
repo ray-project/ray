@@ -12,7 +12,7 @@ from transformers import (
 
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface.transformers import (
+from ray.train.transformers import (
     TransformersPredictor,
     TransformersTrainer,
 )

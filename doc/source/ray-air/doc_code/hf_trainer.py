@@ -9,7 +9,7 @@ import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import ray
-from ray.train.huggingface.transformers import TransformersTrainer
+from ray.train.transformers import TransformersTrainer
 from ray.air.config import ScalingConfig
 
 
