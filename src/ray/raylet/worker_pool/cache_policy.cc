@@ -54,11 +54,11 @@ size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
 // We need to determine which workers to kill...
 // So we can either go with a very simple policy, or very simple policy plus policy which determines
 //      which workers to kill. 
-size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToKill(size_t idle_size,
+std::vector<std::shared_ptr<WorkerInterface>> FutureIdlePoolSizePolicy::GetIdleProcsToKill(size_t idle_size,
                                                        size_t running_size,
                                                        size_t starting_size) {
   // 
-  return 0;
+  return {};
 }
 
 void FutureIdlePoolSizePolicy::OnStart() {

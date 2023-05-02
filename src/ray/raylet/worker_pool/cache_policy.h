@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include "ray/raylet/worker_pool/worker_pool.h"
+
 #include <cstddef>
+#include <vector>
 
 //#include "gtest/gtest.h"
 
@@ -73,7 +76,7 @@ class IdlePoolSizePolicyInterface {
                                                size_t running_size,
                                                size_t starting_size) = 0;
 
-  virtual size_t GetNumIdleProcsToKill(size_t idle_size,
+  virtual std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(size_t idle_size,
                                              size_t running_size,
                                              size_t starting_size) = 0;
 };
@@ -91,7 +94,7 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
                                        size_t running_size,
                                        size_t starting_size);
 
-  size_t GetNumIdleProcsToKill(size_t idle_size,
+  std::vector<std::shared_ptr<WorkerInterface>> GetIdleProcsToKill(size_t idle_size,
                                      size_t running_size,
                                      size_t starting_size);
   // Set desired to 64
