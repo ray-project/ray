@@ -164,7 +164,9 @@ def tag_env_vars() -> bool:
     Returns:
         bool: True if at least one environment var is supplied by the user.
     """
-    all_env_vars = sorted(set().union(AIR_ENV_VARS, TUNE_ENV_VARS))
+    from ray.train.constants import TRAIN_ENV_VARS
+
+    all_env_vars = sorted(set().union(AIR_ENV_VARS, TUNE_ENV_VARS, TRAIN_ENV_VARS))
 
     user_supplied_env_vars = []
 
