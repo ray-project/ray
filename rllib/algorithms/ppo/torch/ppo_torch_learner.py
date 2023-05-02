@@ -35,7 +35,7 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         if self.kl_coeff.device != self._device:
             self.kl_coeff = self.kl_coeff.to(self._device)
 
-        action_dist_class = self._module[module_id].action_dist_class
+        action_dist_class = self._module[module_id].get_action_dist_cls()
 
         curr_action_dist = action_dist_class.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -45,7 +45,8 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         )
 
         logp_ratio = torch.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
+            - batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -66,7 +67,7 @@ class PPOTorchLearner(PPOBaseLearner, TorchLearner):
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = torch.mean(curr_entropy)
 
         surrogate_loss = torch.min(
