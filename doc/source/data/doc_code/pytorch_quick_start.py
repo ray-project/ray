@@ -7,7 +7,7 @@ import ray
 import numpy as np
 
 
-dataset = ray.data.from_numpy(np.ones((1, 100)))
+ds = ray.data.from_numpy(np.ones((1, 100)))
 # __pt_quickstart_load_end__
 
 
@@ -33,7 +33,7 @@ class TorchPredictor:
 
 # __pt_quickstart_prediction_start__
 scale = ray.data.ActorPoolStrategy(2)
-predictions = dataset.map_batches(TorchPredictor, compute=scale)
+predictions = ds.map_batches(TorchPredictor, compute=scale)
 predictions.show(limit=1)
 # [0.45092654]
 # __pt_quickstart_prediction_end__

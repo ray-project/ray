@@ -1,12 +1,12 @@
 .. _batch_inference_home:
 
-Running Batch Inference with Ray
-================================
+Running Batch Inference
+=======================
 
 .. note::
 
     In this tutorial you'll learn what batch inference is, why you might want to use
-    Ray for it, and how to use Ray effectively for this task.
+    Ray for it, and how to use Ray Data effectively for this task.
     If you are familiar with the basics of inference tasks, jump straight to
     code in the :ref:`quickstart section <batch_inference_quickstart>` or the
     :ref:`advanced guide<batch_inference_advanced_pytorch_example>`.
@@ -42,8 +42,8 @@ Here's a realistic view of batch inference for modern AI applications:
 
   Evaluating a batch of input data with a model to get predictions.
 
-Why use Ray for batch inference?
----------------------------------
+Why use Ray Data for batch inference?
+-------------------------------------
 
 There are reasons to use Ray for batch inference, even if your current
 use case does not require scaling yet:
@@ -74,7 +74,7 @@ Install Ray with the data processing library, Ray Data:
 
 Running batch inference is conceptually easy and requires three steps:
 
-1. Load your data into a Ray dataset and optionally apply any preprocessing you need.
+1. Load your data and optionally apply any preprocessing you need.
 2. Define your model for inference.
 3. Run inference on your data by using the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
    method from Ray Data.
@@ -92,7 +92,7 @@ We start with very simple use cases here and build up to more complex ones in ot
 1. Loading and preprocessing data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For this quick start guide we use very small, in-memory data sets by
+For this quick start guide we use very small, in-memory datasets by
 leveraging common Python libraries like NumPy and Pandas.
 In general, once you load your data using Ray Data, you also want to apply some preprocessing steps.
 We skip this step here for simplicity.
@@ -128,7 +128,7 @@ In any case, the result of this step is a Ray Datastream ``ds`` that we can use 
     .. group-tab:: TensorFlow
 
        Create a NumPy array with 100
-        entries, which represents the input to a feed-forward neural network.
+       entries, which represents the input to a feed-forward neural network.
 
         .. literalinclude:: ./doc_code/tf_quick_start.py
             :language: python
