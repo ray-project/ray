@@ -416,7 +416,6 @@ def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path)
     remote_contents = os.listdir(check_path / "exp_dir")
 
     assert "tuner.pkl" in remote_contents
-    assert "trainable.pkl" in remote_contents
 
     prev_cp = _find_newest_experiment_checkpoint(str(check_path / "exp_dir"))
     prev_lstat = os.lstat(prev_cp)
@@ -429,7 +428,6 @@ def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path)
     assert results[0].metrics["_metric"] == 1
     local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
     assert "tuner.pkl" in local_contents
-    assert "trainable.pkl" in local_contents
 
     after_cp = _find_newest_experiment_checkpoint(
         str(tmpdir / "ray_results" / "exp_dir")

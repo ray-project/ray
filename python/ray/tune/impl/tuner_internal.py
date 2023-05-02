@@ -108,8 +108,8 @@ class TunerInternal:
             self._restore_from_path_or_uri(
                 path_or_uri=restore_path,
                 trainable=trainable,
-                resume_config=resume_config,
                 overwrite_param_space=param_space,
+                resume_config=resume_config,
             )
             return
 
@@ -118,24 +118,14 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self.trainable = trainable
-        param_space = param_space or {}
-        if isinstance(param_space, _Config):
-            param_space = param_space.to_dict()
-        if not isinstance(param_space, dict):
-            raise ValueError(
-                "The `param_space` passed to the Tuner` must be a dict. "
-                f"Got '{type(param_space)}' instead."
-            )
         self.param_space = param_space
 
-        self._is_restored = False
         self._resume_config = None
-
+        self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_checkpoint_dir = self.setup_create_experiment_checkpoint_dir(
             self.converted_trainable, self._run_config
         )
-
         self._experiment_analysis = None
 
         # This needs to happen before `tune.run()` is kicked in.
@@ -233,7 +223,7 @@ class TunerInternal:
             )
 
     def _validate_trainable_on_restore(
-        self, new_trainable: TrainableType, old_trainable_name: Optional[str]
+        self, trainable: TrainableType, old_trainable_name: Optional[str]
     ):
         """Determines whether or not the trainable given on restore is valid.
 
@@ -249,7 +239,7 @@ class TunerInternal:
         if not old_trainable_name:
             return
 
-        trainable_name = Experiment.get_trainable_name(new_trainable)
+        trainable_name = Experiment.get_trainable_name(trainable)
 
         if trainable_name != old_trainable_name:
             raise ValueError(
@@ -258,6 +248,34 @@ class TunerInternal:
                 "Got a trainable with identifier "
                 f"'{trainable_name}' but expected '{old_trainable_name}'."
             )
+
+    def _set_trainable_on_restore(
+        self, trainable: TrainableType, old_trainable_name: Optional[str]
+    ):
+        from ray.train.base_trainer import BaseTrainer
+
+        self.trainable = trainable
+        assert self.converted_trainable
+        self._validate_trainable_on_restore(
+            trainable=self.converted_trainable,
+            old_trainable_name=old_trainable_name,
+        )
+
+        if isinstance(self.trainable, BaseTrainer):
+            # Log a warning in case the user tries to modify the
+            # `RunConfig` from the Trainer
+            trainer: BaseTrainer = self.trainable
+
+            # Only log if the Trainer has a non-default RunConfig
+            if trainer.run_config != RunConfig():
+                logger.warning(
+                    "The Tune experiment will restore using the original run's "
+                    "`RunConfig`. If you made any changes to the `RunConfig` "
+                    "within the Trainer you passed into `Tuner.restore`, "
+                    "they will be ignored in the resumed run."
+                )
+
+            trainer.run_config = self._run_config
 
     def _validate_param_space_on_restore(
         self,
@@ -286,20 +304,31 @@ class TunerInternal:
                 f"\n\nGot: {keys}\nExpected: {flattened_param_space_keys}"
             )
 
+    def _set_param_space_on_restore(
+        self,
+        param_space: Optional[Dict[str, Any]],
+        flattened_param_space_keys: Optional[List[str]],
+    ):
+        self.param_space = param_space
+        if param_space is not None:
+            self._validate_param_space_on_restore(
+                new_param_space=self.param_space,
+                flattened_param_space_keys=flattened_param_space_keys,
+            )
+
     def _restore_from_path_or_uri(
         self,
         path_or_uri: str,
         trainable: TrainableTypeOrTrainer,
-        resume_config: Optional[_ResumeConfig],
         overwrite_param_space: Optional[Dict[str, Any]],
+        resume_config: _ResumeConfig,
     ):
-        from ray.train.trainer import BaseTrainer
-
         # Sync down from cloud storage if needed
-        synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
-            path_or_uri
-        )
-        experiment_checkpoint_path = Path(experiment_checkpoint_dir)
+        (
+            restoring_from_cloud,
+            local_experiment_checkpoint_dir,
+        ) = self._maybe_sync_down_tuner_state(path_or_uri)
+        experiment_checkpoint_path = Path(local_experiment_checkpoint_dir)
 
         if not (experiment_checkpoint_path / _TUNER_PKL).exists():
             raise RuntimeError(
@@ -320,57 +349,30 @@ class TunerInternal:
 
             self.__setstate__(tuner_state)
 
-        self._is_restored = True
-
-        self.trainable = trainable
-        assert self.converted_trainable
-        self._validate_trainable_on_restore(
-            new_trainable=self.converted_trainable,
-            old_trainable_name=old_trainable_name,
+        # Perform validation and set the re-specified `trainable` and `param_space`
+        self._set_trainable_on_restore(
+            trainable=trainable, old_trainable_name=old_trainable_name
+        )
+        self._set_param_space_on_restore(
+            param_space=overwrite_param_space,
+            flattened_param_space_keys=flattened_param_space_keys,
         )
 
-        if isinstance(self.trainable, BaseTrainer):
-            # Log a warning in case the user tries to modify the
-            # `RunConfig` from the Trainer
-            trainer: BaseTrainer = self.trainable
+        # Update RunConfig to reflect changes in the experiment directory
+        path_or_uri_obj: Union[Path, URI] = (
+            URI(path_or_uri) if restoring_from_cloud else experiment_checkpoint_path
+        )
+        # Infer the `storage_path` and run `name` of the restored run using the
+        # experiment directory.
+        # Ex: ~/ray_results/exp_name -> ~/ray_results, exp_name
+        # Ex: s3://bucket/exp_name -> s3://bucket, exp_name
+        self._run_config.name = path_or_uri_obj.name
+        self._run_config.storage_path = str(path_or_uri_obj.parent)
 
-            # Only log if the Trainer has a non-default RunConfig
-            if trainer.run_config != RunConfig():
-                logger.warning(
-                    "The Tune experiment will restore using the original run's "
-                    "`RunConfig`. If you made any changes to the `RunConfig` "
-                    "within the Trainer you passed into `Tuner.restore`, "
-                    "they will be ignored in the resumed run."
-                )
-
-            trainer.run_config = self._run_config
-
-        if overwrite_param_space is not None:
-            self.param_space = overwrite_param_space
-            self._validate_param_space_on_restore(
-                new_param_space=self.param_space,
-                flattened_param_space_keys=flattened_param_space_keys,
-            )
-
-        self._resume_config = resume_config
-
-        if not synced:
-            # If we didn't sync, use the restore_path local dir
-            self._experiment_checkpoint_dir = os.path.abspath(
-                os.path.expanduser(path_or_uri)
-            )
-
-            # Update local_dir to use the parent of the experiment path
-            # provided to `Tuner.restore`
-            experiment_path = Path(self._experiment_checkpoint_dir)
-            self._run_config.storage_path = str(experiment_path.parent)
-            self._run_config.name = experiment_path.name
+        # Set the experiment directory
+        if not restoring_from_cloud:
+            self._experiment_checkpoint_dir = local_experiment_checkpoint_dir
         else:
-            # Set the experiment `name` and `storage_path` according to the URI
-            uri = URI(path_or_uri)
-            self._run_config.name = uri.name
-            self._run_config.storage_path = str(uri.parent)
-
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
@@ -384,6 +386,7 @@ class TunerInternal:
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
 
+        # Load the experiment results at the point where it left off.
         try:
             self._experiment_analysis = ExperimentAnalysis(
                 experiment_checkpoint_path=path_or_uri,
@@ -393,6 +396,9 @@ class TunerInternal:
         except Exception:
             self._experiment_analysis = None
 
+        self._resume_config = resume_config
+        self._is_restored = True
+
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
 
@@ -400,7 +406,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, os.path.expanduser(restore_path)
+            return False, os.path.abspath(os.path.expanduser(restore_path))
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
@@ -496,13 +502,26 @@ class TunerInternal:
         self._converted_trainable = self._convert_trainable(trainable)
 
     @property
-    def param_space(self) -> Dict[str, Any]:
+    def param_space(self) -> Optional[Dict[str, Any]]:
         return self._param_space
 
     @param_space.setter
-    def param_space(self, param_space: Dict[str, Any]):
+    def param_space(self, param_space: Optional[Dict[str, Any]]):
+        # Handle any configs that adhere to the `to_dict` interface.
+        # Ex: AlgorithmConfig from RLlib
+        if isinstance(param_space, _Config):
+            param_space = param_space.to_dict()
+
+        if not isinstance(param_space, dict) and param_space is not None:
+            raise ValueError(
+                "The `param_space` passed to the `Tuner` must be a dict. "
+                f"Got '{type(param_space)}' instead."
+            )
+
         self._param_space = param_space
-        self._process_scaling_config()
+
+        if param_space:
+            self._process_scaling_config()
 
     def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
         """Converts an AIR Trainer to a Tune trainable and saves the converted
@@ -686,8 +705,12 @@ class TunerInternal:
         param_space = state.pop(_PARAM_SPACE_KEY, None)
         state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
 
-        state["__flattened_param_space_keys"] = sorted(flatten_dict(param_space).keys())
         state["__trainable_name"] = Experiment.get_trainable_name(trainable)
+        state["__flattened_param_space_keys"] = (
+            sorted(flatten_dict(param_space).keys())
+            if param_space is not None
+            else None
+        )
 
         return state
 
