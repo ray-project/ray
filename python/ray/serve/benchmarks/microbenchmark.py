@@ -131,7 +131,7 @@ async def trial(
 
     trial_key_base = (
         f"replica:{num_replicas}/batch_size:{max_batch_size}/"
-        f"concurrent_queries:{max_concurrent_queries}/sync_callable:{sync_callable}"
+        f"concurrent_queries:{max_concurrent_queries}/sync_callable:{sync_callable}/"
         f"data_size:{data_size}/intermediate_handle:{intermediate_handles}"
     )
 
