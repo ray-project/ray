@@ -118,7 +118,7 @@ export const ServeApplicationDetailPage = () => {
                     ? `Application config for ${application.name}`
                     : `Application config`
                 }
-                code={application.deployed_app_config}
+                code={application.deployed_app_config || "null"}
               />
             ),
           },

@@ -56,7 +56,7 @@ export const ServeApplicationRow = ({
       <TableCell align="center">
         <CodeDialogButton
           title={name ? `Application config for ${name}` : `Application config`}
-          code={deployed_app_config}
+          code={deployed_app_config || "null"}
         />
       </TableCell>
     </TableRow>
