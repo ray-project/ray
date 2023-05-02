@@ -36,6 +36,14 @@ def ray_start_10_cpus_shared(request):
         yield res
 
 
+@pytest.fixture(scope="module")
+def enable_strict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = True
+    yield
+    ctx.strict_mode = False
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
     import os
@@ -157,14 +165,15 @@ def test_block_write_path_provider():
             base_path,
             *,
             filesystem=None,
-            dataset_uuid=None,
+            datastream_uuid=None,
             block=None,
             block_index=None,
             file_format=None,
         ):
             num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
-                f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
+                f"{block_index:06}_{num_rows:02}_{datastream_uuid}"
+                f".test.{file_format}"
             )
             return posixpath.join(base_path, suffix)
 
@@ -252,7 +261,7 @@ def assert_base_partitioned_ds():
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
 
-        # For Datasets with long string representations, the format will include
+        # For Datastreams with long string representations, the format will include
         # whitespace and newline characters, which is difficult to generalize
         # without implementing the formatting logic again (from
         # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
@@ -293,7 +302,7 @@ def assert_base_partitioned_ds():
 
 
 @pytest.fixture
-def restore_dataset_context(request):
+def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
     original = copy.deepcopy(ray.data.context.DataContext.get_current())
     yield
@@ -369,7 +378,7 @@ def enable_streaming_executor():
     ctx.use_streaming_executor = use_streaming_executor
 
 
-# ===== Pandas dataset formats =====
+# ===== Pandas datastream formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
     in_df = pd.DataFrame({"column_1": [1, 2, 3, 4]})
@@ -388,7 +397,7 @@ def ds_pandas_list_multi_column_format(ray_start_regular_shared):
     yield ray.data.from_pandas([in_df] * 4)
 
 
-# ===== Arrow dataset formats =====
+# ===== Arrow datastream formats =====
 @pytest.fixture(scope="function")
 def ds_arrow_single_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow(pa.table({"column_1": [1, 2, 3, 4]}))
@@ -424,7 +433,7 @@ def ds_list_arrow_multi_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow([pa.table({"column_1": [1], "column_2": [1]})] * 4)
 
 
-# ===== Numpy dataset formats =====
+# ===== Numpy datastream formats =====
 @pytest.fixture(scope="function")
 def ds_numpy_single_column_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy(np.arange(16).reshape((4, 2, 2)))

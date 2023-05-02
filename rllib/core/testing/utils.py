@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
-from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
 
 
 if TYPE_CHECKING:
@@ -24,6 +23,9 @@ if TYPE_CHECKING:
 
 
 Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+
+
+DEFAULT_POLICY_ID = "default_policy"
 
 
 @DeveloperAPI

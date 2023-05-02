@@ -68,7 +68,7 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
 
 class ArrowRow(TableRow):
     """
-    Row of a tabular Dataset backed by a Arrow Table block.
+    Row of a tabular Datastream backed by a Arrow Table block.
     """
 
     def __getitem__(self, key: str) -> Any:
@@ -154,6 +154,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def numpy_to_block(
         batch: Union[np.ndarray, Dict[str, np.ndarray]],
+        passthrough_arrow_not_implemented_errors: bool = False,
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
@@ -161,7 +162,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}
-        elif not isinstance(batch, dict) or any(
+        elif not isinstance(batch, collections.abc.Mapping) or any(
             not isinstance(col, np.ndarray) for col in batch.values()
         ):
             raise ValueError(
@@ -175,6 +176,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 try:
                     col = ArrowTensorArray.from_numpy(col)
                 except pa.ArrowNotImplementedError as e:
+                    if passthrough_arrow_not_implemented_errors:
+                        raise e
                     raise ValueError(
                         "Failed to convert multi-dimensional ndarray of dtype "
                         f"{col.dtype} to our tensor extension since this dtype is not "
@@ -652,21 +655,4 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
-    import pyarrow as pa
-    from ray.air.util.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_column_extension_type,
-    )
-
-    # Copy the table by copying each column and constructing a new table with
-    # the same schema.
-    cols = table.columns
-    new_cols = []
-    for col in cols:
-        if _is_column_extension_type(col):
-            # Extension arrays don't support concatenation.
-            arr = _concatenate_extension_column(col)
-        else:
-            arr = col.combine_chunks()
-        new_cols.append(arr)
-    return pa.Table.from_arrays(new_cols, schema=table.schema)
+    return transform_pyarrow.combine_chunks(table)

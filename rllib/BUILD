@@ -1895,6 +1895,13 @@ py_test(
     srcs = ["core/models/tests/test_mlp_heads.py"]
 )
 
+py_test(
+    name = "test_recurrent_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_recurrent_encoders.py"]
+)
+
 # Specs
 py_test(
     name = "test_check_specs",
@@ -2518,7 +2525,16 @@ py_test(
     name = "tests/test_gpus",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_gpus.py"]
+    srcs = ["tests/test_gpus.py"],
+    args = ["TestGPUs"]
+)
+
+py_test(
+    name = "tests/test_gpus_large_batch",
+    tags = ["team:rllib", "tests_dir"],
+    size = "large",
+    srcs = ["tests/test_gpus.py"],
+    args = ["TestGPUsLargeBatch"]
 )
 
 py_test(
@@ -3300,6 +3316,14 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/env/greyscale_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/env/greyscale_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
 py_test(

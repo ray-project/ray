@@ -1,13 +1,19 @@
+import copy
 import unittest
+
+import numpy as np
+import torch
 
 import ray
 from ray import air
-from ray.rllib.algorithms.a2c.a2c import A2CConfig
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
-
-torch, _ = try_import_torch()
+from ray.rllib.algorithms.a2c.a2c import A2CConfig
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.qmix import QMixConfig
+from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestGPUs(unittest.TestCase):
@@ -111,8 +117,94 @@ class TestGPUs(unittest.TestCase):
         ray.shutdown()
 
 
+class TestGPUsLargeBatch(unittest.TestCase):
+    def test_larger_train_batch_size_multi_gpu_train_one_step(self):
+        # Tests that we can use a `train_batch_size` larger than GPU memory with our
+        # experimental setting `_load_only_minibatch_onto_device` with
+        # multi_gpu_train_one_step.
+
+        # These values make it so that one large minibatch and the optimizer
+        # variables can fit onto the device, but the whole sample_batch is already too
+        # large for the GPU itself.
+        sgd_minibatch_size = int(1e4)
+        train_batch_size = int(sgd_minibatch_size * 1e5)
+
+        # Fake CartPole episode of n time steps.
+        CARTPOLE_FAKE_BATCH = SampleBatch(
+            {
+                SampleBatch.OBS: np.zeros((train_batch_size, 4), dtype=np.float32),
+                SampleBatch.ACTIONS: np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.PREV_ACTIONS: np.zeros(
+                    (train_batch_size,), dtype=np.float32
+                ),
+                SampleBatch.REWARDS: np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.PREV_REWARDS: np.zeros(
+                    (train_batch_size,), dtype=np.float32
+                ),
+                "value_targets": np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.TERMINATEDS: np.array([False] * train_batch_size),
+                SampleBatch.TRUNCATEDS: np.array([False] * train_batch_size),
+                "advantages": np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.VF_PREDS: np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.ACTION_DIST_INPUTS: np.zeros(
+                    (train_batch_size, 2), dtype=np.float32
+                ),
+                SampleBatch.ACTION_LOGP: np.zeros(
+                    (train_batch_size,), dtype=np.float32
+                ),
+                SampleBatch.EPS_ID: np.zeros((train_batch_size,), dtype=np.int64),
+                SampleBatch.AGENT_INDEX: np.zeros((train_batch_size,), dtype=np.int64),
+            }
+        )
+
+        # Test if we can even fail this test due too a GPU OOM
+        try:
+            batch_copy = copy.deepcopy(CARTPOLE_FAKE_BATCH)
+            batch_copy.to_device(0)
+            raise ValueError(
+                "We should not be able to move this batch to the device. "
+                "If this error occurs, this means that this test cannot fail "
+                "inside multi_gpu_train_one_step."
+            )
+        except torch.cuda.OutOfMemoryError:
+            pass
+
+        for config_class in (PPOConfig, QMixConfig):
+            config = (
+                config_class()
+                .environment(env="CartPole-v1")
+                .framework("torch")
+                .resources(num_gpus=1)
+                .rollouts(num_rollout_workers=0)
+                .training(
+                    train_batch_size=train_batch_size,
+                    num_sgd_iter=1,
+                    sgd_minibatch_size=self.sgd_minibatch_size,
+                    # This setting makes it so that we don't load a batch of
+                    # size `train_batch_size` onto the device, but only
+                    # minibatches.
+                    _load_only_minibatch_onto_device=True,
+                )
+            )
+
+            algorithm = config.build()
+            policy = algorithm.get_policy()
+
+            # Sanity check if we are covering both, TorchPolicy and TorchPolicyV2
+            if config_class is QMixConfig:
+                assert isinstance(policy, TorchPolicy)
+            elif config_class is PPOConfig:
+                assert isinstance(policy, TorchPolicyV2)
+
+            policy.load_batch_into_buffer(CARTPOLE_FAKE_BATCH)
+            policy.learn_on_loaded_batch()
+
+
 if __name__ == "__main__":
     import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))

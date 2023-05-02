@@ -252,10 +252,7 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
 
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
-    if sys.version_info >= (3, 0):
-        return byte_str.decode(encode_type)
-    else:
-        return byte_str
+    return byte_str.decode(encode_type)
 
 
 def ensure_str(s, encoding="utf-8", errors="strict"):
@@ -281,8 +278,7 @@ def binary_to_task_id(binary_task_id):
 
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
-    if sys.version_info >= (3, 0):
-        hex_identifier = hex_identifier.decode()
+    hex_identifier = hex_identifier.decode()
     return hex_identifier
 
 
@@ -1248,7 +1244,7 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["36", "37", "38", "39"]:
+    if py_version_str in ["37", "38", "39"]:
         darwin_os_string = "macosx_10_15_x86_64"
     else:
         darwin_os_string = "macosx_10_15_universal2"
@@ -1270,7 +1266,7 @@ def get_wheel_filename(
 
     wheel_filename = (
         f"ray-{ray_version}-cp{py_version_str}-"
-        f"cp{py_version_str}{'m' if py_version_str in ['36', '37'] else ''}"
+        f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1804,9 +1800,7 @@ class DeferSigint(contextlib.AbstractContextManager):
         if threading.current_thread() == threading.main_thread():
             return cls()
         else:
-            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
-            # dropped.
-            return contextlib.suppress()
+            return contextlib.nullcontext()
 
     def _set_task_cancelled(self, signum, frame):
         """SIGINT handler that defers the signal."""
@@ -1899,3 +1893,25 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
             importlib.import_module(module_to_preload)
         except ImportError:
             logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def update_envs(env_vars: Dict[str, str]):
+    """
+    When updating the environment variable, if there is ${X},
+    it will be replaced with the current environment variable.
+    """
+    if not env_vars:
+        return
+
+    replaceable_keys = [
+        "PATH",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_PRELOAD",
+    ]
+
+    for key, value in env_vars.items():
+        if key in replaceable_keys:
+            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
+        else:
+            os.environ[key] = value

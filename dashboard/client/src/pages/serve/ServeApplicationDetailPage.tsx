@@ -254,6 +254,7 @@ export const ServeApplicationDetailLayout = () => {
         pageInfo={{
           id: "serveApplicationDetail",
           title: appName,
+          pageTitle: `${appName} | Serve Application`,
           path: `/serve/applications/${appName}`,
         }}
       />

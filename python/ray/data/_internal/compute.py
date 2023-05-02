@@ -18,6 +18,7 @@ from ray.data.block import (
     BlockPartition,
     CallableClass,
     RowUDF,
+    StrictModeError,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
@@ -83,7 +84,7 @@ class TaskPoolStrategy(ComputeStrategy):
 
         context = DataContext.get_current()
 
-        # Handle empty datasets.
+        # Handle empty datastreams.
         if block_list.initial_num_blocks() == 0:
             return block_list
 
@@ -177,15 +178,15 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, TaskPoolStrategy)
+        return isinstance(other, TaskPoolStrategy) or other == "tasks"
 
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
-    """Specify the compute strategy for a Dataset transform.
+    """Specify the compute strategy for a Datastream transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
-    for a given Dataset transform. This is useful for stateful setup of callable
+    for a given Datastream transform. This is useful for stateful setup of callable
     classes.
 
     For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
@@ -209,7 +210,7 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
     ):
-        """Construct ActorPoolStrategy for a Dataset transform.
+        """Construct ActorPoolStrategy for a Datastream transform.
 
         Args:
             size: Specify a fixed size actor pool of this size. It is an error to
@@ -222,12 +223,18 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
+        ctx = DataContext.get_current()
         if legacy_min_size is not None or legacy_max_size is not None:
-            # TODO: make this an error in Ray 2.5.
-            logger.warning(
-                "DeprecationWarning: ActorPoolStrategy will require min_size and "
-                "max_size to be explicit kwargs in a future release"
-            )
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    "In strict mode, ActorPoolStrategy requires min_size and "
+                    "max_size to be explicit kwargs."
+                )
+            else:
+                logger.warning(
+                    "DeprecationWarning: ActorPoolStrategy will require min_size and "
+                    "max_size to be explicit kwargs in a future release"
+                )
             if legacy_min_size is not None:
                 min_size = legacy_min_size
             if legacy_max_size is not None:
@@ -276,7 +283,7 @@ class ActorPoolStrategy(ComputeStrategy):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
-        """Note: this is not part of the Dataset public API."""
+        """Note: this is not part of the Datastream public API."""
         assert not DataContext.get_current().new_execution_backend, "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
@@ -495,7 +502,15 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
-    if not compute_spec or compute_spec == "tasks":
+    ctx = DataContext.get_current()
+    if ctx.strict_mode and not isinstance(
+        compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
+    ):
+        raise StrictModeError(
+            "In strict mode, the compute spec must be either "
+            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+        )
+    elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
     elif compute_spec == "actors":
         return ActorPoolStrategy()

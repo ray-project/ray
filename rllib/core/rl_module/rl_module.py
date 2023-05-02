@@ -609,3 +609,14 @@ class RLModule(abc.ABC):
         marl_module = MultiAgentRLModule()
         marl_module.add_module(DEFAULT_POLICY_ID, self)
         return marl_module
+
+    def unwrapped(self) -> "RLModule":
+        """Returns the underlying module if this module is a wrapper.
+
+        An example of a wrapped is the TorchDDPRLModule class, which wraps
+        a TorchRLModule.
+
+        Returns:
+            The underlying module.
+        """
+        return self

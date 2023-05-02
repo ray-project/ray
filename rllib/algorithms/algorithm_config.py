@@ -419,8 +419,9 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self.rl_module_spec = None
         self._enable_rl_module_api = False
-        # Whether to error out if exploration config is set when using RLModules.
-        self._validate_exploration_conf_and_rl_modules = True
+        # Helper to keep track of the original exploration config when dis-/enabling
+        # rl modules.
+        self.__prior_exploration_config = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -428,6 +429,7 @@ class AlgorithmConfig(_Config):
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
         self._disable_initialize_loss_from_dummy_batch = False
+        self._load_only_minibatch_onto_device = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -568,6 +570,13 @@ class AlgorithmConfig(_Config):
         """
         eval_call = {}
 
+        # We deal with this special key before all others because it may influence
+        # stuff like "exploration_config".
+        # Namely, we want to re-instantiate the exploration config this config had
+        # inside `self.rl_module()` before potentially overwriting it in the following.
+        if "_enable_rl_module_api" in config_dict:
+            self.rl_module(_enable_rl_module_api=config_dict["_enable_rl_module_api"])
+
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
@@ -577,8 +586,11 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
+            if key == "_enable_rl_module_api":
+                # We've dealt with this above.
+                continue
             # Set our multi-agent settings.
-            if key == "multiagent":
+            elif key == "multiagent":
                 kwargs = {
                     k: value[k]
                     for k in [
@@ -863,13 +875,13 @@ class AlgorithmConfig(_Config):
             self.enable_connectors = True
 
         # Explore parameter cannot be False with RLModule API enabled.
-        # The reason is that the explore is not just a parameter that will get passed
+        # The reason is that `explore` is not just a parameter that will get passed
         # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
-        # forward_exploration() will get called during smapling. If user needs to
+        # forward_exploration() will get called during sampling. If user needs to
         # really disable the stochasticity during this phase, they need to override the
         # RLModule.forward_exploration() method or setup model parameters such that it
-        # will disable the stocalisticity of this method (e.g. by setting the std to 0
-        # or setting temprature to 0 for the Categorical distribution).
+        # will disable the stochasticity of this method (e.g. by setting the std to 0
+        # or setting temperature to 0 for the Categorical distribution).
 
         if self._enable_rl_module_api and not self.explore:
             raise ValueError(
@@ -953,6 +965,14 @@ class AlgorithmConfig(_Config):
                     f"config.framework({self.framework_str})!"
                 )
 
+        if (
+            self.simple_optimizer or self.framework_str != "torch"
+        ) and self._load_only_minibatch_onto_device:
+            raise ValueError(
+                "`load_only_minibatch_onto_device` is only supported for "
+                f"config.framework({self.framework_str}) and without simple_optimizer."
+            )
+
         # Detect if specified env is an Atari env.
         if self.is_atari is None:
             self.is_atari = self._detect_atari_env()
@@ -1002,25 +1022,16 @@ class AlgorithmConfig(_Config):
                 self.rl_module_spec = default_rl_module_spec
 
             if self.exploration_config:
-                if self._validate_exploration_conf_and_rl_modules:
-                    # This is not compatible with RLModules, which have a method
-                    # `forward_exploration` to specify custom exploration behavior.
-                    raise ValueError(
-                        "When RLModule API are enabled, exploration_config can not be "
-                        "set. If you want to implement custom exploration behaviour, "
-                        "please modify the `forward_exploration` method of the "
-                        "RLModule at hand. On configs that have a default exploration "
-                        "config, this must be done with "
-                        "`config.exploration_config={}`."
-                    )
-                else:
-                    # RLModules don't support exploration_configs anymore.
-                    # AlgorithmConfig has a default exploration config.
-                    logger.warning(
-                        "When RLModule API are enabled, exploration_config "
-                        "will be ignored. Disable RLModule API make use of an "
-                        "exploration_config."
-                    )
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                raise ValueError(
+                    "When RLModule API are enabled, exploration_config can not be "
+                    "set. If you want to implement custom exploration behaviour, "
+                    "please modify the `forward_exploration` method of the "
+                    "RLModule at hand. On configs that have a default exploration "
+                    "config, this must be done with "
+                    "`config.exploration_config={}`."
+                )
 
         # make sure the resource requirements for learner_group is valid
         if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
@@ -1623,6 +1634,10 @@ class AlgorithmConfig(_Config):
             _enable_learner_api: Whether to enable the LearnerGroup and Learner
                 for training. This API uses ray.train to run the training loop which
                 allows for a more flexible distributed training.
+            _load_only_minibatch_onto_device: Whether to load only the minibatch onto
+                the given device. This is useful for larger training batches that
+                don't fit on the given device while the mini-batches and their
+                gradients do. This experimental setting is only supported for torch
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2420,7 +2435,26 @@ class AlgorithmConfig(_Config):
                     "config, this must be done with "
                     "`config.exploration_config={}`."
                 )
+                self.__prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
+            elif _enable_rl_module_api is False and not self.exploration_config:
+                if self.__prior_exploration_config is not None:
+                    logger.warning(
+                        f"Setting `exploration_config="
+                        f"{self.__prior_exploration_config}` because you set "
+                        f"`_enable_rl_modules=False`. This exploration config was "
+                        f"restored from a prior exploration config that was overriden "
+                        f"when setting `_enable_rl_modules=True`. This occurs because "
+                        f"when RLModule API are enabled, exploration_config can not "
+                        f"be set."
+                    )
+                    self.exploration_config = self.__prior_exploration_config
+                    self.__prior_exploration_config = None
+                else:
+                    logger.warning(
+                        "config._enable_rl_module_api was set to False, but no prior "
+                        "exploration config was found to be restored."
+                    )
         else:
             # throw a warning if the user has used this API but not enabled it.
             logger.warning(
@@ -2439,6 +2473,7 @@ class AlgorithmConfig(_Config):
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_execution_plan_api: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
+        _load_only_minibatch_onto_device: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
@@ -2482,6 +2517,8 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _load_only_minibatch_onto_device is not NotProvided:
+            self._load_only_minibatch_onto_device = _load_only_minibatch_onto_device
 
         return self
 

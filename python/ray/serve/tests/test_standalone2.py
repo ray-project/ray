@@ -23,7 +23,11 @@ from ray.exceptions import RayActorError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 from ray.serve.context import get_global_client
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -133,9 +137,9 @@ def test_memory_omitted_option(ray_shutdown):
         return "world"
 
     ray.init(num_gpus=3, namespace="serve")
-    serve.run(hello.bind())
+    handle = serve.run(hello.bind())
 
-    assert ray.get(hello.get_handle().remote()) == "world"
+    assert ray.get(handle.remote()) == "world"
 
 
 @pytest.mark.parametrize("detached", [True, False])
@@ -252,7 +256,10 @@ def test_get_serve_status(shutdown_ray):
     client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
-    assert status_info_1.deployment_statuses[0].name == "f"
+    assert (
+        status_info_1.deployment_statuses[0].name
+        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+    )
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
     serve.shutdown()
@@ -366,14 +373,14 @@ def test_controller_recover_and_delete(shutdown_ray):
     def f():
         pass
 
-    f.deploy()
+    serve.run(f.bind())
 
     actors = list_actors(
         address=ray_context.address_info["address"], filters=[("state", "=", "ALIVE")]
     )
 
-    # Try to delete the deployments and kill the controller right after
-    client.delete_deployments(["f"], blocking=False)
+    # Try to delete the application and kill the controller right after
+    serve.delete(SERVE_DEFAULT_APP_NAME, _blocking=False)
     ray.kill(client._controller, no_restart=False)
 
     # All replicas should be removed already or after the controller revives
@@ -400,7 +407,12 @@ def test_controller_recover_and_delete(shutdown_ray):
     # The deployment should be deleted, meaning its state should not be stored
     # in the DeploymentStateManager. This can be checked by attempting to
     # retrieve the deployment's status through the controller.
-    assert client.get_serve_status().get_deployment_status("f") is None
+    assert (
+        client.get_serve_status().get_deployment_status(
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+        )
+        is None
+    )
 
     serve.shutdown()
     ray.shutdown()
@@ -979,6 +991,84 @@ class TestDeployApp:
             == "3 pizzas please!"
         )
 
+    def test_deploy_multi_app_deployments_removed(self, client: ServeControllerClient):
+        """Test redeploying applications will remove old deployments."""
+
+        world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+        world_deployments = ["f", "BasicDriver"]
+        pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+        pizza_deployments = [
+            "Adder",
+            "Multiplier",
+            "Router",
+            "create_order",
+            "DAGDriver",
+        ]
+        test_config = ServeDeploySchema.parse_obj(
+            {
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": pizza_import_path,
+                    },
+                ],
+            }
+        )
+        # Deploy with pizza graph first
+        client.deploy_apps(test_config)
+
+        def check_pizza():
+            # Check that the live deployments and actors are what we expect: exactly the
+            # set of deployments in the pizza graph
+            actor_class_names = {
+                actor["class_name"]
+                for actor in list_actors(filters=[("state", "=", "ALIVE")])
+            }
+            deployment_replicas = set(
+                ray.get(client._controller._all_running_replicas.remote()).keys()
+            )
+            assert {
+                f"app1_{deployment}" for deployment in pizza_deployments
+            } == deployment_replicas
+            assert {"HTTPProxyActor", "ServeController"}.union(
+                {f"ServeReplica:app1_{deployment}" for deployment in pizza_deployments}
+            ) == actor_class_names
+            return True
+
+        wait_for_condition(check_pizza)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+
+        # Redeploy with world graph
+        test_config.applications[0].import_path = world_import_path
+        client.deploy_apps(test_config)
+
+        def check_world():
+            # Check that the live deployments and actors are what we expect: exactly the
+            # set of deployments in the world graph
+            actor_class_names = {
+                actor["class_name"]
+                for actor in list_actors(filters=[("state", "=", "ALIVE")])
+            }
+            deployment_replicas = set(
+                ray.get(client._controller._all_running_replicas.remote()).keys()
+            )
+            assert {
+                f"app1_{deployment}" for deployment in world_deployments
+            } == deployment_replicas
+            assert {"HTTPProxyActor", "ServeController"}.union(
+                {f"ServeReplica:app1_{deployment}" for deployment in world_deployments}
+            ) == actor_class_names
+            return True
+
+        wait_for_condition(check_world)
+        wait_for_condition(
+            lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
+        )
+
     def test_controller_recover_and_deploy(self, client: ServeControllerClient):
         """Ensure that in-progress deploy can finish even after controller dies."""
 
@@ -989,9 +1079,11 @@ class TestDeployApp:
         deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
 
         # Delete all deployments, but don't update config
-        client.delete_deployments(
-            ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
-        )
+        deployments = [
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{name}"
+            for name in ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
+        ]
+        client.delete_deployments(deployments)
 
         ray.kill(client._controller, no_restart=False)
 
@@ -1039,11 +1131,12 @@ class TestDeployApp:
         """
 
         def deployment_running():
+            name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
             serve_status = client.get_serve_status()
             return (
-                serve_status.get_deployment_status("f") is not None
+                serve_status.get_deployment_status(name) is not None
                 and serve_status.app_status.status == ApplicationStatus.RUNNING
-                and serve_status.get_deployment_status("f").status
+                and serve_status.get_deployment_status(name).status
                 == DeploymentStatus.HEALTHY
             )
 

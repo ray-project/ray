@@ -99,7 +99,7 @@ class DataParallelTrainer(BaseTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Datastream shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -210,7 +210,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datastreams to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
