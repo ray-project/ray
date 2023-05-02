@@ -78,9 +78,11 @@ class HandleOptions:
 class RayServeHandle:
     """A handle used to make requests from one deployment to another.
 
-    This is used to compose multiple deployments in a single application. When building
-    the application, deployments passed as arguments to others via `.bind()` will be
-    subsitututed for this handle at runtime. For example:
+    This is used to compose multiple deployments in a single application. After building
+    the application, this handle will be substituted at runtime for deployments passed
+    as arguments via `.bind()`.
+
+    Example:
 
     .. code-block:: python
 

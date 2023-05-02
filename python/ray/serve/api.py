@@ -301,6 +301,8 @@ def deployment(
             If not provided, the name of the class or function will be used.
         num_replicas: The number of replicas to run that will handle requests to
             this deployment. Defaults to 1.
+        autoscaling_config: Parameters to configure autoscaling behavior. If this
+            is set, `num_replicas` cannot be set.
         init_args: [DEPRECATED] These should be passed to `.bind()` instead.
         init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
         route_prefix: Requests to paths under this HTTP path prefix will be routed
@@ -312,9 +314,19 @@ def deployment(
             and `runtime_env`.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
-             deployment. The user_config must be fully JSON-serializable.
+            deployment. The user_config must be fully JSON-serializable.
         max_concurrent_queries: The maximum number of queries that will be sent to a
             replica of this deployment without receiving a response. Defaults to 100.
+        health_check_period_s: How often the health check will be called on the replica.
+            Defaults to 10s. The health check is by default a no-op actor call to the
+            replica, but you can define your own as a "check_health" method that raises
+            an exception when unhealthy.
+        health_check_timeout_s: How long to wait for a health check method to return
+            before considering it failed. Defaults to 30s.
+        graceful_shutdown_wait_loop_s: Duration that replicas will wait until there is
+            no more work to be done before shutting down.
+        graceful_shutdown_timeout_s: Duration that a replica can be gracefully shutting
+            down before being forcefully killed.
         is_driver_deployment: [EXPERIMENTAL] when set, exactly one
             replica of this deployment will run on every node (like a daemon set).
 

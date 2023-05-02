@@ -95,13 +95,13 @@ class Application(DAGNodeBase):
 
 @PublicAPI
 class Deployment:
-    """Defines group of Ray actors to be deployed in an `Application`.
+    """Class (or function) decorated with the `@serve.deployment` decorator.
 
-    Deployments are used to define a Serve application by binding them together with
-    arguments (and possibly other deployments for composition).
+    This class will be run by a number of actor replicas and called to handle requests
+    to those replicas.
 
-    The resulting `Application` can be deployed using `serve.run` or via a Serve config
-    file.
+    One or more deployments can be composed together into an `Application` which is
+    then run via `serve.run` or a config file.
 
     Example:
 
