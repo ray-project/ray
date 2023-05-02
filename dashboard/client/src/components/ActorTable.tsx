@@ -18,7 +18,6 @@ import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
-import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink } from "../common/links";
 import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
@@ -206,9 +205,6 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Runtime environment",
-    },
-    {
       label: "Required resources",
       helpInfo: (
         <Typography>
@@ -387,7 +383,6 @@ const ActorTable = ({
                 startTime,
                 endTime,
                 exitDetail,
-                serializedRuntimeEnv,
                 requiredResources,
               }) => (
                 <ExpandableTableRow
@@ -493,12 +488,6 @@ const ActorTable = ({
                     >
                       <div>{placementGroupId ? placementGroupId : "-"}</div>
                     </Tooltip>
-                  </TableCell>
-                  <TableCell align="center">
-                    <CodeDialogButton
-                      title="Runtime environment"
-                      code={serializedRuntimeEnv}
-                    />
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip

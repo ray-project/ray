@@ -18,7 +18,6 @@ import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
-import { CodeDialogButton } from "../common/CodeDialogButton";
 import DialogWithTitle from "../common/DialogWithTitle";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
@@ -84,7 +83,6 @@ const TaskTable = ({
     { label: "Worker ID" },
     { label: "Type" },
     { label: "Placement group ID" },
-    { label: "Runtime environment" },
     { label: "Required resources" },
   ];
 
@@ -220,7 +218,6 @@ const TaskTable = ({
                 placement_group_id,
                 type,
                 required_resources,
-                runtime_env_info,
                 start_time_ms,
                 end_time_ms,
                 worker_id,
@@ -300,12 +297,6 @@ const TaskTable = ({
                     >
                       <div>{placement_group_id ? placement_group_id : "-"}</div>
                     </Tooltip>
-                  </TableCell>
-                  <TableCell align="center">
-                    <CodeDialogButton
-                      title="Runtime environment"
-                      code={runtime_env_info}
-                    />
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip

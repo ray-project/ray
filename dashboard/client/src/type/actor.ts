@@ -31,7 +31,6 @@ export type Actor = {
   };
   exitDetail: string;
   reprName: string;
-  serializedRuntimeEnv: string;
 };
 
 export type ActorDetail = {
