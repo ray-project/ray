@@ -7,11 +7,9 @@ from torchmetrics import Accuracy
 
 
 class LinearModule(pl.LightningModule):
-    def __init__(self, input_dim, output_dim, strategy="ddp") -> None:
+    def __init__(self, input_dim, output_dim) -> None:
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
-        self.loss = []
-        self.strategy = strategy
 
     def forward(self, input):
         # Backwards compat for Ray data strict mode.
@@ -27,23 +25,17 @@ class LinearModule(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         loss = self.forward(val_batch)
-        self.loss.append(loss)
         return {"val_loss": loss}
 
-    def on_validation_epoch_end(self) -> None:
-        avg_loss = torch.stack(self.loss).mean()
+    def validation_epoch_end(self, outputs) -> None:
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         self.log("val_loss", avg_loss)
-        self.loss.clear()
 
     def predict_step(self, batch, batch_idx):
         return self.forward(batch)
 
     def configure_optimizers(self):
-        if self.strategy == "fsdp":
-            # Feed FSDP wrapped model parameters to optimizer
-            return torch.optim.SGD(self.trainer.model.parameters(), lr=0.1)
-        else:
-            return torch.optim.SGD(self.parameters(), lr=0.1)
+        return torch.optim.SGD(self.parameters(), lr=0.1)
 
 
 class DoubleLinearModule(pl.LightningModule):
@@ -51,7 +43,6 @@ class DoubleLinearModule(pl.LightningModule):
         super().__init__()
         self.linear_1 = nn.Linear(input_dim_1, output_dim)
         self.linear_2 = nn.Linear(input_dim_2, output_dim)
-        self.loss = []
 
     def forward(self, batch):
         input_1 = batch["input_1"]
@@ -66,14 +57,12 @@ class DoubleLinearModule(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         loss = self.forward(val_batch)
-        self.loss.append(loss)
         return {"val_loss": loss}
 
-    def on_validation_epoch_end(self) -> None:
+    def validation_epoch_end(self, outputs) -> None:
         print("Validation Epoch:", self.current_epoch)
-        avg_loss = torch.stack(self.loss).mean()
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         self.log("val_loss", avg_loss)
-        self.loss.clear()
 
     def predict_step(self, batch, batch_idx):
         return self.forward(batch)
@@ -105,9 +94,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = Accuracy(task="multiclass", num_classes=10)
-        self.val_acc_list = []
-        self.val_loss_list = []
+        self.accuracy = Accuracy()
 
     def forward(self, x):
         batch_size, channels, width, height = x.size()
@@ -137,17 +124,13 @@ class LightningMNISTClassifier(pl.LightningModule):
         logits = self.forward(x)
         loss = F.nll_loss(logits, y)
         acc = self.accuracy(logits, y)
-        self.val_acc_list.append(acc)
-        self.val_loss_list.append(loss)
         return {"val_loss": loss, "val_accuracy": acc}
 
-    def on_validation_epoch_end(self):
-        avg_loss = torch.stack(self.val_loss_list).mean()
-        avg_acc = torch.stack(self.val_acc_list).mean()
+    def validation_epoch_end(self, outputs):
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
+        avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
         self.log("ptl/val_loss", avg_loss)
         self.log("ptl/val_accuracy", avg_acc)
-        self.val_acc_list.clear()
-        self.val_loss_list.clear()
 
     def predict_step(self, batch, batch_idx, dataloader_idx=None):
         x = batch
