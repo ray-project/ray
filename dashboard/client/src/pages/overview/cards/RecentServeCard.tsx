@@ -82,7 +82,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
     return {
       title: app.name,
       subtitle: app.route_prefix,
-      link: app.name ? `/serve/applications/${app.route_prefix}` : undefined,
+      link: app.name ? `/serve/applications/${app.name}` : undefined,
       className: className,
       icon: <ServeStatusIcon className={classes.icon} app={app} small />,
     };

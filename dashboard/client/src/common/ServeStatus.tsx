@@ -4,7 +4,7 @@ import React from "react";
 import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
-  RiLoader4Line,
+  RiStopCircleFill,
 } from "react-icons/ri";
 import { ServeApplication } from "../type/serve";
 import { JobRunningIcon } from "./JobStatus";
@@ -20,6 +20,7 @@ const useServeStatusIconStyles = makeStyles((theme) =>
     icon: {
       width: 20,
       height: 20,
+      marginRight: 8,
     },
     iconSmall: {
       width: 16,
@@ -42,13 +43,14 @@ export const ServeStatusIcon = ({
   const classes = useServeStatusIconStyles();
 
   switch (app.status) {
-    case "NOT_STARTED":
+    case "RUNNING":
       return (
         <RiCheckboxCircleFill
           className={classNames(classes.icon, classes.colorSuccess)}
         />
       );
-    case "RUNNING":
+    case "NOT_STARTED":
+      return <RiStopCircleFill className={classes.icon} />;
     case "DEPLOY_FAILED":
       return (
         <RiCloseCircleFill
@@ -56,6 +58,7 @@ export const ServeStatusIcon = ({
         />
       );
     default:
+      // DEPLOYING || DELETEING
       return <JobRunningIcon className={className} small={small} />;
   }
 };
