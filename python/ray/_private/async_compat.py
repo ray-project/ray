@@ -4,6 +4,7 @@ It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
 import inspect
+from typing import Callable
 
 try:
     import uvloop
@@ -12,15 +13,15 @@ except ImportError:
 
 
 def get_new_event_loop():
-    """Construct a new event loop. Ray will use uvloop if it exists"""
+    """Construct a new event loop, using uvloop if possible."""
     if uvloop:
         return uvloop.new_event_loop()
     else:
         return asyncio.new_event_loop()
 
 
-def sync_to_async(func):
-    """Convert a blocking function to async function"""
+def sync_to_async(func: Callable):
+    """Convert a blocking function to an async function."""
 
     if inspect.iscoroutinefunction(func):
         return func

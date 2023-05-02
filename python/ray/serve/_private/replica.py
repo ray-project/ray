@@ -432,25 +432,28 @@ class RayServeReplica:
         success = True
         try:
             runner_method = self.get_runner_method(request_item)
-            method_to_call = sync_to_async(runner_method)
-            result = None
-            if len(inspect.signature(runner_method).parameters) > 0:
-                result = await method_to_call(*args, **kwargs)
-            else:
-                # When access via http http_arg_is_pickled with no args:
-                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
-                # When access via python with no args:
-                # args = ()
-                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
-                    # The method doesn't take in anything, including the request
-                    # information, so we pass nothing into it
-                    result = await method_to_call()
-                else:
-                    # Will throw due to signature mismatch if user attempts to
-                    # call with non-empty args
-                    result = await method_to_call(*args, **kwargs)
 
-            result = await self.ensure_serializable_response(result)
+            # Small edge case to allow defining ingress deployments whose
+            # __call__ method takes no arguments.
+            if (
+                len(args) == 1
+                and isinstance(args[0], starlette.requests.Request)
+                and len(inspect.signature(runner_method).parameters) == 0
+            ):
+                args = tuple()
+                kwargs = dict()
+
+            # If the callable is a sync method, run it in the asyncio loop's
+            # default executor.
+            if inspect.iscoroutinefunction(runner_method):
+                coro = runner_method(*args, **kwargs)
+            else:
+                loop = asyncio.get_running_loop()
+                coro = loop.run_in_executor(
+                    None, lambda: runner_method(*args, **kwargs)
+                )
+
+            result = await self.ensure_serializable_response(await coro)
             self.request_counter.inc(tags={"route": request_item.metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
