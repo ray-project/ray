@@ -45,11 +45,8 @@ class TorchRLModule(nn.Module, RLModule):
         """Returns the action distribution class for this RL Module.
 
         This class is used to create action distributions from outputs of the forward
-        methods. A distribution class returned by this method should abide to RLlib's
-        Distribution API.
-
-        If the rare case that no action distribution class is needed, this method can
-        return None.
+        methods. If the rare case that no action distribution class is needed,
+        this method can return None.
         """
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:

@@ -33,7 +33,6 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
         assert isinstance(self.encoder, ActorCriticEncoder)
 
-    @override(RLModule)
     def get_action_dist_cls(self) -> Distribution:
         return self.action_dist_cls
 

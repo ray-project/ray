@@ -132,7 +132,8 @@ class PPOTorchPolicyWithRLModule(
         )
 
         logp_ratio = torch.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - train_batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+            - train_batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -145,7 +146,7 @@ class PPOTorchPolicyWithRLModule(
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = reduce_mean_valid(curr_entropy)
 
         surrogate_loss = torch.min(
