@@ -401,11 +401,11 @@ def _get_dict_as_table_data(
         return lower
     elif not lower:
         return upper
-
     else:
-        return upper + [[None, None]] + lower
+        return upper + lower
 
 
+# Copied/adjusted from tabulate
 AIR_TABULATE_TABLEFMT = TableFormat(
     lineabove=Line("╭", "─", "─", "╮"),
     linebelowheader=Line("├", "─", "─", "┤"),
@@ -428,9 +428,7 @@ def _print_dict_as_table(
         data=data, exclude=exclude, upper_keys=division
     )
 
-    headers = ()
-    if header:
-        headers = [header, ""]
+    headers = [header, ""] if header else []
 
     if not table_data:
         return
