@@ -613,20 +613,25 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     # We currently only support fusing MapOperator->AllToAllOperator.
     n = 10
     ds = ray.data.range(n)
-    ds = ds.map_batches(lambda batch: [x + 1 for x in batch])
+    ds = ds.map_batches(
+        lambda batch: {"id": [x + 1 for x in batch["id"]]}, batch_size=None
+    )
     ds = ds.random_shuffle()
-    assert set(ds.take_all()) == set(range(1, n + 1))
+    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     assert "DoRead->MapBatches->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
     ds = ray.data.range(n)
     ds = ds.random_shuffle()
-    ds = ds.map_batches(lambda batch: [x + 1 for x in batch])
-    assert set(ds.take_all()) == set(range(1, n + 1))
+    ds = ds.map_batches(
+        lambda batch: {"id": [x + 1 for x in batch["id"]]}, batch_size=None
+    )
+    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     # TODO(Scott): Update below assertion after supporting fusion in
     # the other direction (AllToAllOperator->MapOperator)
     assert "DoRead->RandomShuffle->MapBatches" not in ds.stats()
     assert all(op in ds.stats() for op in ("DoRead", "RandomShuffle", "MapBatches"))
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
 
 def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_optimizer):
