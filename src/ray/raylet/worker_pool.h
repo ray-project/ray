@@ -471,8 +471,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct WorkerProcessInfo {
     /// Whether this worker is pending registration or is started.
     bool is_pending_registration = true;
-    /// The started workers which is alive.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> alive_started_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
     /// The worker process instance.
@@ -584,13 +582,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This happens when we have more room to start workers or an idle worker is pushed.
   /// \param language The language of the PopWorker requests.
   void TryPendingPopWorkerRequests(const Language &language);
-
-  /// Get all workers of the given process.
-  ///
-  /// \param process The process of workers.
-  /// \return The workers of the given process.
-  std::unordered_set<std::shared_ptr<WorkerInterface>> GetWorkersByProcess(
-      const Process &process);
 
   /// Get either restore or spill worker state from state based on worker_type.
   ///
