@@ -595,7 +595,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
             assert result.metrics["score"] == 2
 
 
-def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
+def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     """Test validation for trainable compatibility, when re-specifying a trainable
     on restore."""
 
@@ -633,7 +633,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
             resume_errored=True,
         )
 
-    # Can still change trainable code, but logs a warning
+    # Can technically change trainable code (not recommended!)
     def train_func_1(config):
         checkpoint = session.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
@@ -707,8 +707,8 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     fail_marker.unlink()
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
-        resume_errored=True,
         trainable=create_trainable_with_params(),
+        resume_errored=True,
     )
     results = tuner.fit()
     assert not results.errors
@@ -1051,6 +1051,39 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         assert not Tuner.can_restore(Path(upload_dir) / "new_exp")
     else:
         assert not Tuner.can_restore(tmp_path / "new_exp")
+
+
+def testParamSpaceOverwriteValidation(tmp_path):
+    """Check that validation on restore fails if we try adding or removing
+    hyperparameters to the param_space."""
+    name = "test_param_space_valid"
+    param_space = {"a": 1, "b": {"c": tune.choice([0, 1])}, "d": tune.uniform(0, 1)}
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        param_space=param_space,
+        run_config=RunConfig(storage_path=str(tmp_path), name=name),
+    )
+    tuner.fit()
+
+    bad_param_spaces = [
+        {},
+        {"a": 1, "b": {}, "d": 2},
+        {"a": 1, "b": {"c": 2, "e": 3}, "d": 4},
+    ]
+    for bad_param_space in bad_param_spaces:
+        with pytest.raises(ValueError):
+            Tuner.restore(
+                str(tmp_path / name),
+                trainable=_train_fn_sometimes_failing,
+                param_space=bad_param_space,
+            )
+
+    # Should work with the original param space
+    Tuner.restore(
+        str(tmp_path / name),
+        trainable=_train_fn_sometimes_failing,
+        param_space=param_space,
+    )
 
 
 def testParamSpaceOverwrite(tmp_path, monkeypatch):
