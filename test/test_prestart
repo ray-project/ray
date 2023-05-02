@@ -16,7 +16,7 @@ del os.environ['RAY_JOB_SUBMIT_HOOK']
 import ray
 import time
 
-input('waiting for key')
+#input('waiting for key')
 
 @ray.remote(num_cpus=0.01)
 def task(t):

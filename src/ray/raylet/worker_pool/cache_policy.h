@@ -14,10 +14,11 @@
 
 #pragma once
 
-#include "ray/raylet/worker_pool/worker_pool.h"
+#include "ray/raylet/worker.h"
 
 #include <cstddef>
 #include <vector>
+#include <memory>
 
 //#include "gtest/gtest.h"
 
