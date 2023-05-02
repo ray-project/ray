@@ -368,9 +368,9 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
 - ``env_vars`` (Dict[str, str]): Environment variables to set.  Environment variables already set on the cluster will still be visible to the Ray workers; so there is
   no need to include ``os.environ`` or similar in the ``env_vars`` field.   
-  By default, these environment variables will override the same name environment variables on the cluster. 
-  You can also reference existing environment variables using ${ENV_VAR} and achieve the append behavior.
-  Currently, only PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, and LD_PRELOAD are supported. See below for an example:
+  By default, these environment variables override the same name environment variables on the cluster. 
+  You can also reference existing environment variables using ${ENV_VAR} to achieve the appending behavior.
+  Only PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, and LD_PRELOAD are supported. See below for an example:
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
