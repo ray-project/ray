@@ -447,13 +447,7 @@ class TestDeployApp:
 
     def check_running(self, client: ServeControllerClient):
         serve_status = client.get_serve_status()
-        print("checking status =", serve_status.app_status.status, time.time())
-        return (
-            serve_status.app_status.status
-            == ApplicationStatus.RUNNING
-            # and serve_status.get_deployment_status(name).status
-            # == DeploymentStatus.HEALTHY
-        )
+        return serve_status.app_status.status == ApplicationStatus.RUNNING
 
     def check_deployments_dead(self, deployment_names):
         actor_names = [

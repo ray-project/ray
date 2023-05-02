@@ -54,6 +54,8 @@ class ApplicationState:
             name: application name
             deployment_state_manager: deployment state manager which is used for
                 fetching deployment information
+            endpoint_state:
+            save_checkpoint_func:
             deploy_obj_ref: Task ObjRef of deploying application.
             deployment_time: Deployment timestamp
         """
@@ -210,6 +212,13 @@ class ApplicationState:
         self._set_target_state(deployment_infos=deployment_infos)
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
+        """Update deploy object ref.
+
+        Resets the deployment timestamp, sets status to DEPLOYING, and wipes the current
+        target state. This means while the task to build the application is running, the
+        application state stops the reconciliation loop and waits on the task to finish
+        and call apply_deployments_args().
+        """
         self._deploy_obj_ref = deploy_obj_ref
         self._deployment_timestamp = deployment_time
         self._status = ApplicationStatus.DEPLOYING
@@ -228,25 +237,14 @@ class ApplicationState:
         if self._ready_to_be_deleted:
             return
 
-        # Delete deployments
-        live_deployments = (
-            self._deployment_state_manager.get_deployments_in_application(self._name)
-        )
-        for deployment_name in live_deployments:
-            if deployment_name not in self.deployments:
-                self._delete_deployment(deployment_name)
-        if self._target_state.deleting:
-            if len(live_deployments) == 0:
-                self._ready_to_be_deleted = True
-
-        # Deal with deploy obj ref (should only be done once)
+        # Fetch deploy object ref, and set status to DEPLOY_FAILED if something went
+        # wrong with the task.
         if self._deploy_obj_ref:
             finished, _ = ray.wait([self._deploy_obj_ref], timeout=0)
             if finished:
                 try:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
-                    self._deploy_obj_ref = None
                 except RayTaskError as e:
                     self._status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
@@ -254,7 +252,6 @@ class ApplicationState:
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
                     self._app_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
-                    self._deploy_obj_ref = None
                     logger.warning(self._app_msg)
                 except RuntimeEnvSetupError:
                     self._status = ApplicationStatus.DEPLOY_FAILED
@@ -262,13 +259,27 @@ class ApplicationState:
                         f"Runtime env setup for app '{self._name}' "
                         f"failed:\n{traceback.format_exc()}"
                     )
-                    self._deploy_obj_ref = None
                     logger.warning(self._app_msg)
+                self._deploy_obj_ref = None
 
+        # If no application has been deployed, or if we're waiting on the build app
+        # task to finish, don't perform any reconciliation.
         if self._target_state.deployment_infos is not None:
             # Deploy/update deployments
             for deployment_name, info in self._target_state.deployment_infos.items():
                 self.apply_deployment(deployment_name, info)
+
+            # Delete deployments
+            live_deployments = (
+                self._deployment_state_manager.get_deployments_in_application(
+                    self._name
+                )
+            )
+            for deployment_name in live_deployments:
+                if deployment_name not in self.deployments:
+                    self._delete_deployment(deployment_name)
+            if self._target_state.deleting:
+                self._ready_to_be_deleted = len(live_deployments) == 0
 
             # Check current status
             if self._status != ApplicationStatus.DELETING:
@@ -288,16 +299,16 @@ class ApplicationState:
                 ):
                     self._status = ApplicationStatus.RUNNING
 
-    def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
-        """Return all deployment status information"""
-        return self._deployment_state_manager.get_deployment_statuses(self.deployments)
+    def get_checkpoint_data(self):
+        return self._target_state
 
     def get_deployment(self, name: str) -> DeploymentInfo:
         """Get deployment info for deployment by name."""
         return self._deployment_state_manager.get_deployment(name)
 
-    def get_checkpoint_data(self):
-        return self._target_state
+    def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
+        """Return all deployment status information"""
+        return self._deployment_state_manager.get_deployment_statuses(self.deployments)
 
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
