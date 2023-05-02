@@ -237,6 +237,7 @@ class TunerInternal:
             ValueError: if the trainable name does not match.
         """
         if not old_trainable_name:
+            # Backwards compatibility: skip validation
             return
 
         trainable_name = Experiment.get_trainable_name(trainable)
@@ -291,6 +292,7 @@ class TunerInternal:
             ValueError: if not all keys match the original param_space.
         """
         if flattened_param_space_keys is None:
+            # Backwards compatibility: skip validation
             return
 
         keys = sorted(flatten_dict(new_param_space).keys())
@@ -310,7 +312,9 @@ class TunerInternal:
         flattened_param_space_keys: Optional[List[str]],
     ):
         self.param_space = param_space
-        if param_space is not None:
+
+        if self.param_space is not None:
+            # param_space = None -> use the original param_space
             self._validate_param_space_on_restore(
                 new_param_space=self.param_space,
                 flattened_param_space_keys=flattened_param_space_keys,
