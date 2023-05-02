@@ -18,7 +18,10 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
+from ray.rllib.algorithms.ppo.ppo_learner import (
+    PPOLearnerHyperparameters,
+    LEARNER_RESULTS_KL_KEY,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -475,10 +478,7 @@ class PPO(Algorithm):
 
         if self.config._enable_learner_api:
             kl_dict = {
-                # TODO (Kourosh): Train results don't match the old format. The thing
-                # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
-                # we need get here?
-                pid: train_results[pid][LEARNER_STATS_KEY].get("kl")
+                pid: train_results[pid][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
