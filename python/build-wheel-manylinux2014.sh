@@ -14,7 +14,7 @@ chmod +x /usr/bin/nproc
 NODE_VERSION="14"
 
 # Python version key, interpreter version code, numpy tuples.
-PYTHON_NYMPYS=(
+PYTHON_NUMPYS=(
   "3.7 cp37-cp37m 1.14.5"
   "3.8 cp38-cp38 1.14.5"
   "3.9 cp39-cp39 1.19.3"
