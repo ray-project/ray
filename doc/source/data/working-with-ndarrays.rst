@@ -4,12 +4,12 @@ Working with array-like data
 ============================
 
 Array-like data is ubiquitous in ML workloads. This guide describes the limitations
-and best practices of working such data.
+and best practices of working with such data.
 
 Data representation
 -------------------
 
-Ray Data represents array-like data as NumPy ndarrays.
+Ray Data represents array-like data as `NumPy ndarrays <https://numpy.org/doc/stable/reference/arrays.ndarray.html>`__.
 
 .. testcode::
 
@@ -94,7 +94,7 @@ A ragged array is a nested array where arrays vary in size.
                       [0., 0.],
                       [0., 0.]])]
 
-Ray Data represents ragged arrays as single-dimensional arrays of object dtype.
+Ray Data represents batches of variable-sized array-like data as ragged arrays.
 
 .. doctest::
 
@@ -106,8 +106,7 @@ Ray Data represents ragged arrays as single-dimensional arrays of object dtype.
   >>> batch["image"].dtype
   dtype('O')
 
-In contrast to the outer array, member arrays can contain one or more dimensions. They
-can also vary in size and type.
+Elements of these ragged arrays are regular `NumPy ndarrays <https://numpy.org/doc/stable/reference/arrays.ndarray.html>`__.
 
 .. doctest::
 
