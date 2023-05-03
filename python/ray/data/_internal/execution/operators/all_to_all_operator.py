@@ -1,5 +1,4 @@
 from typing import List, Optional
-from ray.data._internal.progress_bar import ProgressBar
 
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
@@ -60,7 +59,6 @@ class AllToAllOperator(PhysicalOperator):
     def inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,
-            sub_progress_bar_dict=self._sub_progress_bar_dict,
         )
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
         self._next_task_index += 1
@@ -81,24 +79,3 @@ class AllToAllOperator(PhysicalOperator):
 
     def progress_str(self) -> str:
         return f"{len(self._output_buffer)} output"
-
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Initialize all internal sub progress bars, and return the number of bars."""
-        if self._sub_progress_bar_names is not None:
-            self._sub_progress_bar_dict = {}
-            for name in self._sub_progress_bar_names:
-                bar = ProgressBar(name, self.num_outputs_total() or 1, position)
-                # NOTE: call `set_description` to trigger the initial print of progress
-                # bar on console.
-                bar.set_description(f"  *- {name}")
-                self._sub_progress_bar_dict[name] = bar
-                position += 1
-            return len(self._sub_progress_bar_dict)
-        else:
-            return 0
-
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        if self._sub_progress_bar_dict is not None:
-            for sub_bar in self._sub_progress_bar_dict.values():
-                sub_bar.close()
