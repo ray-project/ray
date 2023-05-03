@@ -17,8 +17,8 @@
 #include <gtest/gtest_prod.h>
 
 #include <boost/bimap.hpp>
-#include <boost/bimap/unordered_set_of.hpp>
 #include <boost/bimap/unordered_multiset_of.hpp>
+#include <boost/bimap/unordered_set_of.hpp>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
