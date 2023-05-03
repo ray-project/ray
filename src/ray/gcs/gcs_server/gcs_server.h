@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <future>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
@@ -96,6 +99,13 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
+// TODO(vitsai): string <=> enum generator macro
+enum class StorageType {
+  UNKNOWN = 0,
+  IN_MEMORY = 1,
+  REDIS_PERSIST = 2,
+};
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
@@ -160,8 +170,9 @@ class GcsServer {
   void InitMonitorServer();
 
  private:
+
   /// Gets the type of KV storage to use from config.
-  std::string StorageType() const;
+  StorageType GetStorageType() const;
 
   /// Print debug info periodically.
   std::string GetDebugState() const;
@@ -172,6 +183,11 @@ class GcsServer {
   /// Collect stats from each module.
   void RecordMetrics() const;
 
+  /// Get server token if persisted, otherwise generate
+  /// a new one and persist as necessary.
+  /// Expected to be idempotent while server is up.
+  void CacheAndSetServerToken();
+
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
@@ -180,10 +196,21 @@ class GcsServer {
 
   void TryGlobalGC();
 
+  /// This is ridiculous, but the reason it has to live here
+  /// instead of in the promise-setting lambda
+  /// is because lambda => std::function conversion cannot
+  /// avoid copy-constructor, so move-capturing promise won't work.
+  /// Can be fixed by using auto as parameter type instead of 
+  /// std::function in C++20.
+  std::promise<std::string> token_promise_;
+
+  /// UUID of this generation of the server.
+  std::future<std::string> server_token_;
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
-  const std::string storage_type_;
+  const StorageType storage_type_;
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
   /// The io service used by Pubsub, for isolation from other workload.

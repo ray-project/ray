@@ -33,14 +33,29 @@
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {
 
+inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
+  switch(val) {
+    case GcsServer::StorageType::IN_MEMORY:
+      return str << "StorageType::IN_MEMORY";
+    case GcsServer::StorageType::REDIS_PERSIST:
+      return str << "StorageType::REDIS_PERSIST";
+    case GcsServer::StorageType::UNKNOWN:
+      return str << "StorageType::UNKNOWN";
+    default:
+      UNREACHABLE;
+  }
+}
+
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                      instrumented_io_context &main_service)
-    : config_(config),
-      storage_type_(StorageType()),
+    : server_token_(token_promise_.get_future()),
+      config_(config),
+      storage_type_(GetStorageType()),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
@@ -57,11 +72,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_stopped_(false) {
   // Init GCS table storage.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
-  if (storage_type_ == "redis") {
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
-  } else if (storage_type_ == "memory") {
-    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
+  switch(storage_type_) {
+    case StorageType::IN_MEMORY:
+      gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
+      break;
+    case StorageType::REDIS_PERSIST:
+      gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+      break;
+    default:
+      RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
+
+  // Init KV Manager
+  InitKVManager();
+  CacheAndSetServerToken();
 
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
@@ -73,7 +97,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       ray::UniqueID::Nil(), stored_config, on_done));
   // Here we need to make sure the Put of internal config is happening in sync
   // way. But since the storage API is async, we need to run the main_service_
-  // to block currenct thread.
+  // to block current thread.
   // This will run async operations from InternalConfigTable().Put() above
   // inline.
   main_service_.run();
@@ -122,6 +146,36 @@ void GcsServer::Start() {
   gcs_init_data->AsyncLoad([this, gcs_init_data] { DoStart(*gcs_init_data); });
 }
 
+void GcsServer::CacheAndSetServerToken() {
+  static std::string const kTokenNamespace = "cluster";
+  static std::string const kTokenKey = "server_uuid";
+  switch (storage_type_) {
+    case StorageType::IN_MEMORY:
+      token_promise_.set_value(GenerateUUIDV4());
+    break;
+    case StorageType::REDIS_PERSIST:
+      kv_manager_->GetInstance().Get(kTokenNamespace, kTokenKey, 
+      [this] (std::optional<std::string> token) mutable {
+        if (!token.has_value()) {
+          RAY_LOG(DEBUG) << "No existing server token found. Generating new token.";
+          std::string server_token = GenerateUUIDV4();
+          kv_manager_->GetInstance().Put(kTokenNamespace, kTokenKey, server_token, false, 
+            // server_token string copy because lifetime.
+            [this, server_token](bool added_entry) mutable {
+              RAY_CHECK(added_entry) << "Failed to persist new token!";
+              token_promise_.set_value(server_token);
+            }
+          );
+        } else {
+          token_promise_.set_value(std::move(token.value())); 
+        }
+      });
+    break;
+    default:
+      RAY_LOG(FATAL) << "Unexpected storage type " << storage_type_;
+  }
+}
+
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
@@ -140,9 +194,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
-
-  // Init KV Manager
-  InitKVManager();
 
   // Init function manager
   InitFunctionManager();
@@ -452,22 +503,24 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*placement_group_info_service_);
 }
 
-std::string GcsServer::StorageType() const {
-  if (RayConfig::instance().gcs_storage() == "memory") {
+GcsServer::StorageType GcsServer::GetStorageType() const {
+  static const std::string kInMemoryStorage = "memory";
+  if (RayConfig::instance().gcs_storage() == kInMemoryStorage) {
     if (!config_.redis_address.empty()) {
       RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address
                     << ":" << config_.redis_port;
-      return "redis";
+      return StorageType::REDIS_PERSIST;
     }
-    return "memory";
+    return StorageType::IN_MEMORY;
   }
-  if (RayConfig::instance().gcs_storage() == "redis") {
+  static const std::string kRedisStorage = "redis";
+  if (RayConfig::instance().gcs_storage() == kRedisStorage) {
     RAY_CHECK(!config_.redis_address.empty());
-    return "redis";
+    return StorageType::IN_MEMORY;
   }
   RAY_LOG(FATAL) << "Unsupported GCS storage type: "
                  << RayConfig::instance().gcs_storage();
-  return RayConfig::instance().gcs_storage();
+  return StorageType::UNKNOWN;
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
@@ -507,15 +560,20 @@ void GcsServer::InitUsageStatsClient() {
 }
 
 void GcsServer::InitKVManager() {
-  std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
-  if (storage_type_ == "redis") {
-    instance = std::make_unique<StoreClientInternalKV>(
+  std::unique_ptr<InternalKVInterface> instance;
+  switch(storage_type_) {
+    case (StorageType::REDIS_PERSIST):
+      instance = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
-  } else if (storage_type_ == "memory") {
-    instance =
+    break;
+    case (StorageType::IN_MEMORY):
+      instance = 
         std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
             std::make_unique<InMemoryStoreClient>(main_service_)));
+    break;
+    default:
+      RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
@@ -526,8 +584,7 @@ void GcsServer::InitKVManager() {
 
 void GcsServer::InitPubSubHandler() {
   pubsub_handler_ =
-      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_);
-  pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
+      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_); pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
                                                                      *pubsub_handler_);
   // Register service.
   rpc_server_.RegisterService(*pubsub_service_);
