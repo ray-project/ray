@@ -29,7 +29,7 @@ Streaming Batch Inference
 -------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as 
+powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as
 :ref:`GPU batch inference <ref-use-cases-batch-infer>` to run efficiently on large datasets,
 maximizing resource utilization by keeping the working data fitting into Ray object store memory.
 
@@ -44,7 +44,7 @@ As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ra
 e.g., using actors for optimizing setup time and GPU scheduling, and supports data throughputs of
 100GiB/s or more for common inference workloads.
 
-To learn more about the features Ray Data supports, read the 
+To learn more about the features Ray Data supports, read the
 :ref:`Data User Guide <data_user_guide>`.
 
 ---------------------------------------
@@ -52,8 +52,8 @@ Streaming Preprocessing for ML Training
 ---------------------------------------
 
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
-Ray Data is intended to serve as a last-mile bridge from storage or ETL pipeline outputs to distributed 
-applications and libraries in Ray. Don't use it as a replacement for more general data 
+Ray Data is intended to serve as a last-mile bridge from storage or ETL pipeline outputs to distributed
+applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems.
 
 .. image:: images/datastream-loading-1.png
@@ -109,8 +109,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
 
     Learn how to :ref:`load data <loading_data>`, :ref:`save
     data <saving_data>`, :ref:`transform data <transforming_data>`,
-    :ref:`access and exchange data <consuming_data>`, or
-    :ref:`work with tensor data <data_tensor_support>`.
+    or :ref:`access and exchange data <consuming_data>`.
 
     +++
     .. link-button:: data_user_guide
