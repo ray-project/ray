@@ -30,14 +30,16 @@ class TorchRLModule(nn.Module, RLModule):
 
         if self.config and self.config.model_config_dict.get("torch_compile") is True:
             # Replace original forward methods by compiled versions of themselves
+            backend = self.config.model_config_dict["torch_dynamo_backend"]
+
             self._forward_train = torch.compile(
-                self._forward_train, backend="aot_eager"
+                self._forward_train, backend=backend
             )
             self._forward_inference = torch.compile(
-                self._forward_inference, backend="aot_eager"
+                self._forward_inference, backend=backend
             )
             self._forward_exploration = torch.compile(
-                self._forward_exploration, backend="aot_eager"
+                self._forward_exploration, backend=backend
             )
 
     @abc.abstractmethod
@@ -64,6 +66,9 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
+        # If we use torch compile, we need to retrace the forward methods
+        if self.config and self.config.model_config_dict.get("torch_compile") is True:
+            torch._dynamo.reset()
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")

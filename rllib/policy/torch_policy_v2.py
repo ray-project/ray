@@ -941,7 +941,10 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
-        self.model.load_state_dict(weights)
+        if self.config.get("_enable_rl_module_api", False):
+            self.model.set_state(weights)
+        else:
+            self.model.load_state_dict(weights)
 
     @override(Policy)
     @DeveloperAPI

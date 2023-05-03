@@ -3,6 +3,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
+import sys
 import tree  # pip install dm_tree
 from typing import List, Optional, Type, Union
 
@@ -195,6 +196,14 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # This is a performance optimization that should be disabled for debugging.
     # This has no effect for models outside RLModule.
     "torch_compile": False,
+    # The backend to use for torch dynamo.
+    # Torch dynamo is the JIT compiler used under the hood by torch.compile.
+    # `torch_compile_backend` is passed to torch.compile() calls inside RLlib.
+    # Note that different backends are available on different platforms.
+    # Also note that the default backend for torch dynamo is "aot_eager" on macOS.
+    # This is a debugging backend that is expected not to improve performance because
+    # the inductor backend is not supported on OSX thus far.
+    "torch_dynamo_backend": "aot_eager" if sys.platform == "darwin" else "inductor",
 
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.

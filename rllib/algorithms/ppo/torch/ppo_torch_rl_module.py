@@ -78,6 +78,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
 
         return output
 
+    @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
