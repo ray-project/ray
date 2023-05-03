@@ -491,7 +491,7 @@ def run(
         error_message_map = {
             "entrypoint": "Trainer(...)",
             "search_space_arg": "param_space",
-            "restore_entrypoint": 'Trainer.restore(path="{path}")',
+            "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
         }
     elif _tuner_api and not _trainer_api:
         error_message_map = {
