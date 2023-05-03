@@ -1002,7 +1002,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
-  if (ray_syncer_) {
+  if (RayConfig::instance().use_ray_syncer()) {
     if (auto sync_msg = ray_syncer_.GetSyncMessage(node_info.node_id(),
                                                    syncer::MessageType::RESOURCE_VIEW)) {
       if (sync_msg) {
