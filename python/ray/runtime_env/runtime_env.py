@@ -3,7 +3,7 @@ import logging
 import os
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS

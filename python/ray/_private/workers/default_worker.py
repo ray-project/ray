@@ -11,7 +11,7 @@ import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
-from ray import cloudpickle as pickle
+from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 
 
 parser = argparse.ArgumentParser(
@@ -253,16 +253,12 @@ if __name__ == "__main__":
         ray._private.utils.try_import_each_module(module_names_to_import)
 
     # If the worker setup function is configured, run it.
-    # TODO(sang): Handle failures.
-    worker_setup_hook_key = worker.runtime_env.get("worker_setup_hook")
+    worker_setup_hook_key = os.getenv(ray_constants.WORKER_SETUP_HOOK_KEY)
     if worker_setup_hook_key:
-        func_manager = worker.function_actor_manager
-        worker_setup_hook_info = func_manager.fetch_registsered_method(
-            # This is decoded by setup_func.upload_worker_setup_hook_if_needed.
-            base64.b64decode(worker_setup_hook_key)
-        )
-        setup_func = pickle.loads(worker_setup_hook_info.function)
-        setup_func()
+        success, error = load_and_execute_setup_hook(worker_setup_hook_key)
+        if not success:
+            assert error is not None
+            worker.core_worker.exit_worker("system", error)
 
     if mode == ray.WORKER_MODE:
         worker.main_loop()

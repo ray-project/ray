@@ -180,14 +180,12 @@ class FunctionActorManager:
         # TODO(mwtian) implement per-job notification here.
         self._worker.gcs_publisher.publish_function_key(key)
 
-    def export_setup_func(self, setup_func: Callable) -> str:
-        """Export the setup hook function and return the key.
-        
-        """
-        # SANG-TODO: Test
+    def export_setup_func(
+        self, setup_func: Callable, timeout: Optional[int] = None
+    ) -> str:
+        """Export the setup hook function and return the key."""
         pickled_function = pickle_dumps(
-            setup_func,
-            f"Cannot serialize the setup function {setup_func.__name__}"
+            setup_func, f"Cannot serialize the setup function {setup_func.__name__}"
         )
 
         function_to_run_id = hashlib.shake_128(pickled_function).digest(
@@ -198,13 +196,11 @@ class FunctionActorManager:
             # Otherwise, it won't be GC'ed.
             b"FunctionsToRun",
             self._worker.current_job_id.binary(),
-            function_to_run_id)
+            function_to_run_id,
+        )
 
         check_oversized_function(
-            pickled_function,
-            setup_func.__name__,
-            "function",
-            self._worker
+            pickled_function, setup_func.__name__, "function", self._worker
         )
 
         try:
@@ -220,14 +216,13 @@ class FunctionActorManager:
                 # overwrite
                 True,
                 ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
+                timeout=timeout,
             )
         except Exception as e:
-            logger.error(
-                "Failed to export the setup hook "
-                f"{setup_func.__name__}.")
+            logger.error("Failed to export the setup hook " f"{setup_func.__name__}.")
             logger.exception(e)
             raise e
-    
+
         return key
 
     def export(self, remote_function):
@@ -279,8 +274,12 @@ class FunctionActorManager:
             key, val, True, KV_NAMESPACE_FUNCTION_TABLE
         )
 
-    def fetch_registsered_method(self, key) -> Optional[ImportedFunctionInfo]:
-        vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
+    def fetch_registsered_method(
+        self, key: str, timeout: Optional[int] = None
+    ) -> Optional[ImportedFunctionInfo]:
+        vals = self._worker.gcs_client.internal_kv_get(
+            key, KV_NAMESPACE_FUNCTION_TABLE, timeout=timeout
+        )
         if vals is None:
             return None
         else:

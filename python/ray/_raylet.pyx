@@ -59,6 +59,7 @@ from ray.includes.common cimport (
     CObjectReference,
     CLanguage,
     CObjectReference,
+    CWorkerExitType,
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
@@ -92,6 +93,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    WORKER_EXIT_TYPE_USER_ERROR,
+    WORKER_EXIT_TYPE_SYSTEM_ERROR,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1802,13 +1805,13 @@ cdef class CoreWorker:
         self.current_runtime_env = None
 
     def shutdown(self):
-        with nogil:
-            # If it's a worker, the core worker process should have been
-            # shutdown. So we can't call
-            # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
-            # Instead, we use the cached `is_driver` flag to test if it's a
-            # driver.
-            if self.is_driver:
+        # If it's a worker, the core worker process should have been
+        # shutdown. So we can't call
+        # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
+        # Instead, we use the cached `is_driver` flag to test if it's a
+        # driver.
+        if self.is_driver:
+            with nogil:
                 CCoreWorkerProcess.Shutdown()
 
     def notify_raylet(self):
@@ -1818,6 +1821,28 @@ cdef class CoreWorker:
     def run_task_loop(self):
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
+
+    def exit_worker(self, exit_type: str, c_string detail):
+        """
+        Exit the current worker process. This API should only be used by
+        a worker. If this API is called, the worker will finish currently
+        executing task, initiate the shutdown, and stop itself gracefully.
+        The given exit_type and detail will be reported to GCS, and any
+        worker failure error will contain them.
+        """
+        cdef:
+            CWorkerExitType c_exit_type
+            cdef const shared_ptr[LocalMemoryBuffer] null_ptr
+
+        if exit_type == "user":
+            c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
+        if exit_type == "system":
+            c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        else:
+            raise ValueError(f"Invalid exit type: {exit_type}")
+        assert not self.is_driver
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
 
     def get_current_task_retry_exceptions(self):
         return CCoreWorkerProcess.GetCoreWorker(

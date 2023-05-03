@@ -81,7 +81,7 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.setup_func import upload_worker_setup_hook_if_needed
+from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
 from ray._private.storage import _load_class
 from ray._private.utils import check_oversized_function, get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -2171,7 +2171,6 @@ def connect(
         runtime_env = upload_worker_setup_hook_if_needed(
             runtime_env,
             worker,
-            decoder=lambda key: base64.b64encode(key).decode()
         )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
