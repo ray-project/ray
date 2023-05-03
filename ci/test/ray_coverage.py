@@ -7,7 +7,10 @@ import tempfile
 
 COVERAGE_FILE_NAME = "ray_release.coverage"
 
-
+"""
+This script runs test targets and collect which files are executed during the test runs.
+It then uploads the coverage information to database (S3).
+"""
 @click.command()
 @click.argument("test_target", required=True, type=str)
 def main(test_target: str) -> None:
@@ -21,6 +24,12 @@ def main(test_target: str) -> None:
 
 
 def _run_test(test_target: str, coverage_file: str) -> None:
+    """
+    Run test target serially using bazel and compute coverage data using pycov.
+    We need to run tests serially to avoid data races when pytest creates the initial
+    coverage DB per test run. Also use 'test' dynamic context so we can store
+    file coverage information.
+    """
     source_dir = os.path.join(os.getcwd(), "release")
     subprocess.check_output(
         [
