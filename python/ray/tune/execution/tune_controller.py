@@ -713,6 +713,8 @@ class TuneController(_TuneControllerBase):
 
         self._set_trial_status(trial, Trial.RUNNING)
 
+        self._mark_trial_to_checkpoint(trial)
+
         if not self._schedule_trial_restore(trial):
             self._schedule_trial_train(trial)
 
