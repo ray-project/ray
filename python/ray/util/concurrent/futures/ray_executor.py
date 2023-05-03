@@ -14,6 +14,7 @@ from typing import (
 )
 
 import ray
+from ray.util.actor_pool import ActorPool
 from ray.util.annotations import PublicAPI
 import ray.exceptions
 
@@ -92,6 +93,7 @@ class RayExecutor(Executor):
             return fn()
 
         self.__remote_fn: RemoteFunction0[Any, Callable[[], Any]] = remote_fn
+        self._actor_pool: Optional[ActorPool] = None
 
         if max_workers is not None:
             if max_workers < 1:
@@ -99,15 +101,27 @@ class RayExecutor(Executor):
                     f"`max_workers={max_workers}` is given. The argument \
                     `max_workers` must be >= 1"
                 )
-            if ray.is_initialized():
-                cpus = ray.available_resources()["CPU"]
-                print(
-                    f"Ray instance exists with {cpus} CPUs. \
-                    `max_workers={max_workers}` is ignored."
-                )
-            else:
-                self.max_workers = max_workers
-                kwargs["num_cpus"] = max_workers
+
+            @ray.remote                                                          
+            class ExecutorActor:                                                 
+                def __init__(self):                                              
+                    pass                                                         
+                                                                                 
+                def actor_function(self, fn: Callable):                          
+                    return fn()                                                  
+                                                                                 
+            actors = [                                                           
+                ExecutorActor.options(  # type: ignore[attr-defined]             
+                    name=f"actor-{i}"                                            
+                ).remote()                                                       
+                for i in range(max_workers)                                      
+            ]
+            if self._actor_pool is not None:
+                for actor in self._actor_pool:
+                    del actor
+                del self._actor_pool
+            self._actor_pool = ray.util.ActorPool(actors)                       
+            self.max_workers = max_workers
         self._context = ray.init(ignore_reinit_error=True, **kwargs)
 
     def submit(
@@ -135,12 +149,22 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         fn_curried = partial(fn, *args, **kwargs)
 
-        future: Future[T] = (
-            self.__remote_fn.options(name=fn.__name__)  # type: ignore
-            .remote(fn_curried)
-            .future()
-        )
-        self.futures.append(future)
+        if self._actor_pool:                                                       
+            self._actor_pool.submit(lambda a, _: a.actor_function.remote(fn_curried), None)                                                                       
+            oref = self._actor_pool._index_to_future[self._actor_pool._next_task_index - 1]
+            future: Future[T] = oref.future()                                                      
+            del oref
+        elif self.__remote_fn:                                                    
+            future: Future[T] = (
+                self.__remote_fn.options(name=fn.__name__)  # type: ignore
+                .remote(fn_curried)
+                .future()
+            )
+        else:                                                                   
+            raise RuntimeError("Neither remote function nor actor pool is defined")                  
+                                                                            
+        self.futures.append(future)                                                
+
         del fn_curried
         return future
 
@@ -212,27 +236,31 @@ class RayExecutor(Executor):
         if timeout is not None:
             end_time = timeout + time.monotonic()
 
-        fs = [self.submit(fn, *args) for args in zip(*iterables)]
+        if self._actor_pool:
+            res = self._actor_pool.map(lambda a, v: a.actor_function.remote(partial(fn, *v)), zip(*iterables))                                                                              
+            return res
+        else:
+            fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
-        # Yield must be hidden in closure so that the futures are submitted
-        # before the first iterator value is required.
-        def result_iterator() -> Iterator[T]:
-            try:
-                # reverse to keep finishing order
-                fs.reverse()
-                while fs:
-                    # Careful not to keep a reference to the popped future
-                    if timeout is None:
-                        yield self._result_or_cancel(fs.pop())
-                    else:
-                        yield self._result_or_cancel(
-                            fs.pop(), end_time - time.monotonic()
-                        )
-            finally:
-                for future in fs:
-                    future.cancel()
+            # Yield must be hidden in closure so that the futures are submitted
+            # before the first iterator value is required.
+            def result_iterator() -> Iterator[T]:
+                try:
+                    # reverse to keep finishing order
+                    fs.reverse()
+                    while fs:
+                        # Careful not to keep a reference to the popped future
+                        if timeout is None:
+                            yield self._result_or_cancel(fs.pop())
+                        else:
+                            yield self._result_or_cancel(
+                                fs.pop(), end_time - time.monotonic()
+                            )
+                finally:
+                    for future in fs:
+                        future.cancel()
 
-        return result_iterator()
+            return result_iterator()
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         """Clean-up the resources associated with the Executor.
