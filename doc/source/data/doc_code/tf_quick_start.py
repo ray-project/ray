@@ -7,7 +7,7 @@ import ray
 import numpy as np
 
 
-dataset = ray.data.from_numpy(np.ones((1, 100)))
+ds = ray.data.from_numpy(np.ones((1, 100)))
 # __tf_quickstart_load_end__
 
 
@@ -26,9 +26,13 @@ class TFPredictor:
 
 
 # __tf_quickstart_prediction_start__
-scale = ray.data.ActorPoolStrategy(2)
+tfp = TFPredictor()
+batch = ds.take_batch(10)
+test = tfp(batch)
 
-predicted_probabilities = dataset.map_batches(TFPredictor, compute=scale)
+scale = ray.data.ActorPoolStrategy(size=2)
+
+predicted_probabilities = ds.map_batches(TFPredictor, compute=scale)
 predicted_probabilities.show(limit=1)
 # [0.45119727]
 # __tf_quickstart_prediction_end__
