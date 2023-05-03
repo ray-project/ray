@@ -46,7 +46,7 @@ def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
     coverage_info = _collect_coverage(coverage_file)
     logger.info(coverage_info)
     if productionize:
-        s3_file_name = _persist_coverage_info(coverage_info)
+        s3_file_name = _persist_coverage_info(coverage_file)
         logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
     return 0
 
