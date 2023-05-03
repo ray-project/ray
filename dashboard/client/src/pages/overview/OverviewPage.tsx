@@ -71,7 +71,7 @@ export const OverviewPage = () => {
 
       <CollapsibleSection
         className={classes.section}
-        title="Autoscaler"
+        title="Cluster status and autoscaler"
         startExpanded
       >
         {

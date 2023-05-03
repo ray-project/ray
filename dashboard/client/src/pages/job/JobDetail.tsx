@@ -195,7 +195,7 @@ export const JobDetailChartsPage = () => {
       </CollapsibleSection>
 
       <CollapsibleSection
-        title="Autoscaler"
+        title="Cluster status and autoscaler"
         startExpanded
         className={classes.section}
       >
