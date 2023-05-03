@@ -967,7 +967,7 @@ def run(
             air_progress_reporter, TuneRichReporter
         ):
             stack.enter_context(air_progress_reporter.with_live())
-        else:
+        elif air_progress_reporter:
             air_progress_reporter.experiment_started(
                 experiment_name=runner._experiment_dir_name,
                 experiment_path=runner.experiment_path,
