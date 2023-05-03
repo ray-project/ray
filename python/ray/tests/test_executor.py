@@ -29,6 +29,17 @@ def test_remote_function_runs_multiple_tasks_on_local_instance():
         result1 = ex.submit(lambda x: x * x, 100).result()
         assert result0 == result1 == 10_000
 
+def test_order_retained():
+    def f(x, y):
+        return x * y
+
+    with RayExecutor() as ex:
+        r0 = list(ex.map(f, [100, 100, 100], [1, 2, 3]))
+    with RayExecutor(max_workers=2) as ex:
+        r1 = list(ex.map(f, [100, 100, 100], [1, 2, 3]))
+    assert r0 == r1
+
+
 
 def test_remote_function_runs_on_local_instance_with_map():
     with RayExecutor() as ex:
@@ -56,6 +67,16 @@ def test_remote_function_map_using_max_workers():
         # we expect about (12*1) / 3 = 4 rounds
         delta = time_end - time_start
         assert delta > 3.0
+
+def test_actor_pool_results_are_accessible_after_shutdown():
+    def f(x, y):
+        return x * y
+    with RayExecutor(max_workers=2) as ex:
+        r1 = ex.map(f, [100, 100, 100], [1, 2, 3])
+    try:
+        list(r1)
+    except AttributeError:
+        pytest.fail("Map results are not accessible after executor shutdown")
 
 
 def test_remote_function_max_workers_same_result():

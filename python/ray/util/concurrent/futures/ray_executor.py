@@ -246,6 +246,8 @@ class RayExecutor(Executor):
 
         if self._actor_pool is not None:
 
+            # The following generator is adapted from ray.util.ActorPool.map
+            # but includes a timeout
             def result_iterator() -> Iterator[T]:
                 assert self._actor_pool is not None
                 while self._actor_pool.has_next():
@@ -260,6 +262,12 @@ class RayExecutor(Executor):
                         return oref
 
                     self._actor_pool.submit(actor_fn, v)
+                    oref: "ObjectRef[T]" = self._actor_pool._index_to_future[
+                        self._actor_pool._next_task_index - 1
+                    ]
+                    future = oref.future()  # type: ignore[attr-defined]
+                    self.futures.append(future)
+                    del oref
                 while self._actor_pool.has_next():
                     if timeout is None:
                         yield self._actor_pool.get_next(timeout=None)
@@ -308,7 +316,9 @@ class RayExecutor(Executor):
                 futures. Futures that are completed or running will not be
                 cancelled.
         """
+        print(0, "shutdown")
         if self._shutdown_ray:
+            print(1, "shutdown")
             self._shutdown_lock = True
 
             if cancel_futures:
@@ -316,10 +326,13 @@ class RayExecutor(Executor):
                     _ = future.cancel()
 
             if wait:
+                print(2, "shutdown")
+                print(self.futures)
                 for future in self.futures:
                     if future.running():
                         _ = future.result()
 
+            print(4, "shutdown")
             ray.shutdown()
         del self.futures
         self.futures = []
