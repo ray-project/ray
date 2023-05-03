@@ -10,9 +10,7 @@ ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
 import ray
 
 ds = ray.data.range(1000)
-# -> Datastream(num_blocks=200, num_rows=1000, schema=<class 'int'>)
-ds.take(5)
-# -> [0, 1, 2, 3, 4]
+# -> Datastream(num_blocks=200, num_rows=1000, schema={id: int64})
 
 # Write out just one file.
 ds.repartition(1).write_parquet("/tmp/one_parquet")
@@ -31,9 +29,7 @@ ds.repartition(3).write_parquet("/tmp/multi_parquet")
 import ray
 
 ds = ray.data.range(1000)
-# -> Datastream(num_blocks=200, num_rows=1000, schema=<class 'int'>)
-ds.take(5)
-# -> [0, 1, 2, 3, 4]
+# -> Datastream(num_blocks=200, num_rows=1000, schema={id: int64})
 
 # Write out just one file.
 ds.repartition(1).write_csv("/tmp/one_csv")
@@ -52,9 +48,7 @@ ds.repartition(3).write_csv("/tmp/multi_csv")
 import ray
 
 ds = ray.data.range(1000)
-# -> Datastream(num_blocks=200, num_rows=1000, schema=<class 'int'>)
-ds.take(5)
-# -> [0, 1, 2, 3, 4]
+# -> Datastream(num_blocks=200, num_rows=1000, schema={id: int64})
 
 # Write out just one file.
 ds.repartition(1).write_json("/tmp/one_json")
@@ -77,11 +71,11 @@ ds = ray.data.from_numpy(np.arange(1000))
 # -> Datastream(
 #        num_blocks=1,
 #        num_rows=1000,
-#        schema={value: <ArrowTensorType: shape=(), dtype=int64>},
+#        schema={data: <ArrowTensorType: shape=(), dtype=int64>},
 #    )
 ds.show(2)
-# -> {'value': array(0)}
-# -> {'value': array(1)}
+# -> {'data': array(0)}
+# -> {'data': array(1)}
 
 # Write out just one file.
 ds.repartition(1).write_numpy("/tmp/one_numpy", column="data")
