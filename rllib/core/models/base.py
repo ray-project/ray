@@ -379,13 +379,13 @@ class ActorCriticEncoder(Encoder):
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        # if self.config.shared:
-        #     state_out_spec = self.encoder.output_specs[STATE_OUT]
-        # else:
-        #     state_out_spec = {
-        #         ACTOR: self.actor_encoder.output_specs[STATE_OUT],
-        #         CRITIC: self.critic_encoder.output_specs[STATE_OUT],
-        #     }
+        if self.config.shared:
+            state_out_spec = self.encoder.output_specs[STATE_OUT]
+        else:
+            state_out_spec = {
+                ACTOR: self.actor_encoder.output_specs[STATE_OUT],
+                CRITIC: self.critic_encoder.output_specs[STATE_OUT],
+            }
 
         return SpecDict(
             {
@@ -393,7 +393,7 @@ class ActorCriticEncoder(Encoder):
                     ACTOR: None,
                     CRITIC: None,
                 },
-                # STATE_OUT: state_out_spec,
+                STATE_OUT: state_out_spec,
             }
         )
 
@@ -413,7 +413,7 @@ class ActorCriticEncoder(Encoder):
             outs = self.encoder(inputs, **kwargs)
             return {
                 ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
-                # STATE_OUT: outs[STATE_OUT],
+                STATE_OUT: outs[STATE_OUT],
             }
         else:
             actor_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
@@ -426,8 +426,8 @@ class ActorCriticEncoder(Encoder):
                     ACTOR: actor_out[ENCODER_OUT],
                     CRITIC: critic_out[ENCODER_OUT],
                 },
-                # STATE_OUT: {
-                #    ACTOR: actor_out[STATE_OUT],
-                #    CRITIC: critic_out[STATE_OUT],
-                # },
+                STATE_OUT: {
+                    ACTOR: actor_out[STATE_OUT],
+                    CRITIC: critic_out[STATE_OUT],
+                },
             }
