@@ -358,8 +358,8 @@ class TunerInternal:
 
                 logger.warning(
                     "You are restoring a Tune experiment that was run with an older "
-                    "version of Ray. Note that backwards compatibility for experiment "
-                    "restoration will only be guaranteed for 2 minor versions."
+                    "version of Ray. Note that backwards compatibility of restoring "
+                    "this experiment will only be guaranteed until Ray 2.7."
                 )
 
                 old_trainable_name, flattened_param_space_keys = None, None
