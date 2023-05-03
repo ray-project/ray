@@ -13,7 +13,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.air.config import ScalingConfig, RunConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import TrainingFailedError
 import ray.train as train
@@ -323,6 +323,7 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
         except Exception as exc:
             exception = exc
 
+    # Raise exception after Ray cluster has been shutdown to avoid corrupted state
     if exception:
         raise exception
 
