@@ -154,6 +154,7 @@ prepare_docker() {
     EXPOSE 8000
     EXPOSE 10001
     RUN pip install /${wheel}[serve]
+    RUN pip install grpcio==1.50.0
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
