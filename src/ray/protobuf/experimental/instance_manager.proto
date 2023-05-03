@@ -116,7 +116,7 @@ message Instance {
 
 message UpdateInstanceManagerStateRequest {
   int64 expected_version = 1;
-  repeated InstanceType new_nodes_to_start = 2; 
+  repeated InstanceType new_nodes_to_start = 2;
   repeated string instance_ids_to_terminate = 3;
 }
 
@@ -127,22 +127,25 @@ message UpdateInstanceManagerStateReply {
 }
 
 message InstanceManagerState {
-    // a monotonically increasing version number.
-    // the version number is incremented whenever
-    // the state is updated (either by successful adjusting request,
-    // or instance state change).
-    int64 version = 1;
-    repeated Instance instances = 2;
+  // a monotonically increasing version number.
+  // the version number is incremented whenever
+  // the state is updated (either by successful adjusting request,
+  // or instance state change).
+  int64 version = 1;
+  repeated Instance instances = 2;
 }
 
 message GetInstanceManagerStateRequest {}
 
 message GetInstanceManagerStateReply {
-  InstanceManagerState state = 1; 
+  InstanceManagerState state = 1;
 }
 
 service InstanceManagerService {
-  rpc GetInstanceManagerState(GetInstanceManagerStateRequest) returns (GetInstanceManagerStateReply);
-  rpc UpdateInstanceManagerState(UpdateInstanceManagerStateRequest) returns (UpdateInstanceManagerStateReply);
-  rpc GetAvailableInstanceTypes(GetAvailableInstanceTypesRequest) returns (GetAvailableInstanceTypesResponse);
+  rpc GetInstanceManagerState(GetInstanceManagerStateRequest)
+      returns (GetInstanceManagerStateReply);
+  rpc UpdateInstanceManagerState(UpdateInstanceManagerStateRequest)
+      returns (UpdateInstanceManagerStateReply);
+  rpc GetAvailableInstanceTypes(GetAvailableInstanceTypesRequest)
+      returns (GetAvailableInstanceTypesResponse);
 }
