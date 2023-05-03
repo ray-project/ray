@@ -24,10 +24,10 @@ def test_compute_signature():
             [
                 "Traceback (most recent call last):",
                 '   File "/tmp/something", line 584',
-                "Exception: yaya45",
+                '   File "/tmp/another", deedeebeeaacfa-abc' "Exception: yaya45",
             ]
         )
-        == "somethingline Exception: yaya"
+        == "somethingline another-abcException: yaya"
     )
 
 
