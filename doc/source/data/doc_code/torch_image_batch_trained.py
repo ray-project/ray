@@ -2,6 +2,8 @@
 # isort: skip_file
 # fmt: off
 
+ray.init(num_gpus=4)
+
 # __pt_load_start__
 import ray
 
