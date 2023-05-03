@@ -81,7 +81,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
   const sortedApplicationsToRender = sortedApplications.map((app) => {
     return {
       title: app.name,
-      subtitle: app.route_prefix,
+      subtitle: app?.deployed_app_config?.import_path || "-",
       link: app.name ? `/serve/applications/${app.name}` : undefined,
       className: className,
       icon: <ServeStatusIcon className={classes.icon} app={app} small />,
@@ -90,7 +90,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
 
   return (
     <ListItemCard
-      headerTitle="Recent Applications"
+      headerTitle="Serve Applications"
       className={className}
       items={sortedApplicationsToRender}
       emptyListText="No Applications yet..."

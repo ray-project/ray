@@ -59,7 +59,7 @@ export const ListItemCard = ({
       <Typography variant="h3">{headerTitle}</Typography>
       <div className={classes.listContainer}>
         {items.map((item: ListItemProps) => (
-          <ListItem {...item} className={classes.listItem} />
+          <ListItem {...item} className={classes.listItem} key={item.title} />
         ))}
         {items.length === 0 && (
           <Typography variant="h4">{itemEmptyTip}</Typography>
