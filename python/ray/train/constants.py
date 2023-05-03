@@ -49,7 +49,11 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 # is restarted, the checkpoint_id can continue to increment.
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
-# Env var name
+
+# ==================================================
+#               Environment Variables
+# ==================================================
+
 ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
     "TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS"
 )
@@ -67,9 +71,8 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
 
+# NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
-    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
