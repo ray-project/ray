@@ -1,10 +1,19 @@
 from collections import deque
 import pathlib
 import socket
-from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
-
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
@@ -76,18 +85,18 @@ class LearnerGroup:
         learner_spec: LearnerSpec,
         max_queue_len: int = 20,
     ):
-        scaling_config = learner_spec.learner_scaling_config
+        scaling_config = learner_spec.learner_group_scaling_config
         learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        # explicit
+        #  explicit.
         self._is_local = scaling_config.num_workers == 0
         self._learner = None
         self._workers = None
-        # if a user calls self.shutdown() on their own then this flag is set to true.
+        # If a user calls self.shutdown() on their own then this flag is set to true.
         # When del is called the backend executor isn't shutdown twice if this flag is
         # true. the backend executor would otherwise log a warning to the console from
-        # ray train
+        # ray train.
         self._is_shut_down = False
 
         self._is_module_trainable = _is_module_trainable
@@ -114,9 +123,9 @@ class LearnerGroup:
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
-            # run the neural network building code on remote workers
+            # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
-            # use only 1 max in flight request per worker since training workers have to
+            # Use only 1 max in flight request per worker since training workers have to
             # be synchronously executed.
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
@@ -272,9 +281,9 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         **kwargs,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
@@ -291,7 +300,7 @@ class LearnerGroup:
         """
 
         if self.is_local:
-            results = [self._learner.additional_update(**kwargs)]
+            return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for worker in self._workers]

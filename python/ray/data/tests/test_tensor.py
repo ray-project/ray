@@ -17,6 +17,7 @@ from ray.data.extensions.tensor_extension import (
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 
 
 # https://github.com/ray-project/ray/issues/33695
@@ -39,28 +40,36 @@ def test_tensors_basic(ray_start_regular_shared):
         "Datastream(\n"
         "   num_blocks=6,\n"
         "   num_rows=6,\n"
-        "   schema={__value__: numpy.ndarray(shape=(3, 5), dtype=int64)}\n"
+        "   schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)}\n"
         ")"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
     # Test row iterator yields tensors.
     for tensor in ds.iter_rows():
+        tensor = tensor["data"]
         assert isinstance(tensor, np.ndarray)
         assert tensor.shape == tensor_shape
 
     # Test batch iterator yields tensors.
     for tensor in ds.iter_batches(batch_size=2):
+        tensor = tensor["data"]
         assert isinstance(tensor, np.ndarray)
         assert tensor.shape == (2,) + tensor_shape
 
     # Native format.
     def np_mapper(arr):
+        if "data" in arr:
+            arr = arr["data"]
+        else:
+            arr = arr["id"]
         assert isinstance(arr, np.ndarray)
-        return arr + 1
+        return {"data": arr + 1}
 
     res = ray.data.range_tensor(2, shape=(2, 2)).map(np_mapper).take()
-    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
+    np.testing.assert_equal(
+        extract_values("data", res), [np.ones((2, 2)), 2 * np.ones((2, 2))]
+    )
 
     # Explicit NumPy format.
     res = (
@@ -68,7 +77,9 @@ def test_tensors_basic(ray_start_regular_shared):
         .map_batches(np_mapper, batch_format="numpy")
         .take()
     )
-    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
+    np.testing.assert_equal(
+        extract_values("data", res), [np.ones((2, 2)), 2 * np.ones((2, 2))]
+    )
 
     # Pandas conversion.
     def pd_mapper(df):
@@ -76,7 +87,7 @@ def test_tensors_basic(ray_start_regular_shared):
         return df + 2
 
     res = ray.data.range_tensor(2).map_batches(pd_mapper, batch_format="pandas").take()
-    np.testing.assert_equal(res, [np.array([2]), np.array([3])])
+    np.testing.assert_equal(extract_values("data", res), [np.array([2]), np.array([3])])
 
     # Arrow columns in NumPy format.
     def multi_mapper(col_arrs):
@@ -99,7 +110,7 @@ def test_tensors_basic(ray_start_regular_shared):
         .take()
     )
     np.testing.assert_equal(
-        [r.as_pydict() for r in res],
+        res,
         [
             {"a": 2, "b": 5.0, "c": np.array([2, 3])},
             {"a": 3, "b": 6.0, "c": np.array([4, 5])},
@@ -121,7 +132,7 @@ def test_tensors_basic(ray_start_regular_shared):
         .take()
     )
     np.testing.assert_equal(
-        [r.as_pydict() for r in res],
+        res,
         [
             {"c": np.array([2, 3])},
             {"c": np.array([4, 5])},
@@ -156,7 +167,7 @@ def test_tensors_basic(ray_start_regular_shared):
         .take()
     )
     np.testing.assert_equal(
-        [r.as_pydict() for r in res],
+        res,
         [
             {"a": 2, "b": 5.0, "c": np.array([2, 3])},
             {"a": 3, "b": 6.0, "c": np.array([4, 5])},
@@ -178,7 +189,7 @@ def test_tensors_basic(ray_start_regular_shared):
         .take()
     )
     np.testing.assert_equal(
-        [r.as_pydict() for r in res],
+        res,
         [
             {"c": np.array([2, 3])},
             {"c": np.array([4, 5])},
@@ -189,31 +200,26 @@ def test_tensors_basic(ray_start_regular_shared):
     # Simple dataset in NumPy format.
     def mapper(arr):
         arr = np_mapper(arr)
-        return arr.tolist()
+        return arr
 
     res = (
         ray.data.range(10, parallelism=2)
         .map_batches(mapper, batch_format="numpy")
         .take()
     )
-    assert res == list(range(1, 11))
+    assert extract_values("data", res) == list(range(1, 11))
 
 
 def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = (
-        "MaterializedDatastream(\n"
-        "   num_blocks=40,\n"
-        "   num_rows=40,\n"
-        "   schema=<class 'torch.Tensor'>\n)"
-    )
+    res = "MaterializedDatastream(num_blocks=40, num_rows=40, schema={item: object})"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {"value"}
+    assert df.to_dict().keys() == {"item"}
 
 
 def test_tensors_shuffle(ray_start_regular_shared):
@@ -221,8 +227,8 @@ def test_tensors_shuffle(ray_start_regular_shared):
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape)
     shuffled_ds = ds.random_shuffle()
-    shuffled = shuffled_ds.take()
-    base = ds.take()
+    shuffled = extract_values("data", shuffled_ds.take())
+    base = extract_values("data", ds.take())
     np.testing.assert_raises(
         AssertionError,
         np.testing.assert_equal,
@@ -239,8 +245,8 @@ def test_tensors_shuffle(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape)
     ds = ds.map_batches(lambda df: df, batch_format="pandas")
     shuffled_ds = ds.random_shuffle()
-    shuffled = shuffled_ds.take()
-    base = ds.take()
+    shuffled = extract_values("data", shuffled_ds.take())
+    base = extract_values("data", ds.take())
     np.testing.assert_raises(
         AssertionError,
         np.testing.assert_equal,
@@ -291,39 +297,39 @@ def test_tensors_sort(ray_start_regular_shared):
 
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
-    ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
+    ds = ray.data.range(10, parallelism=10).map(lambda _: {"data": np.ones((4, 4))})
     ds = ds.materialize()
     assert str(ds) == (
         "MaterializedDatastream(\n"
         "   num_blocks=10,\n"
         "   num_rows=10,\n"
-        "   schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
+        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
         ")"
     )
 
     # Test map_batches.
     ds = ray.data.range(16, parallelism=4).map_batches(
-        lambda _: np.ones((3, 4, 4)), batch_size=2
+        lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
     assert str(ds) == (
         "MaterializedDatastream(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
-        "   schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
+        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
         ")"
     )
 
     # Test flat_map.
     ds = ray.data.range(10, parallelism=10).flat_map(
-        lambda _: [np.ones((4, 4)), np.ones((4, 4))]
+        lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
     assert str(ds) == (
         "MaterializedDatastream(\n"
         "   num_blocks=10,\n"
         "   num_rows=20,\n"
-        "   schema={__value__: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
+        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
         ")"
     )
 
@@ -547,7 +553,7 @@ def test_tensors_in_tables_pandas_roundtrip(
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
     ds = ray.data.from_pandas(df)
-    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2, batch_format="pandas")
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
@@ -568,7 +574,7 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
     ds = ray.data.from_pandas(df)
-    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2, batch_format="pandas")
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
@@ -586,7 +592,7 @@ def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path)
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
     ds = ray.data.from_pandas(df)
-    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2, batch_format="pandas")
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -607,7 +613,7 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
     ds = ray.data.from_pandas(df)
-    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2, batch_format="pandas")
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -759,7 +765,9 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
 
     ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
 
-    assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+    )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -793,7 +801,9 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         _block_udf=_block_udf,
     )
 
-    assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+    )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr + 1))
@@ -859,7 +869,7 @@ def test_tensors_in_tables_iter_batches(
         df.loc[:, "one"] = list(df["one"].to_numpy())
         df.loc[:, "two"] = list(df["two"].to_numpy())
     ds = ray.data.from_pandas([df1, df2])
-    batches = list(ds.iter_batches(batch_size=2))
+    batches = list(ds.iter_batches(batch_size=2, batch_format="pandas"))
     assert len(batches) == 3
     expected_batches = [df.iloc[:2], df.iloc[2:4], df.iloc[4:]]
     for batch, expected_batch in zip(batches, expected_batches):

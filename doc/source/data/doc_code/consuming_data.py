@@ -8,26 +8,21 @@ ds = ray.data.range(10000)
 
 # Take up to five records as a batch.
 print(ds.take(5))
-# -> [0, 1, 2, 3, 4]
+# -> [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
-# Similar to above but returning in a batch format (like iter_batches / map_batches).
-print(ds.take_batch(5, batch_format="pandas"))
-# -> value
-# 0      0
-# 1      1
-# 2      2
-# 3      3
-# 4      4
+# Similar to above but returning in a batch format.
+print(ds.take_batch(5))
+# -> {'id': array([0, 1, 2, 3, 4])}
 
 # Warning: This will print all of the rows!
 print(ds.take_all())
 
 ds.show(5)
-# -> 0
-#    1
-#    2
-#    3
-#    4
+# -> {'id': 0}
+#    {'id': 1}
+#    {'id': 2}
+#    {'id': 3}
+#    {'id': 4}
 # __take_end__
 # fmt: on
 
@@ -40,7 +35,7 @@ num_rows = 0
 
 # Consume all rows in the Datastream.
 for row in ds.iter_rows():
-    assert isinstance(row, int)
+    assert isinstance(row, dict)
     num_rows += 1
 
 print(num_rows)
@@ -58,7 +53,7 @@ num_batches = 0
 
 # Consume all batches in the Datastream.
 for batch in ds.iter_batches(batch_size=2):
-    assert isinstance(batch, list)
+    assert isinstance(batch, dict)
     num_batches += 1
 
 print(num_batches)
@@ -69,7 +64,7 @@ cum_sum = 0
 for batch in ds.iter_batches(batch_size=2, batch_format="pandas"):
     assert isinstance(batch, pd.DataFrame)
     # Simple integer Datastream is converted to a single-column Pandas DataFrame.
-    cum_sum += batch["value"]
+    cum_sum += batch["id"]
 print(cum_sum)
 # -> 49995000
 
@@ -81,11 +76,11 @@ print(cum_sum)
 import ray
 
 @ray.remote
-def consume(data: ray.data.Datastream[int]) -> int:
+def consume(data: ray.data.Datastream) -> int:
     num_batches = 0
     # Consume data in 2-record batches.
     for batch in data.iter_batches(batch_size=2):
-        assert len(batch) == 2
+        assert len(batch["id"]) == 2
         num_batches += 1
     return num_batches
 
@@ -106,7 +101,7 @@ class Worker:
     def train(self, shard: ray.data.DataIterator) -> int:
         total = 0
         for batch in shard.iter_torch_batches(batch_size=256):
-            total += len(batch)
+            total += len(batch["id"])
         return total
 
 workers = [Worker.remote(i) for i in range(4)]
