@@ -172,6 +172,9 @@ def output_with_format(
     format: AvailableFormat = AvailableFormat.DEFAULT,
     detail: bool = False,
 ) -> str:
+    # humanify all input state data
+    state_data = [schema.humanify(state) for state in state_data]
+
     if format == AvailableFormat.DEFAULT:
         return get_table_output(state_data, schema, detail)
     if format == AvailableFormat.YAML:
@@ -307,7 +310,7 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    state_data = [dataclasses.asdict(schema.humanify(state)) for state in state_data]
+    state_data = [dataclasses.asdict(state) for state in state_data]
     return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 

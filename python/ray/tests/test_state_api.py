@@ -1,4 +1,6 @@
+import datetime
 import os
+import re
 import time
 import json
 import sys
@@ -1973,6 +1975,53 @@ def test_cli_apis_sanity_check(ray_start_cluster):
             ray_list, ["tasks", "--address", "auto"], ["Stats:", "Table:", "TASK_ID"]
         )
     )
+
+    # json.loads(output_str_from_runner) does not work. So we use regular expression to parse the output and get a key.
+    def get_key(key: str, json_str: str):
+        # Define the regular expression pattern to match the value assigned to the key
+        pattern = r'{}:\s*([^"]+)'.format(key)
+
+        # Use re.search() to find the value assigned to the key
+        match = re.search(pattern, json_str)
+        if match:
+            # Extract the value from the match object
+            value = match.group(1)
+            val = value.split("\n")
+            print(val)
+            return val[0]
+        else:
+            print("Key not found")
+        return ""
+
+    def verify_correct_timestamp_format(ts_string):
+        expected_format = "%Y-%m-%d %H:%M:%S.%f"
+        # Parse the datetime string using the expected format
+        parsed_datetime = datetime.datetime.strptime(ts_string, expected_format)
+        # Format the parsed datetime back into a string using the expected format
+        formatted_datetime = parsed_datetime.strftime(expected_format)
+        # Compare the formatted datetime with the original string
+        return formatted_datetime == ts_string
+
+    def verify_correct_memory_format(mem_string: str):
+        # Check that the memory string is in the format of <int> GiB/MiB/KiB
+        return re.match(r"\d+\.\d+ [KMG]?iB", mem_string)
+
+    # Humanify function unit tests
+    output_task_str = runner.invoke(ray_get, ["tasks", task.task_id().hex()]).output
+    start_time = get_key("start_time_ms", output_task_str)
+    end_time = get_key("end_time_ms", output_task_str)
+    creation_time = get_key("creation_time_ms", output_task_str)
+
+    if start_time != "null":
+        assert verify_correct_timestamp_format(
+            get_key("start_time_ms", output_task_str)
+        )
+    if end_time != "null":
+        assert verify_correct_timestamp_format(get_key("end_time_ms", output_task_str))
+    if creation_time != "null":
+        assert verify_correct_timestamp_format(
+            get_key("creation_time_ms", output_task_str)
+        )
 
     # TODO(rickyyx:alpha-obs):
     # - get job by id: jobs is not currently filterable by id

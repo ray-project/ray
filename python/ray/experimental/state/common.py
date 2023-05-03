@@ -221,7 +221,6 @@ class StateSchema(ABC):
     def is_valid_state(cls, state: dict) -> bool:
         """Checks to make sure state has all keys in the current schema class."""
         cols = cls.list_columns(detail=True)
-        state = dataclasses.asdict(state)
         for col in cols:
             if col not in state:
                 return False
@@ -555,13 +554,28 @@ class Humanify:
         """Converts miliseconds to a datetime object."""
         return datetime.datetime.fromtimestamp(x / 1000)
 
-    def memory(x: int):
-        """Converts raw bytes to megabytes"""
-        return str(x / 1e6) + " MB"
+    def to_MiB(x: int):
+        """Converts raw bytes to mebibyte."""
+        return str(x / (2**20)) + " MiB"
+
+    def to_KiB(x: int):
+        """Converts raw bytes to kibibyte."""
+        return str(x / (2**10)) + " KiB"
+
+    def to_GiB(x: int):
+        """Converts raw bytes to gibibyte."""
+        return str(x / (2**30)) + " GiB"
 
     def duration(x: int):
         """Converts miliseconds to a human readable duration."""
         return str(datetime.timedelta(milliseconds=x))
+
+    def events(events: List[dict]):
+        """Converts a list of task events into a human readable format."""
+        for event in events:
+            if "created_ms" in event:
+                event["created_ms"] = Humanify.timestamp(event["created_ms"])
+        return events
 
 
 @dataclass(init=True)
@@ -623,9 +637,7 @@ class TaskState(StateSchema):
         detail=True, filterable=False, metadata={"format_fn": Humanify.events}
     )
     #: The list of profile events of the given task.
-    profiling_data: Optional[dict] = state_column(
-        detail=True, filterable=False, metadata={"format_fn": Humanify.profiliing_data}
-    )
+    profiling_data: Optional[dict] = state_column(detail=True, filterable=False)
     #: The time when the task is created. A Unix timestamp in ms.
     creation_time_ms: Optional[int] = state_column(
         detail=True,
