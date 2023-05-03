@@ -362,7 +362,6 @@ ray._private.utils.push_error_to_driver(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.skipif(sys.version_info < (3, 7), reason="requires python3.7+")
 def test_disable_driver_logs_breakpoint():
     script = """
 import time

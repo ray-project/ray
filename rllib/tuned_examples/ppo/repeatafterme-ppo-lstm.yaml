@@ -3,7 +3,7 @@ repeat-after-me-ppo-w-lstm:
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
     run: PPO
     stop:
-        episode_reward_mean: 50
+        sampler_results/episode_reward_mean: 50
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

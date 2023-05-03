@@ -84,7 +84,9 @@ class TestCatalog(unittest.TestCase):
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
         tree.map_structure_with_path(
-            lambda p, v: self.assertEqual(v.shape, states[p].shape),
+            lambda p, v: (
+                self.assertEqual(v.shape, states[p].shape) if v is not None else True
+            ),
             outputs[STATE_OUT],
         )
 
@@ -176,9 +178,6 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf2":
-                # TODO (Artur): Enable this once we have TF implementations
-                continue
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
                 f"and config: \n{model_config_dict}\n"
@@ -201,8 +200,8 @@ class TestCatalog(unittest.TestCase):
             # Do a forward pass and check if the output has the correct shape
             self._check_model_outputs(model, framework, model_config_dict, input_space)
 
-        # TODO(Artur): Add support for composite spaces and test here
-        # Today, Catalog does not handle composite spaces, so we can't test them
+        # TODO(Artur): Add support for composite spaces and test here.
+        #  Today, Catalog does not handle composite spaces, so we can't test them.
 
     def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.
@@ -425,11 +424,11 @@ class TestCatalog(unittest.TestCase):
 
         class MyCostumTorchEncoderConfig(ModelConfig):
             def build(self, framework):
-                return MyCostumTorchEncoder()
+                return MyCostumTorchEncoder(self)
 
         class MyCostumTorchEncoder(TorchModel, Encoder):
-            def __init__(self):
-                super().__init__({})
+            def __init__(self, config):
+                super().__init__(config)
                 self.net = torch.nn.Linear(env.observation_space.shape[0], 10)
 
             def _forward(self, input_dict, **kwargs):

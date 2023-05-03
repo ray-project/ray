@@ -2,7 +2,7 @@ frozenlake-appo-vtrace:
     env: FrozenLake-v1
     run: APPO
     stop:
-        episode_reward_mean: 0.99
+        sampler_results/episode_reward_mean: 0.99
         timesteps_total: 1000000
     config:
         # Works for both torch and tf.

@@ -120,7 +120,7 @@ class LogsManager:
         pid: Optional[str],
         get_actor_fn: Callable[[str], Dict],
         timeout: int,
-        suffix: Optional[str] = None,
+        suffix: str = "out",
     ) -> Tuple[str, str]:
         """Return the file name given all options.
 
@@ -134,11 +134,8 @@ class LogsManager:
             timeout: Timeout for the gRPC to listing logs on the node
                 specified by `node_id`.
             suffix: Log suffix if no `log_filename` is provided, when
-                resolving by other ids'.
+                resolving by other ids'. Default to "out".
         """
-        if suffix is None:
-            suffix = ""
-
         if actor_id:
             actor_data = get_actor_fn(actor_id)
             if actor_data is None:

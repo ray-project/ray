@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from ray.tune.search import BasicVariantGenerator, Searcher
 
 AIR_TRAINERS = {
+    "AccelerateTrainer",
     "HorovodTrainer",
     "HuggingFaceTrainer",
     "LightGBMTrainer",

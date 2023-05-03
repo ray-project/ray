@@ -1210,11 +1210,16 @@ class ModelChecker:
         if isinstance(model.input_specs, SpecDict):
             inputs = {}
             for key, spec in model.input_specs.items():
-                key = key[0]
+                dict_ = inputs
+                for i, sub_key in enumerate(key):
+                    if sub_key not in dict_:
+                        dict_[sub_key] = {}
+                    if i < len(key) - 1:
+                        dict_ = dict_[sub_key]
                 if spec is not None:
-                    inputs[key] = spec.fill(self.random_fill_input_value)
+                    dict_[sub_key] = spec.fill(self.random_fill_input_value)
                 else:
-                    inputs[key] = None
+                    dict_[sub_key] = None
         else:
             inputs = model.input_specs.fill(self.random_fill_input_value)
 

@@ -137,7 +137,7 @@ def train_tensorflow_mnist(
     return results
 
 
-def predict_tensorflow_mnist(result: Result) -> ray.data.Dataset:
+def predict_tensorflow_mnist(result: Result) -> ray.data.Datastream:
     test_dataset = get_dataset(split_type="test")
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model

@@ -12,15 +12,13 @@ EOF
 chmod +x /usr/bin/nproc
 
 NODE_VERSION="14"
-PYTHONS=("cp36-cp36m"
-         "cp37-cp37m"
+PYTHONS=("cp37-cp37m"
          "cp38-cp38"
          "cp39-cp39"
          "cp310-cp310"
          "cp311-cp311")
 
 NUMPY_VERSIONS=("1.14.5"
-                "1.14.5"
                 "1.14.5"
                 "1.19.3"
                 "1.22.0"
@@ -71,8 +69,8 @@ pushd python/ray/dashboard/client
 popd
 set -x
 
-# Add the repo folder to the safe.dictory global variable to avoid the failure 
-# because of secruity check from git, when executing the following command 
+# Add the repo folder to the safe.dictory global variable to avoid the failure
+# because of secruity check from git, when executing the following command
 # `git clean ...`,  while building wheel locally.
 git config --global --add safe.directory /ray
 

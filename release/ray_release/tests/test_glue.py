@@ -44,7 +44,6 @@ from ray_release.glue import (
     run_release_test,
     type_str_to_command_runner,
     command_runner_to_cluster_manager,
-    command_runner_to_file_manager,
     TIMEOUT_BUFFER_MINUTES,
 )
 from ray_release.logger import logger
@@ -161,7 +160,6 @@ class GlueTest(unittest.TestCase):
 
         type_str_to_command_runner["unit_test"] = MockCommandRunner
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
-        command_runner_to_file_manager[MockCommandRunner] = MockFileManager
 
         self.test = Test(
             name="unit_test_end_to_end",
@@ -638,7 +636,6 @@ class GlueTest(unittest.TestCase):
             self.assertTrue(any("Error fetching logs" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "finished")
-        self.assertIn("No logs", result.last_logs)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)

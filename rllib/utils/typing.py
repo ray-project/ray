@@ -23,14 +23,18 @@ if TYPE_CHECKING:
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
-    from ray.rllib.utils import try_import_tf, try_import_torch
+    from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
+    jax, _ = try_import_jax()
+    jnp = None
+    if jax is not None:
+        jnp = jax.numpy
 
 # Represents a generic tensor type.
 # This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Union[np.array, "tf.Tensor", "torch.Tensor"]
+TensorType = Union[np.array, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]

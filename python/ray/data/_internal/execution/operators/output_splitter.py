@@ -21,7 +21,7 @@ class OutputSplitter(PhysicalOperator):
     The output bundles of this operator will have a `bundle.output_split_idx` attr
     set to an integer from [0..n-1]. This operator tries to divide the rows evenly
     across output splits. If the `equal` option is set, the operator will furthermore
-    guarantee an exact split of rows across outputs, truncating the Dataset as needed.
+    guarantee an exact split of rows across outputs, truncating the Datastream.
 
     Implementation wise, this operator keeps an internal buffer of bundles. The buffer
     has a minimum size calculated to enable a good locality hit rate, as well as ensure

@@ -1,7 +1,7 @@
 .. _random-access-dataset-api:
 
-(Experimental) RandomAccessDataset API
-======================================
+RandomAccessDataset (experimental)
+==================================
 
 .. currentmodule:: ray.data
 
