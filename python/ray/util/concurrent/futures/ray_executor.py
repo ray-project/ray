@@ -96,8 +96,12 @@ class RayExecutor(Executor):
                     f"`max_workers={max_workers}` is given. The argument \
                     `max_workers` must be >= 1"
                 )
-            self.max_workers = max_workers
-            kwargs["num_cpus"] = max_workers
+            if ray.is_initialized():
+                cpus = ray.available_resources()['CPU']
+                print(f"Ray instance exists with {cpus} CPUs. max_workers={max_workers} is ignored.")
+            else:
+                self.max_workers = max_workers
+                kwargs["num_cpus"] = max_workers
         self._context = ray.init(ignore_reinit_error=True, **kwargs)
 
     def submit(
