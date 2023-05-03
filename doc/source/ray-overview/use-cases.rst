@@ -118,7 +118,7 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
     ---
     :img-top: /images/ray_logo.png
 
-    .. link-button:: /data/batch-inference
+    .. link-button:: /data/batch_inference
         :type: ref
         :text: [User Guide] Batch Inference with Ray Data
         :classes: btn-link btn-block stretched-link
