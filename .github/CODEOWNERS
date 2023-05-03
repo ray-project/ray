@@ -24,6 +24,7 @@
 
 # Autoscaler
 /python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl
+/python/ray/autoscaler/v2/ @ray-project/ray-core
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
