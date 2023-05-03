@@ -3,6 +3,7 @@ import os
 import sys
 
 import pytest  # noqa
+
 from ray.autoscaler.v2.instance_manager.storage import (
     InMemoryStorage,
     StoreStatus,
