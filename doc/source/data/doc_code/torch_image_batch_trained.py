@@ -2,10 +2,10 @@
 # isort: skip_file
 # fmt: off
 
-ray.init(num_gpus=4)
-
 # __pt_load_start__
 import ray
+
+ray.init(num_gpus=4)
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"  # <1>
 ds = ray.data.read_images(data_url).limit(1000)  # <2>
