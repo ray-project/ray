@@ -12,10 +12,12 @@ from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
+
 def get_import_export_timeout():
-    return int(os.environ.get(
-        ray_constants.RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_KEY, "60")
+    return int(
+        os.environ.get(ray_constants.RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_KEY, "60")
     )
+
 
 def _decode_function_key(key: bytes) -> str:
     return base64.b64encode(key).decode()
@@ -52,15 +54,14 @@ def upload_worker_setup_hook_if_needed(
 
     if not isinstance(setup_func, Callable):
         raise TypeError(
-            "worker_setup_hook must be a function, "
-            f"got {type(setup_func)}."
+            "worker_setup_hook must be a function, " f"got {type(setup_func)}."
         )
     # TODO(sang): Support modules.
-    
+
     try:
         key = worker.function_actor_manager.export_setup_func(
-            setup_func,
-            timeout=get_import_export_timeout())
+            setup_func, timeout=get_import_export_timeout()
+        )
     except Exception as e:
         raise ray.exceptions.RuntimeEnvSetupError(
             "Failed to export the setup function."
@@ -80,10 +81,12 @@ def upload_worker_setup_hook_if_needed(
     return runtime_env
 
 
-def load_and_execute_setup_hook(worker_setup_hook_key: str) -> Tuple[bool, Optional[str]]:
+def load_and_execute_setup_hook(
+    worker_setup_hook_key: str,
+) -> Tuple[bool, Optional[str]]:
     """Load the setup hook from a given key and execute.
-    
-    Args:   
+
+    Args:
         worker_setup_hook_key: The key to import the setup hook
             from GCS.
     Returns:
@@ -97,30 +100,32 @@ def load_and_execute_setup_hook(worker_setup_hook_key: str) -> Tuple[bool, Optio
     try:
         worker_setup_func_info = func_manager.fetch_registsered_method(
             _encode_function_key(worker_setup_hook_key),
-            timeout=get_import_export_timeout()
+            timeout=get_import_export_timeout(),
         )
     except Exception:
         error_message = (
             "Failed to import setup hook within "
             f"{get_import_export_timeout()} seconds.\n"
-            f"{traceback.format_exc()}")
+            f"{traceback.format_exc()}"
+        )
         return False, error_message
 
     try:
         setup_func = pickle.loads(worker_setup_func_info.function)
     except Exception:
         error_message = (
-            "Failed to deserialize the setup hook method.\n"
-            f"{traceback.format_exc()}")
+            "Failed to deserialize the setup hook method.\n" f"{traceback.format_exc()}"
+        )
         return False, error_message
-    
+
     try:
         setup_func()
     except Exception:
         error_message = (
             f"Failed to execute the setup hook method. Function name:"
             f"{worker_setup_func_info.function_name}\n"
-            f"{traceback.format_exc()}")
+            f"{traceback.format_exc()}"
+        )
         return False, error_message
 
     return True, None

@@ -1,5 +1,4 @@
 import atexit
-import base64
 import faulthandler
 import functools
 import hashlib

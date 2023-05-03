@@ -6,7 +6,6 @@ import logging
 import pytest
 
 import ray
-from ray import ray_constants
 
 
 def test_setup_func_basic(shutdown_only):
