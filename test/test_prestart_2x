@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+./test_prestart
+sleep 5
+./test_prestart

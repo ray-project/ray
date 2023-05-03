@@ -58,12 +58,17 @@ size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
         (size_t)std::min(max_starting_size_, (size_t)std::max((size_t)0, to_add));
     return to_add_capped;
   } else {
-    size_t num_available_cpus = 64;  // TODO
+    size_t max_cpu = 64;
+    size_t num_available_cpus = std::max<size_t>(max_cpu - running_size, 0);  // TODO
     auto num_usable_workers = idle_size + starting_size;
     auto num_desired_workers = std::min<size_t>(prestart_requests_, num_available_cpus);
-    auto num_missing_workers = num_desired_workers - num_usable_workers;
 
-    auto num_to_create = std::max<size_t>(num_missing_workers, 0);
+    size_t num_to_create = 0;
+    if (num_desired_workers > num_usable_workers) {
+        auto num_missing_workers = num_desired_workers - num_usable_workers;
+        num_to_create = num_missing_workers;
+    }
+
     // this->prestart_requests_ -= num_to_create;
     this->prestart_requests_ = 0;
     return num_to_create;
@@ -267,6 +272,7 @@ void FutureIdlePoolSizePolicy::OnDriverRegistered() {
     return;
   }
 
+  this->prestart_requests_ += 64; // num_prestart_python_workers
   desired_cache_size_ = 64;
 }
 

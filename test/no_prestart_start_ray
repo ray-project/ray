@@ -4,6 +4,6 @@ ray stop --force
 
 ulimit -n 65536 && \
     RAY_BACKEND_LOG_LEVEL=debug \
-    RAY_prestart_worker_first_driver=false \
+    RAY_prestart_worker_first_driver=true \
     RAY_enable_worker_prestart=false \
     ray start --head --port=6379 --dashboard-port=8265 --no-monitor --redis-password='' --object-manager-port=8076 --node-manager-port=8912 --metrics-export-port=8085 --dashboard-agent-listen-port=52365 --dashboard-agent-grpc-port=6823

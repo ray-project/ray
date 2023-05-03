@@ -30,3 +30,7 @@ while True:
     except psutil.NoSuchProcess:
         pass
     time.sleep(0.01)
+
+    #if start_time != -1 and count == 0:
+    #    print('10.00 0')
+    #    break

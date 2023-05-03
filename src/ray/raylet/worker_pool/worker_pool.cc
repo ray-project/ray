@@ -179,6 +179,7 @@ void WorkerPool::MaybeRefillIdlePool(bool create, bool kill) {
   // TODO add num_prestart_python_workers_
 
   if (create) {
+    // Num running doesn't include pending exit.
     size_t num_idle_workers_to_create = cache_size_policy_->GetNumIdleProcsToCreate(
         idle_of_all_languages_.size(), GetNumRunningWorkers(), GetNumStartingWorkers());
 
