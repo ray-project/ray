@@ -43,7 +43,7 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job, sdk_command].
+#    # Type of test. Can be [anyscale_job]
 #    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
 #    # run the actual release test.
 #    type: anyscale_job

@@ -424,11 +424,11 @@ class TestCatalog(unittest.TestCase):
 
         class MyCostumTorchEncoderConfig(ModelConfig):
             def build(self, framework):
-                return MyCostumTorchEncoder()
+                return MyCostumTorchEncoder(self)
 
         class MyCostumTorchEncoder(TorchModel, Encoder):
-            def __init__(self):
-                super().__init__({})
+            def __init__(self, config):
+                super().__init__(config)
                 self.net = torch.nn.Linear(env.observation_space.shape[0], 10)
 
             def _forward(self, input_dict, **kwargs):
