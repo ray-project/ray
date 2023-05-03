@@ -2,15 +2,15 @@ import time
 from concurrent.futures import Executor, Future
 from functools import partial
 from typing import (
-    Callable,
-    Optional,
-    List,
     Any,
-    TypeVar,
-    ParamSpec,
+    Callable,
     Iterable,
     Iterator,
+    List,
+    Optional,
+    ParamSpec,
     TYPE_CHECKING,
+    TypeVar,
 )
 
 import ray
@@ -28,7 +28,7 @@ P = ParamSpec("P")
 # ------------------------------------------------------
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="alpha")  # type: ignore
 class RayExecutor(Executor):
     """`RayExecutor` is a drop-in replacement for `ProcessPoolExecutor` and
     `ThreadPoolExecutor` from `concurrent.futures` but distributes and executes
@@ -55,7 +55,10 @@ class RayExecutor(Executor):
     """
 
     def __init__(
-        self, max_workers: Optional[int] = None, shutdown_ray: bool = True, **kwargs
+        self,
+        max_workers: Optional[int] = None,
+        shutdown_ray: bool = True,
+        **kwargs: Any,
     ):
 
         """
@@ -81,14 +84,14 @@ class RayExecutor(Executor):
 
         self._shutdown_ray: bool = shutdown_ray
         self._shutdown_lock: bool = False
-        self.futures: List[Future] = []
+        self.futures: List[Future[Any]] = []
         self._context: "Optional[BaseContext]" = None
 
         @ray.remote
         def remote_fn(fn: Callable[[], T]) -> T:
             return fn()
 
-        self.__remote_fn: "RemoteFunction0" = remote_fn
+        self.__remote_fn: RemoteFunction0[Any, Callable[[], Any]] = remote_fn
 
         if max_workers is not None:
             if max_workers < 1:
@@ -97,8 +100,11 @@ class RayExecutor(Executor):
                     `max_workers` must be >= 1"
                 )
             if ray.is_initialized():
-                cpus = ray.available_resources()['CPU']
-                print(f"Ray instance exists with {cpus} CPUs. max_workers={max_workers} is ignored.")
+                cpus = ray.available_resources()["CPU"]
+                print(
+                    f"Ray instance exists with {cpus} CPUs. \
+                    `max_workers={max_workers}` is ignored."
+                )
             else:
                 self.max_workers = max_workers
                 kwargs["num_cpus"] = max_workers
@@ -129,7 +135,7 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         fn_curried = partial(fn, *args, **kwargs)
 
-        future = (
+        future: Future[T] = (
             self.__remote_fn.options(name=fn.__name__)  # type: ignore
             .remote(fn_curried)
             .future()
@@ -210,7 +216,7 @@ class RayExecutor(Executor):
 
         # Yield must be hidden in closure so that the futures are submitted
         # before the first iterator value is required.
-        def result_iterator():
+        def result_iterator() -> Iterator[T]:
             try:
                 # reverse to keep finishing order
                 fs.reverse()

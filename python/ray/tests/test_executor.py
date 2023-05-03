@@ -16,10 +16,11 @@ def test_remote_function_runs_on_local_instance():
         result = ex.submit(lambda x: x * x, 100).result()
         assert result == 10_000
 
+
 def test_existing_instance_ignores_max_workers():
     _ = ray.init(num_cpus=1)
-    with RayExecutor(max_workers=2) as ex:
-        assert ray.available_resources()['CPU'] == 1
+    with RayExecutor(max_workers=2):
+        assert ray.available_resources()["CPU"] == 1
 
 
 def test_remote_function_runs_multiple_tasks_on_local_instance():
