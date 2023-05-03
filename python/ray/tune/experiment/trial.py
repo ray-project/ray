@@ -988,6 +988,7 @@ class Trial:
         """Handles restoration completion."""
         assert self.is_restoring
         self.last_result = self.restoring_from.metrics
+        self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0
         self.invalidate_json_state()
