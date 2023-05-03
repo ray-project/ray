@@ -121,7 +121,7 @@ Common File Formats
 
       Read NumPy files and directories. The NumPy data is represented as ndarrays.
       For more information on working with ndarrays, read
-      :ref:`Working with ndarrays <working_with_ndarrays>`.
+      :ref:`Working with array-like data <working_with_ndarrays>`.
 
       .. literalinclude:: ./doc_code/loading_data.py
         :language: python
@@ -146,7 +146,7 @@ Common File Formats
       Call :func:`~ray.data.read_images` to read images.
 
       This function represents images as ndarrays. For more information on working with
-      ndarrays, read :ref:`Working with ndarrays <working_with_ndarrays>`.
+      ndarrays, read :ref:`Working with array-like data <working_with_ndarrays>`.
 
       .. literalinclude:: ./doc_code/loading_data.py
         :language: python
