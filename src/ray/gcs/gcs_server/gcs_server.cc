@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
+#include <future>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -33,6 +34,7 @@
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {
@@ -61,6 +63,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
+                           ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
@@ -81,10 +84,15 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
 
+  // Init KV Manager
+  InitKVManager();
+  CacheAndSetClusterId();
+
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
     this->main_service_.stop();
   };
+
   ray::rpc::StoredConfig stored_config;
   stored_config.set_config(config_.raylet_config_list);
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(
@@ -140,6 +148,31 @@ void GcsServer::Start() {
   gcs_init_data->AsyncLoad([this, gcs_init_data] { DoStart(*gcs_init_data); });
 }
 
+void GcsServer::CacheAndSetClusterId() {
+  static std::string const kTokenNamespace = "cluster";
+  kv_manager_->GetInstance().Get(
+      kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
+        if (!token.has_value()) {
+          ClusterID cluster_id = ClusterID::FromRandom();
+          RAY_LOG(INFO) << "No existing server token found. Generating new token: "
+                        << cluster_id.Hex();
+          kv_manager_->GetInstance().Put(kTokenNamespace,
+                                         kClusterIdKey,
+                                         cluster_id.Binary(),
+                                         false,
+                                         [this, &cluster_id](bool added_entry) mutable {
+                                           RAY_CHECK(added_entry)
+                                               << "Failed to persist new token!";
+                                           rpc_server_.SetClusterId(cluster_id);
+                                         });
+        } else {
+          ClusterID cluster_id = ClusterID::FromBinary(token.value());
+          RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
+          rpc_server_.SetClusterId(cluster_id);
+        }
+      });
+}
+
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
@@ -158,9 +191,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
-
-  // Init KV Manager
-  InitKVManager();
 
   // Init function manager
   InitFunctionManager();
@@ -207,7 +237,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
-
   RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
@@ -264,8 +293,9 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  auto cluster_id = rpc_server_.GetClusterId();
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
+      gcs_publisher_, gcs_table_storage_, raylet_client_pool_, cluster_id);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -520,6 +550,9 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
+  // Note: We pass in cluster_id here to avoid deadlock during server init.
+  // This can occur since main_service_ is not started, and so the GetClusterId RPC from
+  // GCS client inside the UsageStatsClient will not be answered by GCS server.
   usage_stats_client_ = std::make_unique<UsageStatsClient>(
       "127.0.0.1:" + std::to_string(GetPort()), main_service_);
 }

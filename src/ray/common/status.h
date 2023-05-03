@@ -116,7 +116,7 @@ enum class StatusCode : char {
   RpcError = 30,
   OutOfResource = 31,
   // Meaning the ObjectRefStream reaches to the end of stream.
-  ObjectRefEndOfStream = 32
+  ObjectRefEndOfStream = 32,
 };
 
 #if defined(__clang__)
