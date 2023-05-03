@@ -1053,7 +1053,7 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         assert not Tuner.can_restore(tmp_path / "new_exp")
 
 
-def testParamSpaceOverwriteValidation(tmp_path):
+def testParamSpaceOverwriteValidation(ray_start_4_cpus, tmp_path):
     """Check that validation on restore fails if we try adding or removing
     hyperparameters to the param_space."""
     name = "test_param_space_valid"
@@ -1086,7 +1086,7 @@ def testParamSpaceOverwriteValidation(tmp_path):
     )
 
 
-def testParamSpaceOverwrite(tmp_path, monkeypatch):
+def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
     """Test that overwriting param space on restore propagates new refs to existing
     trials and newly generated trials."""
 
