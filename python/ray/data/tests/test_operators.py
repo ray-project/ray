@@ -5,6 +5,7 @@ import pytest
 import numpy as np
 from typing import List, Iterable, Any
 import time
+from unittest.mock import MagicMock
 
 import ray
 from ray.data.block import Block
@@ -15,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _BlockRefBundler,
@@ -586,6 +588,55 @@ def test_map_operator_pool_delegation(compute, expected):
         compute_strategy=compute,
     )
     assert isinstance(op, expected)
+
+
+def test_limit_operator(ray_start_regular_shared):
+    """Test basic functionalities of LimitOperator."""
+    num_refs = 3
+    num_rows_per_block = 3
+    total_rows = num_refs * num_rows_per_block
+    # Test limits with different values, from 0 to more than input size.
+    limits = list(range(0, total_rows + 2))
+    for limit in limits:
+        refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
+        input_op = InputDataBuffer(refs)
+        limit_op = LimitOperator(limit, input_op)
+        limit_op.inputs_done = MagicMock(wraps=limit_op.inputs_done)
+        if limit == 0:
+            # If the limit is 0, the operator should be completed immediately.
+            assert limit_op.completed()
+            assert limit_op._limit_reached()
+        else:
+            # The number of output bundles is unknown until
+            # inputs are completed.
+            assert limit_op.num_outputs_total() is None, limit
+        cur_rows = 0
+        loop_count = 0
+        while input_op.has_next() and not limit_op._limit_reached():
+            loop_count += 1
+            assert not limit_op.completed(), limit
+            assert limit_op.need_more_inputs(), limit
+            limit_op.add_input(input_op.get_next(), 0)
+            while limit_op.has_next():
+                # Drain the outputs. So the limit operator
+                # will be completed when the limit is reached.
+                limit_op.get_next()
+            cur_rows += num_rows_per_block
+            if cur_rows >= limit:
+                assert limit_op.inputs_done.call_count == 1, limit
+                assert limit_op.completed(), limit
+                assert limit_op._limit_reached(), limit
+                assert not limit_op.need_more_inputs(), limit
+            else:
+                assert limit_op.inputs_done.call_count == 0, limit
+                assert not limit_op.completed(), limit
+                assert not limit_op._limit_reached(), limit
+                assert limit_op.need_more_inputs(), limit
+        limit_op.inputs_done()
+        # After inputs done, the number of output bundles
+        # should be the same as the number of `add_input`s.
+        assert limit_op.num_outputs_total() == loop_count, limit
+        assert limit_op.completed(), limit
 
 
 def _get_bundles(bundle: RefBundle):
