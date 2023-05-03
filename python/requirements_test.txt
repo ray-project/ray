@@ -86,9 +86,9 @@ pytest-forked==1.4.0
 polars==0.14.21
 
 # ale-py requires 4.10.0. It's also compatible with flake8.
-# It's not compatible with mosaicml though
+# It's not compatible with mosaicml though. Try to remove once
+# we are at Python 3.8
 importlib-metadata==4.10.0
-botocore==1.27.59
 
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
