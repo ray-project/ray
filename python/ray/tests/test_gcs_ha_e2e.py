@@ -36,6 +36,11 @@ class Container(wrappers.Container):
         port = self.ports["8000/tcp"][0]
         return HTTPConnection(f"localhost:{port}")
 
+    def print_logs(self):
+        for (name, content) in self.get_files("/tmp"):
+            print(f"===== log start:  {name} ====")
+            print(content.decode())
+
 
 gcs_network = network(driver="bridge")
 
@@ -66,7 +71,7 @@ head_node = container(
         "--node-manager-port",
         "9379",
     ],
-    volumes={ "{head_node_vol.name}": {'bind': "/tmp", 'mode': 'rw'}},
+    volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
@@ -88,7 +93,7 @@ worker_node = container(
         "--node-manager-port",
         "9379",
     ],
-    volumes={ "{worker_node_vol.name}": {'bind': "/tmp", 'mode': 'rw'}},
+    volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
