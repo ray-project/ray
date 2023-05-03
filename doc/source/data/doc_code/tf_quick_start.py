@@ -27,6 +27,10 @@ class TFPredictor:
 
 
 # __tf_quickstart_prediction_start__
+tfp = TFPredictor()
+batch = ds.take_batch(10)
+test = tfp(batch)
+
 scale = ray.data.ActorPoolStrategy(size=2)
 
 predicted_probabilities = ds.map_batches(TFPredictor, compute=scale)

@@ -33,6 +33,10 @@ class TorchPredictor:
 
 
 # __pt_quickstart_prediction_start__
+tp = TorchPredictor()
+batch = ds.take_batch(10)
+test = tp(batch)
+
 scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(TorchPredictor, compute=scale)
 predictions.show(limit=1)

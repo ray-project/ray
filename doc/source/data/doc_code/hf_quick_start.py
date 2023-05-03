@@ -25,6 +25,10 @@ class HuggingFacePredictor:
 
 
 # __hf_quickstart_prediction_start__
+hfp = HuggingFacePredictor()
+batch = ds.take_batch(10)
+test = hfp(batch)
+
 scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
 

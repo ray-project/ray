@@ -10,6 +10,9 @@ ds = ray.data.read_csv("example://iris.csv")
 def map_function(data):
     return data[data["sepal.length"] < 5]
 
+batch = ds.take_batch(10)
+mapped_batch = map_function(batch)
+
 transformed = ds.map_batches(map_function, batch_format="pandas", batch_size=10)
 # __simple_map_function_end__
 
@@ -32,14 +35,23 @@ ds.map_batches(transform_pandas, batch_format="pandas").show(1)
 # __simple_pandas_end__
 
 # __simple_numpy_start__
+from typing import Dict
+
 import ray
 import numpy as np
 from typing import Dict
 
+
 ds = ray.data.range_tensor(1000, shape=(2, 2))
 
 def transform_numpy(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    return {"data": arr["data"] * 2}
+    arr["data"] = arr["data"] * 2
+    return arr
+
+
+# test map function on a batch
+batch = ds.take_batch(1)
+mapped_batch = transform_numpy(batch)
 
 ds.map_batches(transform_numpy)
 # __simple_numpy_end__
@@ -52,9 +64,15 @@ import pyarrow.compute as pac
 
 ds = ray.data.read_csv("example://iris.csv")
 
+
 def transform_pyarrow(batch: pa.Table) -> pa.Table:
     batch = batch.filter(pac.equal(batch["variety"], "Versicolor"))
     return batch.drop(["sepal.length"])
+
+
+# test map function on a batch
+batch = ds.take_batch(1)
+mapped_batch = transform_pyarrow(batch)
 
 ds.map_batches(transform_pyarrow, batch_format="pyarrow").show(1)
 # -> {'sepal.width': 3.2, ..., 'variety': 'Versicolor'}

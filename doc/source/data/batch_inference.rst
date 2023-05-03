@@ -199,6 +199,15 @@ Once you have your Ray Datastream ``ds`` and your predictor class, you can use
 In the example below, we use two CPUs to run inference in parallel and then print the results.
 We cover resource allocation in more detail in :ref:`the configuration section of this guide <batch_inference_config>`.
 
+.. note::
+
+    Defining your :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` function requires
+    you to write a Python function that takes a batch of data and returns a batch of predictions.
+    An easy way to do this and validate it is to use ``ds.take_batch(N)`` to get a batch of data
+    first, and then locally test your predictor function on that batch, without using Ray.
+    Once you are happy with the results, you can use the same function in ``map_batches``
+    on the full dataset. The examples below show you how.
+
 .. tabs::
 
     .. group-tab:: HuggingFace
@@ -446,7 +455,7 @@ Working with batch formats
 --------------------------
 
 Now that you've seen examples of batch inference with Ray, let's have a closer look
-at how to deal with different data formats.
+at how to deal with different data formats for batches.
 First of all, you need to distinguish between two types of batch formats:
 
 - Input batch formats: This is the format of the input to your transformation function. You will often have to
@@ -462,11 +471,14 @@ but it's good to be aware of the differences.
     We often use batch format names and the libraries they represent interchangeably.
 
 Let's focus on the three available input batch formats first,
-namely NumPy, Pandas, and Arrow, and how they're used in Ray Data:
+namely NumPy, Pandas and Arrow, and how they're used in Ray Data.
+By default, the batch format will be ``"numpy"``, but you can specify other formats
+as you see fit.
 
 .. tabbed:: NumPy (default)
 
-  The ``"numpy"`` batch format presents batches in ``Dict[str, np.ndarray]`` format.
+  The ``"numpy"`` batch format presents batches as dictionary of
+  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
 
   .. literalinclude:: ./doc_code/batch_formats.py
     :language: python
@@ -524,7 +536,6 @@ You can learn more about output formats in :ref:`the transforming data guide <tr
             :language: python
             :start-after: __hf_quickstart_air_start__
             :end-before: __hf_quickstart_air_end__
-
 
 .. _batch_inference_config:
 
