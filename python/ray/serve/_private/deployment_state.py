@@ -19,7 +19,7 @@ from ray._private.usage.usage_lib import (
     record_extra_usage_tag,
 )
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import RayActorError, RayError, RayTaskError
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
@@ -530,16 +530,21 @@ class ActorReplicaWrapper:
                 self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
                     self._allocated_obj_ref
                 )
-            except Exception as e:
+            except RayTaskError as e:
                 logger.exception(
                     f"Exception in replica '{self._replica_tag}', "
                     "the replica will be stopped."
                 )
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
-                # here because the exception may be a RayTaskError, in which case the
-                # full details of the error is not displayed properly with
-                # traceback.format_exc().
-                return ReplicaStartupStatus.FAILED, str(e)
+                # here because the full details of the error is not displayed properly
+                # with traceback.format_exc().
+                return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+            except Exception as e:
+                logger.exception(
+                    f"Exception in replica '{self._replica_tag}', "
+                    "the replica will be stopped."
+                )
+                return ReplicaStartupStatus.FAILED, repr(e)
 
         return ReplicaStartupStatus.SUCCEEDED, None
 
