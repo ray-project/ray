@@ -927,6 +927,9 @@ def run(
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
+        # search_alg.total_samples has been updated, so we should
+        # update the number of pending trials
+        runner.update_max_pending_trials()
     else:
         logger.debug(
             "You have resumed the Tune run, which means that any newly specified "

@@ -518,6 +518,11 @@ class _TuneControllerBase:
                 trial_to_add.status = Trial.TERMINATED
             self.add_trial(trial_to_add)
 
+    def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
+        self._max_pending_trials = max_pending_trials or _get_max_pending_trials(
+            self._search_alg
+        )
+
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
     ):
@@ -1307,6 +1312,10 @@ class TrialRunner(_TuneControllerBase):
             executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
 
+    def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
+        super().update_max_pending_trials(max_pending_trials=max_pending_trials)
+        self.trial_executor._max_staged_actors = self._max_pending_trials
+
     def _used_resources_string(self) -> str:
         return self.trial_executor.debug_string()
 
@@ -1604,7 +1613,7 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     # Scale up to at most the number of available cluster CPUs
     cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
     max_pending_trials = min(
-        max(search_alg.total_samples, 1), max(16, int(cluster_cpus * 1.1))
+        max(search_alg.total_samples, 16), max(16, int(cluster_cpus * 1.1))
     )
 
     if max_pending_trials > 128:
