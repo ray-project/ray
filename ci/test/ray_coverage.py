@@ -28,7 +28,10 @@ def _run_test(test_target: str, coverage_file: str) -> None:
             "test",
             test_target,
             "--test_tag_filters=release_unit",
-            f"--test_env=PYTEST_ADDOPTS=--cov-context=test --cov={source_dir}",
+            "--jobs",
+            "1",
+            "--test_env="
+            f"PYTEST_ADDOPTS=--cov-context=test --cov={source_dir} --cov-append",
             f"--test_env=COVERAGE_FILE={coverage_file}",
             "--cache_test_results=no",
         ]
