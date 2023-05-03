@@ -20,7 +20,7 @@ This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.
 
    You must provide the entrypoint command, ``python script.py``, last (after the ``--``), and any other arguments to `ray job submit` (e.g., ``--working_dir="."``) must be provided before the  two hyphens (``--``).
    For example, use ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit -- python script.py --working_dir="."``.
-   This is to support the use of ``--`` to separate arguments to `ray job submit` from arguments to the entrypoint command.
+   This syntax supports the use of ``--`` to separate arguments to `ray job submit` from arguments to the entrypoint command.
 
 .. _ray-job-status-doc:
 
