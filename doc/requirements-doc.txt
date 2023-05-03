@@ -58,7 +58,6 @@ sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
 sphinx-book-theme==0.3.3
 sphinx-external-toc==0.2.3
-sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
 sphinxcontrib-redoc==1.6.0
 sphinx-tabs==3.4.0
