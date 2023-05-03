@@ -391,7 +391,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        FIFOScheduler.__init__(self)
+        super().__init__()
         self._metric = metric
         self._mode = mode
         self._metric_op = None
@@ -1024,7 +1024,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         policy = []
         last_new_tag = None
         last_old_conf = None
-        for (old_tag, new_tag, old_step, new_step, old_conf, new_conf) in reversed(
+        for old_tag, new_tag, old_step, new_step, old_conf, new_conf in reversed(
             raw_policy
         ):
             if last_new_tag and old_tag != last_new_tag:

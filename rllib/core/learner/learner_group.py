@@ -1,18 +1,26 @@
 from collections import deque
-from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
+import pathlib
+import socket
+from typing import (
+    Any,
+    Callable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 import ray
-
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
-    RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
-    ParamOptimizerPairs,
-    Optimizer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
@@ -20,6 +28,8 @@ from ray.rllib.utils.minibatch_utils import ShardBatchIterator
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
+
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner import Learner
@@ -75,18 +85,18 @@ class LearnerGroup:
         learner_spec: LearnerSpec,
         max_queue_len: int = 20,
     ):
-        scaling_config = learner_spec.learner_scaling_config
+        scaling_config = learner_spec.learner_group_scaling_config
         learner_class = learner_spec.learner_class
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
-        # explicit
+        #  explicit.
         self._is_local = scaling_config.num_workers == 0
         self._learner = None
         self._workers = None
-        # if a user calls self.shutdown() on their own then this flag is set to true.
+        # If a user calls self.shutdown() on their own then this flag is set to true.
         # When del is called the backend executor isn't shutdown twice if this flag is
         # true. the backend executor would otherwise log a warning to the console from
-        # ray train
+        # ray train.
         self._is_shut_down = False
 
         self._is_module_trainable = _is_module_trainable
@@ -113,9 +123,9 @@ class LearnerGroup:
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
-            # run the neural network building code on remote workers
+            # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
-            # use only 1 max in flight request per worker since training workers have to
+            # Use only 1 max in flight request per worker since training workers have to
             # be synchronously executed.
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
@@ -271,9 +281,9 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
         **kwargs,
-    ) -> List[Mapping[str, Any]]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
 
         For example, this could be used to do a polyak averaging update
@@ -290,7 +300,7 @@ class LearnerGroup:
         """
 
         if self.is_local:
-            results = [self._learner.additional_update(**kwargs)]
+            return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for worker in self._workers]
@@ -305,36 +315,23 @@ class LearnerGroup:
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
-        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the Learners maintained by this LearnerGroup.
 
         Args:
             module_id: The id of the module to add.
             module_spec:  #TODO (Kourosh) fill in here.
-            set_optimizer_fn: A function that takes in the module and returns a list of
-                (param, optimizer) pairs. Each element in the tuple describes a
-                parameter group that share the same optimizer object, if None, the
-                default optimizer (obtained from the exiting optimizer dictionary) will
-                be used.
-            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
-                should be provided.
         """
         if self.is_local:
             self._learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
             )
         else:
             results = self._worker_manager.foreach_actor(
                 lambda w: w.add_module(
                     module_id=module_id,
                     module_spec=module_spec,
-                    set_optimizer_fn=set_optimizer_fn,
-                    optimizer_cls=optimizer_cls,
                 )
             )
             return self._get_results(results)
@@ -419,6 +416,134 @@ class LearnerGroup:
         """
         if is_module_trainable is not None:
             self._is_module_trainable = is_module_trainable
+
+    def save_state(self, path: str) -> None:
+        """Saves the state of the LearnerGroup.
+
+        Args:
+            path: The path to save the state to.
+        """
+        if self.is_local:
+            self._learner.save_state(path)
+        else:
+            worker = self._worker_manager.healthy_actor_ids()[0]
+            worker_ip_addr = self._worker_manager.foreach_actor(
+                self._get_ip_address, remote_actor_ids=[worker]
+            )
+            worker_ip_addr = self._get_results(worker_ip_addr)[0]
+            self_ip_addr = self._get_ip_address()
+
+            if worker_ip_addr == self_ip_addr:
+                self._worker_manager.foreach_actor(
+                    lambda w: w.save_state(path), remote_actor_ids=[worker]
+                )
+            else:
+                # save the checkpoint to a temporary location on the worker
+
+                # create a temporary directory on the worker
+                worker_temp_dir = self._worker_manager.foreach_actor(
+                    self._create_temporary_dir, remote_actor_ids=[worker]
+                )
+                worker_temp_dir = self._get_results(worker_temp_dir)[0]
+
+                # save the checkpoint to the temporary directory on the worker
+                self._worker_manager.foreach_actor(
+                    lambda w: w.save_state(worker_temp_dir), remote_actor_ids=[worker]
+                )
+
+                # sync the temporary directory on the worker to the local directory
+                sync_dir_between_nodes(
+                    worker_ip_addr, worker_temp_dir, self_ip_addr, path
+                )
+
+                # creating this function here instead of making it a member funciton
+                # becasue it uses the worker_temp_dir variable, and this can't
+                # be passed in as an argument to foreach_actor
+                def remove_dir(w):
+                    import shutil
+
+                    shutil.rmtree(worker_temp_dir)
+
+                # remove the temporary directory on the worker
+                self._worker_manager.foreach_actor(
+                    remove_dir, remote_actor_ids=[worker]
+                )
+
+    def load_state(self, path: str) -> None:
+        """Loads the state of the LearnerGroup.
+
+        Args:
+            path: The path to load the state from.
+        """
+        path = pathlib.Path(path)
+        if not path.is_dir():
+            raise ValueError(
+                f"Path {path} is not a directory. "
+                "Please specify a directory containing the checkpoint files."
+            )
+        if not path.exists():
+            raise ValueError(f"Path {path} does not exist.")
+        path = str(path.absolute())
+        if self.is_local:
+            self._learner.load_state(path)
+        else:
+            assert len(self._workers) == self._worker_manager.num_healthy_actors()
+            head_node_ip = socket.gethostbyname(socket.gethostname())
+            workers = self._worker_manager.healthy_actor_ids()
+
+            def _load_state(w):
+                # doing imports here since they might not be imported on the worker
+                import socket
+                import tempfile
+
+                hostname = socket.gethostname()
+                worker_node_ip = socket.gethostbyname(hostname)
+                # if the worker is on the same node as the head, load the checkpoint
+                # directly from the path otherwise sync the checkpoint from the head
+                # to the worker and load it from there
+                if worker_node_ip == head_node_ip:
+                    w.load_state(path)
+                else:
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        sync_dir_between_nodes(
+                            head_node_ip, path, worker_node_ip, temp_dir
+                        )
+                        w.load_state(temp_dir)
+
+            self._worker_manager.foreach_actor(_load_state, remote_actor_ids=workers)
+
+    @staticmethod
+    def _create_temporary_dir(_=None) -> str:
+        """Creates a temporary directory.
+
+        Args:
+            _: Unused arg. Exists to make this function compatible with foreach_actor
+            calls.
+
+        Returns:
+            The path to the temporary directory.
+        """
+        import tempfile
+
+        return tempfile.mkdtemp()
+
+    @staticmethod
+    def _get_ip_address(_=None) -> str:
+        """Returns this process's address.
+
+        Args:
+            _: Unused arg. Exists to make this function compatible with foreach_actor
+            calls.
+
+        Returns:
+            The address of this process.
+
+        """
+        import socket
+
+        hostname = socket.gethostname()
+
+        return socket.gethostbyname(hostname)
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""

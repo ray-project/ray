@@ -100,6 +100,15 @@ class MADDPGConfig(AlgorithmConfig):
         self.train_batch_size = 1024
         self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # fmt: on
         # __sphinx_doc_end__
 

@@ -46,10 +46,6 @@ def test_get_wheel_filename():
     ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            if sys_platform == "win32" and py_version == (3, 6):
-                # Windows wheels are not built for py3.6 anymore
-                continue
-
             # TODO(https://github.com/ray-project/ray/issues/31362)
             if py_version == (3, 11) and sys_platform != "linux":
                 continue
@@ -70,10 +66,6 @@ def test_get_master_wheel_url():
     test_commit = "cf23cd6810dbfd7b1ac3016fba02ff4594f24b7f"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            if sys_platform == "win32" and py_version == (3, 6):
-                # Windows wheels are not built for py3.6 anymore
-                continue
-
             # TODO(https://github.com/ray-project/ray/issues/31362)
             if py_version == (3, 11) and sys_platform != "linux":
                 continue
@@ -93,10 +85,6 @@ def test_get_release_wheel_url():
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
-                if sys_platform == "win32" and py_version == (3, 6):
-                    # Windows wheels are not built for py3.6 anymore
-                    continue
-
                 # TODO(https://github.com/ray-project/ray/issues/31362)
                 if py_version == (3, 11) and sys_platform != "linux":
                     continue

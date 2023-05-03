@@ -87,8 +87,14 @@ bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
   }
 
   if (state_update_->error_info_.has_value()) {
-    dst_state_update->set_error_type(state_update_->error_info_->error_type());
+    *(dst_state_update->mutable_error_info()) = *state_update_->error_info_;
   }
+
+  if (state_update_->task_log_info_.has_value()) {
+    dst_state_update->mutable_task_log_info()->MergeFrom(
+        state_update_->task_log_info_.value());
+  }
+
   return false;
 }
 

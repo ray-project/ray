@@ -125,16 +125,26 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
     bool is_retryable_error = false;
-    bool is_application_error = false;
+    std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
-                                &is_application_error);
+                                &application_error);
     reply->set_is_retryable_error(is_retryable_error);
-    reply->set_is_application_error(is_application_error);
+    reply->set_is_application_error(!application_error.empty());
+    if (!status.ok()) {
+      // System errors occurred while executing the task.
+      reply->set_task_execution_error(status.ToString());
+    } else if (!application_error.empty()) {
+      // Application errors occurred while executing the task.
+      // We could get the errors from return_objects, but it would require deserializing
+      // the serialized error message. So we just record the error message directly while
+      // executing the task.
+      reply->set_task_execution_error(application_error);
+    }
 
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
@@ -187,8 +197,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                            << ", actor_id: " << task_spec.ActorCreationId()
                            << ", status: " << status;
         } else {
+          // Set the actor repr name if it's customized by the actor.
+          if (!actor_repr_name_.empty()) {
+            reply->set_actor_repr_name(actor_repr_name_);
+          }
           RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
-                        << ", actor_id: " << task_spec.ActorCreationId();
+                        << ", actor_id: " << task_spec.ActorCreationId()
+                        << ", actor_repr_name: " << actor_repr_name_;
         }
       }
     }
@@ -309,6 +324,10 @@ void CoreWorkerDirectTaskReceiver::Stop() {
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
+}
+
+void CoreWorkerDirectTaskReceiver::SetActorReprName(const std::string &repr_name) {
+  actor_repr_name_ = repr_name;
 }
 
 }  // namespace core

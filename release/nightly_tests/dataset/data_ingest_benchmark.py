@@ -27,7 +27,7 @@ class ConsumingActor:
 
 
 def DoConsume(split, rank):
-    prefetch_blocks = 1
+    prefetch_batches = 1
     batch_size = 4096
     num_epochs = 1
 
@@ -44,15 +44,23 @@ def DoConsume(split, rank):
             for _ in range(epochs):
                 yield data
         else:
-            # StreamSplitDatasetIterator
+            # StreamSplitDataIterator
             yield data
 
     for epoch_data in generate_epochs(split, num_epochs):
         epochs_read += 1
         batch_start = time.perf_counter()
-        for batch in epoch_data.iter_batches(
-            prefetch_blocks=prefetch_blocks, batch_size=batch_size
-        ):
+
+        if isinstance(split, DatasetPipeline):
+            batch_iterator = epoch_data.iter_batches(
+                prefetch_blocks=prefetch_batches, batch_size=batch_size
+            )
+        else:
+            batch_iterator = epoch_data.iter_batches(
+                prefetch_batches=prefetch_batches, batch_size=batch_size
+            )
+
+        for batch in batch_iterator:
             batch_delay = time.perf_counter() - batch_start
             batch_delays.append(batch_delay)
             batches_read += 1
@@ -103,7 +111,7 @@ def run_ingest_streaming(dataset_size_gb, num_workers):
         for i in range(num_workers)
     ]
     locality_hints = ray.get([actor.get_location.remote() for actor in consumers])
-    ds = ds.map_batches(lambda df: df * 2)
+    ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
     future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
     ray.get(future)
@@ -115,7 +123,7 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
     ]
-    ds = ds.map_batches(lambda df: df * 2)
+    ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.split(num_workers, equal=True, locality_hints=consumers)
     future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
     ray.get(future)
@@ -141,7 +149,11 @@ def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
         ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
         for i in range(num_workers)
     ]
-    p = ds.window(bytes_per_window=40 * GiB).repeat().map_batches(lambda df: df * 2)
+    p = (
+        ds.window(bytes_per_window=40 * GiB)
+        .repeat()
+        .map_batches(lambda df: df * 2, batch_format="pandas")
+    )
     splits = p.split(num_workers, equal=True, locality_hints=consumers)
     future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
     ray.get(future)

@@ -265,8 +265,6 @@ class InputAttributeNode(DAGNode):
         current node is executed.
         """
 
-        print("self._dag_input_node", self._dag_input_node)
-
         if isinstance(self._dag_input_node, DAGInputData):
             return self._dag_input_node[self._key]
         else:

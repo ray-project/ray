@@ -6,11 +6,11 @@ pendulum-cql:
     env: Pendulum-v1
     run: CQL
     stop:
-        evaluation/episode_reward_mean: -700
+        evaluation/sampler_results/episode_reward_mean: -700
         timesteps_total: 800000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # Use one or more offline files or "input: sampler" for online learning.
         input: 'dataset'

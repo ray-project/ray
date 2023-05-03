@@ -105,7 +105,7 @@ export const ServeApplicationDetailPage = () => {
             content: {
               value: Object.values(application.deployments)
                 .map(({ replicas }) => replicas.length)
-                .reduce((acc, curr) => acc + curr)
+                .reduce((acc, curr) => acc + curr, 0)
                 .toString(),
             },
           },
@@ -254,6 +254,7 @@ export const ServeApplicationDetailLayout = () => {
         pageInfo={{
           id: "serveApplicationDetail",
           title: appName,
+          pageTitle: `${appName} | Serve Application`,
           path: `/serve/applications/${appName}`,
         }}
       />

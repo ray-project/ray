@@ -37,12 +37,12 @@ const useStyle = makeStyles((theme) => ({
 const ActorDetailPage = () => {
   const classes = useStyle();
   const { ipLogMap } = useContext(GlobalContext);
-  const { params, actorDetail, msg } = useActorDetail();
+  const { params, actorDetail, msg, isLoading } = useActorDetail();
 
   if (!actorDetail) {
     return (
       <div className={classes.root}>
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
@@ -56,7 +56,8 @@ const ActorDetailPage = () => {
     <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={{
-          title: `Actor: ${params.id}`,
+          title: `${params.id}`,
+          pageTitle: `${params.id} | Actor`,
           id: "actor-detail",
           path: `/actors/${params.id}`,
         }}
@@ -90,6 +91,14 @@ const ActorDetailPage = () => {
               content: actorDetail.actorClass
                 ? {
                     value: actorDetail.actorClass,
+                  }
+                : { value: "-" },
+            },
+            {
+              label: "Repr",
+              content: actorDetail.reprName
+                ? {
+                    value: actorDetail.reprName,
                   }
                 : { value: "-" },
             },

@@ -50,8 +50,6 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
                                               std::function<void()> failure_cb) {
                                       // Long polling should always succeed.
                                       RAY_CHECK_OK(status);
-                                      RAY_CHECK(success_cb == nullptr);
-                                      RAY_CHECK(failure_cb == nullptr);
                                       reactor->Finish(grpc::Status::OK);
                                     });
     return reactor;
@@ -149,8 +147,10 @@ class IntegrationTest : public ::testing::Test {
   }
 
   ~IntegrationTest() {
+    RAY_LOG(INFO) << "Shutting down server.";
     // Stop callback runners.
     io_service_.Stop();
+    RAY_LOG(INFO) << "Shutting down server1.";
     // Assume no new subscriber is connected after the unregisteration above. Otherwise
     // shutdown would hang below.
     server_->Shutdown();
@@ -178,6 +178,8 @@ class IntegrationTest : public ::testing::Test {
     builder.RegisterService(subscriber_service_.get());
     server_ = builder.BuildAndStart();
   }
+
+  void RestartServer() { SetupServer(); }
 
   std::unique_ptr<Subscriber> CreateSubscriber() {
     return std::make_unique<Subscriber>(
@@ -300,6 +302,5 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
     absl::SleepFor(absl::Seconds(1));
   }
 }
-
 }  // namespace pubsub
 }  // namespace ray

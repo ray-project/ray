@@ -10,9 +10,6 @@ import { ClassNameProps } from "../../common/props";
 import { downloadTaskTimelineHref } from "../../service/task";
 
 const useStyle = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2, 0, 0),
-  },
   button: {
     marginTop: theme.spacing(2),
   },
@@ -26,7 +23,7 @@ export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
   const classes = useStyle();
 
   return (
-    <div className={classes.root}>
+    <div>
       {/* TODO(aguo): Add link to external documentation about Timeline view. */}
       <Typography>
         Timeline view shows how tasks are executed across different nodes and

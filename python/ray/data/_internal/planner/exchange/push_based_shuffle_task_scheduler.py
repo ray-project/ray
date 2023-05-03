@@ -9,7 +9,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -476,7 +476,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         )
 
         max_reduce_tasks_in_flight = output_num_blocks
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if ctx.pipeline_push_based_shuffle_reduce_tasks:
             # If pipelining is enabled, we should still try to utilize all
             # cores.

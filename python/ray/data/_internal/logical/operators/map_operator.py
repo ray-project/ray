@@ -1,11 +1,8 @@
 from typing import Any, Dict, Iterable, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.compute import (
-    UDF,
-    ComputeStrategy,
-)
-from ray.data.block import BatchUDF, RowUDF
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 
 
@@ -23,7 +20,7 @@ class AbstractMap(LogicalOperator):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
+                inspecting the logical plan of a Datastream.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
@@ -41,7 +38,7 @@ class AbstractUDFMap(AbstractMap):
         self,
         name: str,
         input_op: LogicalOperator,
-        fn: UDF,
+        fn: UserDefinedFunction,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -53,7 +50,7 @@ class AbstractUDFMap(AbstractMap):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
+                inspecting the logical plan of a Datastream.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             fn: User-defined function to be called.
@@ -75,7 +72,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._target_block_size = target_block_size
-        self._compute = compute or "tasks"
+        self._compute = compute or TaskPoolStrategy()
 
 
 class MapBatches(AbstractUDFMap):
@@ -84,10 +81,9 @@ class MapBatches(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: BatchUDF,
+        fn: UserDefinedFunction,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         batch_format: Optional[str] = "default",
-        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -111,7 +107,6 @@ class MapBatches(AbstractUDFMap):
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
-        self._prefetch_batches = prefetch_batches
         self._zero_copy_batch = zero_copy_batch
 
 
@@ -121,7 +116,7 @@ class MapRows(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -140,7 +135,7 @@ class Filter(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -159,7 +154,7 @@ class FlatMap(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):

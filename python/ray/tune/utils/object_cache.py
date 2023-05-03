@@ -159,7 +159,7 @@ class _ObjectCache:
         keep_one = self._may_keep_one and not force_all
 
         for key, objs in self._cached_objects.items():
-            max = self._max_num_objects[key] if not force_all else 0
+            max_cached = self._max_num_objects[key] if not force_all else 0
 
             if (
                 self._num_cached_objects == 1
@@ -169,6 +169,6 @@ class _ObjectCache:
             ):
                 break
 
-            while len(objs) > max:
+            while len(objs) > max_cached:
                 self._num_cached_objects -= 1
                 yield objs.pop(0)

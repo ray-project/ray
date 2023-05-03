@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2"],
-    default="tf",
+    default="tf2",
     help="The TF framework specifier (either 'tf' or 'tf2').",
 )
 

@@ -16,6 +16,7 @@ import pandas as pd
 
 import ray
 from ray._private.dict import flatten_dict
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
 from ray.tune.callback import Callback
@@ -49,21 +50,8 @@ try:
 except ImportError:
     from collections import Mapping, MutableMapping
 
-try:
-    from tabulate import tabulate
-except ImportError:
-    raise ImportError(
-        "ray.tune in ray > 0.7.5 requires 'tabulate'. "
-        "Please re-run 'pip install ray[tune]' or "
-        "'pip install ray[rllib]'."
-    )
 
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
-
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 

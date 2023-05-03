@@ -33,6 +33,8 @@ pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
 protobuf==3.19.6
 pytorch-lightning==1.6.5
+fairscale==0.4.6
+s3fs==2023.1.0
 shortuuid==1.0.1
 scikit-optimize==0.9.0
 sigopt==7.5.0
@@ -47,6 +49,5 @@ transformers==4.19.1; python_version > '3.6'
 # with this pin, so we restrict the version here to <=3.7
 typeguard==2.13.0; python_version <= '3.7'
 wandb==0.13.4
-xgboost==1.6.2; python_version <= '3.7'
-xgboost==1.7.4; python_version > '3.7'
+xgboost==1.3.3
 zoopt==0.4.1

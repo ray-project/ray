@@ -449,6 +449,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
             default_policy_class=ModelBasedPolicy,
             config=DQNConfig()
+            .framework("tf")
             .rollouts(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,
