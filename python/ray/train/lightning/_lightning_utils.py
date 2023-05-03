@@ -10,6 +10,13 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import DDPStrategy
 
+import ray
+from ray.air import session
+from ray.air.constants import MODEL_KEY
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+from torch.utils.data import IterableDataset, DataLoader
+from ray.data.datastream import DataIterator
+
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 
@@ -27,13 +34,6 @@ if _fsdp_available:
         StateDictType,
     )
 
-
-import ray
-from ray.air import session
-from ray.air.constants import MODEL_KEY
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
-from torch.utils.data import IterableDataset, DataLoader
-from ray.data.datastream import DataIterator
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +86,10 @@ class RayFSDPStrategy(FSDPStrategy):
         )
 
     def lightning_module_state_dict(self) -> Dict[str, Any]:
-        """Gathers the full state dict by unsharding all the parameters.
-
-        To avoid OOM, the returned parameters will only be returned on rank 0 and on CPU. All other ranks get an empty
-        dict.
-        """
+        """Gathers the full state dict by unsharding all the parameters."""
         assert self.model is not None
 
         if _LIGHTNING_GREATER_EQUAL_2_0:
-            print("lightning_module_state_dict\n\n\n\n")
             with FullyShardedDataParallel.state_dict_type(
                 module=self.model,
                 state_dict_type=StateDictType.FULL_STATE_DICT,
