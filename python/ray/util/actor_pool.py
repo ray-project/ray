@@ -1,10 +1,11 @@
-from typing import List, Callable, Any, TYPE_CHECKING
+from typing import List, Callable, Any, Union, TYPE_CHECKING
 
 import ray
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
+    from ray.types import ObjectRef
 
 
 @DeveloperAPI
@@ -48,7 +49,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn: "Callable[[ActorHandle, Any], Any]", values: List[Any]):
+    def map(self, fn: Callable[["ActorHandle", Any], "ObjectRef"], values: List[Any]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
@@ -85,7 +86,9 @@ class ActorPool:
         while self.has_next():
             yield self.get_next()
 
-    def map_unordered(self, fn: "Callable[[ActorHandle, Any], Any]", values: List[Any]):
+    def map_unordered(
+        self, fn: Callable[["ActorHandle", Any], "ObjectRef"], values: List[Any]
+    ):
         """Similar to map(), but returning an unordered iterator.
 
         This returns an unordered iterator that will return results of the map
@@ -122,7 +125,9 @@ class ActorPool:
         while self.has_next():
             yield self.get_next_unordered()
 
-    def submit(self, fn, value):
+    def submit(
+        self, fn: Callable[["ActorHandle", Any], "ObjectRef"], value: Any
+    ) -> None:
         """Schedule a single task to run in the pool.
 
         This has the same argument semantics as map(), but takes on a single
@@ -153,7 +158,7 @@ class ActorPool:
         else:
             self._pending_submits.append((fn, value))
 
-    def has_next(self):
+    def has_next(self) -> bool:
         """Returns whether there are any pending results to return.
 
         Returns:
@@ -172,7 +177,9 @@ class ActorPool:
         """
         return bool(self._future_to_actor)
 
-    def get_next(self, timeout=None, ignore_if_timedout=False):
+    def get_next(
+        self, timeout: Union[None, int, float] = None, ignore_if_timedout: bool = False
+    ) -> Any:
         """Returns the next pending result in order.
 
         This returns the next result produced by submit(), blocking for up to

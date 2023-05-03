@@ -51,8 +51,7 @@ def test_remote_function_map_using_max_workers():
         assert ex._actor_pool is not None
         assert len(ex._actor_pool._idle_actors) == 3
         time_start = time.monotonic()
-        ff = list(ex.map(lambda _: time.sleep(1), range(12)))
-        print(f"blah: {list(ff)}")
+        _ = list(ex.map(lambda _: time.sleep(1), range(12)))
         time_end = time.monotonic()
         # we expect about (12*1) / 3 = 4 rounds
         delta = time_end - time_start

@@ -20,13 +20,13 @@ import ray.exceptions
 
 # Typing -----------------------------------------------
 
-if TYPE_CHECKING:
-    from ray._private.worker import BaseContext, RemoteFunction0
-
 T = TypeVar("T")
 P = ParamSpec("P")
 
-# ------------------------------------------------------
+if TYPE_CHECKING:
+    from ray._private.worker import BaseContext, RemoteFunction0
+    from ray.actor import ActorHandle
+    from ray.types import ObjectRef
 
 
 @PublicAPI(stability="alpha")  # type: ignore
@@ -102,25 +102,25 @@ class RayExecutor(Executor):
                     `max_workers` must be >= 1"
                 )
 
-            @ray.remote                                                          
-            class ExecutorActor:                                                 
-                def __init__(self):                                              
-                    pass                                                         
-                                                                                 
-                def actor_function(self, fn: Callable):                          
-                    return fn()                                                  
-                                                                                 
-            actors = [                                                           
-                ExecutorActor.options(  # type: ignore[attr-defined]             
-                    name=f"actor-{i}"                                            
-                ).remote()                                                       
-                for i in range(max_workers)                                      
+            @ray.remote
+            class ExecutorActor:
+                def __init__(self) -> None:
+                    pass
+
+                def actor_function(self, fn: Callable[[], T]) -> T:
+                    return fn()
+
+            actors = [
+                ExecutorActor.options(  # type: ignore[attr-defined]
+                    name=f"actor-{i}"
+                ).remote()
+                for i in range(max_workers)
             ]
             if self._actor_pool is not None:
                 for actor in self._actor_pool:
                     del actor
                 del self._actor_pool
-            self._actor_pool = ray.util.ActorPool(actors)                       
+            self._actor_pool = ray.util.ActorPool(actors)
             self.max_workers = max_workers
         self._context = ray.init(ignore_reinit_error=True, **kwargs)
 
@@ -149,21 +149,29 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         fn_curried = partial(fn, *args, **kwargs)
 
-        if self._actor_pool:                                                       
-            self._actor_pool.submit(lambda a, _: a.actor_function.remote(fn_curried), None)                                                                       
-            oref = self._actor_pool._index_to_future[self._actor_pool._next_task_index - 1]
-            future: Future[T] = oref.future()                                                      
+        future: Future[T]
+        if self._actor_pool:
+
+            def actor_fn(a: "ActorHandle", _: Any) -> "ObjectRef[T]":
+                oref: "ObjectRef[T]" = a.actor_function.remote(fn_curried)  # noqa: F821
+                return oref
+
+            self._actor_pool.submit(actor_fn, None)
+            oref: "ObjectRef[T]" = self._actor_pool._index_to_future[
+                self._actor_pool._next_task_index - 1
+            ]
+            future = oref.future()  # type: ignore[attr-defined]
             del oref
-        elif self.__remote_fn:                                                    
-            future: Future[T] = (
-                self.__remote_fn.options(name=fn.__name__)  # type: ignore
+        elif self.__remote_fn:
+            future = (
+                self.__remote_fn.options(name=fn.__name__)  # type: ignore[attr-defined]
                 .remote(fn_curried)
                 .future()
             )
-        else:                                                                   
-            raise RuntimeError("Neither remote function nor actor pool is defined")                  
-                                                                            
-        self.futures.append(future)                                                
+        else:
+            raise RuntimeError("Neither remote function nor actor pool is defined")
+
+        self.futures.append(future)
 
         del fn_curried
         return future
@@ -236,23 +244,33 @@ class RayExecutor(Executor):
         if timeout is not None:
             end_time = timeout + time.monotonic()
 
-        if self._actor_pool:
+        if self._actor_pool is not None:
+
             def result_iterator() -> Iterator[T]:
+                assert self._actor_pool is not None
                 while self._actor_pool.has_next():
                     if timeout is None:
                         self._actor_pool.get_next(timeout=0)
                     else:
                         self._actor_pool.get_next(timeout=end_time - time.monotonic())
                 for v in zip(*iterables):
-                    self._actor_pool.submit(lambda a, v: a.actor_function.remote(partial(fn, *v)), v)
+
+                    def actor_fn(a: "ActorHandle", v: Any) -> "ObjectRef[T]":
+                        oref: "ObjectRef[T]" = a.actor_function.remote(partial(fn, *v))
+                        return oref
+
+                    self._actor_pool.submit(actor_fn, v)
                 while self._actor_pool.has_next():
                     if timeout is None:
                         yield self._actor_pool.get_next(timeout=None)
                     else:
                         try:
-                            yield self._actor_pool.get_next(timeout=end_time - time.monotonic())
+                            yield self._actor_pool.get_next(
+                                timeout=end_time - time.monotonic()
+                            )
                         except TimeoutError:
                             raise ConTimeoutError
+
         else:
             fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
