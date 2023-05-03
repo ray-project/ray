@@ -10,19 +10,26 @@ import sys
 def main(test_name: str) -> None:
     logger = _get_logger()
     logger.info(f"Collecting coverage for test: {test_name}")
-    output = subprocess.check_output(
-        [
-            "bazel",
-            "test",
-            test_name,
-            "--test_output=streamed",
-            "--test_env=PYTEST_ADDOPTS='--cov=ray_release --cov-context=test'",
-            f"--test_env=COVERAGE_FILE='{os.getcwd()}/.coverage'",
-        ]
-    )
-    logger.info(output)
-    report = subprocess.check_output(["coverage", "report"]).decode("utf-8")
-    logger.info(report)
+    try:
+        coverage_file = f"{os.getcwd()}/.coverage"
+        subprocess.check_output(["pip", "install", "-e", "release/"])
+        output = subprocess.check_output(
+            [
+                "bazel",
+                "test",
+                test_name,
+                "--test_output=streamed",
+                "--test_env=PYTEST_ADDOPTS='--cov=ray_release --cov-context=test'",
+                f"--test_env=COVERAGE_FILE='{coverage_file}'",
+            ]
+        )
+        logger.info(output)
+        report = subprocess.check_output(
+            ["coverage", "report", f"--data-file={coverage_file}"]
+        ).decode("utf-8")
+        logger.info(report)
+    except subprocess.CalledProcessError as e:
+        logger.exception(e)
 
     return 0
 
