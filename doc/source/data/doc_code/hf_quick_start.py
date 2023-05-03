@@ -19,7 +19,7 @@ class HuggingFacePredictor:
         from transformers import pipeline
         self.model = pipeline("text-generation", model="gpt2")
 
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:  # <2>
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict:  # <2>
         return {"output": self.model(list(batch["text"]), max_length=20)}
 # __hf_quickstart_model_end__
 

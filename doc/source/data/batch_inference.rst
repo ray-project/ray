@@ -130,10 +130,10 @@ In any case, the result of this step is a Ray Datastream ``ds`` that we can use 
        Create a NumPy array with 100
        entries, which represents the input to a feed-forward neural network.
 
-        .. literalinclude:: ./doc_code/tf_quick_start.py
-            :language: python
-            :start-after: __tf_quickstart_load_start__
-            :end-before: __tf_quickstart_load_end__
+       .. literalinclude:: ./doc_code/tf_quick_start.py
+           :language: python
+           :start-after: __tf_quickstart_load_start__
+           :end-before: __tf_quickstart_load_end__
 
 2. Setting up your model
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -358,15 +358,6 @@ the ``torchvision`` package to define a function called ``preprocess_images``.
 
     For the full suite of transformations available in Ray Data, read
     :ref:`the data transformation guide <transforming_data>`.
-
-.. caution::
-
-    Depending on how you load your data and what input data format you use, the datastream
-    loaded with :ref:`Ray Data <data>` will have different *batch formats*.
-    For instance, image data might be naturally stored in NumPy format, while tabular
-    data makes much more sense as a Pandas DataFrame.
-    What (default) batch format your data has and how to deal with it is explained in
-    detail in :ref:`the batch format section <batch_inference_formats>`.
 
 Defining predictors as stateful classes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
