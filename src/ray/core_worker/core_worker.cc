@@ -118,7 +118,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
-      exiting_detail_("") {
+      exiting_detail_(std::nullopt) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -768,7 +768,7 @@ void CoreWorker::Exit(
   {
     absl::MutexLock lock(&mutex_);
     RAY_CHECK_NE(detail, "");
-    exiting_detail_ = detail;
+    exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
@@ -2546,7 +2546,7 @@ Status CoreWorker::ExecuteTask(
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
     return Status::IntentionalSystemExit(
-        absl::StrCat("Worker has already exited. Detail: ", exiting_detail_));
+        absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
   }
 
   task_queue_length_ -= 1;
@@ -3844,7 +3844,7 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
 
 bool CoreWorker::IsExiting() const {
   absl::MutexLock lock(&mutex_);
-  return exiting_detail_ != "";
+  return exiting_detail_.has_value();
 }
 
 std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()

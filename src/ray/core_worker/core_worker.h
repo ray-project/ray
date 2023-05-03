@@ -1608,7 +1608,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
-  std::string exiting_detail_ GUARDED_BY(mutex_);
+  std::optional<std::string> exiting_detail_ GUARDED_BY(mutex_);
 
   std::atomic<bool> is_shutdown_ = false;
 
