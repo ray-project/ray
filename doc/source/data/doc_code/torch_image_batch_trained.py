@@ -37,7 +37,7 @@ class TorchPredictor:
         self.model = resnet18(pretrained=True).cuda()
         self.model.eval()
 
-    def __call__(self, batch: List[torch.Tensor]):  # <2>
+    def __call__(self, batch: Dict[str, np.ndarray]):  # <2>
         torch_batch = torch.stack(batch).cuda()  # <3>
         with torch.inference_mode():
             prediction = self.model(torch_batch)
