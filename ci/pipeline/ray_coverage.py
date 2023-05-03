@@ -1,6 +1,5 @@
 import boto3
 import click
-import date
 import logging
 import os
 import subprocess
@@ -52,11 +51,12 @@ def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
 
 
 def _persist_coverage_info(coverage_file: str) -> str:
-    s3_file_name = 
-        f'continuous-release/ray-release-{date.today().strftime("%Y-%m-%d")}.cov'
-    boto3.resource('s3').upload_file(
-        coverage_file, 
-        'ray-release-automation-results',
+    s3_file_name = (
+        f"continuous-release/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
+    )
+    boto3.client("s3").upload_file(
+        coverage_file,
+        "ray-release-automation-results",
         s3_file_name,
     )
     return s3_file_name
