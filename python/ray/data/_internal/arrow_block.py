@@ -153,7 +153,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def numpy_to_block(
-        batch: Union[np.ndarray, Dict[str, np.ndarray]],
+        batch: Union[np.ndarray, Dict[str, np.ndarray], Dict[str, list]],
         passthrough_arrow_not_implemented_errors: bool = False,
     ) -> "pyarrow.Table":
         import pyarrow as pa
@@ -163,7 +163,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}
         elif not isinstance(batch, collections.abc.Mapping) or any(
-            not isinstance(col, np.ndarray) for col in batch.values()
+            not isinstance(col, (list, np.ndarray)) for col in batch.values()
         ):
             raise ValueError(
                 "Batch must be an ndarray or dictionary of ndarrays when converting "
@@ -172,6 +172,18 @@ class ArrowBlockAccessor(TableBlockAccessor):
             )
         new_batch = {}
         for col_name, col in batch.items():
+            if isinstance(col, list):
+                # Try to convert list values into an numpy array via
+                # np.array(), so users don't need to manually cast.
+                # NOTE: we don't cast generic iterables, since types like
+                # `str` are also Iterable.
+                try:
+                    col = np.array(col)
+                except Exception:
+                    raise ValueError(
+                        "Failed to convert column values to numpy array: "
+                        f"({_truncated_repr(col)})."
+                    )
             # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.dtype.type is np.object_ or col.ndim > 1:
                 try:

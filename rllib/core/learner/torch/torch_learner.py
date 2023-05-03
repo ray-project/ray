@@ -17,7 +17,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
-    FrameworkHPs,
+    FrameworkHyperparameters,
     Learner,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
@@ -51,12 +51,17 @@ class TorchLearner(Learner):
     def __init__(
         self,
         *,
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(
+            framework_hyperparameters=(
+                framework_hyperparameters or FrameworkHyperparameters()
+            ),
+            **kwargs,
+        )
 
-        # will be set during build
+        # Will be set during build.
         self._device = None
 
     @override(Learner)
