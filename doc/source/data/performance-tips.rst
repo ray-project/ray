@@ -89,7 +89,7 @@ may incur data copies; which conversions cause data copying is given in the belo
 
 .. note::
   \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
-  represented in the Ray Data ndarray extension type (except for bool arrays).
+  represented as ndarrays (except for bool arrays).
 
 
 Parquet Column Pruning

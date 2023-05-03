@@ -203,7 +203,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
 
     Defining your :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` function requires
     you to write a Python function that takes a batch of data and returns a batch of predictions.
-    An easy way to do this and validate it is to use ``ds.take_batch(N)`` to get a batch of data
+    An easy way to do this and validate it is to use :meth:`ds.take_batch(N) <ray.data.Dataset.take_batch>` to get a batch of data
     first, and then locally test your predictor function on that batch, without using Ray.
     Once you are happy with the results, you can use the same function in ``map_batches``
     on the full dataset. The examples below show you how.
@@ -309,7 +309,7 @@ to learn more about loading data with Ray Data, but we'll cover the basics here,
     .. annotations::
         <1> We use one gigabyte of image data from the Imagenet dataset from S3.
 
-        <2> We use ``read_images`` from Ray Data and limit the number of images to 1000.
+        <2> We use :func:`read_images <ray.data.read_images>` from Ray Data and limit the number of images to 1000.
 
 The process of loading data with Ray Data is as diverse as the data you have.
 For instance, in the example above we didn't load the text labels for our images,
