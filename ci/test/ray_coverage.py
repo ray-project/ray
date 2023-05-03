@@ -21,13 +21,16 @@ def main(test_target: str) -> None:
 
 
 def _run_test(test_target: str, coverage_file: str) -> None:
+    source_dir = os.path.join(os.getcwd(), "release")
     subprocess.check_output(
         [
             "bazel",
             "test",
             test_target,
-            "--test_env=PYTEST_ADDOPTS=--cov-context=test --cov=ray_release",
+            "--test_tag_filters=release_unit",
+            f"--test_env=PYTEST_ADDOPTS=--cov-context=test --cov={source_dir}",
             f"--test_env=COVERAGE_FILE={coverage_file}",
+            "--cache_test_results=no",
         ]
     )
 
