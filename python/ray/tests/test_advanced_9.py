@@ -438,36 +438,6 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
         assert ray.get(f.remote())
 
 
-def test_node_registeration_syncer(monkeypatch, shutdown_only):
-    """This test is to make sure the syncer is started after
-    getting all nodes infos. If it started before that, raylet might drop
-    messages.
-    """
-
-    monkeypatch.setenv("RAY_use_ray_syncer", "true")
-    monkeypatch.setenv(
-        "RAY_testing_asio_delay_us",
-        "NodeInfoGcsService.grpc_server.GetAllNodeInfo=5000000:5000000",
-    )
-    cluster = ray.cluster_utils.Cluster()
-    cluster.add_node(True, num_cpus=0, num_gpus=1)
-    ray.init(cluster.address)
-
-    @ray.remote(num_cpus=0, num_gpus=1)
-    def gpu_task():
-        return
-
-    @ray.remote(num_cpus=1, num_gpus=0)
-    def cpu_task():
-        return ray.get(gpu_task.remote())
-
-    cluster.add_node(True, num_cpus=1, num_gpus=0)
-
-    # This task will be scheduled to node2
-    # and node2 will fail to schedule task to node1
-    ray.get(cpu_task.remote(), timeout=10)
-
-
 if __name__ == "__main__":
     import pytest
     import os
