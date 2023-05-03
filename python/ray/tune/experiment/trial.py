@@ -627,6 +627,7 @@ class Trial:
     @last_result.setter
     def last_result(self, val: dict):
         self._last_result = val
+        self.invalidate_json_state()
 
     def get_runner_ip(self) -> Optional[str]:
         if self.location.hostname:
@@ -1060,7 +1061,8 @@ class Trial:
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][str(n)]
                         ) / len(self.metric_n_steps[metric][str(n)])
-        self.invalidate_json_state()
+
+        # json state is invalidated in last_result.setter
 
     def get_trainable_cls(self):
         if self.stub:

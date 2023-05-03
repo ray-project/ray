@@ -647,7 +647,7 @@ class ResourceExhaustedTest(unittest.TestCase):
 @pytest.mark.parametrize(
     "trial_config", [{}, {"attr": 4}, {"nested": {"key": "value"}}]
 )
-def test_trial_restore(trial_config):
+def test_trial_last_result_restore(trial_config):
     metrics = {"metric1": 4, "nested2": {"metric3": 6}}
     metrics["config"] = trial_config
 
