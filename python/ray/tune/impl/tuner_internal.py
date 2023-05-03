@@ -118,6 +118,9 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self.trainable = trainable
+        assert self.converted_trainable
+        self._validate_trainable(self.converted_trainable)
+
         self.param_space = param_space
 
         self._resume_config = None
@@ -137,20 +140,6 @@ class TunerInternal:
         experiment_checkpoint_path = Path(self._experiment_checkpoint_dir)
         with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
             pickle.dump(self.__getstate__(), fp)
-
-        try:
-            pickle.dumps(self.trainable)
-        except TypeError as e:
-            sio = io.StringIO()
-            inspect_serializability(self.trainable, print_file=sio)
-            msg = (
-                "The provided trainable is not serializable, which is a requirement "
-                "since the trainable is serialized and deserialized when transferred "
-                "to remote workers. See below for a trace of the non-serializable "
-                "objects that were found in your trainable:\n"
-                f"{sio.getvalue()}"
-            )
-            raise TuneError(msg) from e
 
         self._maybe_warn_resource_contention()
 
@@ -222,32 +211,49 @@ class TunerInternal:
                 stacklevel=4,
             )
 
-    def _validate_trainable_on_restore(
-        self, trainable: TrainableType, old_trainable_name: Optional[str]
+    def _validate_trainable(
+        self, trainable: TrainableType, required_trainable_name: Optional[str] = None
     ):
-        """Determines whether or not the trainable given on restore is valid.
+        """Determines whether or not the trainable is valid.
 
-        This validation is needed due to an implementation detail
+        This includes checks on the serializability of the trainable, as well
+        asserting that the trainable name is as expected on restoration.
+
+        This trainable name validation is needed due to an implementation detail
         where the trainable name (which is differently generated depending on
         the trainable type) is saved in the Trial metadata and needs to match
         upon restoration. This does not affect the typical path, since `Tuner.restore`
         expects the exact same trainable (which will have the same name).
 
         Raises:
-            ValueError: if the trainable name does not match.
+            ValueError: if the trainable name does not match or if the trainable
+                is not serializable.
         """
-        if not old_trainable_name:
-            # Backwards compatibility: skip validation
+        try:
+            pickle.dumps(trainable)
+        except TypeError as e:
+            sio = io.StringIO()
+            inspect_serializability(trainable, print_file=sio)
+            msg = (
+                "The provided trainable is not serializable, which is a requirement "
+                "since the trainable is serialized and deserialized when transferred "
+                "to remote workers. See below for a trace of the non-serializable "
+                "objects that were found in your trainable:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
+
+        if not required_trainable_name:
             return
 
         trainable_name = Experiment.get_trainable_name(trainable)
 
-        if trainable_name != old_trainable_name:
+        if trainable_name != required_trainable_name:
             raise ValueError(
                 "Invalid `trainable` input to `Tuner.restore()`. To fix this error, "
                 "pass in the same trainable that was used to initialize the Tuner. "
                 "Got a trainable with identifier "
-                f"'{trainable_name}' but expected '{old_trainable_name}'."
+                f"'{trainable_name}' but expected '{required_trainable_name}'."
             )
 
     def _set_trainable_on_restore(
@@ -257,9 +263,9 @@ class TunerInternal:
 
         self.trainable = trainable
         assert self.converted_trainable
-        self._validate_trainable_on_restore(
+        self._validate_trainable(
             trainable=self.converted_trainable,
-            old_trainable_name=old_trainable_name,
+            required_trainable_name=old_trainable_name,
         )
 
         if isinstance(self.trainable, BaseTrainer):
