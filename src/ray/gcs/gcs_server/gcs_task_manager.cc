@@ -161,6 +161,10 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskEvent(
     task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
     loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
   }
+
+  // Update the index if needed. Adding to index is idempotent so it is safe to call it
+  // multiple times.
+  AddToIndex(loc);
 }
 
 std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>
