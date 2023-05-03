@@ -5,15 +5,16 @@ import subprocess
 import sys
 import tempfile
 
-COVERAGE_FILE_NAME = "ray_release.coverage"
+COVERAGE_FILE_NAME = "ray_release.cov"
 
-"""
-This script runs test targets and collect which files are executed during the test runs.
-It then uploads the coverage information to database (S3).
-"""
+
 @click.command()
 @click.argument("test_target", required=True, type=str)
 def main(test_target: str) -> None:
+    """
+    This script collects dynamic coverage data for the test target, and upload the
+    results to database (S3).
+    """
     logger = _get_logger()
     logger.info(f"Collecting coverage for test target: {test_target}")
     coverage_file = os.path.join(tempfile.gettempdir(), COVERAGE_FILE_NAME)
