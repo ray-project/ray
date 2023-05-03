@@ -58,7 +58,9 @@ STRICT_MODE_EXPLANATION = (
     "objects are no longer supported, and the default batch format changes to `numpy` "
     "from `pandas`. To disable strict mode temporarily, set the environment variable "
     "RAY_DATA_STRICT_MODE=0 on all cluster processes. Strict mode will not be "
-    "possible to disable in future releases." + colorama.Style.RESET_ALL
+    "possible to disable in future releases.\n\n"
+    "Learn more here: https://docs.ray.io/en/master/data/faq.html#what-is-strict-mode"
+    + colorama.Style.RESET_ALL
 )
 
 

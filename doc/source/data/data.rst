@@ -17,11 +17,7 @@ shuffling operations (:meth:`random_shuffle <ray.data.Datastream.random_shuffle>
 :meth:`repartition <ray.data.Datastream.repartition>`),
 and is compatible with a variety of file formats, data sources, and distributed frameworks.
 
-Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
-as well as a glimpse at the Ray Data API.
-
-Check the :ref:`Input/Output reference <input-output>` to see if your favorite format
-is already supported.
+Read on for an overview of the main use cases and operations supported by Ray Data.
 
 .. image:: images/datastream.svg
 
@@ -33,10 +29,9 @@ Streaming Batch Inference
 -------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enables workloads such as 
-:ref:`GPU batch inference <ref-use-cases-batch-infer>` efficiently on large datasets. Ray Data manages
-the pipelined processing of data in the cluster, maximizing resource utilization
-by keeping the working data fitting into Ray object store memory.
+powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as 
+:ref:`GPU batch inference <ref-use-cases-batch-infer>` to run efficiently on large datasets,
+maximizing resource utilization by keeping the working data fitting into Ray object store memory.
 
 .. image:: images/stream-example.png
    :width: 650px
@@ -112,9 +107,9 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
     **User Guides**
     ^^^
 
-    Learn how to :ref:`create datastreams <creating_datastreams>`, :ref:`save
-    datastreams <saving_datastreams>`, :ref:`transform datastreams <transforming_datastreams>`,
-    :ref:`access and exchange datastreams <consuming_datastreams>`, or
+    Learn how to :ref:`load data <loading_data>`, :ref:`save
+    data <saving_data>`, :ref:`transform data <transforming_data>`,
+    :ref:`access and exchange data <consuming_data>`, or
     :ref:`work with tensor data <data_tensor_support>`.
 
     +++

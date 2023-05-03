@@ -76,7 +76,7 @@ py_test(
 
 py_test(
     name = "test_experiment_restore",
-    size = "medium",
+    size = "large",
     srcs = [
         "tests/test_experiment_restore.py",
         "tests/_test_experiment_restore_run.py"

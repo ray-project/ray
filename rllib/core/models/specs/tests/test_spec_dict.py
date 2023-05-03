@@ -7,6 +7,7 @@ from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     convert_to_canonical_format,
 )
+from ray.rllib.core.models.specs.checker import SpecCheckingError
 
 
 class TypeClass1:
@@ -162,15 +163,19 @@ class TestSpecDict(unittest.TestCase):
             def spec_with_type_and_tensor_leaves(self):
                 return {"a": TypeClass1, "b": TensorSpec("b, h", h=3, framework="np")}
 
-            @check_input_specs("nested_key_spec")
+            @check_input_specs("nested_key_spec", only_check_on_retry=False)
             def forward_nested_key(self, input_dict):
                 return input_dict
 
-            @check_input_specs("dict_key_spec_with_none_leaves")
+            @check_input_specs(
+                "dict_key_spec_with_none_leaves", only_check_on_retry=False
+            )
             def forward_dict_key_with_none_leaves(self, input_dict):
                 return input_dict
 
-            @check_input_specs("spec_with_type_and_tensor_leaves")
+            @check_input_specs(
+                "spec_with_type_and_tensor_leaves", only_check_on_retry=False
+            )
             def forward_spec_with_type_and_tensor_leaves(self, input_dict):
                 return input_dict
 
@@ -207,10 +212,13 @@ class TestSpecDict(unittest.TestCase):
             },
         }
 
-        self.assertRaises(ValueError, lambda: model.forward_nested_key(input_dict_2))
+        self.assertRaises(
+            SpecCheckingError, lambda: model.forward_nested_key(input_dict_2)
+        )
 
         self.assertRaises(
-            ValueError, lambda: model.forward_dict_key_with_none_leaves(input_dict_2)
+            SpecCheckingError,
+            lambda: model.forward_dict_key_with_none_leaves(input_dict_2),
         )
 
         input_dict_3 = {
@@ -220,7 +228,7 @@ class TestSpecDict(unittest.TestCase):
 
         # should raise shape mismatch
         self.assertRaises(
-            ValueError,
+            SpecCheckingError,
             lambda: model.forward_spec_with_type_and_tensor_leaves(input_dict_3),
         )
 
