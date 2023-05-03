@@ -26,10 +26,8 @@ def _run_test(test_target: str, coverage_file: str) -> None:
             "bazel",
             "test",
             test_target,
-            "--test_output=streamed",
             "--test_env=PYTEST_ADDOPTS=--cov-context=test --cov=ray_release",
             f"--test_env=COVERAGE_FILE={coverage_file}",
-            "--cache_test_results=no",
         ]
     )
 
