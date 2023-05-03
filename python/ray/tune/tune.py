@@ -505,6 +505,7 @@ def run(
             "search_space_arg": "config",
             "restore_entrypoint": "tune.run(..., resume=True)",
         }
+    _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
@@ -912,6 +913,7 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
+        _trainer_api=_trainer_api,
     )
 
     if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):

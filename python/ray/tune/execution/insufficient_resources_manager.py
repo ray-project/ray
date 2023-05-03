@@ -124,11 +124,11 @@ class _InsufficientResourcesManager:
     act upon.
     """
 
-    def __init__(self, total_num_samples: int):
+    def __init__(self, for_train: bool = False):
         # The information tracked across the life time of Tune loop.
         self._no_running_trials_since = -1
         self._last_trial_num = -1
-        self._total_num_samples = total_num_samples
+        self._for_train = for_train
 
     def on_no_available_trials(self, all_trials):
         """Tracks information across the life of Tune loop and makes guesses
@@ -146,7 +146,6 @@ class _InsufficientResourcesManager:
                 time.monotonic() - self._no_running_trials_since
                 > _get_insufficient_resources_warning_threshold()
             ):
-                for_train = self._total_num_samples == 1
                 can_fulfill_any = any(
                     trial.status == Trial.PENDING and _can_fulfill_no_autoscaler(trial)
                     for trial in all_trials
@@ -159,7 +158,7 @@ class _InsufficientResourcesManager:
 
                 # Otherwise, can fulfill none
                 msg = _get_insufficient_resources_warning_msg(
-                    for_train=for_train, trial=all_trials[0]
+                    for_train=self._for_train, trial=all_trials[0]
                 )
                 logger.warning(msg)
                 self._no_running_trials_since = time.monotonic()

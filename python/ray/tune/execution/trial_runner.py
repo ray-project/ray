@@ -133,13 +133,14 @@ class _TuneControllerBase:
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        _trainer_api: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._callbacks = CallbackList(callbacks or [])
         self._insufficient_resources_manager = _InsufficientResourcesManager(
-            self._search_alg.total_samples
+            for_train=_trainer_api
         )
         self._pending_trial_queue_times = {}
 
@@ -1256,6 +1257,7 @@ class TrialRunner(_TuneControllerBase):
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        _trainer_api: bool = False,
         # Deprecated
         local_checkpoint_dir: Optional[str] = None,
     ):
@@ -1291,6 +1293,7 @@ class TrialRunner(_TuneControllerBase):
             callbacks=callbacks,
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
+            _trainer_api=_trainer_api,
         )
 
         self.trial_executor.setup(
