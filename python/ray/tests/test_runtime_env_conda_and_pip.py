@@ -215,11 +215,14 @@ def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
     def f():
         return 1
 
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as exc_info:
-        ray.get(f.remote())
-    assert "doesn't exist from the output of `conda env list --json`" in str(
-        exc_info.value
-    )  # noqa
+    refs = [f.remote() for _ in range(5)]
+
+    for ref in refs:
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as exc_info:
+            ray.get(ref)
+        assert "doesn't exist from the output of `conda env list --json`" in str(
+            exc_info.value
+        )  # noqa
 
 
 if __name__ == "__main__":

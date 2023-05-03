@@ -23,6 +23,7 @@ from ray._private.runtime_env.conda_utils import (
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
     get_master_wheel_url,
@@ -218,12 +219,10 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"conda://<hashed_dependencies>"`, or None if no GC required."""
     conda = runtime_env.get("conda")
     if conda is not None:
-        if isinstance(conda, str):
+        if isinstance(conda, str) or isinstance(conda, dict):
             # User-preinstalled conda env.  We don't garbage collect these, so
             # we don't track them with URIs.
-            uri = None
-        elif isinstance(conda, dict):
-            uri = "conda://" + _get_conda_env_hash(conda_dict=conda)
+            uri = f"conda://{_get_conda_env_hash(conda_dict=conda)}"
         else:
             raise TypeError(
                 "conda field received by RuntimeEnvAgent must be "
@@ -320,32 +319,25 @@ class CondaPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
-        def _create():
-            if uri is None:
-                # The "conda" field is the name of an existing conda env, so no
-                # need to create one.
-                # TODO(architkulkarni): Try "conda activate" here to see if the
-                # env exists, and raise an exception if it doesn't.
-                conda_env_name = runtime_env.get("conda")
-                if conda_env_name is None or not isinstance(conda_env_name, str):
-                    raise ValueError(
-                        "Unexpected conda environment was specified "
-                        f"from a runtime env. {runtime_env}. It must "
-                        "be an existing env, a yaml file, or a "
-                        "corresponding dict."
-                    )
+        if not runtime_env.has_conda():
+            return 0
 
-                # Make sure the conda env exists.
+        def _create():
+            result = parse_and_validate_conda(runtime_env.get("conda"))
+
+            if isinstance(result, str):
+                # The conda env name is given.
+                # In this case, we only verify if the given
+                # conda env exists.
                 conda_env_list = get_conda_env_list()
-                logger.info(conda_env_list)
                 envs = [Path(env).name for env in conda_env_list]
-                if conda_env_name not in envs:
+                if result not in envs:
                     raise ValueError(
-                        f"The given conda environment '{conda_env_name}' "
+                        f"The given conda environment '{result}' "
                         f"from a runtime env {runtime_env} doesn't "
                         "exist from the output of `conda env list --json`. "
                         "You can only specify the env that already exists. "
-                        f"Please make sure to create a env {conda_env_name} "
+                        f"Please make sure to create a env {result} "
                     )
                 return 0
 
