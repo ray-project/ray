@@ -11,70 +11,45 @@ Official Releases
 
 From Wheels
 ~~~~~~~~~~~
-You can install the latest official version of Ray from PyPI on Linux, Windows
-and macOS as follows:
+You can install the latest official version of Ray from PyPI on Linux, Windows,
+and macOS by choosing the option that best matches your use case:
 
+.. tab-set::
 
+    .. tab-item:: Basic
 
-.. tabbed:: Default
+        .. list-table::
+          :widths: 1 3
+          :header-rows: 1
 
-  To install Ray with default dependencies for the dashboard and cluster launcher:
+          * - Library
+            - Command
+          * - Ray Data
+            - `pip install "ray[default,data]"`
+          * - Ray Train
+            - `pip install "ray[default,train]"`
+          * - Ray Tune
+            - `pip install "ray[default,tune]"`
+          * - Ray Serve
+            - `pip install "ray[default,serve]"`
+          * - Ray RLlib
+            - `pip install "ray[default,rllib]"`
 
-  .. code-block:: bash
+    .. tab-item:: Advanced
 
-    # Install Ray with support for the dashboard + cluster launcher
-    pip install -U "ray[default]"
+        .. list-table::
+          :header-rows: 1
 
-
-.. tabbed:: Minimal
-
-  To install a minimal version of Ray *without* support for the dashboard and cluster launcher:
-
-  .. code-block:: bash
-
-    # Install Ray with minimal dependencies
-    pip install -U ray
-
-
-.. tabbed:: AI Runtime
-
-  To install Ray with support for Ray AI Runtime (Data, Train, Tune, Serve):
-
-  .. code-block:: bash
-
-    # Install Ray + dependencies for Ray AI Runtime
-    pip install -U "ray[air]"
-
-.. tabbed:: Libraries
-
-  To install Ray with support for specific Ray libraries:
-
-  .. code-block:: bash
-
-    pip install -U "ray[data]"  # Install Ray + dependencies for Ray Data
-    pip install -U "ray[train]"  # Install Ray + dependencies for Ray Train
-    pip install -U "ray[tune]"  # Install Ray + dependencies for Ray Tune
-    pip install -U "ray[rllib]"  # Install Ray + dependencies for Ray RLlib
-    pip install -U "ray[serve]"  # Install Ray + dependencies for Ray Serve
-
-.. tabbed:: All
-
-  To install Ray with support for *all* Ray extras:
-
-  .. code-block:: bash
-
-    # Install Ray + all extra dependencies
-    pip install -U "ray[all]"
-
-
-.. tip::
-
-  You can also combine the above options.
-  
-  .. code-block:: bash
-    
-    # Install Ray with support for the dashboard + cluster launcher + Ray AIR
-    pip install -U "ray[default,air]"
+          * - Package
+            - Command
+          * - Default (Dashboard + Cluster Launcher)
+            - `pip install "ray[default]"`
+          * - Ray Core
+            - `pip install "ray"`
+          * - Ray AI Runtime (Data, Train, Tune, Serve)
+            - `pip install "ray[air]"`
+          * - All
+            - `pip install "ray[all]"`
 
 .. _install-nightlies:
 
