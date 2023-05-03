@@ -179,7 +179,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     exp_name = f"{trainer_cls.__name__}_restore_test"
 
     if trainer_cls == TransformersTrainer:
-        from ray.train.tests.test_transformers_checkpoint import (
+        from ray.train.tests.test_transformers_trainer import (
             train_function as hf_init,
             train_df,
         )
