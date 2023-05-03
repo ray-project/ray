@@ -776,7 +776,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(WARMING) << "Failed to wait for actor " << actor_id
+          RAY_LOG(WARNING) << "Failed to wait for actor " << actor_id
                            << " out of scope, job id = " << actor_id.JobId()
                            << ", error: " << status.ToString();
           // TODO(iycheng): Retry it in other PR.
