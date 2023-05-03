@@ -11,6 +11,7 @@
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
 /doc/source/use-cases.rst @ericl @pcmoritz
+/doc/source/templates @justinvyu @sofianhnaide
 
 # ==== Ray core ====
 
@@ -22,7 +23,7 @@
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
 # Autoscaler
-/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl
+/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl @ray-project/ray-core
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
