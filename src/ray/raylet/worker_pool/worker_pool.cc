@@ -961,9 +961,9 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     send_reply_callback(Status::OK(), port);
   } else {
     if (!first_job_registered_) {
-        cache_size_policy_
-            ->OnDriverRegistered();  // TODO use OnPrestart num_prestart_python_workers ?
-        MaybeRefillIdlePool(true, false);
+      cache_size_policy_
+          ->OnDriverRegistered();  // TODO use OnPrestart num_prestart_python_workers ?
+      MaybeRefillIdlePool(true, false);
     }
 
     // if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver()
@@ -1422,27 +1422,27 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   //}
 
   //// If the prestart request is for dynamic options, or actor creation, or runtime env,
-  ///or not python, then skip. / Get number of existing idle workers that can be used for
-  ///this task spec / Get number of desired workers, limited by available CPUs (or backlog
-  ///size, which ever is smaller) / If the number of existing idle workers is smaller than
-  ///desired workers, then prestart the delta.
+  /// or not python, then skip. / Get number of existing idle workers that can be used for
+  /// this task spec / Get number of desired workers, limited by available CPUs (or
+  /// backlog size, which ever is smaller) / If the number of existing idle workers is
+  /// smaller than desired workers, then prestart the delta.
   ////
 
   //// Number of usable workers is idle size plus starting size.
   //// I should modify the get num idle proc to create function to understand the idle
-  ///size and starting size. / then this logic just goes there -- we save the number of
-  ///prestart backlog,
+  /// size and starting size. / then this logic just goes there -- we save the number of
+  /// prestart backlog,
 
   //// Okay, what if I remove the num_available_cpus here, and pass the
   //// cluster_resource_scheduler to the policy?
   //// Then this becomes MaybeRefill(create=true), with GetNumIdleProcsToCreate takes in
-  ///idle size, starting size, available cpus
+  /// idle size, starting size, available cpus
 
   //// Current behavior:
   //// Pool doesn't eagerly grow. Processes are created once the reequest is known.
   //// The PrestartWorkers feature pre-starts processes once many tasks are known
   ///(backlog>1). This means that the desired pool size grows to 64-in_use. / After that,
-  ///the pool shrinks.. / So, current logic should take the spike. No levelling behavior.
+  /// the pool shrinks.. / So, current logic should take the spike. No levelling behavior.
 
   //// TODO(cade) this one requires more work.
 

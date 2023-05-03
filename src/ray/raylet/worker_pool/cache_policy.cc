@@ -65,8 +65,8 @@ size_t FutureIdlePoolSizePolicy::GetNumIdleProcsToCreate(size_t idle_size,
 
     size_t num_to_create = 0;
     if (num_desired_workers > num_usable_workers) {
-        auto num_missing_workers = num_desired_workers - num_usable_workers;
-        num_to_create = num_missing_workers;
+      auto num_missing_workers = num_desired_workers - num_usable_workers;
+      num_to_create = num_missing_workers;
     }
 
     // this->prestart_requests_ -= num_to_create;
@@ -272,7 +272,7 @@ void FutureIdlePoolSizePolicy::OnDriverRegistered() {
     return;
   }
 
-  this->prestart_requests_ += 64; // num_prestart_python_workers
+  this->prestart_requests_ += 64;  // num_prestart_python_workers
   desired_cache_size_ = 64;
 }
 
