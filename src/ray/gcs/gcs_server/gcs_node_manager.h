@@ -173,7 +173,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// A map of NodeId <-> ip:port of raylet
   using NodeIDAddrBiMap =
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_set_of<std::string>>;
+                   boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 
   friend GcsMonitorServerTest;
