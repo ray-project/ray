@@ -240,6 +240,18 @@ DEFAULT_GRAFANA_PANELS = [
         ],
     ),
     Panel(
+        id=44,
+        title="Node Out of Memory Failures by Name",
+        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+        unit="failures",
+        targets=[
+            Target(
+                expr='ray_memory_manager_worker_eviction_total{{instance=~"$Instance",{global_filters}}}',
+                legend="OOM Killed: {{Name}}, {{instance}}",
+            ),
+        ],
+    ),
+    Panel(
         id=34,
         title="Node Memory by Component",
         description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed RSS-SHM per Ray component, which corresponds to an approximate memory usage per proc. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
@@ -250,7 +262,7 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{Component}}",
             ),
             Target(
-                expr="node_mem_shared_bytes{{{global_filters}}}",
+                expr="sum(ray_node_mem_shared_bytes{{{global_filters}}})",
                 legend="shared_memory",
             ),
             Target(

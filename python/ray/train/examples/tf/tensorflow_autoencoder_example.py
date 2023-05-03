@@ -14,7 +14,7 @@ from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.air.result import Result
 from ray.train.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 
 import ray
 
@@ -113,7 +113,7 @@ def train_func(config: dict):
             batch_size=per_worker_batch_size,
         )
         history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
+            tf_dataset, callbacks=[ReportCheckpointCallback()]
         )
         results.append(history.history)
     return results
@@ -137,7 +137,7 @@ def train_tensorflow_mnist(
     return results
 
 
-def predict_tensorflow_mnist(result: Result) -> ray.data.Dataset:
+def predict_tensorflow_mnist(result: Result) -> ray.data.Datastream:
     test_dataset = get_dataset(split_type="test")
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model

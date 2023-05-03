@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.aggregate import AggregateFn
-from ray.data.block import KeyFn
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -20,7 +19,7 @@ class AbstractAllToAll(LogicalOperator):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
+                inspecting the logical plan of a Datastream.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             num_outputs: The number of expected output bundles outputted by this
@@ -89,7 +88,7 @@ class Sort(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[KeyFn],
+        key: Optional[str],
         descending: bool,
     ):
         super().__init__(
@@ -106,7 +105,7 @@ class Aggregate(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[KeyFn],
+        key: Optional[str],
         aggs: List[AggregateFn],
     ):
         super().__init__(

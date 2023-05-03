@@ -1,7 +1,7 @@
 import logging
-from typing import Mapping
+from typing import Any, Mapping
 
-from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
+from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,8 +15,8 @@ _, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class PPOTfLearner(PPOBaseLearner, TfLearner):
-    """Implements tf-specific PPO loss logic on top of PPOBaseLearner.
+class PPOTfLearner(PPOLearner, TfLearner):
+    """Implements tf-specific PPO loss logic on top of PPOLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()`.
     """
@@ -73,14 +73,14 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         # Compute a value function loss.
         if self.hps.use_critic:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
-            vf_loss = tf.math.squared_difference(
-                value_fn_out, batch[Postprocessing.VALUE_TARGETS]
-            )
+            vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, self.hps.vf_clip_param)
             mean_vf_loss = tf.reduce_mean(vf_loss_clipped)
+            mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
         # Ignore the value function.
         else:
             value_fn_out = tf.constant(0.0, dtype=surrogate_loss.dtype)
+            mean_vf_unclipped_loss = tf.constant(0.0, dtype=surrogate_loss.dtype)
             vf_loss_clipped = mean_vf_loss = tf.constant(
                 0.0, dtype=surrogate_loss.dtype
             )
@@ -94,15 +94,26 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.hps.kl_coeff * mean_kl_loss
+            total_loss += self.curr_kl_coeff * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "mean_policy_loss": -tf.reduce_mean(surrogate_loss),
-            "mean_vf_loss": mean_vf_loss,
+            "policy_loss": -tf.reduce_mean(surrogate_loss),
+            "vf_loss": mean_vf_loss,
+            "unclipped_vf_loss": mean_vf_unclipped_loss,
             "vf_explained_var": explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
-            "mean_entropy": mean_entropy,
-            "mean_kl_loss": mean_kl_loss,
+            "entropy": mean_entropy,
+            "kl": mean_kl_loss,
+            "entropy_coeff": self.hps.entropy_coeff,
+            "cur_kl_coeff": self.curr_kl_coeff,
         }
+
+    @override(PPOLearner)
+    def _get_kl_variable(self, value: float) -> Any:
+        return tf.Variable(value, trainable=False, dtype=tf.float32)
+
+    @override(PPOLearner)
+    def _set_kl_coeff(self, value: float) -> None:
+        self.curr_kl_coeff.assign(value)

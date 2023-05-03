@@ -39,7 +39,7 @@ class TuneRestoreTest(unittest.TestCase):
             name=test_name,
             stop={"training_iteration": 1},
             checkpoint_freq=1,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
@@ -106,7 +106,7 @@ def _run(local_dir, driver_semaphore, trainer_semaphore):
 
     tune.run(
         _train,
-        local_dir=local_dir,
+        storage_path=local_dir,
         name="interrupt",
         callbacks=[SteppingCallback(driver_semaphore, trainer_semaphore)],
     )
@@ -264,7 +264,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -292,7 +292,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -338,7 +338,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 ),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -392,7 +392,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
         with self.assertRaises(RuntimeError):
@@ -435,7 +435,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -478,7 +478,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    local_dir=self.logdir,
+                    storage_path=self.logdir,
                 )
             )
 
@@ -509,7 +509,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test5": tune.grid_search(list(range(20))),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
         with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):

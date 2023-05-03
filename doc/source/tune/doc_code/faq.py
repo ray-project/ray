@@ -223,7 +223,7 @@ if __name__ == "__main__":
 # __torch_seed_example_end__
 
 # __large_data_start__
-from ray import tune, air
+from ray import air, tune
 import numpy as np
 
 
@@ -244,7 +244,7 @@ if not MOCK:
     # __log_1_start__
     tuner = tune.Tuner(
         MyTrainableClass,
-        sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir"),
+        run_config=air.RunConfig(storage_path="s3://my-log-dir"),
     )
     tuner.fit()
     # __log_1_end__
@@ -268,9 +268,7 @@ if not MOCK:
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://my-log-dir", syncer=CustomSyncer()
-        ),
+        run_config=air.RunConfig(storage_path="s3://my-log-dir"),
     )
     tuner.fit()
     # __log_2_end__
@@ -344,7 +342,6 @@ if not MOCK:
             sync_down_template="aws s3 sync {source} {target}",
             delete_template="aws s3 rm {target} --recursive",
         ),
-        upload_dir="s3://bucket/path",
     )
     # __custom_command_syncer_end__
 
@@ -356,7 +353,7 @@ if not MOCK:
     tuner = tune.Tuner(
         train_fn,
         # ...,
-        sync_config=tune.SyncConfig(upload_dir="s3://your-s3-bucket/durable-trial/"),
+        run_config=air.RunConfig(storage_path="s3://your-s3-bucket/durable-trial/"),
     )
     tuner.fit()
     # __s3_end__
@@ -367,7 +364,7 @@ if not MOCK:
     tuner = tune.Tuner(
         train_fn,
         run_config=air.RunConfig(
-            local_dir="/path/to/shared/storage",
+            storage_path="/path/to/shared/storage",
         ),
         sync_config=tune.SyncConfig(
             # Do not sync because we are on shared storage

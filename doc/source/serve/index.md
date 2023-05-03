@@ -32,45 +32,49 @@ Install Ray Serve and its dependencies:
 ```bash
 pip install "ray[serve]"
 ```
-
-In this quick-start example we will define a simple "hello world" deployment, deploy it behind HTTP locally, and query it.
+Define a simple "hello world" application, run it locally, and query it over HTTP.
 
 ```{literalinclude} doc_code/quickstart.py
 :language: python
 ```
 
-:::{tabbed} More examples
+:::{tab-set} 
+
+::::::{tab-item} More examples
 For more examples, select from the tabs.
-:::
+::::::
 
-:::{tabbed} Model composition
+:::{tab-set}
+:::{tab-item} Model composition
 
-In this example, we demonstrate how you can use Serve's model composition API to express a complex computation graph and deploy it as a Serve application.
+Use Serve's model composition API to combine multiple deployments into a single application.
 
-```{literalinclude} doc_code/quickstart_graph.py
+```{literalinclude} doc_code/quickstart_composed.py
 :language: python
 ```
 :::
 
-:::{tabbed} FastAPI integration
+::::::{tab-item} FastAPI integration
 
-In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to make use of more advanced HTTP functionality.
+Use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to elegantly handle HTTP parsing and validation.
 
 ```{literalinclude} doc_code/fastapi_example.py
 :language: python
 ```
-:::
+::::::
 
-:::{tabbed} Hugging Face Transformers model
+::::::{tab-item} Hugging Face Transformers model
 
 To run this example, install the following: ``pip install transformers``
 
-In this example we will serve a pre-trained [Hugging Face Transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
+Serve a pre-trained [Hugging Face Transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
 
 ```{literalinclude} doc_code/transformers_example.py
 :language: python
 ```
+::::::
+
 :::
 
 ## Why choose Serve?
@@ -218,7 +222,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Getting Started**
     ^^^
 
-    Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-deployment>` .
+    Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-application>` .
 
     +++
     .. link-button:: getting-started

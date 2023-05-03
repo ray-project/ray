@@ -11,6 +11,7 @@ import tempfile
 import socket
 
 from pprint import pprint
+from datetime import datetime
 
 import pytest
 import numpy as np
@@ -447,6 +448,42 @@ def test_jobs_cluster_events(shutdown_only):
 
     print("Test failed (runtime_env failure) job run.")
     wait_for_condition(verify, timeout=30)
+    pprint(list_cluster_events())
+
+
+def test_core_events(shutdown_only):
+    # Test events recorded from core RAY_EVENT APIs.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    os.kill(pid, 9)
+    s = time.time()
+
+    def verify():
+        events = list_cluster_events(filters=[("source_type", "=", "RAYLET")])
+        print(events)
+        assert len(list_cluster_events()) == 1
+        event = events[0]
+        assert event["severity"] == "ERROR"
+        datetime_str = event["time"]
+        datetime_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+        timestamp = time.mktime(datetime_obj.timetuple())
+
+        # Make sure timestamp is not incorrect. Add sufficient buffer (60 seconds)
+        assert abs(timestamp - s) < 60
+        assert (
+            "A worker died or was killed while executing "
+            "a task by an unexpected system error" in event["message"]
+        )
+        return True
+
+    wait_for_condition(verify)
     pprint(list_cluster_events())
 
 

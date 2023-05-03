@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING, Collection
 
 import contextlib
 import collections
@@ -11,7 +11,6 @@ import numbers
 import numpy as np
 import os
 import pandas as pd
-from tabulate import tabulate
 import textwrap
 import time
 
@@ -22,10 +21,16 @@ try:
 except ImportError:
     rich = None
 
+import ray
 from ray._private.dict import unflattened_lookup
+from ray._private.thirdparty.tabulate.tabulate import (
+    tabulate,
+    TableFormat,
+    Line,
+    DataRow,
+)
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.callback import Callback
-from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     EPISODE_REWARD_MEAN,
@@ -81,11 +86,7 @@ class AirVerbosity(IntEnum):
     VERBOSE = 2
 
 
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
 def get_air_verbosity() -> Optional[AirVerbosity]:
@@ -137,7 +138,11 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
 
 
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
-    """Try to infer the metrics to print out."""
+    """Try to infer the metrics to print out.
+
+    By default, only the first 4 meaningful metrics in `last_result` will be
+    inferred as user implied metrics.
+    """
     # Using OrderedDict for OrderedSet.
     result = collections.OrderedDict()
     for t in trials:
@@ -156,12 +161,21 @@ def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
 
 def _current_best_trial(
     trials: List[Trial], metric: Optional[str], mode: Optional[str]
-):
-    if not trials:
-        return None, None
+) -> Tuple[Optional[Trial], Optional[str]]:
+    """
+    Returns the best trial and the metric key. If anything is empty or None,
+    returns a trivial result of None, None.
 
-    if not metric or not mode:
-        return None, metric
+    Args:
+        trials: List of trials.
+        metric: Metric that trials are being ranked.
+        mode: One of "min" or "max".
+
+    Returns:
+         Best trial and the metric key.
+    """
+    if not trials or not metric or not mode:
+        return None, None
 
     metric_op = 1.0 if mode == "max" else -1.0
     best_metric = float("-inf")
@@ -220,7 +234,7 @@ def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
     return result
 
 
-def _get_trial_info(trial: Trial, metric_keys: List[str]):
+def _get_trial_info(trial: Trial, metric_keys: List[str]) -> List[str]:
     """Returns the following information about a trial:
 
     name | status | metrics...
@@ -253,7 +267,7 @@ def _get_trial_table_data_per_status(
     Args:
         status: The trial status of interest.
         trials: all the trials of that status.
-        metric_keys: Ordered list of metrics to be displayed in the table.
+        metric_keys: *Ordered* list of metrics to be displayed in the table.
             Including both default and user defined.
         force_max_rows: Whether or not to enforce a max row number for this status.
             If True, only a max of `5` rows will be shown.
@@ -335,7 +349,7 @@ def _best_trial_str(
 ):
     """Returns a readable message stating the current best trial."""
     # returns something like
-    # Current best trial: 18ae7_00005 with loss=0.5918508041056858 and parameters={'train_loop_config': {'lr': 0.059253447253394785}}. # noqa
+    # Current best trial: 18ae7_00005 with loss=0.5918508041056858 and params={'train_loop_config': {'lr': 0.059253447253394785}}. # noqa
     val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = list(config.keys())
@@ -343,6 +357,91 @@ def _best_trial_str(
     return (
         f"Current best trial: {trial.trial_id} with {metric}={val} and "
         f"params={params}"
+    )
+
+
+def _render_table_item(key: str, item: Any, prefix: str = ""):
+    key = prefix + key
+    if isinstance(item, float):
+        # tabulate does not work well with mixed-type columns, so we format
+        # numbers ourselves.
+        yield key, f"{item:.5f}".rstrip("0")
+    elif isinstance(item, list):
+        yield key, None
+        for sv in item:
+            yield from _render_table_item("", sv, prefix=prefix + "-")
+    elif isinstance(item, Dict):
+        yield key, None
+        for sk, sv in item.items():
+            yield from _render_table_item(str(sk), sv, prefix=prefix + "/")
+    else:
+        yield key, item
+
+
+def _get_dict_as_table_data(
+    data: Dict,
+    exclude: Optional[Collection] = None,
+    upper_keys: Optional[Collection] = None,
+):
+    exclude = exclude or set()
+    upper_keys = upper_keys or set()
+
+    upper = []
+    lower = []
+
+    for key, value in sorted(data.items()):
+        if key in exclude:
+            continue
+
+        for k, v in _render_table_item(str(key), value):
+            if key in upper_keys:
+                upper.append([k, v])
+            else:
+                lower.append([k, v])
+
+    if not upper:
+        return lower
+    elif not lower:
+        return upper
+    else:
+        return upper + lower
+
+
+# Copied/adjusted from tabulate
+AIR_TABULATE_TABLEFMT = TableFormat(
+    lineabove=Line("╭", "─", "─", "╮"),
+    linebelowheader=Line("├", "─", "─", "┤"),
+    linebetweenrows=None,
+    linebelow=Line("╰", "─", "─", "╯"),
+    headerrow=DataRow("│", " ", "│"),
+    datarow=DataRow("│", " ", "│"),
+    padding=1,
+    with_header_hide=None,
+)
+
+
+def _print_dict_as_table(
+    data: Dict,
+    header: Optional[str] = None,
+    exclude: Optional[Collection] = None,
+    division: Optional[Collection] = None,
+):
+    table_data = _get_dict_as_table_data(
+        data=data, exclude=exclude, upper_keys=division
+    )
+
+    headers = [header, ""] if header else []
+
+    if not table_data:
+        return
+
+    print(
+        tabulate(
+            table_data,
+            headers=headers,
+            colalign=("left", "right"),
+            tablefmt=AIR_TABULATE_TABLEFMT,
+        )
     )
 
 
@@ -472,14 +571,14 @@ class TuneTerminalReporter(TuneReporterBase):
             all_infos.extend(table.trial_infos)
             if table.more_info:
                 all_infos.append(table.more_info)
-            print(
-                tabulate(
-                    all_infos,
-                    headers=header,
-                    tablefmt="simple",
-                    showindex=False,
-                )
+        print(
+            tabulate(
+                all_infos,
+                headers=header,
+                tablefmt="simple",
+                showindex=False,
             )
+        )
         print()
 
 
@@ -550,7 +649,7 @@ class TuneRichReporter(TuneReporterBase):
         if not self._live:
             logger.warning(
                 "`print_heartbeat` is not supposed to "
-                "be called within `with_live` context manager."
+                "be called without `with_live` context manager."
             )
             return
         heartbeat_strs, table_data = self._get_heartbeat(trials, *args)
@@ -584,6 +683,7 @@ class TrainReporter(ProgressReporter):
 
 # These keys are blacklisted for printing out training/tuning intermediate/final result!
 BLACKLISTED_KEYS = {
+    "config",
     "date",
     "done",
     "hostname",
@@ -640,12 +740,28 @@ class AirResultProgressCallback(Callback):
     def __init__(self, verbosity):
         self._verbosity = verbosity
         self._start_time = time.time()
+        self._trial_last_printed_results = {}
 
-    def _print_result(self, trial, result=None):
-        print(pretty_print(result or trial.last_result, BLACKLISTED_KEYS))
+    def _print_result(self, trial, result: Optional[Dict] = None, force: bool = False):
+        """Only print result if a different result has been reported, or force=True"""
+        result = result or trial.last_result
+
+        last_result_iter = self._trial_last_printed_results.get(trial.trial_id, -1)
+        this_iter = result.get(TRAINING_ITERATION, 0)
+
+        if this_iter != last_result_iter or force:
+            _print_dict_as_table(
+                result,
+                header=f"{self._addressing_tmpl.format(trial)} result",
+                exclude=BLACKLISTED_KEYS,
+                division=AUTO_RESULT_KEYS,
+            )
+            self._trial_last_printed_results[trial.trial_id] = this_iter
 
     def _print_config(self, trial):
-        print(pretty_print(trial.config))
+        _print_dict_as_table(
+            trial.config, header=f"{self._addressing_tmpl.format(trial)} config"
+        )
 
     def on_trial_result(
         self,
@@ -659,13 +775,9 @@ class AirResultProgressCallback(Callback):
             return
         curr_time, running_time = _get_time_str(self._start_time, time.time())
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"finished iter {result[TRAINING_ITERATION]} "
-                    f"at {curr_time} (running for {running_time})",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"finished iteration {result[TRAINING_ITERATION]} "
+            f"at {curr_time} (running for {running_time})."
         )
         self._print_result(trial, result)
 
@@ -679,13 +791,9 @@ class AirResultProgressCallback(Callback):
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"({finished_iter} iters) "
-                    f"finished at {curr_time} (running for {running_time})",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"completed training after {finished_iter} iterations "
+            f"at {curr_time} (running for {running_time})."
         )
         self._print_result(trial)
 
@@ -699,33 +807,31 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
+        # don't think this is supposed to happen but just to be save.
         saved_iter = "?"
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"saved checkpoint for iter {saved_iter}"
-                    f" at {checkpoint.dir_or_data}",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"saved a checkpoint for iteration {saved_iter} "
+            f"at: {checkpoint.dir_or_data}"
         )
-        print()
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
-        has_config = trial.config is not None
-        print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    "started with configuration:" if has_config else "started.",
-                ]
+        has_config = bool(trial.config)
+
+        if has_config:
+            print(
+                f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
             )
-        )
-        self._print_config(trial)
+            self._print_config(trial)
+        else:
+            print(
+                f"{self._addressing_tmpl.format(trial)} "
+                f"started without custom configuration."
+            )
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):

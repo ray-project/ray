@@ -201,14 +201,20 @@ class TrainableUtil:
 
     @staticmethod
     def get_remote_storage_path(
-        local_path: str, logdir: str, remote_checkpoint_dir: str
+        local_path: str, local_path_prefix: str, remote_path_prefix: str
     ) -> str:
         """Converts a ``local_path`` to be based off of
-        ``remote_checkpoint_dir`` instead of ``logdir``.
+        ``remote_path_prefix`` instead of ``local_path_prefix``.
 
-        ``logdir`` is assumed to be a prefix of ``local_path``."""
-        rel_local_path = os.path.relpath(local_path, logdir)
-        uri = URI(remote_checkpoint_dir)
+        ``local_path_prefix`` is assumed to be a prefix of ``local_path``.
+
+        Example:
+
+            >>> TrainableUtil.get_remote_storage_path("/a/b/c", "/a", "s3://bucket/")
+            's3://bucket/b/c'
+        """
+        rel_local_path = os.path.relpath(local_path, local_path_prefix)
+        uri = URI(remote_path_prefix)
         return str(uri / rel_local_path)
 
 

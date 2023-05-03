@@ -369,10 +369,10 @@ class TrialRunnerTest2(unittest.TestCase):
         #         checkpoint_00000/
         trial = Trial(
             "__fake",
-            local_dir=tempdir,
+            experiment_path=tempdir,
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         )
-        trial.init_logdir()
+        trial.init_local_path()
         trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 
         def write_checkpoint(trial: Trial, index: int):

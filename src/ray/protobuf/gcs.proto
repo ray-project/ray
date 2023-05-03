@@ -323,6 +323,8 @@ message GcsNodeInfo {
   uint64 start_time_ms = 23;
   // The unix ms timestamp the node was ended at.
   uint64 end_time_ms = 24;
+  // If this is a head node.
+  bool is_head_node = 25;
 }
 
 // Please keep this in sync with the definition of JobInfo in

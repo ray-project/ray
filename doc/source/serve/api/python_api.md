@@ -24,7 +24,6 @@
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    serve.handle.RayServeHandle
 

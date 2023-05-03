@@ -12,6 +12,7 @@ from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 import ray
+from ray._private.usage import usage_lib
 from ray.util import log_once
 
 try:
@@ -571,7 +572,7 @@ class Pool:
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        ray._private.usage.usage_lib.record_library_usage("util.multiprocessing.Pool")
+        usage_lib.record_library_usage("util.multiprocessing.Pool")
 
         self._closed = False
         self._initializer = initializer

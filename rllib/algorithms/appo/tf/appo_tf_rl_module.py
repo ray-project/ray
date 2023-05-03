@@ -21,6 +21,9 @@ OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    def setup(self):
+        super().setup()
         catalog = self.config.get_catalog()
         # old pi and old encoder are the "target networks" that are used for
         # the stabilization of the updates of the current pi and encoder.
@@ -43,6 +46,7 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
             OLD_ACTION_DIST_KEY,
         ]
 
+    @override(PPOTfRLModule)
     def _forward_train(self, batch: NestedDict):
         outs = super()._forward_train(batch)
         old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]

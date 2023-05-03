@@ -29,7 +29,7 @@ DEFAULT_HTTP_PORT = 8000
 DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
-SERVE_DEFAULT_APP_NAME = ""
+SERVE_DEFAULT_APP_NAME = "default"
 
 #: Separator between app name and deployment name when we prepend
 #: the app name to each deployment name. This prepending is currently
@@ -119,6 +119,10 @@ RAY_GCS_RPC_TIMEOUT_S = 3.0
 
 # Env var to control legacy sync deployment handle behavior in DAG.
 SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
+
+# Maximum duration to wait until broadcasting a long poll update if there are
+# still replicas in the RECOVERING state.
+RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 
 class ServeHandleType(str, Enum):

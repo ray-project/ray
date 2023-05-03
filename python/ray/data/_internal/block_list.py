@@ -58,8 +58,8 @@ class BlockList:
         """Raise an error if this BlockList has been previously cleared."""
         if self.is_cleared():
             raise ValueError(
-                "This Dataset's blocks have been moved, which means that you "
-                "can no longer use this Dataset."
+                "This Datastream's blocks have been moved, which means that you "
+                "can no longer use this Datastream."
             )
 
     def split(self, split_size: int) -> List["BlockList"]:

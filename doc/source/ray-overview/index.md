@@ -52,7 +52,7 @@ Ray's unified compute framework comprises of three layers:
 **Scale machine learning workloads**
 ^^^
 Build ML applications with a toolkit of libraries for distributed 
-[data processing](../data/dataset.rst), 
+[data processing](../data/data.rst), 
 [model training](../train/train.rst), 
 [tuning](tune/../index.rst), 
 [reinforcement learning](../rllib/index.rst), 
@@ -97,7 +97,7 @@ or [Slurm](../cluster/vms/user-guides/community/slurm) clusters.
 ````
 
 Each of [Ray AIR's](../ray-air/getting-started) five native libraries distributes a specific ML task:
-- [Data](../data/dataset): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
+- [Data](../data/data): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
 - [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.
 - [Serve](../serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.

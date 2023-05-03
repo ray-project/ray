@@ -5,6 +5,7 @@ import textwrap
 from functools import wraps
 from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
 
@@ -34,14 +35,6 @@ def make_table_html_repr(
     Returns:
         HTML representation of the object
     """
-    try:
-        from tabulate import tabulate
-    except ImportError:
-        return (
-            "Tabulate isn't installed. Run "
-            "`pip install tabulate` for rich notebook output."
-        )
-
     data = {}
     for k, v in vars(obj).items():
         if isinstance(v, (str, bool, int, float)):
@@ -186,3 +179,14 @@ def fallback_if_colab(func: F) -> Callable[[F], F]:
             return None
 
     return wrapped
+
+
+@DeveloperAPI
+def in_notebook() -> bool:
+    """Return whether we are in a Jupyter notebook."""
+    try:
+        class_name = get_ipython().__class__.__name__
+        is_notebook = True if "Terminal" not in class_name else False
+    except NameError:
+        is_notebook = False
+    return is_notebook

@@ -21,11 +21,11 @@ from ray.rllib.core.testing.tf.bc_module import (
 MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 CUSTOM_MODULES = {
     "torch": BCTorchRLModuleWithSharedGlobalEncoder,
-    "tf": BCTfRLModuleWithSharedGlobalEncoder,
+    "tf2": BCTfRLModuleWithSharedGlobalEncoder,
 }
 CUSTOM_MARL_MODULES = {
     "torch": BCTorchMultiAgentModuleWithSharedEncoder,
-    "tf": BCTfMultiAgentModuleWithSharedEncoder,
+    "tf2": BCTfMultiAgentModuleWithSharedEncoder,
 }
 
 
