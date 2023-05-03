@@ -960,9 +960,11 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
-    cache_size_policy_
-        ->OnDriverRegistered();  // TODO use OnPrestart num_prestart_python_workers ?
-    MaybeRefillIdlePool(true, false);
+    if (!first_job_registered_) {
+        cache_size_policy_
+            ->OnDriverRegistered();  // TODO use OnPrestart num_prestart_python_workers ?
+        MaybeRefillIdlePool(true, false);
+    }
 
     // if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver()
     // &&
