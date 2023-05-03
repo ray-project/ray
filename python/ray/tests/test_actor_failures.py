@@ -790,6 +790,33 @@ def test_failure_during_dependency_resolution(ray_start_regular):
         ray.get(ref)
 
 
+def test_actor_out_of_scope_failure(ray_start_regular):
+    @ray.remote(max_restarts=-1)
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    @ray.remote
+    class Parent:
+        def generate_actors(self):
+            self.child = Actor.remote()
+            self.detached_actor = Actor.options(
+                name="actor", lifetime="detached"
+            ).remote()
+            return self.child, self.detached_actor, os.getpid()
+
+    parent = Parent.remote()
+    actor, detached_actor, pid = ray.get(parent.generate_actors.remote())
+
+    os.kill(pid, signal.SIGKILL)
+
+    with pytest.raises(
+        ray.exceptions.RayActorError,
+        match=".*The actor is dead because all references to the actor were removed.*",
+    ):
+        print("actor.ping:", ray.get(actor.ping.remote()))
+
+
 if __name__ == "__main__":
     import pytest
 
