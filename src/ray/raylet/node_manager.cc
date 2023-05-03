@@ -1002,32 +1002,34 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
-  if (RayConfig::instance().use_ray_syncer()) {
-    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_info.node_id(),
-                                                   syncer::MessageType::RESOURCE_VIEW)) {
-      if (sync_msg) {
-        ConsumeSyncMessage(sync_msg);
-      }
-    }
-  } else {
-    // Fetch resource info for the remote node and update cluster resource map.
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-        node_id,
-        [this, node_id](
-            Status status,
-            const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
-          if (data) {
-            ResourceRequest resources;
-            for (auto &resource_entry : *data) {
-              resources.Set(scheduling::ResourceID(resource_entry.first),
-                            FixedPoint(resource_entry.second->resource_capacity()));
-            }
-            if (ResourceCreateUpdated(node_id, resources)) {
-              cluster_task_manager_->ScheduleAndDispatchTasks();
+
+  // Fetch resource info for the remote node and update cluster resource map.
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
+      node_id,
+      [this, node_id](
+          Status status,
+          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
+        // TODO: Always use the message from ray syncer.
+        if (data) {
+          ResourceRequest resources;
+          for (auto &resource_entry : *data) {
+            resources.Set(scheduling::ResourceID(resource_entry.first),
+                          FixedPoint(resource_entry.second->resource_capacity()));
+          }
+          if (ResourceCreateUpdated(node_id, resources)) {
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          }
+        }
+        // Update the resource view if a new message has been sent.
+        if (RayConfig::instance().use_ray_syncer()) {
+          if (auto sync_msg = ray_syncer_.GetSyncMessage(
+                  node_info.node_id(), syncer::MessageType::RESOURCE_VIEW)) {
+            if (sync_msg) {
+              ConsumeSyncMessage(sync_msg);
             }
           }
-        }));
-  }
+        }
+      }));
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {

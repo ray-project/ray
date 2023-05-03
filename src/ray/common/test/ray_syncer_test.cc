@@ -604,8 +604,13 @@ TEST_F(SyncerTest, Broadcast) {
         return s3.received_versions[node_id][0] == 1;
       },
       5));
-  ASSERT_EQ(0, s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)->version());
-  ASSERT_EQ(nullptr, s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(), MessageType::RESOURCE_VIEW));
+  ASSERT_EQ(
+      0,
+      s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
+          ->version());
+  ASSERT_EQ(nullptr,
+            s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
+                                      MessageType::RESOURCE_VIEW));
 }
 
 bool CompareViews(const std::vector<SyncerServerTest *> &servers,
