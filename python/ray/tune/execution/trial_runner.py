@@ -138,7 +138,9 @@ class _TuneControllerBase:
         self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._callbacks = CallbackList(callbacks or [])
-        self._insufficient_resources_manager = _InsufficientResourcesManager()
+        self._insufficient_resources_manager = _InsufficientResourcesManager(
+            self._search_alg.total_samples
+        )
         self._pending_trial_queue_times = {}
 
         self._max_pending_trials = _get_max_pending_trials(self._search_alg)
