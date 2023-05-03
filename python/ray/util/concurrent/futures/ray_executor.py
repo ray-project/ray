@@ -1,5 +1,5 @@
 import time
-from concurrent.futures import Executor, Future
+from concurrent.futures import Executor, Future, TimeoutError as ConTimeoutError
 from functools import partial
 from typing import (
     Any,
@@ -237,8 +237,22 @@ class RayExecutor(Executor):
             end_time = timeout + time.monotonic()
 
         if self._actor_pool:
-            res = self._actor_pool.map(lambda a, v: a.actor_function.remote(partial(fn, *v)), zip(*iterables))                                                                              
-            return res
+            def result_iterator() -> Iterator[T]:
+                while self._actor_pool.has_next():
+                    if timeout is None:
+                        self._actor_pool.get_next(timeout=0)
+                    else:
+                        self._actor_pool.get_next(timeout=end_time - time.monotonic())
+                for v in zip(*iterables):
+                    self._actor_pool.submit(lambda a, v: a.actor_function.remote(partial(fn, *v)), v)
+                while self._actor_pool.has_next():
+                    if timeout is None:
+                        yield self._actor_pool.get_next(timeout=None)
+                    else:
+                        try:
+                            yield self._actor_pool.get_next(timeout=end_time - time.monotonic())
+                        except TimeoutError:
+                            raise ConTimeoutError
         else:
             fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
@@ -260,7 +274,7 @@ class RayExecutor(Executor):
                     for future in fs:
                         future.cancel()
 
-            return result_iterator()
+        return result_iterator()
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         """Clean-up the resources associated with the Executor.

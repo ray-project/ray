@@ -48,9 +48,10 @@ def test_map_zips_iterables():
 
 def test_remote_function_map_using_max_workers():
     with RayExecutor(max_workers=3) as ex:
+        assert ex._actor_pool is not None
         assert len(ex._actor_pool._idle_actors) == 3
         time_start = time.monotonic()
-        ff = ex.map(lambda _: time.sleep(1), range(12))
+        ff = list(ex.map(lambda _: time.sleep(1), range(12)))
         print(f"blah: {list(ff)}")
         time_end = time.monotonic()
         # we expect about (12*1) / 3 = 4 rounds
