@@ -50,6 +50,7 @@ predictions = ds.map_batches(
     TorchPredictor,
     compute=ray.data.ActorPoolStrategy(size=4),  # <1>
     num_gpus=1,  # <2>
+    batch_size=8,
 )
 
 predictions.show(limit=1)

@@ -4,6 +4,7 @@
 
 # __hf_quickstart_load_start__
 import ray
+import numpy as np
 import pandas as pd
 from typing import Dict
 

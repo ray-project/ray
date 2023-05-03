@@ -22,6 +22,7 @@ ds.take(1)
 
 # __create_pandas_2_begin__
 import pandas as pd
+import numpy as np
 
 # Create multiple TensorArray columns.
 def gen_image_and_embed(batch: pd.DataFrame) -> pd.DataFrame:
