@@ -1,7 +1,7 @@
 .. _transforming_datastreams:
 
 ========================
-Transforming Datastreams
+Transforming Data
 ========================
 
 Datastreams transformations take in datastreams and produce new datastreams. For example, *map_batches*
@@ -99,44 +99,46 @@ Types of UDFs
 =============
 There are three types of UDFs that you can use with Ray Data: Function UDFs, Callable Class UDFs, and Generator UDFs.
 
-.. tabbed:: "Function UDFs"
+.. tab-set::
 
-  The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datastreams_batch_formats` for the supported batch formats.
+    .. tab-item:: "Function UDFs"
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_default_udfs_tabular_begin__
-    :end-before: __writing_default_udfs_tabular_end__
+      The most basic UDFs are functions that take in a batch or row as input, and returns a batch or row as output. See :ref:`transform_datastreams_batch_formats` for the supported batch formats.
 
-.. tabbed:: "Callable Class UDFs"
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_default_udfs_tabular_begin__
+        :end-before: __writing_default_udfs_tabular_end__
 
-  With the actor compute strategy, you can use per-row and per-batch UDFs
-  *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
-  can use the constructor of the class for stateful setup, and it is only invoked once
-  per worker actor.
+    .. tab-item:: "Callable Class UDFs"
 
-  Callable classes are useful if you need to load expensive state (such as a model) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
+      With the actor compute strategy, you can use per-row and per-batch UDFs
+      *callable classes*, i.e., classes that implement the ``__call__`` magic method. You
+      can use the constructor of the class for stateful setup, and it is only invoked once
+      per worker actor.
 
-  .. note::
-    These transformation APIs take the uninstantiated callable class as an argument,
-    not an instance of the class.
+      Callable classes are useful if you need to load expensive state (such as a model) for the UDF. By using an actor class, you only need to load the state once in the beginning, rather than for each batch.
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_callable_classes_udfs_begin__
-    :end-before: __writing_callable_classes_udfs_end__
+      .. note::
+        These transformation APIs take the uninstantiated callable class as an argument,
+        not an instance of the class.
 
-.. tabbed:: "Generator UDFs"
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_callable_classes_udfs_begin__
+        :end-before: __writing_callable_classes_udfs_end__
 
-  UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
+    .. tab-item:: "Generator UDFs"
 
-  .. warning::
-    When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Datastream.flat_map>` API and not the :meth:`.map() <ray.data.Datastream.map>` API.
+      UDFs can also be written as Python generators, yielding multiple outputs for a batch or row instead of a single item. Generator UDFs are useful when returning large objects. Instead of returning a very large output batch, ``fn`` can instead yield the output batch in chunks to avoid excessive heap memory usage.
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_generator_udfs_begin__
-    :end-before: __writing_generator_udfs_end__
+      .. warning::
+        When applying a generator UDF on individual rows, make sure to use the :meth:`.flat_map() <ray.data.Datastream.flat_map>` API and not the :meth:`.map() <ray.data.Datastream.map>` API.
+
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_generator_udfs_begin__
+        :end-before: __writing_generator_udfs_end__
 
 
 .. _transform_datastreams_batch_formats:
@@ -148,81 +150,83 @@ Choose the *batch format* of the data given to UDFs
 by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Datastream.map_batches>`.
 Here is an overview of the available batch formats:
 
-.. tabbed:: "default"
+.. tab-set::
 
-  The "default" batch format presents data as follows for each Datastream type:
+    .. tab-item:: "default"
 
-  * **Tabular Datastreams**: Each batch will be a
-    `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
-    This may incur a conversion cost if the underlying Datastream block is not
-    zero-copy convertible from an Arrow table.
+      The "default" batch format presents data as follows for each Datastream type:
 
-    .. literalinclude:: ./doc_code/transforming_datastreams.py
-      :language: python
-      :start-after: __writing_default_udfs_tabular_begin__
-      :end-before: __writing_default_udfs_tabular_end__
+      * **Tabular Datastreams**: Each batch will be a
+        `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
+        This may incur a conversion cost if the underlying Datastream block is not
+        zero-copy convertible from an Arrow table.
 
-  * **Tensor Datastreams** (single-column): Each batch will be a single
-    `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single tensor column for this batch.
+        .. literalinclude:: ./doc_code/transforming_datastreams.py
+          :language: python
+          :start-after: __writing_default_udfs_tabular_begin__
+          :end-before: __writing_default_udfs_tabular_end__
 
-    .. literalinclude:: ./doc_code/transforming_datastreams.py
-      :language: python
-      :start-after: __writing_default_udfs_tensor_begin__
-      :end-before: __writing_default_udfs_tensor_end__
+      * **Tensor Datastreams** (single-column): Each batch will be a single
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
+        containing the single tensor column for this batch.
 
-  * **Simple Datastreams**: Each batch will be a Python list.
+        .. literalinclude:: ./doc_code/transforming_datastreams.py
+          :language: python
+          :start-after: __writing_default_udfs_tensor_begin__
+          :end-before: __writing_default_udfs_tensor_end__
 
-    .. literalinclude:: ./doc_code/transforming_datastreams.py
-      :language: python
-      :start-after: __writing_default_udfs_list_begin__
-      :end-before: __writing_default_udfs_list_end__
+      * **Simple Datastreams**: Each batch will be a Python list.
 
-.. tabbed:: "pandas"
+        .. literalinclude:: ./doc_code/transforming_datastreams.py
+          :language: python
+          :start-after: __writing_default_udfs_list_begin__
+          :end-before: __writing_default_udfs_list_end__
 
-  The ``"pandas"`` batch format presents batches in
-  `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format. If converting a simple datastream to Pandas DataFrame batches, a single-column
-  dataframe with the column ``"__value__"`` will be created.
+    .. tab-item:: "pandas"
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_pandas_udfs_begin__
-    :end-before: __writing_pandas_udfs_end__
+      The ``"pandas"`` batch format presents batches in
+      `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+      format. If converting a simple datastream to Pandas DataFrame batches, a single-column
+      dataframe with the column ``"__value__"`` will be created.
 
-.. tabbed:: "pyarrow"
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_pandas_udfs_begin__
+        :end-before: __writing_pandas_udfs_end__
 
-  The ``"pyarrow"`` batch format presents batches in
-  `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  format. If converting a simple datastream to Arrow Table batches, a single-column table
-  with the column ``"__value__"`` will be created.
+    .. tab-item:: "pyarrow"
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_arrow_udfs_begin__
-    :end-before: __writing_arrow_udfs_end__
+      The ``"pyarrow"`` batch format presents batches in
+      `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+      format. If converting a simple datastream to Arrow Table batches, a single-column table
+      with the column ``"__value__"`` will be created.
 
-.. tabbed:: "numpy"
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_arrow_udfs_begin__
+        :end-before: __writing_arrow_udfs_end__
 
-  The ``"numpy"`` batch format presents batches in
-  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-  format as follows:
+    .. tab-item:: "numpy"
 
-  * **Tabular Datastreams**: Each batch will be a dictionary of NumPy
-    ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
-    in the table.
+      The ``"numpy"`` batch format presents batches in
+      `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
+      format as follows:
 
-  * **Tensor Datastreams** (single-column): Each batch will be a single
-    `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single tensor column for this batch.
+      * **Tabular Datastreams**: Each batch will be a dictionary of NumPy
+        ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
+        in the table.
 
-  * **Simple Datastreams**: Each batch will be a single NumPy ndarray, where Datastreams will
-    attempt to convert each list-batch to an ndarray.
+      * **Tensor Datastreams** (single-column): Each batch will be a single
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
+        containing the single tensor column for this batch.
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_numpy_udfs_begin__
-    :end-before: __writing_numpy_udfs_end__
+      * **Simple Datastreams**: Each batch will be a single NumPy ndarray, where Datastreams will
+        attempt to convert each list-batch to an ndarray.
+
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_numpy_udfs_begin__
+        :end-before: __writing_numpy_udfs_end__
 
 Converting between the underlying Datastreams data representations (Arrow, Pandas, and
 Python lists) and the requested batch format (``"default"``, ``"pandas"``,
@@ -290,55 +294,57 @@ The following output types are allowed for batch UDFs (e.g.,
 :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`). The following describes
 how they are interpreted to create the transformation result:
 
-.. tabbed:: pd.DataFrame
+.. tab-set::
 
-  Returning ``pd.DataFrame`` creates a Tabular datastream as the transformation result:
+    .. tab-item:: pd.DataFrame
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_pandas_out_udfs_begin__
-    :end-before: __writing_pandas_out_udfs_end__
+      Returning ``pd.DataFrame`` creates a Tabular datastream as the transformation result:
 
-.. tabbed:: pa.Table
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_pandas_out_udfs_begin__
+        :end-before: __writing_pandas_out_udfs_end__
 
-  Returning ``pa.Table`` creates a Tabular datastream as the transformation result:
+    .. tab-item:: pa.Table
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_arrow_out_udfs_begin__
-    :end-before: __writing_arrow_out_udfs_end__
+      Returning ``pa.Table`` creates a Tabular datastream as the transformation result:
 
-.. tabbed:: np.ndarray
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_arrow_out_udfs_begin__
+        :end-before: __writing_arrow_out_udfs_end__
 
-  Returning ``np.ndarray`` creates a single-column Tensor datastream as the transformation result:
+    .. tab-item:: np.ndarray
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_numpy_out_udfs_begin__
-    :end-before: __writing_numpy_out_udfs_end__
+      Returning ``np.ndarray`` creates a single-column Tensor datastream as the transformation result:
 
-.. tabbed:: Dict[str, np.ndarray]
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_numpy_out_udfs_begin__
+        :end-before: __writing_numpy_out_udfs_end__
 
-  Returning ``Dict[str, np.ndarray]`` creates a multi-column Tensor datastream as the transformation result.
+    .. tab-item:: Dict[str, np.ndarray]
 
-  If a column tensor is 1-dimensional, then the native Arrow 1D list
-  type is used; if a column tensor has 2 or more dimensions, then the Datastream
-  :ref:`tensor extension type <datastream-tensor-extension-api>` to embed these
-  n-dimensional tensors in the Arrow table.
+      Returning ``Dict[str, np.ndarray]`` creates a multi-column Tensor datastream as the transformation result.
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_numpy_dict_out_udfs_begin__
-    :end-before: __writing_numpy_dict_out_udfs_end__
+      If a column tensor is 1-dimensional, then the native Arrow 1D list
+      type is used; if a column tensor has 2 or more dimensions, then the Datastream
+      :ref:`tensor extension type <datastream-tensor-extension-api>` to embed these
+      n-dimensional tensors in the Arrow table.
 
-.. tabbed:: list
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_numpy_dict_out_udfs_begin__
+        :end-before: __writing_numpy_dict_out_udfs_end__
 
-  Returning ``list`` creates a simple Python object datastream as the transformation result:
+    .. tab-item:: list
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_simple_out_udfs_begin__
-    :end-before: __writing_simple_out_udfs_end__
+      Returning ``list`` creates a simple Python object datastream as the transformation result:
+
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_simple_out_udfs_begin__
+        :end-before: __writing_simple_out_udfs_end__
 
 .. _transform_datastreams_row_output_types:
 
@@ -348,34 +354,36 @@ Row UDF Output Types
 The following output types are allowed for per-row UDFs (e.g.,
 :meth:`ds.map() <ray.data.Datastream.map>`):
 
-.. tabbed:: dict
+.. tab-set::
 
-  Returning a ``dict`` of Arrow-compatible data types creates a Tabular datastream
-  as the transformation result. If any dict values are not Arrow-compatible, then
-  a simple Python object datastream will be created:
+    .. tab-item:: dict
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_dict_out_row_udfs_begin__
-    :end-before: __writing_dict_out_row_udfs_end__
+      Returning a ``dict`` of Arrow-compatible data types creates a Tabular datastream
+      as the transformation result. If any dict values are not Arrow-compatible, then
+      a simple Python object datastream will be created:
 
-.. tabbed:: np.ndarray
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_dict_out_row_udfs_begin__
+        :end-before: __writing_dict_out_row_udfs_end__
 
-  Returning ``np.ndarray`` creates a single-column Tensor datastream as the transformation result:
+    .. tab-item:: np.ndarray
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_numpy_out_row_udfs_begin__
-    :end-before: __writing_numpy_out_row_udfs_end__
+      Returning ``np.ndarray`` creates a single-column Tensor datastream as the transformation result:
 
-.. tabbed:: object
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_numpy_out_row_udfs_begin__
+        :end-before: __writing_numpy_out_row_udfs_end__
 
-  Other return row types will create a simple Python object datastream as the transformation result:
+    .. tab-item:: object
 
-  .. literalinclude:: ./doc_code/transforming_datastreams.py
-    :language: python
-    :start-after: __writing_simple_out_row_udfs_begin__
-    :end-before: __writing_simple_out_row_udfs_end__
+      Other return row types will create a simple Python object datastream as the transformation result:
+
+      .. literalinclude:: ./doc_code/transforming_datastreams.py
+        :language: python
+        :start-after: __writing_simple_out_row_udfs_begin__
+        :end-before: __writing_simple_out_row_udfs_end__
 
 .. _transform_datastreams_configuring_batch_size:
 
@@ -436,7 +444,7 @@ Compute Strategy
 
 Datastreams transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
 or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
-used (with ``compute="tasks"``). For transformations that require expensive setup,
+used. For transformations that require expensive setup,
 it's preferrable to use Ray actors, which are stateful and allow setup to be reused
 for efficiency. For a fixed-size actor pool, specify ``compute=ActorPoolStrategy(size=n)``.
 For an autoscaling actor pool, use ``compute=ray.data.ActorPoolStrategy(min_size=m, max_size=n)``.

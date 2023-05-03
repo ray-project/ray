@@ -67,22 +67,24 @@ Read more about :ref:`Ray Train's Deep Learning Trainers <train-dl-guide>`.
 
 .. dropdown:: Code examples
 
-    .. tabbed:: Torch
+    .. tab-set::
 
-        .. literalinclude:: doc_code/torch_trainer.py
-            :language: python
+        .. tab-item:: Torch
 
-    .. tabbed:: Tensorflow
+            .. literalinclude:: doc_code/torch_trainer.py
+                :language: python
 
-        .. literalinclude:: doc_code/tf_starter.py
-            :language: python
-            :start-after: __air_tf_train_start__
-            :end-before: __air_tf_train_end__
+        .. tab-item:: Tensorflow
 
-    .. tabbed:: Horovod
+            .. literalinclude:: doc_code/tf_starter.py
+                :language: python
+                :start-after: __air_tf_train_start__
+                :end-before: __air_tf_train_end__
 
-        .. literalinclude:: doc_code/hvd_trainer.py
-            :language: python
+        .. tab-item:: Horovod
+
+            .. literalinclude:: doc_code/hvd_trainer.py
+                :language: python
 
 
 How to report metrics and checkpoints?

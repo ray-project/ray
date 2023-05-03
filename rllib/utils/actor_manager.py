@@ -232,8 +232,8 @@ class FaultTolerantActorManager:
     def __init__(
         self,
         actors: Optional[List[ActorHandle]] = None,
-        max_remote_requests_in_flight_per_actor: Optional[int] = 2,
-        init_id: Optional[int] = 0,
+        max_remote_requests_in_flight_per_actor: int = 2,
+        init_id: int = 0,
     ):
         """Construct a FaultTolerantActorManager.
 
@@ -738,7 +738,7 @@ class FaultTolerantActorManager:
         Automatically mark actors unhealthy if they fail to respond.
 
         Note: If tags is an empty tuple then results from all ready async requests are
-            returned.
+        returned.
 
         Args:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are

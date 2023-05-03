@@ -8,7 +8,6 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Generic,
     Iterator,
     List,
     Optional,
@@ -18,6 +17,7 @@ from typing import (
 )
 
 import numpy as np
+import colorama
 
 import ray
 from ray import ObjectRefGenerator
@@ -33,9 +33,9 @@ except ImportError:
     resource = None
 
 if sys.version_info >= (3, 8):
-    from typing import Protocol
+    from typing import Literal, Protocol
 else:
-    from typing_extensions import Protocol
+    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas
@@ -47,30 +47,38 @@ if TYPE_CHECKING:
 
 T = TypeVar("T", contravariant=True)
 U = TypeVar("U", covariant=True)
+
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
-# A function that extracts a concrete value from a record in a Datastream, used
-# in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
-# It can either be None (intepreted as the identity function), the name
-# of a Datastream column, or a lambda function that extracts the desired value
-# from the object.
-KeyFn = Union[None, str, Callable[[T], Any]]
+STRICT_MODE_EXPLANATION = (
+    colorama.Fore.YELLOW
+    + "[IMPORTANT]: Ray Data strict mode is on by default in Ray 2.5. When in strict "
+    "mode, data schemas are required, standalone Python "
+    "objects are no longer supported, and the default batch format changes to `numpy` "
+    "from `pandas`. To disable strict mode temporarily, set the environment variable "
+    "RAY_DATA_STRICT_MODE=0 on all cluster processes. Strict mode will not be "
+    "possible to disable in future releases.\n\n"
+    "Learn more here: https://docs.ray.io/en/master/data/faq.html#what-is-strict-mode"
+    + colorama.Style.RESET_ALL
+)
 
 
 @PublicAPI
 class StrictModeError(ValueError):
-    pass
+    def __init__(self, message: str):
+        super().__init__(message + "\n\n" + STRICT_MODE_EXPLANATION)
 
 
 def _validate_key_fn(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-    key: KeyFn,
+    key: Optional[str],
 ) -> None:
     """Check the key function is valid on the given schema."""
     if schema is None:
         # Datastream is empty/cleared, validation not possible.
         return
+    ctx = ray.data.DataContext.get_current()
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
@@ -83,6 +91,8 @@ def _validate_key_fn(
                 "The column '{}' does not exist in the "
                 "schema '{}'.".format(key, schema)
             )
+    elif ctx.strict_mode:
+        raise StrictModeError(f"In strict mode, the key must be a string, was: {key}")
     elif key is None:
         if not is_simple_format:
             raise ValueError(
@@ -103,11 +113,12 @@ def _validate_key_fn(
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
+Block = Union[list, "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
+DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+
 
 # A class type that implements __call__.
 CallableClass = type
@@ -118,29 +129,11 @@ class _CallableClassProtocol(Protocol[T, U]):
         ...
 
 
-# A UDF on data batches.
-BatchUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[DataBatch, ...], DataBatch]
-    Callable[[DataBatch], DataBatch],
-    Callable[[DataBatch], Iterator[DataBatch]],
-    "_CallableClassProtocol",
-]
-
-# A UDF on data rows.
-RowUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[T, ...], U]
+# A user defined function passed to map, map_batches, ec.
+UserDefinedFunction = Union[
     Callable[[T], U],
-    "_CallableClassProtocol[T, U]",
-]
-
-
-FlatMapUDF = Union[
-    RowUDF,
     Callable[[T], Iterator[U]],
+    "_CallableClassProtocol",
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -171,6 +164,31 @@ def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
                 f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
             )
     return given_batch_format
+
+
+def _apply_strict_mode_batch_size(
+    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+) -> Optional[int]:
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        if use_gpu and (not given_batch_size or given_batch_size == "default"):
+            raise StrictModeError(
+                "`batch_size` must be provided to `map_batches` when requesting GPUs. "
+                "The optimal batch size depends on the model, data, and GPU used. "
+                "It is recommended to use the largest batch size that doesn't result "
+                "in your GPU device running out of memory. You can view the GPU memory "
+                "usage via the Ray dashboard."
+            )
+        elif given_batch_size == "default":
+            return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
+
+    else:
+        if given_batch_size == "default":
+            return ray.data.context.DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
 
 
 @DeveloperAPI
@@ -256,7 +274,7 @@ class BlockMetadata:
 
 
 @DeveloperAPI
-class BlockAccessor(Generic[T]):
+class BlockAccessor:
     """Provides accessor methods for a specific block.
 
     Ideally, we wouldn't need a separate accessor classes for blocks. However,
@@ -273,8 +291,13 @@ class BlockAccessor(Generic[T]):
         """Return the number of rows contained in this block."""
         raise NotImplementedError
 
-    def iter_rows(self) -> Iterator[T]:
-        """Iterate over the rows of this block."""
+    def iter_rows(self, public_row_format: bool) -> Iterator[T]:
+        """Iterate over the rows of this block.
+
+        Args:
+            public_row_format: Whether to cast rows into the public Dict row
+                format (this incurs extra copy conversions).
+        """
         raise NotImplementedError
 
     def slice(self, start: int, end: int, copy: bool) -> Block:
@@ -301,7 +324,7 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
-    def select(self, columns: List[KeyFn]) -> Block:
+    def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
 
@@ -380,12 +403,12 @@ class BlockAccessor(Generic[T]):
             exec_stats=exec_stats,
         )
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         """Zip this block with another block of the same type and size."""
         raise NotImplementedError
 
     @staticmethod
-    def builder() -> "BlockBuilder[T]":
+    def builder() -> "BlockBuilder":
         """Create a builder for this block type."""
         raise NotImplementedError
 
@@ -414,7 +437,7 @@ class BlockAccessor(Generic[T]):
                 return ArrowBlockAccessor.numpy_to_block(
                     batch, passthrough_arrow_not_implemented_errors=True
                 )
-            except pa.ArrowNotImplementedError:
+            except (pa.ArrowNotImplementedError, pa.ArrowInvalid):
                 import pandas as pd
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
@@ -457,30 +480,30 @@ class BlockAccessor(Generic[T]):
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
-    def sample(self, n_samples: int, key: Any) -> "Block[T]":
+    def sample(self, n_samples: int, key: Any) -> "Block":
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
     def sort_and_partition(
         self, boundaries: List[T], key: Any, descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List["Block[T]"], key: Any, descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List["Block"], key: Any, descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: KeyFn, agg: "AggregateFn"
-    ) -> Tuple[Block[U], BlockMetadata]:
+        blocks: List[Block], key: Optional[str], agg: "AggregateFn"
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

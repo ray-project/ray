@@ -171,6 +171,16 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "tf_only", "no_tf_static_graph"],
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
 # py_test(
 #    name = "learning_tests_cartpole_appo_vtrace",
 #    main = "tests/run_regression_tests.py",
@@ -589,27 +599,16 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
+# TODO (Sven): Enable tf2 for this test.
 py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module_torch",
+    name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
-
-# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
-# it would get faster with eager mode once it is enabled.
-# py_test(
-#     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
-#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
-#     args = ["--dir=tuned_examples/ppo"]
-# )
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
@@ -1868,6 +1867,13 @@ py_test(
 
 # Default Models
 py_test(
+    name = "test_base_models",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_base_models.py"]
+)
+
+py_test(
     name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
     size = "medium",
@@ -1981,6 +1987,13 @@ py_test(
     tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner.py"]
+)
+
+py_test(
+    name ="tests/test_algorithm_save_load_checkpoint_learner",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
 )
 
 py_test(
@@ -2277,8 +2290,8 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
+    tags = ["team:rllib", "utils", "gpu"],
+    size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
 

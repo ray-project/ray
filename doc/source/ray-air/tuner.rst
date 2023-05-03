@@ -63,19 +63,21 @@ Depending on the model and dataset, you may want to tune:
 
 The following shows some example code on how to specify the ``param_space``.
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: doc_code/tuner.py
-        :language: python
-        :start-after: __xgboost_start__
-        :end-before: __xgboost_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: doc_code/tuner.py
+            :language: python
+            :start-after: __xgboost_start__
+            :end-before: __xgboost_end__
 
-    .. literalinclude:: doc_code/tuner.py
-        :language: python
-        :start-after: __torch_start__
-        :end-before: __torch_end__
+    .. tab-item:: Pytorch
+
+        .. literalinclude:: doc_code/tuner.py
+            :language: python
+            :start-after: __torch_start__
+            :end-before: __torch_end__
 
 Read more about :ref:`Tune search spaces here <tune-search-space-tutorial>`.
 

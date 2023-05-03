@@ -4,7 +4,6 @@ import copy
 import datetime
 import logging
 import os
-from pathlib import Path
 import signal
 import sys
 import threading
@@ -910,7 +909,7 @@ def run(
         trial_checkpoint_config=experiments[0].checkpoint_config,
     )
 
-    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "0"))):
+    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
         trial_runner_cls = TuneController
         runner_kwargs.pop("trial_executor")
         runner_kwargs["reuse_actors"] = reuse_actors
@@ -1015,7 +1014,7 @@ def run(
 
     if experiment_interrupted_event.is_set():
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
-            path=Path(experiment_checkpoint).parent,
+            path=runner.experiment_path,
         )
         logger.warning(
             "Experiment has been interrupted, but the most recent state was saved.\n"
