@@ -1002,24 +1002,32 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
-
-  // Fetch resource info for the remote node and update cluster resource map.
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-      node_id,
-      [this, node_id](
-          Status status,
-          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
-        if (data) {
-          ResourceRequest resources;
-          for (auto &resource_entry : *data) {
-            resources.Set(scheduling::ResourceID(resource_entry.first),
-                          FixedPoint(resource_entry.second->resource_capacity()));
+  if (ray_syncer_) {
+    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_info.node_id(),
+                                                   syncer::MessageType::RESOURCE_VIEW)) {
+      if (sync_msg) {
+        ConsumeSyncMessage(sync_msg);
+      }
+    }
+  } else {
+    // Fetch resource info for the remote node and update cluster resource map.
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
+        node_id,
+        [this, node_id](
+            Status status,
+            const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
+          if (data) {
+            ResourceRequest resources;
+            for (auto &resource_entry : *data) {
+              resources.Set(scheduling::ResourceID(resource_entry.first),
+                            FixedPoint(resource_entry.second->resource_capacity()));
+            }
+            if (ResourceCreateUpdated(node_id, resources)) {
+              cluster_task_manager_->ScheduleAndDispatchTasks();
+            }
           }
-          if (ResourceCreateUpdated(node_id, resources)) {
-            cluster_task_manager_->ScheduleAndDispatchTasks();
-          }
-        }
-      }));
+        }));
+  }
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
@@ -1193,11 +1201,6 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
 
 bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
-  }
-
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
