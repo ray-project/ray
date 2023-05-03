@@ -49,6 +49,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_unique<ray::pubsub::MockPublisher>());
     auto local_node_id = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        io_service_,
         scheduling::NodeID(local_node_id.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

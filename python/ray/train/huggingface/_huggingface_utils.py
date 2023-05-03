@@ -44,7 +44,7 @@ def wrap_transformers_trainer(
             data_loader = super().get_train_dataloader()
             if isinstance(
                 data_loader.dataset, transformers.trainer.IterableDatasetShard
-            ):
+            ) and getattr(data_loader.dataset.dataset, "_do_not_split", False):
                 # Default Trainer.get_train_dataloader will wrap the dataset in
                 # IterableDatasetShard, which will perform additional sharding on top
                 # of the already sharded dataset. By setting those two attributes,
@@ -72,11 +72,13 @@ class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
 
     def __iter__(self):
         for row in self.generate_examples_fn(**self.kwargs):
-            yield (0, {k: v for k, v in row.as_pydict().items()})
+            yield (0, {k: v for k, v in row.items()})
 
 
-def process_dataset_for_hf(dataset: DataIterator) -> "IterableDataset":
-    """Converts a Datastream into a HF IterableDataset."""
+def process_dataset_for_hf(
+    dataset: DataIterator, disable_transformers_splitting: bool = False
+) -> "IterableDataset":
+    """Converts a Ray Dataset into a HF IterableDataset."""
     hf_iterable = RayDatasetHFIterable(dataset)
 
     iterable_dataset = datasets.iterable_dataset.IterableDataset(
@@ -90,6 +92,9 @@ def process_dataset_for_hf(dataset: DataIterator) -> "IterableDataset":
         dataset_length = None
 
     iterable_dataset = maybe_add_length(iterable_dataset, dataset_length)
+    # Trigger logic in `wrap_transformers_trainer` to disable built-in
+    # HuggingFace splitting, as we have already split the dataset ourselves.
+    iterable_dataset._do_not_split = disable_transformers_splitting
     return iterable_dataset
 
 
@@ -99,7 +104,9 @@ def process_datasets(
 ) -> Tuple["IterableDataset", "IterableDataset"]:
     """Convert Ray train and validation to HF IterableDatasets."""
     if train_dataset:
-        train_torch_dataset = process_dataset_for_hf(train_dataset)
+        train_torch_dataset = process_dataset_for_hf(
+            train_dataset, disable_transformers_splitting=True
+        )
     else:
         train_torch_dataset = None
 

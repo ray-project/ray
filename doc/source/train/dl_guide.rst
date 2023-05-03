@@ -51,128 +51,130 @@ Updating your training function
 First, you'll want to update your training function to support distributed
 training.
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    Ray Train will set up your distributed process group for you and also provides utility methods
-    to automatically prepare your model and data for distributed training.
+    .. tab-item:: PyTorch
 
-    .. note::
-       Ray Train will still work even if you don't use the :func:`ray.train.torch.prepare_model`
-       and :func:`ray.train.torch.prepare_data_loader` utilities below,
-       and instead handle the logic directly inside your training function.
+        Ray Train will set up your distributed process group for you and also provides utility methods
+        to automatically prepare your model and data for distributed training.
 
-    First, use the :func:`~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
-    ``DistributedDataParallel``:
+        .. note::
+           Ray Train will still work even if you don't use the :func:`ray.train.torch.prepare_model`
+           and :func:`ray.train.torch.prepare_data_loader` utilities below,
+           and instead handle the logic directly inside your training function.
 
-    .. code-block:: diff
+        First, use the :func:`~ray.train.torch.prepare_model` function to automatically move your model to the right device and wrap it in
+        ``DistributedDataParallel``:
 
-         import torch
-         from torch.nn.parallel import DistributedDataParallel
-        +from ray.air import session
-        +from ray import train
-        +import ray.train.torch
+        .. code-block:: diff
 
-
-         def train_func():
-        -    device = torch.device(f"cuda:{session.get_local_rank()}" if
-        -        torch.cuda.is_available() else "cpu")
-        -    torch.cuda.set_device(device)
-
-             # Create model.
-             model = NeuralNetwork()
-
-        -    model = model.to(device)
-        -    model = DistributedDataParallel(model,
-        -        device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
-
-        +    model = train.torch.prepare_model(model)
-
-             ...
-            
+             import torch
+             from torch.nn.parallel import DistributedDataParallel
+            +from ray.air import session
+            +from ray import train
+            +import ray.train.torch
 
 
-    Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
-    and move the batches to the right device. This step is not necessary if you are passing in Ray Data to your Trainer
-    (see :ref:`train-datasets`):
+             def train_func():
+            -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+            -        torch.cuda.is_available() else "cpu")
+            -    torch.cuda.set_device(device)
 
-    .. code-block:: diff
+                 # Create model.
+                 model = NeuralNetwork()
 
-         import torch
-         from torch.utils.data import DataLoader, DistributedSampler
-        +from ray.air import session
-        +from ray import train
-        +import ray.train.torch
+            -    model = model.to(device)
+            -    model = DistributedDataParallel(model,
+            -        device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
+
+            +    model = train.torch.prepare_model(model)
+
+                 ...
 
 
-         def train_func():
-        -    device = torch.device(f"cuda:{session.get_local_rank()}" if
-        -        torch.cuda.is_available() else "cpu")
-        -    torch.cuda.set_device(device)
 
-             ...
+        Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
+        and move the batches to the right device. This step is not necessary if you are passing in Ray Data to your Trainer
+        (see :ref:`train-datasets`):
 
-        -    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
+        .. code-block:: diff
 
-        +    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
-        +    data_loader = train.torch.prepare_data_loader(data_loader)
+             import torch
+             from torch.utils.data import DataLoader, DistributedSampler
+            +from ray.air import session
+            +from ray import train
+            +import ray.train.torch
 
-             for X, y in data_loader:
-        -        X = X.to_device(device)
-        -        y = y.to_device(device)
 
-    .. tip::
-        Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
-        The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+             def train_func():
+            -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+            -        torch.cuda.is_available() else "cpu")
+            -    torch.cuda.set_device(device)
+
+                 ...
+
+            -    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
+
+            +    data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+            +    data_loader = train.torch.prepare_data_loader(data_loader)
+
+                 for X, y in data_loader:
+            -        X = X.to_device(device)
+            -        y = y.to_device(device)
+
+        .. tip::
+            Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
+            The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+
+            .. code-block:: python
+
+                global_batch_size = worker_batch_size * session.get_world_size()
+
+    .. tab-item:: TensorFlow
+
+        .. note::
+           The current TensorFlow implementation supports
+           ``MultiWorkerMirroredStrategy`` (and ``MirroredStrategy``). If there are
+           other strategies you wish to see supported by Ray Train, please let us know
+           by submitting a `feature request on GitHub <https://github.com/ray-project/ray/issues>`_.
+
+        These instructions closely follow TensorFlow's `Multi-worker training
+        with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_
+        tutorial. One key difference is that Ray Train will handle the environment
+        variable set up for you.
+
+        **Step 1:** Wrap your model in ``MultiWorkerMirroredStrategy``.
+
+        The `MultiWorkerMirroredStrategy <https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy>`_
+        enables synchronous distributed training. The ``Model`` *must* be built and
+        compiled within the scope of the strategy.
 
         .. code-block:: python
-            
-            global_batch_size = worker_batch_size * session.get_world_size()
 
-.. tabbed:: TensorFlow
+            with tf.distribute.MultiWorkerMirroredStrategy().scope():
+                model = ... # build model
+                model.compile()
 
-    .. note::
-       The current TensorFlow implementation supports
-       ``MultiWorkerMirroredStrategy`` (and ``MirroredStrategy``). If there are
-       other strategies you wish to see supported by Ray Train, please let us know
-       by submitting a `feature request on GitHub <https://github.com/ray-project/ray/issues>`_.
+        **Step 2:** Update your ``Dataset`` batch size to the *global* batch
+        size.
 
-    These instructions closely follow TensorFlow's `Multi-worker training
-    with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_
-    tutorial. One key difference is that Ray Train will handle the environment
-    variable set up for you.
+        The `batch <https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch>`_
+        will be split evenly across worker processes, so ``batch_size`` should be
+        set appropriately.
 
-    **Step 1:** Wrap your model in ``MultiWorkerMirroredStrategy``.
+        .. code-block:: diff
 
-    The `MultiWorkerMirroredStrategy <https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy>`_
-    enables synchronous distributed training. The ``Model`` *must* be built and
-    compiled within the scope of the strategy.
+            -batch_size = worker_batch_size
+            +batch_size = worker_batch_size * session.get_world_size()
 
-    .. code-block:: python
+    .. tab-item:: Horovod
 
-        with tf.distribute.MultiWorkerMirroredStrategy().scope():
-            model = ... # build model
-            model.compile()
+        If you have a training function that already runs with the `Horovod Ray
+        Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
+        you should not need to make any additional changes!
 
-    **Step 2:** Update your ``Dataset`` batch size to the *global* batch
-    size.
-
-    The `batch <https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch>`_
-    will be split evenly across worker processes, so ``batch_size`` should be
-    set appropriately.
-
-    .. code-block:: diff
-
-        -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * session.get_world_size()
-
-.. tabbed:: Horovod
-
-    If you have a training function that already runs with the `Horovod Ray
-    Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
-    you should not need to make any additional changes!
-
-    To onboard onto Horovod, please visit the `Horovod guide
-    <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
+        To onboard onto Horovod, please visit the `Horovod guide
+        <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
 
 Creating a Ray Train Trainer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -181,96 +183,100 @@ Creating a Ray Train Trainer
 execute training. You can create a simple ``Trainer`` for the backend of choice
 with one of the following:
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: PyTorch
 
-        from ray.air import ScalingConfig
-        from ray.train.torch import TorchTrainer
-        # For GPU Training, set `use_gpu` to True.
-        use_gpu = False
-        trainer = TorchTrainer(
-            train_func,
-            scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
-        )
+        .. code-block:: python
+
+            from ray.air import ScalingConfig
+            from ray.train.torch import TorchTrainer
+            # For GPU Training, set `use_gpu` to True.
+            use_gpu = False
+            trainer = TorchTrainer(
+                train_func,
+                scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
+            )
 
 
-.. tabbed:: TensorFlow
+    .. tab-item:: TensorFlow
 
-    .. warning::
-        Ray will not automatically set any environment variables or configuration
-        related to local parallelism / threading
-        :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`.
-        If you desire greater control over TensorFlow threading, use
-        the ``tf.config.threading`` module (eg.
-        ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
-        at the beginning of your ``train_loop_per_worker`` function.
+        .. warning::
+            Ray will not automatically set any environment variables or configuration
+            related to local parallelism / threading
+            :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`.
+            If you desire greater control over TensorFlow threading, use
+            the ``tf.config.threading`` module (eg.
+            ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
+            at the beginning of your ``train_loop_per_worker`` function.
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from ray.air import ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-        # For GPU Training, set `use_gpu` to True.
-        use_gpu = False
-        trainer = TensorflowTrainer(
-            train_func,
-            scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
-        )
+            from ray.air import ScalingConfig
+            from ray.train.tensorflow import TensorflowTrainer
+            # For GPU Training, set `use_gpu` to True.
+            use_gpu = False
+            trainer = TensorflowTrainer(
+                train_func,
+                scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
+            )
 
-.. tabbed:: Horovod
+    .. tab-item:: Horovod
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from ray.air import ScalingConfig
-        from ray.train.horovod import HorovodTrainer
-        # For GPU Training, set `use_gpu` to True.
-        use_gpu = False
-        trainer = HorovodTrainer(
-            train_func,
-            scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
-        )
+            from ray.air import ScalingConfig
+            from ray.train.horovod import HorovodTrainer
+            # For GPU Training, set `use_gpu` to True.
+            use_gpu = False
+            trainer = HorovodTrainer(
+                train_func,
+                scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
+            )
 
 To customize the backend setup, you can use the :ref:`framework-specific config objects <train-integration-api>`.
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: PyTorch
 
-        from ray.air import ScalingConfig
-        from ray.train.torch import TorchTrainer, TorchConfig
+        .. code-block:: python
 
-        trainer = TorchTrainer(
-            train_func,
-            torch_backend=TorchConfig(...),
-            scaling_config=ScalingConfig(num_workers=2),
-        )
+            from ray.air import ScalingConfig
+            from ray.train.torch import TorchTrainer, TorchConfig
+
+            trainer = TorchTrainer(
+                train_func,
+                torch_backend=TorchConfig(...),
+                scaling_config=ScalingConfig(num_workers=2),
+            )
 
 
-.. tabbed:: TensorFlow
+    .. tab-item:: TensorFlow
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from ray.air import ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
+            from ray.air import ScalingConfig
+            from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
-        trainer = TensorflowTrainer(
-            train_func,
-            tensorflow_backend=TensorflowConfig(...),
-            scaling_config=ScalingConfig(num_workers=2),
-        )
+            trainer = TensorflowTrainer(
+                train_func,
+                tensorflow_backend=TensorflowConfig(...),
+                scaling_config=ScalingConfig(num_workers=2),
+            )
 
-.. tabbed:: Horovod
+    .. tab-item:: Horovod
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from ray.air import ScalingConfig
-        from ray.train.horovod import HorovodTrainer, HorovodConfig
+            from ray.air import ScalingConfig
+            from ray.train.horovod import HorovodTrainer, HorovodConfig
 
-        trainer = HorovodTrainer(
-            train_func,
-            tensorflow_backend=HorovodConfig(...),
-            scaling_config=ScalingConfig(num_workers=2),
-        )
+            trainer = HorovodTrainer(
+                train_func,
+                tensorflow_backend=HorovodConfig(...),
+                scaling_config=ScalingConfig(num_workers=2),
+            )
 
 For more configurability, please reference the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
@@ -520,102 +526,104 @@ attribute.
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
 appropriately in distributed training.
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    .. code-block:: python
-        :emphasize-lines: 36, 37, 38, 39, 40, 41
+    .. tab-item:: PyTorch
 
-        import ray.train.torch
-        from ray.air import session, Checkpoint, ScalingConfig
-        from ray.train.torch import TorchTrainer
+        .. code-block:: python
+            :emphasize-lines: 36, 37, 38, 39, 40, 41
 
-        import torch
-        import torch.nn as nn
-        from torch.optim import Adam
-        import numpy as np
+            import ray.train.torch
+            from ray.air import session, Checkpoint, ScalingConfig
+            from ray.train.torch import TorchTrainer
 
-        def train_func(config):
-            n = 100
-            # create a toy dataset
-            # data   : X - dim = (n, 4)
-            # target : Y - dim = (n, 1)
-            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
-            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
-            # toy neural network : 1-layer
-            # wrap the model in DDP
-            model = ray.train.torch.prepare_model(nn.Linear(4, 1))
-            criterion = nn.MSELoss()
+            import torch
+            import torch.nn as nn
+            from torch.optim import Adam
+            import numpy as np
 
-            optimizer = Adam(model.parameters(), lr=3e-4)
-            for epoch in range(config["num_epochs"]):
-                y = model.forward(X)
-                # compute loss
-                loss = criterion(y, Y)
-                # back-propagate loss
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                state_dict = model.state_dict()
-                checkpoint = Checkpoint.from_dict(
-                    dict(epoch=epoch, model_weights=state_dict)
-                )
-                session.report({}, checkpoint=checkpoint)
-
-        trainer = TorchTrainer(
-            train_func,
-            train_loop_config={"num_epochs": 5},
-            scaling_config=ScalingConfig(num_workers=2),
-        )
-        result = trainer.fit()
-
-        print(result.checkpoint.to_dict())
-        # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([-0.1215])), ('weight', tensor([[0.3253, 0.1979, 0.4525, 0.2850]]))]), '_timestamp': 1656107095, '_preprocessor': None, '_current_checkpoint_id': 4}
-
-
-.. tabbed:: TensorFlow
-
-    .. code-block:: python
-        :emphasize-lines: 23
-
-        from ray.air import session, Checkpoint, ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        import numpy as np
-
-        def train_func(config):
-            import tensorflow as tf
-            n = 100
-            # create a toy dataset
-            # data   : X - dim = (n, 4)
-            # target : Y - dim = (n, 1)
-            X = np.random.normal(0, 1, size=(n, 4))
-            Y = np.random.uniform(0, 1, size=(n, 1))
-
-            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
-            with strategy.scope():
+            def train_func(config):
+                n = 100
+                # create a toy dataset
+                # data   : X - dim = (n, 4)
+                # target : Y - dim = (n, 1)
+                X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+                Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
                 # toy neural network : 1-layer
-                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
-                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+                # wrap the model in DDP
+                model = ray.train.torch.prepare_model(nn.Linear(4, 1))
+                criterion = nn.MSELoss()
 
-            for epoch in range(config["num_epochs"]):
-                model.fit(X, Y, batch_size=20)
-                checkpoint = Checkpoint.from_dict(
-                    dict(epoch=epoch, model_weights=model.get_weights())
-                )
-                session.report({}, checkpoint=checkpoint)
+                optimizer = Adam(model.parameters(), lr=3e-4)
+                for epoch in range(config["num_epochs"]):
+                    y = model.forward(X)
+                    # compute loss
+                    loss = criterion(y, Y)
+                    # back-propagate loss
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    state_dict = model.state_dict()
+                    checkpoint = Checkpoint.from_dict(
+                        dict(epoch=epoch, model_weights=state_dict)
+                    )
+                    session.report({}, checkpoint=checkpoint)
 
-        trainer = TensorflowTrainer(
-            train_func,
-            train_loop_config={"num_epochs": 5},
-            scaling_config=ScalingConfig(num_workers=2),
-        )
-        result = trainer.fit()
+            trainer = TorchTrainer(
+                train_func,
+                train_loop_config={"num_epochs": 5},
+                scaling_config=ScalingConfig(num_workers=2),
+            )
+            result = trainer.fit()
 
-        print(result.checkpoint.to_dict())
-        # {'epoch': 4, 'model_weights': [array([[-0.31858477],
-        #    [ 0.03747174],
-        #    [ 0.28266194],
-        #    [ 0.8626015 ]], dtype=float32), array([0.02230084], dtype=float32)], '_timestamp': 1656107383, '_preprocessor': None, '_current_checkpoint_id': 4}
+            print(result.checkpoint.to_dict())
+            # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([-0.1215])), ('weight', tensor([[0.3253, 0.1979, 0.4525, 0.2850]]))]), '_timestamp': 1656107095, '_preprocessor': None, '_current_checkpoint_id': 4}
+
+
+    .. tab-item:: TensorFlow
+
+        .. code-block:: python
+            :emphasize-lines: 23
+
+            from ray.air import session, Checkpoint, ScalingConfig
+            from ray.train.tensorflow import TensorflowTrainer
+
+            import numpy as np
+
+            def train_func(config):
+                import tensorflow as tf
+                n = 100
+                # create a toy dataset
+                # data   : X - dim = (n, 4)
+                # target : Y - dim = (n, 1)
+                X = np.random.normal(0, 1, size=(n, 4))
+                Y = np.random.uniform(0, 1, size=(n, 1))
+
+                strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+                with strategy.scope():
+                    # toy neural network : 1-layer
+                    model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+                    model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+                for epoch in range(config["num_epochs"]):
+                    model.fit(X, Y, batch_size=20)
+                    checkpoint = Checkpoint.from_dict(
+                        dict(epoch=epoch, model_weights=model.get_weights())
+                    )
+                    session.report({}, checkpoint=checkpoint)
+
+            trainer = TensorflowTrainer(
+                train_func,
+                train_loop_config={"num_epochs": 5},
+                scaling_config=ScalingConfig(num_workers=2),
+            )
+            result = trainer.fit()
+
+            print(result.checkpoint.to_dict())
+            # {'epoch': 4, 'model_weights': [array([[-0.31858477],
+            #    [ 0.03747174],
+            #    [ 0.28266194],
+            #    [ 0.8626015 ]], dtype=float32), array([0.02230084], dtype=float32)], '_timestamp': 1656107383, '_preprocessor': None, '_current_checkpoint_id': 4}
 
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
@@ -703,141 +711,143 @@ Checkpoints can be loaded into the training function in 2 steps:
 2. The checkpoint to start training with can be bootstrapped by passing in a
    :py:class:`~ray.air.checkpoint.Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    .. code-block:: python
-        :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
+    .. tab-item:: PyTorch
 
-        import ray.train.torch
-        from ray.air import session, Checkpoint, ScalingConfig
-        from ray.train.torch import TorchTrainer
+        .. code-block:: python
+            :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
 
-        import torch
-        import torch.nn as nn
-        from torch.optim import Adam
-        import numpy as np
+            import ray.train.torch
+            from ray.air import session, Checkpoint, ScalingConfig
+            from ray.train.torch import TorchTrainer
 
-        def train_func(config):
-            n = 100
-            # create a toy dataset
-            # data   : X - dim = (n, 4)
-            # target : Y - dim = (n, 1)
-            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
-            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+            import torch
+            import torch.nn as nn
+            from torch.optim import Adam
+            import numpy as np
 
-            # toy neural network : 1-layer
-            model = nn.Linear(4, 1)
-            criterion = nn.MSELoss()
-            optimizer = Adam(model.parameters(), lr=3e-4)
-            start_epoch = 0
+            def train_func(config):
+                n = 100
+                # create a toy dataset
+                # data   : X - dim = (n, 4)
+                # target : Y - dim = (n, 1)
+                X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+                Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
 
-            checkpoint = session.get_checkpoint()
-            if checkpoint:
-                # assume that we have run the session.report() example
-                # and successfully save some model weights
-                checkpoint_dict = checkpoint.to_dict()
-                model.load_state_dict(checkpoint_dict.get("model_weights"))
-                start_epoch = checkpoint_dict.get("epoch", -1) + 1
-
-            # wrap the model in DDP
-            model = ray.train.torch.prepare_model(model)
-            for epoch in range(start_epoch, config["num_epochs"]):
-                y = model.forward(X)
-                # compute loss
-                loss = criterion(y, Y)
-                # back-propagate loss
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                state_dict = model.state_dict()
-                checkpoint = Checkpoint.from_dict(
-                    dict(epoch=epoch, model_weights=state_dict)
-                )
-                session.report({}, checkpoint=checkpoint)
-
-        trainer = TorchTrainer(
-            train_func,
-            train_loop_config={"num_epochs": 2},
-            scaling_config=ScalingConfig(num_workers=2),
-        )
-        # save a checkpoint
-        result = trainer.fit()
-
-        # load checkpoint
-        trainer = TorchTrainer(
-            train_func,
-            train_loop_config={"num_epochs": 4},
-            scaling_config=ScalingConfig(num_workers=2),
-            resume_from_checkpoint=result.checkpoint,
-        )
-        result = trainer.fit()
-
-        print(result.checkpoint.to_dict())
-        # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([0.0902])), ('weight', tensor([[-0.1549, -0.0861,  0.4353, -0.4116]]))]), '_timestamp': 1656108265, '_preprocessor': None, '_current_checkpoint_id': 2}
-
-.. tabbed:: TensorFlow
-
-    .. code-block:: python
-        :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
-
-        from ray.air import session, Checkpoint, ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        import numpy as np
-
-        def train_func(config):
-            import tensorflow as tf
-            n = 100
-            # create a toy dataset
-            # data   : X - dim = (n, 4)
-            # target : Y - dim = (n, 1)
-            X = np.random.normal(0, 1, size=(n, 4))
-            Y = np.random.uniform(0, 1, size=(n, 1))
-
-            start_epoch = 0
-            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
-
-            with strategy.scope():
                 # toy neural network : 1-layer
-                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+                model = nn.Linear(4, 1)
+                criterion = nn.MSELoss()
+                optimizer = Adam(model.parameters(), lr=3e-4)
+                start_epoch = 0
+
                 checkpoint = session.get_checkpoint()
                 if checkpoint:
                     # assume that we have run the session.report() example
                     # and successfully save some model weights
                     checkpoint_dict = checkpoint.to_dict()
-                    model.set_weights(checkpoint_dict.get("model_weights"))
+                    model.load_state_dict(checkpoint_dict.get("model_weights"))
                     start_epoch = checkpoint_dict.get("epoch", -1) + 1
-                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-            for epoch in range(start_epoch, config["num_epochs"]):
-                model.fit(X, Y, batch_size=20)
-                checkpoint = Checkpoint.from_dict(
-                    dict(epoch=epoch, model_weights=model.get_weights())
-                )
-                session.report({}, checkpoint=checkpoint)
+                # wrap the model in DDP
+                model = ray.train.torch.prepare_model(model)
+                for epoch in range(start_epoch, config["num_epochs"]):
+                    y = model.forward(X)
+                    # compute loss
+                    loss = criterion(y, Y)
+                    # back-propagate loss
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    state_dict = model.state_dict()
+                    checkpoint = Checkpoint.from_dict(
+                        dict(epoch=epoch, model_weights=state_dict)
+                    )
+                    session.report({}, checkpoint=checkpoint)
 
-        trainer = TensorflowTrainer(
-            train_func,
-            train_loop_config={"num_epochs": 2},
-            scaling_config=ScalingConfig(num_workers=2),
-        )
-        # save a checkpoint
-        result = trainer.fit()
+            trainer = TorchTrainer(
+                train_func,
+                train_loop_config={"num_epochs": 2},
+                scaling_config=ScalingConfig(num_workers=2),
+            )
+            # save a checkpoint
+            result = trainer.fit()
 
-        # load a checkpoint
-        trainer = TensorflowTrainer(
-            train_func,
-            train_loop_config={"num_epochs": 5},
-            scaling_config=ScalingConfig(num_workers=2),
-            resume_from_checkpoint=result.checkpoint,
-        )
-        result = trainer.fit()
+            # load checkpoint
+            trainer = TorchTrainer(
+                train_func,
+                train_loop_config={"num_epochs": 4},
+                scaling_config=ScalingConfig(num_workers=2),
+                resume_from_checkpoint=result.checkpoint,
+            )
+            result = trainer.fit()
 
-        print(result.checkpoint.to_dict())
-        # {'epoch': 4, 'model_weights': [array([[-0.70056134],
-        #    [-0.8839263 ],
-        #    [-1.0043601 ],
-        #    [-0.61634773]], dtype=float32), array([0.01889327], dtype=float32)], '_timestamp': 1656108446, '_preprocessor': None, '_current_checkpoint_id': 3}
+            print(result.checkpoint.to_dict())
+            # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([0.0902])), ('weight', tensor([[-0.1549, -0.0861,  0.4353, -0.4116]]))]), '_timestamp': 1656108265, '_preprocessor': None, '_current_checkpoint_id': 2}
+
+    .. tab-item:: TensorFlow
+
+        .. code-block:: python
+            :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
+
+            from ray.air import session, Checkpoint, ScalingConfig
+            from ray.train.tensorflow import TensorflowTrainer
+
+            import numpy as np
+
+            def train_func(config):
+                import tensorflow as tf
+                n = 100
+                # create a toy dataset
+                # data   : X - dim = (n, 4)
+                # target : Y - dim = (n, 1)
+                X = np.random.normal(0, 1, size=(n, 4))
+                Y = np.random.uniform(0, 1, size=(n, 1))
+
+                start_epoch = 0
+                strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+
+                with strategy.scope():
+                    # toy neural network : 1-layer
+                    model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+                    checkpoint = session.get_checkpoint()
+                    if checkpoint:
+                        # assume that we have run the session.report() example
+                        # and successfully save some model weights
+                        checkpoint_dict = checkpoint.to_dict()
+                        model.set_weights(checkpoint_dict.get("model_weights"))
+                        start_epoch = checkpoint_dict.get("epoch", -1) + 1
+                    model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+                for epoch in range(start_epoch, config["num_epochs"]):
+                    model.fit(X, Y, batch_size=20)
+                    checkpoint = Checkpoint.from_dict(
+                        dict(epoch=epoch, model_weights=model.get_weights())
+                    )
+                    session.report({}, checkpoint=checkpoint)
+
+            trainer = TensorflowTrainer(
+                train_func,
+                train_loop_config={"num_epochs": 2},
+                scaling_config=ScalingConfig(num_workers=2),
+            )
+            # save a checkpoint
+            result = trainer.fit()
+
+            # load a checkpoint
+            trainer = TensorflowTrainer(
+                train_func,
+                train_loop_config={"num_epochs": 5},
+                scaling_config=ScalingConfig(num_workers=2),
+                resume_from_checkpoint=result.checkpoint,
+            )
+            result = trainer.fit()
+
+            print(result.checkpoint.to_dict())
+            # {'epoch': 4, 'model_weights': [array([[-0.70056134],
+            #    [-0.8839263 ],
+            #    [-1.0043601 ],
+            #    [-0.61634773]], dtype=float32), array([0.01889327], dtype=float32)], '_timestamp': 1656108446, '_preprocessor': None, '_current_checkpoint_id': 3}
 
 .. _train-callbacks:
 
@@ -921,20 +931,22 @@ You may also want to collect metrics from multiple workers. While Ray Train curr
 worker, you can use third-party libraries or distributed primitives of your machine learning framework to report
 metrics from multiple workers.
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
+    .. tab-item:: PyTorch
 
-    Here is an example of reporting both the aggregated R2 score and mean train and validation loss from all workers.
+        Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
 
-    .. literalinclude:: doc_code/torchmetrics_example.py
-        :language: python
-        :start-after: __start__
+        Here is an example of reporting both the aggregated R2 score and mean train and validation loss from all workers.
 
-.. tabbed:: TensorFlow
+        .. literalinclude:: doc_code/torchmetrics_example.py
+            :language: python
+            :start-after: __start__
 
-    TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
-    control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
+    .. tab-item:: TensorFlow
+
+        TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
+        control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
 
 .. Running on the cloud
 .. --------------------
@@ -1177,40 +1189,42 @@ Automatic Mixed Precision
 Automatic mixed precision (AMP) lets you train your models faster by using a lower
 precision datatype for operations like linear layers and convolutions.
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    You can train your Torch model with AMP by:
+    .. tab-item:: PyTorch
 
-    1. Adding :func:`ray.train.torch.accelerate` with ``amp=True`` to the top of your training function.
-    2. Wrapping your optimizer with :func:`ray.train.torch.prepare_optimizer`.
-    3. Replacing your backward call with :func:`ray.train.torch.backward`.
+        You can train your Torch model with AMP by:
 
-    .. code-block:: diff
+        1. Adding :func:`ray.train.torch.accelerate` with ``amp=True`` to the top of your training function.
+        2. Wrapping your optimizer with :func:`ray.train.torch.prepare_optimizer`.
+        3. Replacing your backward call with :func:`ray.train.torch.backward`.
 
-         def train_func():
-        +    train.torch.accelerate(amp=True)
+        .. code-block:: diff
 
-             model = NeuralNetwork()
-             model = train.torch.prepare_model(model)
+             def train_func():
+            +    train.torch.accelerate(amp=True)
 
-             data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
-             data_loader = train.torch.prepare_data_loader(data_loader)
+                 model = NeuralNetwork()
+                 model = train.torch.prepare_model(model)
 
-             optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
-        +    optimizer = train.torch.prepare_optimizer(optimizer)
+                 data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+                 data_loader = train.torch.prepare_data_loader(data_loader)
 
-             model.train()
-             for epoch in range(90):
-                 for images, targets in dataloader:
-                     optimizer.zero_grad()
+                 optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+            +    optimizer = train.torch.prepare_optimizer(optimizer)
 
-                     outputs = model(images)
-                     loss = torch.nn.functional.cross_entropy(outputs, targets)
+                 model.train()
+                 for epoch in range(90):
+                     for images, targets in dataloader:
+                         optimizer.zero_grad()
 
-        -            loss.backward()
-        +            train.torch.backward(loss)
-                     optimizer.step()
-            ...
+                         outputs = model(images)
+                         loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+            -            loss.backward()
+            +            train.torch.backward(loss)
+                         optimizer.step()
+                ...
 
 
 .. note:: The performance of AMP varies based on GPU architecture, model type,
@@ -1222,25 +1236,27 @@ precision datatype for operations like linear layers and convolutions.
 Reproducibility
 ---------------
 
-.. tabbed:: PyTorch
+.. tab-set::
 
-    To limit sources of nondeterministic behavior, add
-    :func:`ray.train.torch.enable_reproducibility` to the top of your training
-    function.
+    .. tab-item:: PyTorch
 
-    .. code-block:: diff
+        To limit sources of nondeterministic behavior, add
+        :func:`ray.train.torch.enable_reproducibility` to the top of your training
+        function.
 
-         def train_func():
-        +    train.torch.enable_reproducibility()
+        .. code-block:: diff
 
-             model = NeuralNetwork()
-             model = train.torch.prepare_model(model)
+             def train_func():
+            +    train.torch.enable_reproducibility()
 
-             ...
+                 model = NeuralNetwork()
+                 model = train.torch.prepare_model(model)
 
-    .. warning:: :func:`ray.train.torch.enable_reproducibility` can't guarantee
-        completely reproducible results across executions. To learn more, read
-        the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+                 ...
+
+        .. warning:: :func:`ray.train.torch.enable_reproducibility` can't guarantee
+            completely reproducible results across executions. To learn more, read
+            the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
 
 ..
     import ray

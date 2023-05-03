@@ -8,6 +8,7 @@ import time
 from typing import List, Optional
 from unittest.mock import patch
 
+import pyarrow.fs
 import pytest
 from freezegun import freeze_time
 
@@ -19,7 +20,11 @@ from ray.air._internal.uri_utils import URI
 from ray.tune import TuneError
 from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
-from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
+from ray.air._internal.remote_storage import (
+    upload_to_uri,
+    download_from_uri,
+    get_fs_and_path,
+)
 
 
 @pytest.fixture
@@ -897,7 +902,7 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
     )
 
 
-def test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path):
+def _test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path):
     source_dir = tmp_path / "source"
     check_dir = tmp_path / "check"
     source_dir.mkdir()
@@ -910,6 +915,28 @@ def test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path):
     upload_to_uri(source_dir, mock_s3_bucket_uri)
     download_from_uri(mock_s3_bucket_uri, check_dir)
     assert (check_dir / "255").exists()
+
+
+def test_sync_folder_with_many_files_s3_native(mock_s3_bucket_uri, tmp_path):
+    with patch("ray.air._internal.remote_storage.fsspec", None):
+        fs, path = get_fs_and_path(mock_s3_bucket_uri)
+
+        assert isinstance(fs, pyarrow.fs.S3FileSystem)
+
+        _test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path)
+
+
+def test_sync_folder_with_many_files_s3_fsspec(mock_s3_bucket_uri, tmp_path):
+    try:
+        import s3fs  # noqa: F401
+    except Exception as exc:
+        raise AssertionError("This test requires s3fs to be installed") from exc
+
+    fs, path = get_fs_and_path(mock_s3_bucket_uri)
+
+    assert isinstance(fs, pyarrow.fs.PyFileSystem)
+
+    _test_sync_folder_with_many_files_s3(mock_s3_bucket_uri, tmp_path)
 
 
 def test_sync_folder_with_many_files_fs(tmpdir):

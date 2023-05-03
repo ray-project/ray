@@ -75,6 +75,8 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        node_ip_address: str,
+        grpc_port: int,
         log_dir: str,
         temp_dir: str,
         session_dir: str,
@@ -94,6 +96,7 @@ class DashboardHead:
             minimal: Whether or not it will load the minimal modules.
             serve_frontend: If configured, frontend HTML is
                 served from the dashboard.
+            grpc_port: The port used to listen for gRPC on.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
@@ -124,14 +127,13 @@ class DashboardHead:
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        self.ip = ray.util.get_node_ip_address()
+        self.ip = node_ip_address
         DataOrganizer.head_node_ip = self.ip
-        ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:0"
+            self.server, f"{grpc_ip}:{grpc_port}"
         )
         logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should

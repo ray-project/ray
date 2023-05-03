@@ -13,19 +13,6 @@ from ray.rllib.utils.nested_dict import NestedDict
 torch, nn = try_import_torch()
 
 
-def get_ppo_loss(fwd_in, fwd_out):
-    # TODO: we should replace these components later with real ppo components when
-    #  RLOptimizer and RLModule are integrated together.
-    #  this is not exactly a ppo loss, just something to show that the
-    #  forward train works
-    adv = fwd_in[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    actor_loss = -(fwd_out[SampleBatch.ACTION_LOGP] * adv).mean()
-    critic_loss = (adv**2).mean()
-    loss = actor_loss + critic_loss
-
-    return loss
-
-
 class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
     framework: str = "torch"
 

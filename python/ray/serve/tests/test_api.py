@@ -17,6 +17,10 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 
 
 @serve.deployment()
@@ -423,27 +427,6 @@ def test_run_get_ingress_node(serve_instance):
     assert ray.get(ingress_handle.remote()) == "got f"
 
 
-def test_run_delete_old_deployments(serve_instance):
-    """Check that serve.run() can remove all old deployments"""
-
-    @serve.deployment(name="f", route_prefix="/test1")
-    def f():
-        return "got f"
-
-    @serve.deployment(name="g", route_prefix="/test2")
-    def g():
-        return "got g"
-
-    ingress_handle = serve.run(f.bind())
-    assert ray.get(ingress_handle.remote()) == "got f"
-
-    ingress_handle = serve.run(g.bind())
-    assert ray.get(ingress_handle.remote()) == "got g"
-
-    assert "g" in serve.list_deployments()
-    assert "f" not in serve.list_deployments()
-
-
 class TestSetOptions:
     def test_set_options_basic(self):
         @serve.deployment(
@@ -574,7 +557,10 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert "g" in deployment_info
+    assert (
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}g"
+        in deployment_info
+    )
 
     @serve.deployment
     def f():
