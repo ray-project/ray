@@ -1603,7 +1603,7 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     # Use a minimum of 16 to trigger fast autoscaling
     # Scale up to at most the number of available cluster CPUs
     cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
-    max_pending_trials = max(16, int(cluster_cpus * 1.1))
+    max_pending_trials = min(search_alg.total_samples, max(16, int(cluster_cpus * 1.1)))
 
     if max_pending_trials > 128:
         logger.warning(
