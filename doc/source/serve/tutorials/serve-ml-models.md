@@ -7,9 +7,9 @@ In this guide, we will show you how to train models from various machine learnin
 
 Please see the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
 
-::::{tab-set} 
+:::::{tab-set} 
 
-:::{tab-item} Keras and Tensorflow
+::::{tab-item} Keras and Tensorflow
 
 Let's train and deploy a simple Tensorflow neural net.
 In particular, we will show:
@@ -114,9 +114,9 @@ You should get an output like the following (the exact prediction may vary):
  "file": "/tmp/mnist_model.h5"
 }
 ```
-:::
+::::
 
-:::{tab-item} Pytorch
+::::{tab-item} Pytorch
 
 Let's load and deploy a PyTorch Resnet Model.
 In particular, we will show:
@@ -183,9 +183,9 @@ You should get an output like the following (the exact number may vary):
 ```bash
 {'class_index': 919}
 ```
-:::
+::::
 
-:::{tab-item} Scikit-Learn
+::::{tab-item} Scikit-Learn
 
 Let's train and deploy a simple Scikit-Learn classifier.
 In particular, we will show:
@@ -283,6 +283,6 @@ You should get an output like the following (the exact prediction may vary):
 {"result": "versicolor"}
 ```
 
-:::
-
 ::::
+
+:::::
