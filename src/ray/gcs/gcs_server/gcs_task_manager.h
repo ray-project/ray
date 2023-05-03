@@ -29,7 +29,7 @@ namespace gcs {
 
 enum GcsTaskManagerCounter {
   kTotalNumTaskEventsReported,
-  kTotalNumStatusTaskEventsDropped,
+  kTotalNumTaskAttemptsDropped,
   kTotalNumProfileTaskEventsDropped,
   kNumTaskEventsBytesStored,
   kNumTaskEventsStored,
@@ -166,6 +166,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// task events are approximately task events that arrived in earlier rpc.
   class GcsTaskManagerStorage {
     class TaskEventLocator;
+    class JobTaskSummary;
 
    public:
     /// Constructor
@@ -233,6 +234,33 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
                                      const rpc::WorkerTableData &worker_failure_data);
 
+    const JobTaskSummary &GetJobTaskSummary(const JobID &job_id) const {
+      auto it = job_task_summary_.find(job_id);
+      RAY_CHECK(it != job_task_summary_.end());
+      return it->second;
+    }
+
+    bool HasJob(const JobID &job_id) const {
+      auto it = job_task_summary_.find(job_id);
+      return it != job_task_summary_.end();
+    }
+
+    size_t NumProfileEventsDropped() const {
+      size_t num_profile_events_dropped = 0;
+      for (const auto &job_summary : job_task_summary_) {
+        num_profile_events_dropped += job_summary.second.NumProfileEventsDropped();
+      }
+      return num_profile_events_dropped;
+    }
+
+    size_t NumTaskAttemptsDropped() const {
+      size_t num_task_attempts_dropped = 0;
+      for (const auto &job_summary : job_task_summary_) {
+        num_task_attempts_dropped += job_summary.second.NumTaskAttemptsDropped();
+      }
+      return num_task_attempts_dropped;
+    }
+
    private:
     class TaskEventLocator {
      public:
@@ -270,6 +298,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
         return dropped_task_attempts_.count(task_attempt) > 0;
       }
 
+      size_t NumProfileEventsDropped() const { return num_profile_events_dropped; }
+
+      size_t NumTaskAttemptsDropped() const { return dropped_task_attempts_.size(); }
+
      private:
       int64_t num_profile_events_dropped = 0;
 
@@ -302,8 +334,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     std::shared_ptr<TaskEventLocator> AddNewTaskEvent(rpc::TaskEvents &&events_by_task);
 
-    void AddToIndex(const rpc::TaskEvents &task_event,
-                    const std::shared_ptr<TaskEventLocator> &loc);
+    void AddToIndex(const std::shared_ptr<TaskEventLocator> &loc);
 
     void RemoveFromIndex(const rpc::TaskEvents &task_event,
                          const std::shared_ptr<TaskEventLocator> &loc);
@@ -349,8 +380,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
  private:
   /// Test only
-  size_t GetTotalNumStatusTaskEventsDropped() {
-    return stats_counter_.Get(kTotalNumStatusTaskEventsDropped);
+  size_t GetTotalNumTaskAttemptsDropped() {
+    return stats_counter_.Get(kTotalNumTaskAttemptsDropped);
   }
 
   /// Test only

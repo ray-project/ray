@@ -30,9 +30,12 @@ void GcsTaskManager::Stop() {
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;
-  for (size_t i = 0; i < gc_policy_->NumList(); ++i) {
-    for (const auto &task_events : task_events_list_[i]) {
-      ret.push_back(task_events);
+  // From the higher priority to the lower priority list.
+  for (int i = gc_policy_->NumList() - 1; i >= 0; --i) {
+    // Reverse iterate the list to get the latest task events.
+    for (auto itr = task_events_list_[i].rbegin(); itr != task_events_list_[i].rend();
+         ++itr) {
+      ret.push_back(*itr);
     }
   }
 
@@ -164,27 +167,31 @@ std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>
 GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_events) {
   // Create a new locator.
   auto target_list_index = gc_policy_->GetTaskListIndex(task_events);
+  task_events_list_.at(target_list_index).push_front(std::move(task_events));
   auto list_itr = task_events_list_.at(target_list_index).begin();
+
   auto loc = std::make_shared<TaskEventLocator>(list_itr, target_list_index);
 
   // Add to index.
-  AddToIndex(task_events, loc);
+  AddToIndex(loc);
+
+  const auto &added_task_events = loc->GetTaskEvents();
 
   // Stats tracking
-  stats_counter_.Increment(kNumTaskEventsBytesStored, task_events.ByteSizeLong());
+  stats_counter_.Increment(kNumTaskEventsBytesStored, added_task_events.ByteSizeLong());
   stats_counter_.Increment(kNumTaskEventsStored);
   // Bump the task counters by type.
-  if (task_events.has_task_info() && task_events.attempt_number() == 0) {
-    stats_counter_.Increment(kTaskTypeToCounterType.at(task_events.task_info().type()));
+  if (added_task_events.has_task_info() && added_task_events.attempt_number() == 0) {
+    stats_counter_.Increment(
+        kTaskTypeToCounterType.at(added_task_events.task_info().type()));
   }
 
-  // Move the data to the underlying storage.
-  task_events_list_.at(target_list_index).push_front(std::move(task_events));
   return loc;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::AddToIndex(
-    const rpc::TaskEvents &task_events, const std::shared_ptr<TaskEventLocator> &loc) {
+    const std::shared_ptr<TaskEventLocator> &loc) {
+  const auto &task_events = loc->GetTaskEvents();
   const auto task_attempt = GetTaskAttempt(task_events);
   const auto job_id = JobID::FromBinary(task_events.job_id());
   const auto task_id = TaskID::FromBinary(task_events.task_id());
@@ -274,17 +281,20 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
   const auto &loc_iter = primary_index_.find(GetTaskAttempt(to_evict));
   RAY_CHECK(loc_iter != primary_index_.end());
 
-  auto &loc = loc_iter->second;
+  // Copy the pointer.
+  auto loc = loc_iter->second;
   const auto job_id = JobID::FromBinary(to_evict.job_id());
-
-  // Remove from the index.
-  RemoveFromIndex(to_evict, loc);
 
   // Update the tracking
   job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_evict));
   job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_evict));
   stats_counter_.Decrement(kNumTaskEventsBytesStored, to_evict.ByteSizeLong());
   stats_counter_.Decrement(kNumTaskEventsStored);
+  stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
+  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, NumProfileEvents(to_evict));
+
+  // Remove from the index.
+  RemoveFromIndex(to_evict, loc);
 
   // Remove from the underlying list.
   task_events_list_[loc->GetCurrentListIndex()].erase(loc->GetCurrentListIterator());
@@ -296,6 +306,8 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   // We are dropping this task.
   if (job_task_summary_[job_id].ShouldDropTaskAttempt(GetTaskAttempt(events_by_task))) {
     // This task attempt has been dropped.
+    RAY_LOG(INFO) << "already dropping task " << events_by_task.task_id() << " attempt "
+                  << events_by_task.attempt_number() << " of job " << job_id;
     return;
   }
 
@@ -305,8 +317,8 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
       UpdateOrInitTaskEventLocator(std::move(events_by_task));
 
   // If limit enforced, replace one.
-  if (max_num_task_events_ > 0 &&
-      stats_counter_.Get(kNumTaskEventsStored) > max_num_task_events_) {
+  if (max_num_task_events_ > 0 && static_cast<size_t>(stats_counter_.Get(
+                                      kNumTaskEventsStored)) > max_num_task_events_) {
     RAY_LOG_EVERY_MS(WARNING, 10000)
         << "Max number of tasks event (" << max_num_task_events_
         << ") allowed is reached. Old task events will be overwritten. Set "
@@ -330,9 +342,21 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
     task_events = task_event_storage_->GetTaskEvents(task_ids);
   } else if (request.has_job_id()) {
-    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(request.job_id()));
+    const auto job_id = JobID::FromBinary(request.job_id());
+    task_events = task_event_storage_->GetTaskEvents(job_id);
+    // Populate per-job data loss.
+    if (task_event_storage_->HasJob(job_id)) {
+      const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
+      reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
+      reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
+    }
   } else {
     task_events = task_event_storage_->GetTaskEvents();
+    // Populate all jobs data loss
+    reply->set_num_profile_task_events_dropped(
+        task_event_storage_->NumProfileEventsDropped());
+    reply->set_num_status_task_events_dropped(
+        task_event_storage_->NumTaskAttemptsDropped());
   }
 
   // Populate reply.
@@ -363,13 +387,11 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
     }
   }
-  // TODO(rickyx): We will need to revisit the data loss semantics, to report data loss
-  // on a single task retry(attempt) rather than the actual events.
-  // https://github.com/ray-project/ray/issues/31280
-  reply->set_num_profile_task_events_dropped(
-      stats_counter_.Get(kTotalNumProfileTaskEventsDropped) + num_profile_event_limit);
-  reply->set_num_status_task_events_dropped(
-      stats_counter_.Get(kTotalNumStatusTaskEventsDropped) + num_status_event_limit);
+
+  reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
+                                             num_profile_event_limit);
+  reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
+                                            num_status_event_limit);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
@@ -383,10 +405,12 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     auto job_id = task_id.JobId();
     job_task_summary_[job_id].RecordTaskAttemptDropped(
         std::make_pair<>(task_id, attempt_number));
+    stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
   }
 
   for (const auto &[job_id, drop_count] : data.profile_events_dropped()) {
     job_task_summary_[JobID::FromHex(job_id)].RecordProfileEventsDropped(drop_count);
+    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, drop_count);
   }
 }
 
@@ -411,8 +435,7 @@ std::string GcsTaskManager::DebugString() {
   ss << "GcsTaskManager: "
      << "\n-Total num task events reported: " << counters[kTotalNumTaskEventsReported]
      << "\n-Total num status task events dropped: "
-     << counters[kTotalNumStatusTaskEventsDropped]
-     << "\n-Total num profile events dropped: "
+     << counters[kTotalNumTaskAttemptsDropped] << "\n-Total num profile events dropped: "
      << counters[kTotalNumProfileTaskEventsDropped]
      << "\n-Total num bytes of task event stored: "
      << 1.0 * counters[kNumTaskEventsBytesStored] / 1024 / 1024 << "MiB"
@@ -431,7 +454,7 @@ void GcsTaskManager::RecordMetrics() {
       counters[kTotalNumTaskEventsReported]);
 
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      counters[kTotalNumStatusTaskEventsDropped], ray::stats::kGcsTaskStatusEventDropped);
+      counters[kTotalNumTaskAttemptsDropped], ray::stats::kGcsTaskStatusEventDropped);
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
       counters[kTotalNumProfileTaskEventsDropped], ray::stats::kGcsProfileEventDropped);
 
