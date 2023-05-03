@@ -80,6 +80,7 @@ class TunerInternal:
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
+        _trainer_api: bool = False,
     ):
         from ray.train.trainer import BaseTrainer
 
@@ -105,6 +106,7 @@ class TunerInternal:
         self._run_config = run_config or RunConfig()
 
         self._missing_params_error_message = None
+        self._trainer_api = _trainer_api
 
         # Restore from Tuner checkpoint.
         if restore_path:
@@ -599,6 +601,7 @@ class TunerInternal:
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
             _tuner_api=True,
+            _trainer_api=self._trainer_api,
         )
 
     def _fit_internal(

@@ -278,6 +278,7 @@ def run(
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
     _tuner_api: bool = False,
+    _trainer_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -486,20 +487,24 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
-    error_message_map = (
-        {
+    if _tuner_api and _trainer_api:
+        error_message_map = {
+            "entrypoint": "Trainer(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Trainer.restore(path="{path}")',
+        }
+    elif _tuner_api and not _trainer_api:
+        error_message_map = {
             "entrypoint": "Tuner(...)",
             "search_space_arg": "param_space",
             "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
         }
-        if _tuner_api
-        else {
+    else:
+        error_message_map = {
             "entrypoint": "tune.run(...)",
             "search_space_arg": "config",
             "restore_entrypoint": "tune.run(..., resume=True)",
         }
-    )
-    _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
