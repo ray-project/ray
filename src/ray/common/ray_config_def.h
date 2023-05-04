@@ -812,3 +812,6 @@ RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
 // See https://github.com/ray-project/ray/pull/33976 for more
 // info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
+
+// Avoid node whose object store memory utilization exceeds the threshold.
+RAY_CONFIG(float, spread_object_store_memory_soft_threshold, 1.0)

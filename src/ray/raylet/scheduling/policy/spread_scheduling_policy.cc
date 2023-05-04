@@ -16,6 +16,7 @@
 
 #include <functional>
 
+#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/container_util.h"
 #include "ray/util/util.h"
 
@@ -35,30 +36,50 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
   }
   std::sort(round.begin(), round.end());
 
+  float spread_object_store_memory_soft_threshold =
+      RayConfig::instance().spread_object_store_memory_soft_threshold();
+
   // Spread among available nodes first.
   // If there is no available nodes, we spread among feasible nodes.
   for (bool available_nodes_only :
        (options.require_node_available ? std::vector<bool>{true}
                                        : std::vector<bool>{true, false})) {
-    size_t round_index = spread_scheduling_next_index_;
-    for (size_t i = 0; i < round.size(); ++i, ++round_index) {
-      const auto &node_id = round[round_index % round.size()];
-      const auto &node = map_find_or_die(nodes_, node_id);
-      if (node_id == local_node_id_ && options.avoid_local_node) {
-        continue;
-      }
-      if (!is_node_alive_(node_id) || !node.GetLocalView().IsFeasible(resource_request)) {
-        continue;
-      }
+    for (bool avoid_node_with_high_object_store_memory_utilization :
+         (spread_object_store_memory_soft_threshold == 1.0
+              ? std::vector<bool>{false}
+              : std::vector<bool>{true, false})) {
+      size_t round_index = spread_scheduling_next_index_;
+      for (size_t i = 0; i < round.size(); ++i, ++round_index) {
+        const auto &node_id = round[round_index % round.size()];
+        const auto &node = map_find_or_die(nodes_, node_id);
+        if (node_id == local_node_id_ && options.avoid_local_node) {
+          continue;
+        }
+        if (!is_node_alive_(node_id) ||
+            !node.GetLocalView().IsFeasible(resource_request)) {
+          continue;
+        }
 
-      if (available_nodes_only &&
-          !node.GetLocalView().IsAvailable(resource_request,
-                                           /*ignore_pull_manager_at_capacity=*/false)) {
-        continue;
-      }
+        if (available_nodes_only &&
+            !node.GetLocalView().IsAvailable(resource_request,
+                                             /*ignore_pull_manager_at_capacity=*/false)) {
+          continue;
+        }
 
-      spread_scheduling_next_index_ = ((round_index + 1) % round.size());
-      return node_id;
+        if (avoid_node_with_high_object_store_memory_utilization) {
+          double total =
+              node.GetLocalView().total.Get(ResourceID::ObjectStoreMemory()).Double();
+          double available =
+              node.GetLocalView().available.Get(ResourceID::ObjectStoreMemory()).Double();
+          float utilization = 1 - (available / total);
+          if (utilization > spread_object_store_memory_soft_threshold) {
+            continue;
+          }
+        }
+
+        spread_scheduling_next_index_ = ((round_index + 1) % round.size());
+        return node_id;
+      }
     }
   }
 
