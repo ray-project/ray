@@ -311,7 +311,7 @@ class DashboardHead:
         # We need to expose dashboard's node's ip for other worker nodes if it's listening
         # to all interfaces.
         dashboard_http_host = (
-            self.ip if http_host == ray_constants.DEFAULT_DASHBOARD_IP else http_host
+            self.ip if self.http_host == ray_constants.DEFAULT_DASHBOARD_IP else http_host
         )
         await asyncio.gather(
             self.gcs_aio_client.internal_kv_put(
