@@ -43,7 +43,7 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job, sdk_command].
+#    # Type of test. Can be [anyscale_job]
 #    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
 #    # run the actual release test.
 #    type: anyscale_job
@@ -835,13 +835,13 @@
 
 - name: workspace_template_batch_inference
   group: Workspace templates
-  working_dir: workspace_templates/tests
+  working_dir: workspace_templates/tests/01_batch_inference
   python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../../configs/release_test_cluster_env.yaml
+    cluster_compute: ../../configs/compute/gpu/aws_release_test.yaml
 
   run:
     timeout: 600
@@ -853,23 +853,23 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
 
 
 - name: workspace_template_many_model_training
   group: Workspace templates
-  working_dir: workspace_templates/tests
+  working_dir: workspace_templates/tests/02_many_model_training
   python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/cpu/aws_release_test.yaml
+    cluster_env: ../../configs/release_test_cluster_env.yaml
+    cluster_compute: ../../configs/compute/cpu/aws_release_test.yaml
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
+    script: pip install -U -r requirements.txt && jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -877,23 +877,23 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/cpu/gce_release_test.yaml
 
 
 - name: workspace_template_serving_stable_diffusion
   group: Workspace templates
-  working_dir: workspace_templates/tests
+  working_dir: workspace_templates/tests/03_serving_stable_diffusion
   python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../../configs/release_test_cluster_env.yaml
+    cluster_compute: ../../configs/compute/gpu/aws_release_test.yaml
 
   run:
-    timeout: 900
-    script: jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+    timeout: 600
+    script: pip install -U -r requirements.txt && jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -901,8 +901,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
 
 
 #######################
@@ -1915,6 +1915,40 @@
       run:
         timeout: 900
         script: python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
+        wait_for_nodes:
+          num_nodes: 16
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: tpl_gce_16x2.yaml
+
+  alert: tune_tests
+
+
+- name: tune_scalability_durable_multifile_checkpoints
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_16x2.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/test_durable_multifile_checkpoints.py --bucket s3://tune-cloud-tests/scalability_durable_multifile_checkpoints
+    wait_for_nodes:
+      num_nodes: 16
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      run:
+        timeout: 900
+        script: python workloads/test_durable_multifile_checkpoints.py --bucket gs://tune-cloud-tests/scalability_durable_multifile_checkpoints
         wait_for_nodes:
           num_nodes: 16
       cluster:
@@ -4243,7 +4277,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
+        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # Revert to the comment below once ^ closed.
+        # cluster_env: app_config.yaml
+        cluster_env: debug_app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
@@ -5213,17 +5250,17 @@
   run:
     # Expect the test to finish around 40 seconds.
     timeout: 100
-    script: python parquet_metadata_resolution.py --num-files 915
+    script: python parquet_metadata_resolution.py --num-files 915 --cloud aws
 
-  # TODO: Port s3://shuffling-data-loader-benchmarks/ to GCS.
-  # variations:
-  #   - __suffix__: aws
-  #   - __suffix__: gce
-  #     env: gce
-  #     frequency: manual
-  #     cluster:
-  #       cluster_env: app_config.yaml
-  #       cluster_compute: single_node_benchmark_compute_gce.yaml
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+      run:
+        script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
 
 - name: dataset_random_access
   group: data-tests
@@ -5956,8 +5993,6 @@
   working_dir: k8s_tests
 
   stable: false
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: serve
@@ -5969,16 +6004,12 @@
     timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
-    type: sdk_command
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -5989,16 +6020,12 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py aws_cluster.yaml
-    type: sdk_command
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -6009,16 +6036,12 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py ../example-minimal.yaml
-    type: sdk_command
 
 - name: aws_cluster_launcher_full
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/aws/
 
   stable: true
-
-  # TODO: Migrate this test to Anyscale Jobs / staging_v2
-  env: prod_v1
 
   frequency: nightly
   team: core
@@ -6029,4 +6052,3 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py ../example-full.yaml
-    type: sdk_command

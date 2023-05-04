@@ -6,7 +6,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.core.learner.learner import Learner, FrameworkHPs
+from ray.rllib.core.learner.learner import Learner, FrameworkHyperparameters
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
@@ -31,8 +31,8 @@ def get_learner(obs_space, action_space, learning_rate=1e-3) -> Learner:
         # made this a configurable hparam to avoid information leakage in tests where we
         # need to know what the learning rate is.
         optimizer_config={"lr": learning_rate},
-        learner_scaling_config=LearnerGroupScalingConfig(),
-        framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+        learner_group_scaling_config=LearnerGroupScalingConfig(),
+        framework_hyperparameters=FrameworkHyperparameters(eager_tracing=True),
     )
 
     learner.build()
@@ -87,8 +87,8 @@ class TestLearner(unittest.TestCase):
             # made this a configurable hparam to avoid information leakage in tests
             # where we need to know what the learning rate is.
             optimizer_config={"lr": 1e-3},
-            learner_scaling_config=LearnerGroupScalingConfig(),
-            framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+            learner_group_scaling_config=LearnerGroupScalingConfig(),
+            framework_hyperparameters=FrameworkHyperparameters(eager_tracing=True),
         )
 
         learner.build()
@@ -266,8 +266,8 @@ class TestLearner(unittest.TestCase):
                 model_config_dict={"fcnet_hiddens": [64]},
             ),
             optimizer_config={"lr": 2e-3},
-            learner_scaling_config=LearnerGroupScalingConfig(),
-            framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+            learner_group_scaling_config=LearnerGroupScalingConfig(),
+            framework_hyperparameters=FrameworkHyperparameters(eager_tracing=True),
         )
 
         learner1.build()
@@ -282,8 +282,8 @@ class TestLearner(unittest.TestCase):
                     model_config_dict={"fcnet_hiddens": [32]},
                 ),
                 optimizer_config={"lr": 1e-3},
-                learner_scaling_config=LearnerGroupScalingConfig(),
-                framework_hyperparameters=FrameworkHPs(eager_tracing=True),
+                learner_group_scaling_config=LearnerGroupScalingConfig(),
+                framework_hyperparameters=FrameworkHyperparameters(eager_tracing=True),
             )
             learner2.build()
             learner2.load_state(tmpdir)

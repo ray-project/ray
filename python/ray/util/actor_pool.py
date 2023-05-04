@@ -79,8 +79,12 @@ class ActorPool:
 
         for v in values:
             self.submit(fn, v)
-        while self.has_next():
-            yield self.get_next()
+
+        def get_generator():
+            while self.has_next():
+                yield self.get_next()
+
+        return get_generator()
 
     def map_unordered(self, fn: Callable[[Any], Any], values: List[Any]):
         """Similar to map(), but returning an unordered iterator.
@@ -116,8 +120,12 @@ class ActorPool:
 
         for v in values:
             self.submit(fn, v)
-        while self.has_next():
-            yield self.get_next_unordered()
+
+        def get_generator():
+            while self.has_next():
+                yield self.get_next_unordered()
+
+        return get_generator()
 
     def submit(self, fn, value):
         """Schedule a single task to run in the pool.
