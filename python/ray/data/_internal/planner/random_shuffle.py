@@ -33,7 +33,7 @@ def generate_random_shuffle_fn(
         # If map_transform_fn is specified (e.g. from fusing
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
-        map_transform_fn: Optional[MapTransformFn] = ctx.map_transform_fn
+        map_transform_fn: Optional[MapTransformFn] = ctx.upstream_map_transform_fn
         upstream_map_fn = None
         if map_transform_fn:
             upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731

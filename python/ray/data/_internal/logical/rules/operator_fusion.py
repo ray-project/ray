@@ -31,59 +31,62 @@ class OperatorFusionRule(Rule):
         self._op_map = plan.op_map.copy()
         # Do DFS fusion on compatible pairwise operators in two passes.
         # In the first pass, only fuse back-to-back map operators together.
-        op_map_fused = self._fuse_map_to_map_operators(plan.dag)
+        fused_dag = self._fuse_map_operators_in_dag(plan.dag)
 
         # Now that we have fused together all back-to-back map operators,
         # we fuse together MapOperator -> AllToAllOperator pairs.
-        op_map_alltoall_fused = self._fuse_map_to_alltoall_operators(op_map_fused)
+        fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
-        return PhysicalPlan(op_map_alltoall_fused, self._op_map)
+        return PhysicalPlan(fused_dag, self._op_map)
 
-    def _fuse_map_to_map_operators(self, op: MapOperator) -> MapOperator:
+    def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
         """Starting at the given operator, traverses up the DAG of operators
         and recursively fuses compatible MapOperator -> MapOperator pairs.
         Returns the current (root) operator after completing upstream operator fusions.
         """
-        upstream_ops = op.input_dependencies
+        upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
-            and self._can_fuse(op, upstream_ops[0])
-            and isinstance(op, MapOperator)
+            and isinstance(dag, MapOperator)
             and isinstance(upstream_ops[0], MapOperator)
+            and self._can_fuse(dag, upstream_ops[0])
         ):
             # Fuse operator with its upstream op.
-            op = self._fuse_ops_map_map(op, upstream_ops[0])
-            upstream_ops = op.input_dependencies
+            dag = self._get_fused_map_operator(dag, upstream_ops[0])
+            upstream_ops = dag.input_dependencies
 
         # Done fusing back-to-back map operators together here,
         # move up the DAG to find the next map operators to fuse.
-        op._input_dependencies = [
-            self._fuse_map_to_map_operators(upstream_op) for upstream_op in upstream_ops
+        dag._input_dependencies = [
+            self._fuse_map_operators_in_dag(upstream_op) for upstream_op in upstream_ops
         ]
-        return op
+        return dag
 
-    def _fuse_map_to_alltoall_operators(self, op: AllToAllOperator) -> AllToAllOperator:
+    def _fuse_all_to_all_operators_in_dag(
+        self, dag: AllToAllOperator
+    ) -> AllToAllOperator:
         """Starting at the given operator, traverses up the DAG of operators
         and recursively fuses compatible MapOperator -> AllToAllOperator pairs.
         Returns the current (root) operator after completing upstream operator fusions.
         """
-        upstream_ops = op.input_dependencies
+        upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
-            and self._can_fuse(op, upstream_ops[0])
-            and isinstance(op, AllToAllOperator)
+            and isinstance(dag, AllToAllOperator)
             and isinstance(upstream_ops[0], MapOperator)
+            and self._can_fuse(dag, upstream_ops[0])
         ):
             # Fuse operator with its upstream op.
-            op = self._fuse_ops_map_alltoall(op, upstream_ops[0])
-            upstream_ops = op.input_dependencies
+            dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
+            upstream_ops = dag.input_dependencies
 
         # Done fusing MapOperator -> AllToAllOperator together here,
         # move up the DAG to find the next pair of operators to fuse.
-        op._input_dependencies = [
-            self._fuse_map_to_map_operators(upstream_op) for upstream_op in upstream_ops
+        dag._input_dependencies = [
+            self._fuse_all_to_all_operators_in_dag(upstream_op)
+            for upstream_op in upstream_ops
         ]
-        return op
+        return dag
 
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
         """Returns whether the provided downstream operator can be fused with the given
@@ -170,7 +173,7 @@ class OperatorFusionRule(Rule):
         # Otherwise, ops are compatible for fusion.
         return True
 
-    def _fuse_ops_map_map(
+    def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
     ) -> MapOperator:
         assert self._can_fuse(down_op, up_op), (
@@ -201,7 +204,7 @@ class OperatorFusionRule(Rule):
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        def fused_transform_fn_map_map(
+        def fused_map_transform_fn(
             blocks: Iterator[Block], ctx: TaskContext
         ) -> Iterator[Block]:
             blocks = up_transform_fn(blocks, ctx)
@@ -220,7 +223,7 @@ class OperatorFusionRule(Rule):
 
         # Fused physical map operator.
         op = MapOperator.create(
-            fused_transform_fn_map_map,
+            fused_map_transform_fn,
             input_op,
             name=name,
             compute_strategy=compute,
@@ -262,7 +265,7 @@ class OperatorFusionRule(Rule):
         # Return the fused physical operator.
         return op
 
-    def _fuse_ops_map_alltoall(
+    def _get_fused_all_to_all_operator(
         self, down_op: AllToAllOperator, up_op: MapOperator
     ) -> AllToAllOperator:
         assert self._can_fuse(down_op, up_op), (
@@ -283,14 +286,15 @@ class OperatorFusionRule(Rule):
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        def fused_transform_fn_map_alltoall(
+        def fused_all_to_all_transform_fn(
             blocks: List[RefBundle], ctx: TaskContext
         ) -> Tuple[List[RefBundle], StatsDict]:
             """To fuse MapOperator->AllToAllOperator, we store the map function
-            in the TaskContext, which is later called in `ShuffleTaskSpec.map`.
-            Then, we can return an AllToAllOperator which applies the map function
-            before executing the shuffle."""
-            ctx.map_transform_fn = up_transform_fn
+            in the TaskContext so that it may be used by the downstream
+            AllToAllOperator's transform function. Then, we can return an
+            AllToAllOperator which applies the map function before executing
+            the shuffle."""
+            ctx.upstream_map_transform_fn = up_transform_fn
             return down_transform_fn(blocks, ctx)
 
         ray_remote_args = down_logical_op._ray_remote_args
@@ -300,7 +304,7 @@ class OperatorFusionRule(Rule):
         input_op = input_deps[0]
 
         op = AllToAllOperator(
-            fused_transform_fn_map_alltoall,
+            fused_all_to_all_transform_fn,
             input_op,
             name=name,
         )

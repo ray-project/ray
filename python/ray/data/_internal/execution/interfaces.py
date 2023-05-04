@@ -235,7 +235,7 @@ class TaskContext:
 
     # The underlying function called in a MapOperator; this is used when fusing
     # an AllToAllOperator with an upstream MapOperator.
-    map_transform_fn: Optional["MapTransformFn"] = None
+    upstream_map_transform_fn: Optional["MapTransformFn"] = None
 
 
 # Block transform function applied by task and actor pools in MapOperator.
