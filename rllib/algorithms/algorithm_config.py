@@ -865,9 +865,10 @@ class AlgorithmConfig(_Config):
             )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # enable RLModule API and connectors if env variable is set
+            # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
             self.rl_module(_enable_rl_module_api=True)
+            self.training(_enable_learner_api=True)
             self.enable_connectors = True
 
         # Explore parameter cannot be False with RLModule API enabled.
