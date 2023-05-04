@@ -701,6 +701,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -727,6 +728,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -753,6 +755,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -4799,7 +4802,9 @@
 - name: tune_air_oom
   group: core-daily-test
   working_dir: air_tests
+
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
