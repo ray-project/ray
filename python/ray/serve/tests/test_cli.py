@@ -517,22 +517,20 @@ def test_status_error_msg_format(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
 
-    status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:52365/"]
-    )
-    serve_status = yaml.safe_load(status_response)
-    print("serve_status", serve_status)
-
     def check_for_failed_deployment():
+        serve_status = yaml.safe_load(
+            subprocess.check_output(
+                ["serve", "status", "-a", "http://localhost:52365/"]
+            )
+        )
         app_status = ServeSubmissionClient("http://localhost:52365").get_status()
         return (
-            len(serve_status["deployment_statuses"]) == 0
-            and serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
             and remove_ansi_escape_sequences(app_status["app_status"]["message"])
             in serve_status["app_status"]["message"]
         )
 
-    wait_for_condition(check_for_failed_deployment, timeout=2)
+    wait_for_condition(check_for_failed_deployment)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -577,6 +575,56 @@ def test_status_syntax_error(ray_start_stop):
         )
 
     wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_constructor_error(ray_start_stop):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    traceback is surfaced.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        status_response = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        serve_status = yaml.safe_load(status_response)
+        return (
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "ZeroDivisionError" in serve_status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_package_unavailable_in_controller(ray_start_stop):
+    """Test that exceptions raised from packages that are installed on deployment actors
+    but not on controller is serialized and surfaced properly.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "sqlalchemy.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        status_response = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        serve_status = yaml.safe_load(status_response)
+        return (
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "some_wrong_url" in serve_status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

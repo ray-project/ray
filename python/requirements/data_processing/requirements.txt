@@ -3,12 +3,12 @@
 
 dask[complete]==2022.2.0; python_version < '3.8'
 dask[complete]==2022.10.1; python_version >= '3.8'
-aioboto3==8.3.0
+aioboto3==11.0.1
 crc32c==2.3
 flask_cors
-s3fs
-modin>=0.8.3;  python_version < '3.7'
-modin>=0.11.0; python_version >= '3.7'
+s3fs==2023.1.0
+modin==0.12.1; python_version < '3.8'
+modin==0.18.1; python_version >= '3.8'
 pytest-repeat
 raydp>=0.0.dev0
 responses==0.13.4
