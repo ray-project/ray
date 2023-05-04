@@ -1,4 +1,4 @@
-.. _writing-code-snippets:
+.. _writing-code-snippets_ref:
 
 ==========================
 How to write code snippets

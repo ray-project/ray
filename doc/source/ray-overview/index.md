@@ -54,12 +54,12 @@ Ray's unified compute framework consists of three layers:
         **Scale machine learning workloads**
         ^^^
         Build ML applications with a toolkit of libraries for distributed 
-        :ref:`data processing <../data/data.rst>`, 
-        :ref:`model training <../train/train.rst>`, 
-        :ref:`tuning <../tune/index.rst>`, 
-        :ref:`reinforcement learning <../rllib/index.rst>`, 
-        :ref:`model serving <../serve/index.rst>`, 
-        and :ref:`more <../ray-more-libs/index.rst>`.
+        :doc:`data processing <../data/data.rst>`, 
+        :doc:`model training <../train/train.rst>`, 
+        :doc:`tuning <../tune/index.rst>`, 
+        :doc:`reinforcement learning <../rllib/index.rst>`, 
+        :doc:`model serving <../serve/index.rst>`, 
+        and :doc:`more <../ray-more-libs/index.rst>`.
         +++
         .. button-ref:: ../ray-air/getting-started
             :color: primary
@@ -73,8 +73,8 @@ Ray's unified compute framework consists of three layers:
         **Build distributed applications**
         ^^^
         Build and run distributed applications with a 
-        :ref:`simple and flexible API <../ray-core/walkthrough.rst>`.
-        :ref:`Parallelize <../ray-core/walkthrough.rst>` single machine code with 
+        :doc:`simple and flexible API <../ray-core/walkthrough.rst>`.
+        :doc:`Parallelize <../ray-core/walkthrough.rst>` single machine code with 
         little to zero code changes.
         
         +++
@@ -89,12 +89,12 @@ Ray's unified compute framework consists of three layers:
         
         **Deploy large-scale workloads**
         ^^^
-        Deploy workloads on :ref:`AWS, GCP, Azure <../cluster/getting-started>` or 
-        :ref:`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
+        Deploy workloads on :doc:`AWS, GCP, Azure <../cluster/getting-started>` or 
+        :doc:`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
         Use Ray cluster managers to run Ray on existing
-        :ref:`Kubernetes <../cluster/kubernetes/index>`,
-        :ref:`YARN <../cluster/vms/user-guides/community/yarn>`,
-        or :ref:`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
+        :doc:`Kubernetes <../cluster/kubernetes/index>`,
+        :doc:`YARN <../cluster/vms/user-guides/community/yarn>`,
+        or :doc:`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
         +++
         .. button-ref:: ../cluster/getting-started
             :color: primary

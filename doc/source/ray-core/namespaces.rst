@@ -173,6 +173,7 @@ the specified namespace, no matter what namespace of the current job is.
             ray::GetActor<Counter>("orange");
             ray::Shutdown();`
 
+
 Anonymous namespaces
 --------------------
 
