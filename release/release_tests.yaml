@@ -841,8 +841,8 @@
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: opt_deepspeed_batch_inference.yaml
-    cluster_compute: opt_deepspeed_batch_inference.yaml
+    cluster_env: 30b_deepspeed_env.yaml
+    cluster_compute: 30b_deepspeed_compute.yaml
 
   run:
     timeout: 3600
