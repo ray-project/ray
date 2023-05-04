@@ -1041,10 +1041,16 @@ def run(
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
             path=runner.experiment_path,
         )
-        logger.warning(
-            "Experiment has been interrupted, but the most recent state was saved.\n"
-            f"Continue running this experiment with: {restore_entrypoint}"
-        )
+        if _trainer_api:
+            logger.warning(
+                f"Training has been interrupted, but the most recent state was saved.\n"
+                f"Resume training with: {restore_entrypoint}"
+            )
+        else:
+            logger.warning(
+                f"Experiment has been interrupted, but the most recent state was "
+                f"saved.\nResume experiment with: {restore_entrypoint}"
+            )
     ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
