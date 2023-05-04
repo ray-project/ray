@@ -47,35 +47,26 @@ PY_MATRIX = {
 
 BASE_IMAGES = {
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
-    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
-    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
-    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
-    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
-    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
-    # there is no ubuntu20.04 image for cuda 10.2 and 10.1
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
+    "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
+    "cu116": "nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04",
+    "cu115": "nvidia/cuda:11.5.2-cudnn8-devel-ubuntu20.04",
     "cpu": "ubuntu:focal",
 }
 
 CUDA_FULL = {
     "cu118": "CUDA 11.8",
+    "cu117": "CUDA 11.7",
     "cu116": "CUDA 11.6",
-    "cu113": "CUDA 11.3",
-    "cu112": "CUDA 11.2",
-    "cu111": "CUDA 11.1",
-    "cu110": "CUDA 11.0",
-    "cu102": "CUDA 10.2",
-    "cu101": "CUDA 10.1",
+    "cu115": "CUDA 11.5",
 }
 
 # The CUDA version to use for the ML Docker image.
 # If changing the CUDA version in the below line, you should also change the base Docker
 # image being used in ~/ci/docker/Dockerfile.base.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu116"
+ML_CUDA_VERSION = "cu118"
 
-DEFAULT_PYTHON_VERSION = "py37"
+DEFAULT_PYTHON_VERSION = "py38"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
