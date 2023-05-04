@@ -219,6 +219,7 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
   {
     if (task_attempts_dropped_.count(task_event->GetTaskAttempt())) {
       // We are already dropping events for this task attempt.
+      // So don't add it to the buffer.
       if (task_event->IsProfileEvent()) {
         profile_events_dropped_[task_event->GetJobId()]++;
       }
@@ -265,7 +266,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     profile_events_dropped.swap(profile_events_dropped_);
 
     size_t task_attempt_count = 0;
-    // iterate and ease task attempt dropped.
+    // iterate and erase task attempt dropped.
     while (task_attempt_count <
                RayConfig::instance().task_events_drop_task_attempt_batch_size() &&
            !task_attempts_dropped_.empty()) {
