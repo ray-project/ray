@@ -12,30 +12,52 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use wasm_on_ray::config;
-use wasm_on_ray::runtime;
-use wasm_on_ray::runtime::RayRuntime;
+use wasm_on_ray::engine::{WasmEngine, WasmEngineFactory, WasmEngineType};
+use wasm_on_ray::runtime::{register_ray_hostcalls, RayConfig, RayRuntime, RayRuntimeFactory};
 use wasm_on_ray::util;
+
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber;
 
-async fn init(
-    cfg: &runtime::RayConfig,
+struct WorkerContext {
+    // ray runtime
+    runtime: Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
+
+    // wasm engine
+    engine: Arc<RwLock<Box<dyn WasmEngine + Send + Sync>>>,
+}
+
+async fn init_runtime(
+    cfg: &RayConfig,
     args: &util::WorkerParameters,
 ) -> Result<Box<dyn RayRuntime + Send + Sync>> {
     let mut internal_cfg = config::ConfigInternal::new();
 
     internal_cfg.init(&cfg, &args);
 
-    let mut runtime = runtime::RayRuntimeFactory::create_runtime(internal_cfg).unwrap();
+    let mut runtime = RayRuntimeFactory::create_runtime(internal_cfg).unwrap();
     runtime.do_init().unwrap();
 
     Ok(runtime)
 }
 
-async fn run_task_loop(runtime: &mut Box<dyn RayRuntime + Send + Sync>) -> Result<()> {
-    runtime.launch_task_loop().unwrap();
+async fn init_engine(args: &util::WorkerParameters) -> Result<Box<dyn WasmEngine + Send + Sync>> {
+    let engine_type = match args.engine_type {
+        util::WasmEngineType::Wasmedge => WasmEngineType::WASMEDGE,
+        util::WasmEngineType::Wasmtime => WasmEngineType::WASMTIME,
+        _ => unimplemented!(),
+    };
+    let mut engine = WasmEngineFactory::create_engine(engine_type).unwrap();
+    engine.init().unwrap();
+
+    Ok(engine)
+}
+
+async fn run_task_loop(runtime: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>) -> Result<()> {
+    runtime.write().unwrap().launch_task_loop().unwrap();
     Ok(())
 }
 
@@ -49,13 +71,23 @@ async fn main() -> Result<()> {
     }));
 
     let args = util::WorkerParameters::parse();
-    let mut cfg = runtime::RayConfig::new();
-    
+    let mut cfg = RayConfig::new();
+
     // we need to run in worker mode
     cfg.is_worker = true;
- 
-    let mut rt = init(&cfg, &args).await.unwrap();
-    run_task_loop(&mut rt).await.unwrap();
+
+    let mut rt = init_runtime(&cfg, &args).await.unwrap();
+    let mut engine = init_engine(&args).await.unwrap();
+
+    let ctx = WorkerContext {
+        runtime: Arc::new(RwLock::new(rt)),
+        engine: Arc::new(RwLock::new(engine)),
+    };
+
+    // setup hostcalls
+    register_ray_hostcalls(&ctx.runtime, &ctx.engine).unwrap();
+
+    run_task_loop(&ctx.runtime).await.unwrap();
 
     Ok(())
 }

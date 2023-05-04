@@ -139,6 +139,10 @@ pub struct WorkerParameters {
     /// a unique value will be randomly generated.
     #[arg(long, verbatim_doc_comment)]
     pub ray_job_namespace: Option<String>,
+
+    /// type of the wasm engine to use
+    #[arg(long, value_enum, verbatim_doc_comment, default_value_t = WasmEngineType::Wasmtime)]
+    pub engine_type: WasmEngineType,
 }
 
 impl WorkerParameters {
@@ -160,6 +164,7 @@ impl WorkerParameters {
             ray_runtime_env: None,
             ray_runtime_env_hash: None,
             ray_job_namespace: None,
+            engine_type: WasmEngineType::Wasmtime,
         }
     }
 }

@@ -22,7 +22,6 @@ use crate::runtime::TaskExecutor;
 use crate::util::get_node_ip_address;
 use crate::util::RayLog;
 use rmp::encode::write_i32;
-use std::sync::Arc;
 use std::task::Context;
 use tokio::task;
 use tracing_subscriber::fmt::format;
@@ -46,6 +45,7 @@ use super::WasmTaskExecutionInfo;
 use lazy_static::lazy_static;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 use std::thread::sleep;
 use std::time::Duration;
 

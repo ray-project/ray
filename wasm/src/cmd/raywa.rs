@@ -17,7 +17,7 @@ use wasm_on_ray::runtime;
 use wasm_on_ray::runtime::register_ray_hostcalls;
 use wasm_on_ray::util;
 
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
@@ -82,7 +82,7 @@ impl RayWaContextFactory {
             _ => unimplemented!(),
         };
         let e = engine::WasmEngineFactory::create_engine(engine_type);
-        Ok(e)
+        Ok(e.unwrap())
     }
 
     async fn create_runtime(

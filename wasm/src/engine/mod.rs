@@ -73,12 +73,15 @@ pub enum WasmEngineType {
 pub struct WasmEngineFactory {}
 
 impl WasmEngineFactory {
-    pub fn create_engine(engine_type: WasmEngineType) -> Box<dyn WasmEngine + Send + Sync> {
-        match engine_type {
+    pub fn create_engine(engine_type: WasmEngineType) -> Result<Box<dyn WasmEngine + Send + Sync>> {
+        let engine: Box<dyn WasmEngine + Send + Sync> = match engine_type {
             WasmEngineType::WASMTIME => Box::new(WasmtimeEngine::new()),
             WasmEngineType::WASMEDGE => Box::new(WasmEdgeEngine::new()),
-            _ => panic!("not supported engine type"),
-        }
+            _ => {
+                return Err(anyhow!("unsupported wasm engine type"));
+            }
+        };
+        Ok(engine)
     }
 }
 
