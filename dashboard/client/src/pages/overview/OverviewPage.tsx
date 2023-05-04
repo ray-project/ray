@@ -63,14 +63,6 @@ export const OverviewPage = () => {
 
       <CollapsibleSection
         className={classes.section}
-        title="Events"
-        startExpanded
-      >
-        <EventTable />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        className={classes.section}
         title="Cluster status and autoscaler"
         startExpanded
       >
@@ -89,6 +81,14 @@ export const OverviewPage = () => {
             </OverviewCard>
           </div>
         }
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        className={classes.section}
+        title="Events"
+        startExpanded
+      >
+        <EventTable />
       </CollapsibleSection>
     </div>
   );
