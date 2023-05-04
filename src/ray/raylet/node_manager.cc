@@ -1007,7 +1007,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
         // Update the resource view if a new message has been sent.
         if (RayConfig::instance().use_ray_syncer()) {
           if (auto sync_msg = ray_syncer_.GetSyncMessage(
-                  node_info.node_id(), syncer::MessageType::RESOURCE_VIEW)) {
+                  node_id.Binary(), syncer::MessageType::RESOURCE_VIEW)) {
             if (sync_msg) {
               ConsumeSyncMessage(sync_msg);
             }
