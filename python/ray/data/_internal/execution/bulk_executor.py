@@ -1,7 +1,7 @@
 from typing import Dict, List, Iterator, Optional
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -9,18 +9,18 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatastreamStats
 
-logger = DatasetLogger(__name__)
+logger = DatastreamLogger(__name__)
 
 
 class BulkExecutor(Executor):
     """A bulk (BSP) operator executor.
 
-    This implementation emulates the behavior of the legacy Datasets backend. It
+    This implementation emulates the behavior of the legacy Data backend. It
     is intended to be replaced by default by StreamingExecutor in the future.
     """
 
@@ -28,11 +28,11 @@ class BulkExecutor(Executor):
         # Bulk executor always preserves order.
         options.preserve_order = True
         super().__init__(options)
-        self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
+        self._stats: Optional[DatastreamStats] = DatastreamStats(stages={}, parent=None)
         self._executed = False
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
     ) -> Iterator[RefBundle]:
         """Synchronously executes the DAG via bottom-up recursive traversal."""
 
@@ -76,7 +76,7 @@ class BulkExecutor(Executor):
                 self._stats.extra_metrics = op_metrics
             stats_summary = self._stats.to_summary()
             stats_summary_string = stats_summary.to_string(include_parent=False)
-            context = DatasetContext.get_current()
+            context = DataContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )
@@ -84,7 +84,7 @@ class BulkExecutor(Executor):
 
         return OutputIterator(execute_recursive(dag))
 
-    def get_stats(self) -> DatasetStats:
+    def get_stats(self) -> DatastreamStats:
         return self._stats
 
 

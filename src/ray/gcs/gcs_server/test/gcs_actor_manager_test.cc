@@ -242,6 +242,32 @@ class GcsActorManagerTest : public ::testing::Test {
     promise.get_future().get();
   }
 
+  std::shared_ptr<gcs::GcsActor> CreateActorAndWaitTilAlive(const JobID &job_id) {
+    auto registered_actor = RegisterActor(job_id);
+    rpc::CreateActorRequest create_actor_request;
+    create_actor_request.mutable_task_spec()->CopyFrom(
+        registered_actor->GetCreationTaskSpecification().GetMessage());
+    std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+    Status status = gcs_actor_manager_->CreateActor(
+        create_actor_request,
+        [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
+                           const rpc::PushTaskReply &reply,
+                           const Status &status) {
+          finished_actors.emplace_back(actor);
+        });
+
+    auto actor = mock_actor_scheduler_->actors.back();
+    mock_actor_scheduler_->actors.pop_back();
+
+    // Check that the actor is in state `ALIVE`.
+    actor->UpdateAddress(RandomAddress());
+    gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+    WaitActorCreated(actor->GetActorID());
+    RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
+    RAY_CHECK_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+    return actor;
+  }
+
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
@@ -1175,6 +1201,88 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               actor_id_2.Binary());
+  }
+}
+
+TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
+  google::protobuf::Arena arena;
+  // The target filter actor.
+  auto job_id = JobID::FromInt(1);
+  auto actor = CreateActorAndWaitTilAlive(job_id);
+
+  // Just register some other actors.
+  auto job_id_other = JobID::FromInt(2);
+  auto num_other_actors = 3;
+  for (int i = 0; i < num_other_actors; i++) {
+    auto request1 = Mocker::GenRegisterActorRequest(job_id_other,
+                                                    /*max_restarts=*/0,
+                                                    /*detached=*/false);
+    Status status = gcs_actor_manager_->RegisterActor(
+        request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+    ASSERT_TRUE(status.ok());
+  }
+
+  auto callback =
+      [](Status status, std::function<void()> success, std::function<void()> failure) {};
+  // Filter with actor id
+  {
+    rpc::GetAllActorInfoRequest request;
+    request.mutable_filters()->set_actor_id(actor->GetActorID().Binary());
+
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    ASSERT_EQ(reply.actor_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 1 + num_other_actors);
+    ASSERT_EQ(reply.num_filtered(), num_other_actors);
+  }
+
+  // Filter with job id
+  {
+    rpc::GetAllActorInfoRequest request;
+    request.mutable_filters()->set_job_id(job_id.Binary());
+
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    ASSERT_EQ(reply.actor_table_data().size(), 1);
+    ASSERT_EQ(reply.num_filtered(), num_other_actors);
+  }
+
+  // Filter with states
+  {
+    rpc::GetAllActorInfoRequest request;
+    request.mutable_filters()->set_state(rpc::ActorTableData::ALIVE);
+
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    ASSERT_EQ(reply.actor_table_data().size(), 1);
+    ASSERT_EQ(reply.num_filtered(), num_other_actors);
+  }
+
+  // Simple test AND
+  {
+    rpc::GetAllActorInfoRequest request;
+    request.mutable_filters()->set_state(rpc::ActorTableData::ALIVE);
+    request.mutable_filters()->set_job_id(job_id.Binary());
+
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    ASSERT_EQ(reply.actor_table_data().size(), 1);
+    ASSERT_EQ(reply.num_filtered(), num_other_actors);
+  }
+  {
+    rpc::GetAllActorInfoRequest request;
+    request.mutable_filters()->set_state(rpc::ActorTableData::DEAD);
+    request.mutable_filters()->set_job_id(job_id.Binary());
+
+    auto &reply =
+        *google::protobuf::Arena::CreateMessage<rpc::GetAllActorInfoReply>(&arena);
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    ASSERT_EQ(reply.num_filtered(), num_other_actors + 1);
+    ASSERT_EQ(reply.actor_table_data().size(), 0);
   }
 }
 

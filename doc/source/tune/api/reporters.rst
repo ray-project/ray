@@ -95,7 +95,6 @@ Reporter Interface (tune.ProgressReporter)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ProgressReporter
 
@@ -111,7 +110,6 @@ Tune Built-in Reporters
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     CLIReporter
     JupyterNotebookReporter

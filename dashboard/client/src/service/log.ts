@@ -1,17 +1,6 @@
 import { get } from "./requestHandlers";
 
 const getLogUrl = (url: string) => {
-  if (window.location.pathname !== "/" && url !== "log_index") {
-    const pathArr = window.location.pathname.split("/");
-    if (pathArr.length > 1) {
-      const idx = pathArr.findIndex((e) => e.includes(":"));
-      if (idx > -1) {
-        const afterArr = pathArr.slice(0, idx);
-        afterArr.push(url.replace(/https?:\/\//, ""));
-        url = afterArr.join("/");
-      }
-    }
-  }
   return url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`;
 };
 

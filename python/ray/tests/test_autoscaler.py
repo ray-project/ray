@@ -3778,7 +3778,7 @@ class AutoscalingTest(unittest.TestCase):
                 _internal_kv_initialized=Mock(return_value=False),
             ):
                 monitor = Monitor(
-                    address="Here", autoscaling_config="", log_dir=self.tmpdir
+                    address="here:12345", autoscaling_config="", log_dir=self.tmpdir
                 )
                 with pytest.raises(AutoscalerInitFailException):
                     monitor.run()

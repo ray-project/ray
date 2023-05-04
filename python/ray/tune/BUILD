@@ -121,7 +121,7 @@ py_test(
     name = "test_experiment_analysis",
     size = "medium",
     srcs = ["tests/test_experiment_analysis.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -236,7 +236,7 @@ py_test(
     name = "test_result_grid",
     size = "medium",
     srcs = ["tests/test_result_grid.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -308,7 +308,7 @@ py_test(
     name = "test_syncer",
     size = "medium",
     srcs = ["tests/test_syncer.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -994,6 +994,19 @@ py_test(
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
+)
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/output directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_output",
+    size = "small",
+    srcs = ["tests/output/test_output.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
 )
 
 

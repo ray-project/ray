@@ -108,7 +108,7 @@ class GBDTTrainer(BaseTrainer):
     Inherited by XGBoostTrainer and LightGBMTrainer.
 
     Args:
-        datasets: Ray Datasets to use for training and validation. Must include a
+        datasets: Datastreams to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -170,7 +170,7 @@ class GBDTTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-        # Ray Datasets should always use distributed loading.
+        # Datastreams should always use distributed loading.
         for dataset_name in self.datasets.keys():
             dataset_params = self.dmatrix_params.get(dataset_name, {})
             dataset_params["distributed"] = True

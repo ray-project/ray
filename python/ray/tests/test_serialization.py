@@ -6,6 +6,7 @@ import re
 import string
 import sys
 import weakref
+from dataclasses import make_dataclass
 
 import numpy as np
 import pytest
@@ -245,30 +246,26 @@ def test_complex_serialization(ray_start_regular):
         NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3]),
     ]
 
-    # Test dataclasses in Python 3.7.
-    if sys.version_info >= (3, 7):
-        from dataclasses import make_dataclass
+    DataClass0 = make_dataclass("DataClass0", [("number", int)])
 
-        DataClass0 = make_dataclass("DataClass0", [("number", int)])
+    CUSTOM_OBJECTS.append(DataClass0(number=3))
 
-        CUSTOM_OBJECTS.append(DataClass0(number=3))
+    class CustomClass:
+        def __init__(self, value):
+            self.value = value
 
-        class CustomClass:
-            def __init__(self, value):
-                self.value = value
+    DataClass1 = make_dataclass("DataClass1", [("custom", CustomClass)])
 
-        DataClass1 = make_dataclass("DataClass1", [("custom", CustomClass)])
+    class DataClass2(DataClass1):
+        @classmethod
+        def from_custom(cls, data):
+            custom = CustomClass(data)
+            return cls(custom)
 
-        class DataClass2(DataClass1):
-            @classmethod
-            def from_custom(cls, data):
-                custom = CustomClass(data)
-                return cls(custom)
+        def __reduce__(self):
+            return (self.from_custom, (self.custom.value,))
 
-            def __reduce__(self):
-                return (self.from_custom, (self.custom.value,))
-
-        CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
+    CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
 
     BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
 

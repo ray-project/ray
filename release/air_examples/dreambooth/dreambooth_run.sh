@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2086
 
 # ATTN: This should be kept in sync with python/ray/air/examples/dreambooth/README.md
 

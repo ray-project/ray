@@ -1,10 +1,10 @@
-"""Utility for debugging object store memory eager deletion in Datasets.
+"""Utility for debugging object store memory eager deletion in Datastreams.
 
 NOTE: the performance overhead of tracing object allocation is fairly substantial.
 This is meant to use in unit test for debugging. Please do not enable in production,
 without performance optimization.
 
-Enable with RAY_DATASET_TRACE_ALLOCATIONS=1.
+Enable with RAY_DATA_TRACE_ALLOCATIONS=1.
 
 Basic usage is to call `trace_allocation` each time a new object is created, and call
 `trace_deallocation` when an object should be disposed of. When the workload is
@@ -18,7 +18,7 @@ from io import StringIO
 from typing import Dict, List
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 
 
 def trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
@@ -28,7 +28,7 @@ def trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
         ref: The object created.
         loc: A human-readable string identifying the call site.
     """
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     if ctx.trace_allocations:
         tracer = _get_mem_actor()
         # TODO: it would be nice to determine loc automatically based on the stack.
@@ -46,7 +46,7 @@ def trace_deallocation(ref: ray.ObjectRef, loc: str, free: bool = True) -> None:
     """
     if free:
         ray._private.internal_api.free(ref, local_only=False)
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     if ctx.trace_allocations:
         tracer = _get_mem_actor()
         ray.get(tracer.trace_dealloc.remote([ref], loc, free))

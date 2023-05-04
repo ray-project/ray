@@ -89,6 +89,9 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STRING.
   std::string string_reply_;
 
+  /// Reply data if reply_type_ is REDIS_REPLY_ERROR.
+  std::string error_reply_;
+
   /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
   /// Represent the reply of StringArray or ScanArray.
   std::vector<std::optional<std::string>> string_array_reply_;
@@ -178,6 +181,9 @@ class RedisContext {
                  const std::string &password,
                  bool enable_ssl = false);
 
+  /// Disconnect from the server.
+  void Disconnect();
+
   /// Run an arbitrary Redis command synchronously.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -203,6 +209,8 @@ class RedisContext {
   }
 
   instrumented_io_context &io_service() { return io_service_; }
+
+  std::pair<std::string, int> GetLeaderAddress();
 
  private:
   // These functions avoid problems with dependence on hiredis headers with clang-cl.

@@ -69,7 +69,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "fcnet_activation": "tanh",
 
@@ -81,7 +81,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # observation space.
     "conv_filters": None,
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "conv_activation": "relu",
 
@@ -181,6 +181,13 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # backward compatibility to old configs. This yields different models than past
     # versions of RLlib.
     "encoder_latent_dim": None,
+    # Whether to always check the inputs and outputs of RLlib's default models for
+    # their specifications. Input specifications are checked on failed forward passes
+    # of the models regardless of this flag. If this flag is set to `True`, inputs and
+    # outputs are checked on every call. This leads to a slow-down and should only be
+    # used for debugging. Note that this flag is only relevant for instances of
+    # RLlib's Model class. These are commonly generated from ModelConfigs in RLModules.
+    "always_check_shapes": False,
 
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.

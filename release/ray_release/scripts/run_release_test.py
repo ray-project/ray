@@ -56,7 +56,8 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "Can be e.g. `master` to fetch latest wheels from the "
         "Ray master branch. Can also be `<repo_url>:<branch>` or "
         "`<repo_url>:<commit>` to specify a different repository to "
-        "fetch wheels from, if available."
+        "fetch wheels from, if available. Can also be "
+        "`file://<path to local wheel>` for wheels built locally."
     ),
 )
 @click.option(
@@ -163,7 +164,6 @@ def main(
     except ReleaseTestError as e:
         logger.exception(e)
         return_code = e.exit_code.value
-
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"

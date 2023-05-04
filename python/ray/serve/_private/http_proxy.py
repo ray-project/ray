@@ -25,7 +25,7 @@ from ray.serve._private.http_util import (
     Response,
     set_socket_reuse_port,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag
+from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -174,7 +174,7 @@ class LongestPrefixRouter:
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, Tuple[EndpointTag, ApplicationName]] = dict()
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[str, RayServeHandle] = dict()
 
@@ -191,7 +191,7 @@ class LongestPrefixRouter:
         route_info = {}
         for endpoint, info in endpoints.items():
             routes.append(info.route)
-            route_info[info.route] = endpoint
+            route_info[info.route] = (endpoint, info.app_name)
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -241,10 +241,10 @@ class LongestPrefixRouter:
                     matched = True
 
                 if matched:
-                    endpoint = self.route_info[route]
-                    return route, self.handles[endpoint]
+                    endpoint, app_name = self.route_info[route]
+                    return route, self.handles[endpoint], app_name
 
-        return None, None
+        return None, None, None
 
 
 class HTTPProxy:
@@ -259,7 +259,7 @@ class HTTPProxy:
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
-            None, None, controller_name, None
+            None, None, controller_name, None, None
         )
 
         # Used only for displaying the route table.
@@ -284,10 +284,7 @@ class HTTPProxy:
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=(
-                "route",
-                "method",
-            ),
+            tag_keys=("route", "method", "application"),
         )
 
         self.request_error_counter = metrics.Counter(
@@ -310,6 +307,7 @@ class HTTPProxy:
                 "error_code",
                 "method",
                 "route",
+                "application",
             ),
         )
         self.processing_latency_tracker = metrics.Histogram(
@@ -319,7 +317,10 @@ class HTTPProxy:
                 "(measured from the Serve HTTP proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("route",),
+            tag_keys=(
+                "route",
+                "application",
+            ),
         )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -364,21 +365,31 @@ class HTTPProxy:
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
 
-        self.request_counter.inc(
-            tags={"route": route_path, "method": scope["method"].upper()}
-        )
-
         if route_path == "/-/routes":
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send
             )
 
         if route_path == "/-/healthz":
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await starlette.responses.PlainTextResponse("success")(
                 scope, receive, send
             )
 
-        route_prefix, handle = self.prefix_router.match_route(route_path)
+        route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(
                 tags={
@@ -387,8 +398,21 @@ class HTTPProxy:
                     "method": scope["method"].upper(),
                 }
             )
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await self._not_found(scope, receive, send)
-
+        self.request_counter.inc(
+            tags={
+                "route": route_path,
+                "method": scope["method"].upper(),
+                "application": app_name,
+            }
+        )
         # Modify the path and root path so that reverse lookups and redirection
         # work as expected. We do this here instead of in replicas so it can be
         # changed without restarting the replicas.
@@ -399,11 +423,15 @@ class HTTPProxy:
 
         start_time = time.time()
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(route_path, get_random_letters(10))
+            ray.serve.context.RequestContext(
+                route_path, get_random_letters(10), app_name
+            )
         )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
-        self.processing_latency_tracker.observe(latency_ms, tags={"route": route_path})
+        self.processing_latency_tracker.observe(
+            latency_ms, tags={"route": route_path, "application": app_name}
+        )
         logger.info(
             access_log_msg(
                 method=scope["method"],
@@ -426,6 +454,7 @@ class HTTPProxy:
                     "error_code": status_code,
                     "method": scope["method"].upper(),
                     "route": route_path,
+                    "application": app_name,
                 }
             )
 
