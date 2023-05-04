@@ -7,7 +7,7 @@ import { Section } from "../../common/Section";
 import {
   NodeStatusCard,
   ResourceStatusCard,
-} from "../../components/JobStatusCards";
+} from "../../components/AutoscalerStatusCards";
 import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";

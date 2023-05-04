@@ -2,11 +2,11 @@ import { createStyles, Grid, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
-import EventTable from "../../components/EventTable";
 import {
   NodeStatusCard,
   ResourceStatusCard,
-} from "../../components/JobStatusCards";
+} from "../../components/AutoscalerStatusCards";
+import EventTable from "../../components/EventTable";
 import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";

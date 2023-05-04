@@ -141,7 +141,7 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Import path",
             content: {
-              value: application?.deployed_app_config?.import_path || "",
+              value: application?.deployed_app_config?.import_path || "-",
             },
           },
         ]}
