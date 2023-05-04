@@ -471,7 +471,7 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "f_deployment_options",
     [
@@ -519,7 +519,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
             "route_prefix": "/banana",
             "docs_path": "/my_docs",
             "deployments": {"app2_FastAPIDeployment"},
-        }
+        },
     }
 
     deploy_config_multi_app(config1)
@@ -573,8 +573,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         print(f"Checked docs path for {app}.")
 
         # CHECK: all deployments are present
-        assert app_details[app].deployments.keys() == expected_values[app]["deployments"]
-        
+        assert (
+            app_details[app].deployments.keys() == expected_values[app]["deployments"]
+        )
+
         for deployment in app_details[app].deployments.values():
             assert deployment.status == DeploymentStatus.HEALTHY
             # Route prefix should be app level options eventually
