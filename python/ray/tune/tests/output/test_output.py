@@ -185,10 +185,8 @@ def test_result_table_no_divison():
         ["c", 5],
         ["x", "19.12312"],
         ["y", 20],
-        ["z", None],
-        ["/m", 4],
-        ["/n", None],
-        ["//o", "p"],
+        ["z/m", 4],
+        ["z/n/o", "p"],
     ]
 
 
@@ -204,16 +202,14 @@ def test_result_table_divison():
             "z": {"m": 4, "n": {"o": "p"}},
         },
         exclude={"ignore"},
-        upper_keys={"x", "y", "z"},
+        upper_keys={"x", "y", "z", "z/m", "z/n/o"},
     )
 
     assert data == [
         ["x", "19.12312"],
         ["y", 20],
-        ["z", None],
-        ["/m", 4],
-        ["/n", None],
-        ["//o", "p"],
+        ["z/m", 4],
+        ["z/n/o", "p"],
         ["a", 8],
         ["b", 6],
         ["c", 5],

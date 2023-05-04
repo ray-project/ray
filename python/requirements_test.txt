@@ -12,7 +12,7 @@ azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
 beautifulsoup4==4.11.1
-boto3==1.23.10
+boto3==1.24.59
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
@@ -41,7 +41,7 @@ openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
-opentelemetry-exporter-opencensus
+opentelemetry-exporter-opencensus==0.20b0
 pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
@@ -54,8 +54,9 @@ PyOpenSSL==22.1.0
 pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
-# TODO: Replace this with pyspark==3.4 once it is released.
-https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
+# TODO: Upgrade to pyspark 3.4.0 once raydp supports it
+# https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
+pyspark==3.3.1
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-rerunfailures==10.2
@@ -75,12 +76,19 @@ memray; platform_system != "Windows" and sys_platform != "darwin"
 # For doc tests
 myst-parser==0.15.2
 myst-nb==0.13.1
+sphinx==4.3.2
 jupytext==1.13.6
+jinja2==3.0.3
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
 
 # For dataset tests
 polars==0.14.21
+
+# ale-py requires 4.10.0. It's also compatible with flake8.
+# It's not compatible with mosaicml though. Try to remove once
+# we are at Python 3.8
+importlib-metadata==4.10.0
 
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
@@ -89,7 +97,16 @@ starlette==0.17.1
 h11==0.12.0
 markdown-it-py==1.1.0
 attrs==21.4.0
-importlib-metadata==4.13.0
+pytz==2022.7.1
+# Compatibility with spacy 3.5 (model en_core_web_sm)
+typing-extensions==4.5.0
+networkx==2.6.3; python_version <= '3.7'
+# Aim requires segment-analytics-python, which requires backoff~=2.10,
+# which conflicts with the opentelemetry-api 1.1.0.
+segment-analytics-python==2.2.0
+httpcore==0.15.0
+backoff==1.10
+sympy==1.10.1; python_version <= '3.7'
 
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
