@@ -120,15 +120,14 @@ def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
 
     seconds = int(rest - minutes * 60)
 
+    running_for_str = ""
     if days > 0:
-        running_for_str = f"{days:d}d "
-    else:
-        running_for_str = ""
+        running_for_str += f"{days:d}d "
 
-    if hours > 0 or days > 0:
+    if hours > 0 or running_for_str:
         running_for_str += f"{hours:d}hr "
 
-    if minutes > 0 or hours > 0 or days > 0:
+    if minutes > 0 or running_for_str:
         running_for_str += f"{minutes:d}min "
 
     running_for_str += f"{seconds:d}s"
@@ -437,9 +436,6 @@ def _print_dict_as_table(
     )
 
     headers = [header, ""] if header else []
-
-    if not table_data:
-        return
 
     if not table_data:
         return
