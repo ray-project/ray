@@ -4,6 +4,7 @@ import os
 import sys
 
 import pytest  # noqa
+
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSuscriber,
