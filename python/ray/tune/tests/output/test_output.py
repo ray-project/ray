@@ -1,7 +1,6 @@
 import pytest
 import sys
 
-import time
 from freezegun import freeze_time
 
 from ray.tune.experimental.output import (
@@ -55,8 +54,28 @@ LAST_RESULT = {
 
 @freeze_time("Mar 27th, 2023", auto_tick_seconds=15)
 def test_get_time_str():
-    result = _get_time_str(time.time(), time.time())
-    assert result == ("2023-03-27 00:00:15", "00:00:15.00")
+    base = 1679875200  # 2023-03-27 00:00:00
+
+    assert _get_time_str(base, base) == ("2023-03-27 00:00:00", "0s")
+    assert _get_time_str(base, base + 15) == ("2023-03-27 00:00:15", "15s")
+    assert _get_time_str(base, base + 60) == ("2023-03-27 00:01:00", "1min 0s")
+    assert _get_time_str(base, base + 65) == ("2023-03-27 00:01:05", "1min 5s")
+    assert _get_time_str(base, base + 3600) == (
+        "2023-03-27 01:00:00",
+        "1hr 0min 0s",
+    )
+    assert _get_time_str(base, base + 3605) == (
+        "2023-03-27 01:00:05",
+        "1hr 0min 5s",
+    )
+    assert _get_time_str(base, base + 3660) == (
+        "2023-03-27 01:01:00",
+        "1hr 1min 0s",
+    )
+    assert _get_time_str(base, base + 86400) == (
+        "2023-03-28 00:00:00",
+        "1d 0hr 0min 0s",
+    )
 
 
 def test_get_trials_by_state():
