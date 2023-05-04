@@ -82,7 +82,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py37_4.9.2"
+    local miniconda_version="Miniconda3-py38_23.1.0-1"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -94,7 +94,6 @@ install_miniconda() {
       darwin*)
         if [ "$(uname -m)" = "arm64" ]; then
           HOSTTYPE="arm64"
-          miniconda_version="Miniconda3-py38_23.1.0-1"
           miniconda_dir="/opt/homebrew/opt/miniconda"
         else
           HOSTTYPE="x86_64"

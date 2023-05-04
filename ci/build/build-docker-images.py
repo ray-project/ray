@@ -739,7 +739,7 @@ def push_readmes(merge_build: bool):
 
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
 # Build ray, ray-ml every time
-# build-docker-images.py --py-versions PY37 --build-type PR --rebuild-all
+# build-docker-images.py --py-versions py38 --build-type PR --rebuild-all
 MERGE = "MERGE"
 HUMAN = "HUMAN"
 PR = "PR"
@@ -752,7 +752,7 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 @click.option(
     "--py-versions",
     "-V",
-    default=["py37"],
+    default=["py38"],
     type=click.Choice(list(PY_MATRIX.keys())),
     multiple=True,
     help="Which python versions to build. "
