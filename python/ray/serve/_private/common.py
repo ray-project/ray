@@ -367,11 +367,7 @@ class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
 
-HTTP_PROXY_HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
-
-
 class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
-    ACTOR_CRASHED = "ACTOR_CRASHED"

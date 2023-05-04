@@ -7,7 +7,6 @@ from typing import Dict, List, Tuple
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.exceptions import RayActorError, RayError
 
 from ray._raylet import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
@@ -29,7 +28,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class HTTPProxyState:
-    def __init__(self, actor_handle, actor_name):
+    def __init__(self, actor_handle: ActorHandle, actor_name: str):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
 
@@ -54,11 +53,7 @@ class HTTPProxyState:
             ray.get(self._health_check_obj_ref)
             self._status = HTTPProxyStatus.HEALTHY
             self._consecutive_health_check_failures = 0
-        except RayActorError:
-            # Health check failed due to actor crashing.
-            self._status = HTTPProxyStatus.ACTOR_CRASHED
-        except RayError as e:
-            # Health check failed due to application-level exception.
+        except Exception as e:
             logger.warning(
                 f"Health check for HTTP proxy {self._actor_name} failed: {e}"
             )
@@ -79,15 +74,18 @@ class HTTPProxyState:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
                 self._check_health_obj_ref_result()
+                self._health_check_obj_ref = None
                 if self._consecutive_health_check_failures > 3:
                     self._status = HTTPProxyStatus.UNHEALTHY
+            # If the HTTP Proxy has been blocked for more than 5 seconds, mark unhealthy
             elif time.time() - self._last_health_check_time > 5:
                 self._status = HTTPProxyStatus.UNHEALTHY
                 logger.warning(
                     f"Health check for HTTP Proxy {self._actor_name} took more than 5 "
                     "seconds."
                 )
-                self._health_check_obj_ref = None
+        # If there's no active in-progress health check and it has been more than 10
+        # seconds since the last health check, perform another health check
         elif time.time() - self._last_health_check_time > 10 * random.uniform(0.9, 1.1):
             self._health_check_obj_ref = self._actor_handle.check_health.remote()
             self._last_health_check_time = time.time()
