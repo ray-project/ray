@@ -1,3 +1,5 @@
+import sys
+import pytest
 from unittest import mock
 from typing import List, Dict
 from ray_release.scripts.ray_bisect import _bisect, _obtain_test_result, _sanity_check
