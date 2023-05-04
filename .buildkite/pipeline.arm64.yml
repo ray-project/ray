@@ -60,7 +60,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.7 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -70,7 +70,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.7 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -80,7 +80,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.8 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -90,7 +90,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.8 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -100,7 +100,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.9 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -110,7 +110,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.9 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -120,7 +120,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.10 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -130,7 +130,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.10 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py310 -T cu113 -T cu116 -T cu118 --build-type BUILDKITE --build-base --suffix aarch64

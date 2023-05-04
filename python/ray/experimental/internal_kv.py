@@ -25,12 +25,12 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     _initialized = True
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _internal_kv_initialized():
     return global_gcs_client is not None
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _internal_kv_get(
     key: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
 ) -> bytes:
@@ -44,7 +44,7 @@ def _internal_kv_get(
     return global_gcs_client.internal_kv_get(key, namespace)
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _internal_kv_exists(
     key: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
 ) -> bool:
@@ -58,13 +58,13 @@ def _internal_kv_exists(
     return global_gcs_client.internal_kv_exists(key, namespace)
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _pin_runtime_env_uri(uri: str, *, expiration_s: int) -> None:
     """Pin a runtime_env URI for expiration_s."""
     return global_gcs_client.pin_runtime_env_uri(uri, expiration_s)
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _internal_kv_put(
     key: Union[str, bytes],
     value: Union[str, bytes],
@@ -94,7 +94,7 @@ def _internal_kv_put(
     return global_gcs_client.internal_kv_put(key, value, overwrite, namespace) == 0
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _internal_kv_del(
     key: Union[str, bytes],
     *,
@@ -109,7 +109,7 @@ def _internal_kv_del(
     return global_gcs_client.internal_kv_del(key, del_by_prefix, namespace)
 
 
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def _internal_kv_list(
     prefix: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
 ) -> List[bytes]:
