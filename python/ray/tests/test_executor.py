@@ -69,6 +69,17 @@ def test_remote_function_map_using_max_workers():
         assert delta > 3.0
 
 
+def test_results_are_accessible_after_shutdown():
+    def f(x, y):
+        return x * y
+
+    with RayExecutor() as ex:
+        r1 = ex.map(f, [100, 100, 100], [1, 2, 3])
+    try:
+        list(r1)
+    except AttributeError:
+        pytest.fail("Map results are not accessible after executor shutdown")
+
 def test_actor_pool_results_are_accessible_after_shutdown():
     def f(x, y):
         return x * y
