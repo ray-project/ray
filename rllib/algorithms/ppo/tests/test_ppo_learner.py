@@ -12,7 +12,6 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.metrics import ALL_MODULES
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -68,6 +67,7 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
+                _enable_learner_api=True,
             )
             .rl_module(
                 _enable_rl_module_api=True,
@@ -87,7 +87,6 @@ class TestPPO(unittest.TestCase):
                     lambda x: torch.as_tensor(x).float(), train_batch
                 )
             else:
-                # tf
                 train_batch = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
@@ -99,7 +98,6 @@ class TestPPO(unittest.TestCase):
             check(policy_loss, 0.0)
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.training(_enable_learner_api=True)
             algo_config.validate()
             algo_config.freeze()
 
@@ -142,7 +140,7 @@ class TestPPO(unittest.TestCase):
         algo = config.build()
         policy = algo.get_policy()
 
-        for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
+        for _ in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()

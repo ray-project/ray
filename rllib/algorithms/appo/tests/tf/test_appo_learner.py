@@ -66,6 +66,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
+                _enable_learner_api=True,
             )
             .rl_module(
                 _enable_rl_module_api=True,
@@ -86,9 +87,12 @@ class TestAPPOTfLearner(unittest.TestCase):
             else:
                 train_batch = SampleBatch(FAKE_BATCH)
             policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
+            # We shim'd the loss function of the PolicyRLM class. Always returns
+            # 0.0 b/c losses on Policies are no longer needed with the Learner API
+            # enabled.
+            check(policy_loss, 0.0)
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.training(_enable_learner_api=True)
             algo_config.validate()
             algo_config.freeze()
 
@@ -104,10 +108,8 @@ class TestAPPOTfLearner(unittest.TestCase):
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
             learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
-            learner_group_loss = results[ALL_MODULES]["total_loss"]
 
-            check(learner_group_loss, policy_loss)
+            learner_group.update(train_batch.as_multi_agent())
 
     def test_kl_coeff_changes(self):
         initial_kl_coeff = 0.01
