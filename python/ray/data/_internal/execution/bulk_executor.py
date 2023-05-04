@@ -9,7 +9,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatastreamStats

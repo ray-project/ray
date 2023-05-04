@@ -13,7 +13,7 @@ from ray import cloudpickle
 from ray.dag import DAGNode
 from ray.util.annotations import Deprecated, PublicAPI
 
-from ray.serve.application import Application
+from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
@@ -28,14 +28,13 @@ from ray.serve.context import (
     get_internal_replica_context,
     _set_global_client,
 )
-from ray.serve.deployment import Deployment
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, Deployment
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import RayServeSyncHandle
 from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
@@ -458,24 +457,21 @@ def list_deployments() -> Dict[str, Deployment]:
 
 @PublicAPI(stability="beta")
 def run(
-    target: Union[ClassNode, FunctionNode],
+    target: Union[Application, BuiltApplication],
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeHandle]:
-    """Run a Serve application and return a ServeHandle to the ingress.
+) -> Optional[RayServeSyncHandle]:
+    """Run an application and return a handle to its ingress deployment.
 
-    Either a ClassNode, FunctionNode, or a pre-built application
-    can be passed in. If a node is passed in, all of the deployments it depends
-    on will be deployed. If there is an ingress, its handle will be returned.
+    The application is returned by `Deployment.bind()` or `serve.build`.
 
     Args:
-        target (Union[ClassNode, FunctionNode, Application]):
-            A user-built Serve Application or a ClassNode that acts as the
-            root node of DAG. By default ClassNode is the Driver
-            deployment unless user provides a customized one.
+        target (Union[Application, BuiltApplication]):
+            A Serve application returned from `Deployment.bind()` or a built application
+            returned from `serve.build()`.
         host: Host for HTTP servers to listen on. Defaults to
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
@@ -485,10 +481,6 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
-
-    Returns:
-        RayServeHandle: A regular ray serve handle that can be called by user
-            to execute the serve DAG.
     """
     client = _private_api.serve_start(
         detached=True,
@@ -499,35 +491,20 @@ def run(
     record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
+        deployments = pipeline_build(target._get_internal_dag_node(), name)
+        ingress = get_and_validate_ingress_deployment(deployments)
+    elif isinstance(target, BuiltApplication):
         deployments = list(target.deployments.values())
         ingress = target.ingress
-    # Each DAG should always provide a valid Driver ClassNode
-    elif isinstance(target, ClassNode):
-        deployments = pipeline_build(target, name)
-        ingress = get_and_validate_ingress_deployment(deployments)
-    # Special case where user is doing single function serve.run(func.bind())
-    elif isinstance(target, FunctionNode):
-        deployments = pipeline_build(target, name)
-        ingress = get_and_validate_ingress_deployment(deployments)
-        if len(deployments) != 1:
-            raise ValueError(
-                "We only support single function node in serve.run, ex: "
-                "serve.run(func.bind()). For more than one nodes in your DAG, "
-                "Please provide a driver class and bind it as entrypoint to "
-                "your Serve DAG."
-            )
-    elif isinstance(target, DAGNode):
-        raise ValueError(
-            "Invalid DAGNode type as entry to serve.run(), "
-            f"type: {type(target)}, accepted: ClassNode, "
-            "FunctionNode please provide a driver class and bind it "
-            "as entrypoint to your Serve DAG."
-        )
     else:
-        raise TypeError(
-            "Expected a ClassNode, FunctionNode, or Application as target. "
-            f"Got unexpected type {type(target)} instead."
+        msg = (
+            "`serve.run` expects an `Application` returned by `Deployment.bind()` "
+            "or a static `BuiltApplication` returned by `serve.build`."
         )
+        if isinstance(target, DAGNode):
+            msg += " If you are using the DAG API, you must bind the DAG node to a "
+            "deployment like: `app = Deployment.bind(my_dag_output)`. "
+        raise TypeError(msg)
 
     # when name provided, keep all existing applications
     # otherwise, delete all of them.
@@ -567,30 +544,25 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(
-    target: Union[ClassNode, FunctionNode], name: str = SERVE_DEFAULT_APP_NAME
-) -> Application:
-    """Builds a Serve application into a static application.
+def build(target: Application, name: str = None) -> BuiltApplication:
+    """Builds a Serve application into a static, built application.
 
-    Takes in a ClassNode or FunctionNode and converts it to a
-    Serve application consisting of one or more deployments. This is intended
-    to be used for production scenarios and deployed via the Serve REST API or
-    CLI, so there are some restrictions placed on the deployments:
-    1) All of the deployments must be importable. That is, they cannot be
+    Resolves the provided Application object into a list of deployments.
+    This can be converted to a Serve config file that can be deployed via
+    the Serve REST API or CLI.
+
+    All of the deployments must be importable. That is, they cannot be
     defined in __main__ or inline defined. The deployments will be
-    imported in production using the same import path they were here.
-    2) All arguments bound to the deployment must be JSON-serializable.
-
-    The returned Application object can be exported to a dictionary or YAML
-    config.
+    imported in the config file using the same import path they were here.
 
     Args:
-        target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
-            that acts as the top level node of the DAG.
-        name: The name of the Serve application.
+        target: The Serve application to run consisting of one or more
+            deployments.
+        name: The name of the Serve application. When name is not provided, the
+        deployment name won't be updated. (SINGLE_APP use case.)
 
     Returns:
-        The static built Serve application
+        The static built Serve application.
     """
     if in_interactive_shell():
         raise RuntimeError(
@@ -601,7 +573,7 @@ def build(
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return Application(pipeline_build(target, name))
+    return BuiltApplication(pipeline_build(target._get_internal_dag_node(), name))
 
 
 @PublicAPI(stability="alpha")

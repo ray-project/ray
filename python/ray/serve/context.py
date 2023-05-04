@@ -31,6 +31,7 @@ class ReplicaContext:
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
+    app_name: str
 
 
 @PublicAPI(stability="alpha")
@@ -73,10 +74,11 @@ def _set_internal_replica_context(
     replica_tag: ReplicaTag,
     controller_name: str,
     servable_object: Callable,
+    app_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object
+        deployment, replica_tag, controller_name, servable_object, app_name
     )
 
 
@@ -146,6 +148,7 @@ def _connect() -> ServeControllerClient:
 class RequestContext:
     route: str = ""
     request_id: str = ""
+    app_name: str = ""
 
 
 _serve_request_context = contextvars.ContextVar(

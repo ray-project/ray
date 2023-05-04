@@ -234,8 +234,8 @@ However, using runtime environments you can dynamically specify packages to be a
   print(ray.get(reqs.remote())) # <Response [200]>
 
 
-You may also specify your ``pip`` dependencies either via a Python list or a ``requirements.txt`` file.
-Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a ``environment.yml`` file.  This conda environment can include ``pip`` packages.
+You may also specify your ``pip`` dependencies either via a Python list or a local ``requirements.txt`` file.
+Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a local ``environment.yml`` file.  This conda environment can include ``pip`` packages.
 For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
 .. warning::
@@ -336,7 +336,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"working_dir": "/Users/my_working_dir/", "excludes": ["my_file.txt", "/subdir/, "path/to/dir", "*.log"]}``
 
-- ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a pip
+- ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a local pip
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
   (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``False``.
   (c) ``pip_version`` (optional, str): the version of pip; Ray will spell the package name "pip" in front of the ``pip_version`` to form the final requirement string.
@@ -351,9 +351,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"packages":["tensorflow", "requests"], "pip_check": False, "pip_version": "==22.0.2;python_version=='3.8.11'"}``
 
-  When specifying a ``requirements.txt`` file, referencing local files `within` that file is not supported (e.g. ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``).
+  When specifying a path to a ``requirements.txt`` file, the file must be present on your local machine and it must be a valid absolute path or relative filepath relative to your local current working directory, *not* relative to the `working_dir` specified in the `runtime_env`.
+  Furthermore, referencing local files `within` a `requirements.txt` file is not supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``).
 
-- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a
+- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a local
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
@@ -366,10 +367,18 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``"pytorch_p36"``
 
+  When specifying a path to a ``environment.yml`` file, the file must be present on your local machine and it must be a valid absolute path or a relative filepath relative to your local current working directory, *not* relative to the `working_dir` specified in the `runtime_env`.
+  Furthermore, referencing local files `within` a `environment.yml` file is not supported.
+
 - ``env_vars`` (Dict[str, str]): Environment variables to set.  Environment variables already set on the cluster will still be visible to the Ray workers; so there is
-  no need to include ``os.environ`` or similar in the ``env_vars`` field.
+  no need to include ``os.environ`` or similar in the ``env_vars`` field.   
+  By default, these environment variables override the same name environment variables on the cluster. 
+  You can also reference existing environment variables using ${ENV_VAR} to achieve the appending behavior.
+  Only PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, and LD_PRELOAD are supported. See below for an example:
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+  - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
 
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.

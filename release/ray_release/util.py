@@ -28,6 +28,10 @@ ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 S3_CLOUD_STORAGE = "s3"
 GS_CLOUD_STORAGE = "gs"
 GS_BUCKET = "anyscale-oss-dev-bucket"
+ERROR_LOG_PATTERNS = [
+    "ERROR",
+    "Traceback (most recent call last)",
+]
 
 
 def deep_update(d, u) -> Dict:
@@ -144,8 +148,6 @@ def run_bash_script(bash_script: str) -> None:
 
 def reinstall_anyscale_dependencies() -> None:
     logger.info("Re-installing `anyscale` package")
-
-    # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
         "pip install -U anyscale",
         shell=True,

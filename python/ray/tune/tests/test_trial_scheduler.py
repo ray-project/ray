@@ -807,10 +807,6 @@ class BOHBSuite(unittest.TestCase):
             [t.status for t in trials], [Trial.PAUSED, Trial.PENDING, Trial.PAUSED]
         )
 
-    @pytest.mark.skipif(
-        os.environ.get("TUNE_NEW_EXECUTION") == "1",
-        reason="BOHB does not currently work with the new execution backend.",
-    )
     def testNonstopBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -1903,7 +1899,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     @pytest.mark.skipif(
-        os.environ.get("TUNE_NEW_EXECUTION") == "1",
+        os.environ.get("TUNE_NEW_EXECUTION") != "0",
         reason=(
             "This test is generally flaky: The print after writing `Cleanup` "
             "to the file is printed, but the data is not always written. "
