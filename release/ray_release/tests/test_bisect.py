@@ -7,8 +7,9 @@ from ray_release.config import Test
 def test_sanity_check():
     def _mock_run_test(test: Test, commit: List[str]) -> Dict[str, Dict[int, str]]:
         return {
-            "passing_revision": {0: "passed"},
-            "failing_revision": {0: "failed"},
+            "passing_revision": {0: "passed", 1: "passed"},
+            "failing_revision": {0: "failed", 1: "failed"},
+            "flaky_revision": {0: "failed", 1: "passed"},
         }
 
     with mock.patch(
@@ -16,9 +17,11 @@ def test_sanity_check():
         side_effect=_mock_run_test,
     ):
         assert _sanity_check({}, "passing_revision", "failing_revision")
+        assert _sanity_check({}, "passing_revision", "flaky_revision")
         assert not _sanity_check({}, "failing_revision", "passing_revision")
         assert not _sanity_check({}, "passing_revision", "passing_revision")
         assert not _sanity_check({}, "failing_revision", "failing_revision")
+        assert not _sanity_check({}, "flaky_revision", "failing_revision")
 
 
 def test_obtain_test_result():
