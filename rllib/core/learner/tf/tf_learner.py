@@ -90,7 +90,7 @@ class TfLearner(Learner):
             self.get_parameters(module),
             optim,
         )
-        # this isn't strictly necessary, but makes it so that if a checkpoint is
+        # This isn't strictly necessary, but makes it so that if a checkpoint is
         # computed before training actually starts, then it will be the same in
         # shape / size as a checkpoint after training starts.
         optim.build(module.trainable_variables)
@@ -512,3 +512,17 @@ class TfLearner(Learner):
             }
 
         return self._strategy.run(helper, args=(batch,))
+
+    @override(Learner)
+    def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
+        return tf.Variable(
+            value,
+            trainable=trainable,
+            dtype=(
+                dtype or (
+                    tf.float32 if isinstance(value, float)
+                    else tf.int32 if isinstance(value, int)
+                    else None
+                )
+            ),
+        )

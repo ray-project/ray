@@ -296,3 +296,18 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    @override(Learner)
+    def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "torch.Tensor":
+        return torch.tensor(
+            value,
+            requires_grad=trainable,
+            device=self._device,
+            dtype=(
+                dtype or (
+                    torch.float32 if isinstance(value, float)
+                    else torch.int32 if isinstance(value, int)
+                    else None
+                )
+            ),
+        )

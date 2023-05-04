@@ -27,13 +27,8 @@ class APPOTfLearner(TfLearner, AppoLearner):
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
 
-        #action_dist_class =
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]#action_dist_class.from_logits(
-            #fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        #)
-        old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]#action_dist_class.from_logits(
-            #fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
-        #)
+        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
 
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
@@ -167,6 +162,7 @@ class APPOTfLearner(TfLearner, AppoLearner):
     def _update_module_kl_coeff(
         self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
     ):
+        results = {}
         if module_id in sampled_kls:
             sampled_kl = sampled_kls[module_id]
             kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
@@ -179,6 +175,6 @@ class APPOTfLearner(TfLearner, AppoLearner):
             elif sampled_kl < 0.5 * self.hps.kl_target:
                 kl_coeff_var.assign(kl_coeff_var * 0.5)
 
-    @override(AppoLearner)
-    def _get_kl_variable(self, value: float) -> Any:
-        return tf.Variable(value, trainable=False, dtype=tf.float32)
+            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()})
+
+        return results

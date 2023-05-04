@@ -93,7 +93,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         total_loss = torch.mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.hps.entropy_coeff * curr_entropy
+            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
@@ -111,10 +111,6 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             ),
             ENTROPY_KEY: mean_entropy,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-            LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: self.hps.entropy_coeff,
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                self.curr_kl_coeffs_per_module[module_id]
-            ),
         }
 
     @override(PPOLearner)
@@ -125,26 +121,25 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         results = super().additional_update_per_module(
             module_id,
-            sampled_kl_values,
+            sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )
 
+        # Update KL coefficient.
         sampled_kl = sampled_kl_values[module_id]
-        curr_val = self.curr_kl_coeffs_per_module[module_id]
+        curr_var = self.curr_kl_coeffs_per_module[module_id]
         if sampled_kl > 2.0 * self.hps.kl_target:
             # TODO (Kourosh) why not 2?
-            curr_val.data *= 1.5
+            curr_var.data *= 1.5
         elif sampled_kl < 0.5 * self.hps.kl_target:
-            curr_val.data *= 0.5
+            curr_var.data *= 0.5
+        results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
-        results.update({"kl_coeff": curr_val})
+        # Update entropy coefficient.
+        value = self.hps.entropy_coeff
+        if self.hps.entropy_coeff_schedule is not None:
+            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
+            self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(value)
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
+
         return results
-
-    @override(PPOLearner)
-    def _get_kl_variable(self, value: float) -> Any:
-        return torch.tensor(
-            value,
-            requires_grad=False,
-            device=self._device,
-            dtype=torch.float32,
-        )

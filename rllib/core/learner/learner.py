@@ -761,7 +761,7 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
-        raise NotImplementedError
+        return {}
 
     @OverrideToImplementCustomLogic
     def postprocess_gradients(
@@ -1100,6 +1100,26 @@ class Learner:
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
+
+    @abc.abstractmethod
+    def _get_tensor_variable(
+        self,
+        value: Any,
+        dtype: Any = None,
+        trainable: bool = False,
+    ) -> TensorType:
+        """Returns a framework-specific tensor variable with the initial given value.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-class.
+
+        Args:
+            value: The initial value for the tensor variable variable.
+        
+        Returns:
+            The framework specific tensor variable of the given initial value,
+            dtype and trainable/requires_grad property. 
+        """
 
 
 @dataclass
