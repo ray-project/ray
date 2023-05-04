@@ -14,6 +14,7 @@ class AbstractAllToAll(LogicalOperator):
         name: str,
         input_op: LogicalOperator,
         num_outputs: Optional[int] = None,
+        sub_progress_bar_names: Optional[List[str]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -29,6 +30,7 @@ class AbstractAllToAll(LogicalOperator):
         super().__init__(name, [input_op])
         self._num_outputs = num_outputs
         self._ray_remote_args = ray_remote_args or {}
+        self._sub_progress_bar_names = sub_progress_bar_names
 
 
 class RandomizeBlocks(AbstractAllToAll):
@@ -60,6 +62,7 @@ class RandomShuffle(AbstractAllToAll):
             "RandomShuffle",
             input_op,
             num_outputs=num_outputs,
+            sub_progress_bar_names=["Shuffle Map", "Shuffle Reduce"],
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
@@ -78,6 +81,7 @@ class Repartition(AbstractAllToAll):
             "Repartition",
             input_op,
             num_outputs=num_outputs,
+            sub_progress_bar_names=["Shuffle Map", "Shuffle Reduce"]
         )
         self._shuffle = shuffle
 
@@ -94,6 +98,7 @@ class Sort(AbstractAllToAll):
         super().__init__(
             "Sort",
             input_op,
+            sub_progress_bar_names=["Sort Sample", "Shuffle Map", "Shuffle Reduce"]
         )
         self._key = key
         self._descending = descending

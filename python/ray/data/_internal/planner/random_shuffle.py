@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -16,9 +16,14 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 
+if TYPE_CHECKING:
+    from ray.data._internal.progress_bar import ProgressBar
+
+
 def generate_random_shuffle_fn(
     seed: Optional[int],
     num_outputs: Optional[int] = None,
+    sub_progress_bar_dict: Optional[Dict[str, "ProgressBar"]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
@@ -42,6 +47,7 @@ def generate_random_shuffle_fn(
         return scheduler.execute(
             refs,
             num_outputs or num_input_blocks,
+            sub_progress_bar_dict=sub_progress_bar_dict,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
         )

@@ -365,6 +365,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
+        sub_progress_bar_dict, # TODO(Scott): typing
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
@@ -427,7 +428,18 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             shuffle_map,
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
-        map_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
+
+        should_close_bar = True
+        bar_name = "Shuffle Map"
+        if sub_progress_bar_dict is not None:
+            assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+            map_bar = sub_progress_bar_dict[bar_name]
+            should_close_bar = False
+            print("===> got shuffle map bar:", map_bar)
+        else:
+            map_bar = ProgressBar(
+                bar_name, position=0, total=len(input_blocks_list)
+            )
         map_stage_executor = _PipelinedStageExecutor(
             map_stage_iter, stage.num_map_tasks_per_round, progress_bar=map_bar
         )
@@ -461,11 +473,19 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 merge_done = True
                 break
 
-        map_bar.close()
+        if should_close_bar:
+            map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()
 
         # Execute and wait for the reduce stage.
-        reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+        should_close_bar = True
+        bar_name = "Shuffle Reduce"
+        if sub_progress_bar_dict is not None:
+            assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+            reduce_bar = sub_progress_bar_dict[bar_name]
+            should_close_bar = False
+        else:
+            reduce_bar = ProgressBar(bar_name, total=output_num_blocks)
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
         reduce_stage_iter = _ReduceStageIterator(
             stage,
@@ -509,7 +529,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         assert (
             len(new_blocks) == output_num_blocks
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
-        reduce_bar.close()
+
+        if should_close_bar:
+            reduce_bar.close()
 
         output = []
         for block, meta in zip(new_blocks, reduce_stage_metadata):

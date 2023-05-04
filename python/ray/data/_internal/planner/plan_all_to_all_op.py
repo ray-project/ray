@@ -27,6 +27,7 @@ def _plan_all_to_all_op(
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op._seed)
     elif isinstance(op, RandomShuffle):
+        # assert isinstance(input_physical_dag, AllToAllOperator), input_physical_dag
         fn = generate_random_shuffle_fn(op._seed, op._num_outputs)
     elif isinstance(op, Repartition):
         fn = generate_repartition_fn(op._num_outputs, op._shuffle)
@@ -41,5 +42,6 @@ def _plan_all_to_all_op(
         fn,
         input_physical_dag,
         num_outputs=op._num_outputs,
+        sub_progress_bar_names=op._sub_progress_bar_names,
         name=op.name,
     )

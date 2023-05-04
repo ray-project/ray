@@ -106,12 +106,7 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(
-        self,
-        op: PhysicalOperator,
-        inqueues: List[Deque[MaybeRefBundle]],
-        sub_progress_bar_names: Optional[List[str]] = None,
-    ):
+    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
@@ -124,8 +119,6 @@ class OpState:
         self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
-        self._sub_progress_bar_names = sub_progress_bar_names
-        self._sub_progress_bar_dict = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         self.dependents_completed_called = False
@@ -148,7 +141,8 @@ class OpState:
         if enabled:
             num_bars = 1
             if is_all_to_all:
-                num_bars += self.initialize_sub_progress_bars(index + 1)
+                print("Initializing subprogress bar:", self.op, index+1)
+                num_bars += self.op.initialize_sub_progress_bars(index + 1)
         else:
             num_bars = 0
         return num_bars
@@ -158,28 +152,7 @@ class OpState:
         if self.progress_bar:
             self.progress_bar.close()
             if isinstance(self.op, AllToAllOperator):
-                self.close_sub_progress_bars()
-
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Initialize all internal sub progress bars, and return the number of bars."""
-        if self._sub_progress_bar_names is not None:
-            self._sub_progress_bar_dict = {}
-            for name in self._sub_progress_bar_names:
-                bar = ProgressBar(name, self.op.num_outputs_total() or 1, position)
-                # NOTE: call `set_description` to trigger the initial print of progress
-                # bar on console.
-                bar.set_description(f"  *- {name}")
-                self._sub_progress_bar_dict[name] = bar
-                position += 1
-            return len(self._sub_progress_bar_dict)
-        else:
-            return 0
-
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        if self._sub_progress_bar_dict is not None:
-            for sub_bar in self._sub_progress_bar_dict.values():
-                sub_bar.close()
+                self.op.close_sub_progress_bars()
 
     def num_queued(self) -> int:
         """Return the number of queued bundles across all inqueues."""
@@ -316,10 +289,7 @@ def build_streaming_topology(
             inqueues.append(parent_state.outqueue)
 
         # Create state.
-        sub_progress_bar_names = None
-        if isinstance(op, AllToAllOperator):
-            sub_progress_bar_names = op._sub_progress_bar_names
-        op_state = OpState(op, inqueues, sub_progress_bar_names)
+        op_state = OpState(op, inqueues)
         topology[op] = op_state
         op.start(options)
         return op_state
