@@ -43,7 +43,7 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job, sdk_command].
+#    # Type of test. Can be [anyscale_job]
 #    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
 #    # run the actual release test.
 #    type: anyscale_job
@@ -701,6 +701,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -727,6 +728,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -753,6 +755,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -4277,7 +4280,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
+        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # Revert to the comment below once ^ closed.
+        # cluster_env: app_config.yaml
+        cluster_env: debug_app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
@@ -4796,7 +4802,9 @@
 - name: tune_air_oom
   group: core-daily-test
   working_dir: air_tests
+
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core

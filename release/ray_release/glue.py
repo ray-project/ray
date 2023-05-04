@@ -12,7 +12,6 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
     Test,
     DEFAULT_BUILD_TIMEOUT,
@@ -52,12 +51,11 @@ from ray_release.util import (
 )
 
 type_str_to_command_runner = {
-    "sdk_command": SDKRunner,
+    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
 command_runner_to_cluster_manager = {
-    SDKRunner: FullClusterManager,
     JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
