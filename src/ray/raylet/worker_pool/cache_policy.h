@@ -105,6 +105,7 @@ class FutureIdlePoolSizePolicy : public IdlePoolSizePolicyInterface {
   size_t max_starting_size_;
   size_t prestart_requests_;
   absl::flat_hash_set<JobID> finished_jobs_;
+  //std::list<std::pair
 
   // TODO make these const
   std::function<double()> get_time_;
