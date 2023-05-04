@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Optional, Union, Tuple, Set
 
 from datetime import datetime
@@ -364,7 +365,9 @@ class _TuneControllerBase:
             },
         }
 
-        tmp_file_name = os.path.join(experiment_dir, ".tmp_experiment_state")
+        tmp_file_name = os.path.join(
+            experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
+        )
 
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)

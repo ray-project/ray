@@ -244,34 +244,33 @@ to illustrate advanced concepts of batch processing with Ray.
     If you want to dive right into example use cases next, consider reading the following
     tutorials next:
 
-    .. panels::
-        :container: container pb-3
-        :column: col-md-3 px-1 py-1
-        :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+    .. grid:: 1 2 3 4
+        :gutter: 1
+        :class-container: container pb-3
 
-        ---
-        :img-top: /images/ray_logo.png
+        .. grid-item-card::
+            :img-top: /images/ray_logo.png
+            :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. link-button:: /data/examples/ocr_example
-            :type: ref
-            :text: Batch OCR processing using Ray Data
-            :classes: btn-link btn-block stretched-link
+            .. button-ref:: /data/examples/ocr_example
 
-        ---
-        :img-top: /images/ray_logo.png
+                Batch OCR processing using Ray Data
 
-        .. link-button:: /data/examples/torch_detection
-            :type: ref
-            :text: Fine-tuning an Object Detection Model and using it for Batch Inference
-            :classes: btn-link btn-block stretched-link
+        .. grid-item-card::
+            :img-top: /images/ray_logo.png
+            :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        ---
-        :img-top: /images/ray_logo.png
+            .. button-ref:: /data/examples/torch_detection
 
-        .. link-button:: /data/examples/torch_image_example
-            :type: ref
-            :text: Training an Image Classifier and using it for Batch Inference
-            :classes: btn-link btn-block stretched-link
+                Fine-tuning an Object Detection Model and using it for Batch Inference
+
+        .. grid-item-card::
+            :img-top: /images/ray_logo.png
+            :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+            .. button-ref:: /data/examples/torch_image_example
+
+                Training an Image Classifier and using it for Batch Inference
 
 
 Loading data with Ray Data
@@ -650,47 +649,46 @@ a fraction of what Ray can do.
 To learn more about Ray and batch inference, check out the following
 tutorials and examples:
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
-        :type: url
-        :text: Scalable Batch Inference with Ray for Semantic Segmentation
-        :classes: btn-link btn-block stretched-link
+        .. button-link:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
 
-    ---
-    :img-top: /images/ray_logo.png
+            Scalable Batch Inference with Ray for Semantic Segmentation
 
-    .. link-button:: /data/examples/nyc_taxi_basic_processing
-        :type: ref
-        :text: Batch Inference on NYC taxi data using Ray Data
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-ref:: /data/examples/nyc_taxi_basic_processing
 
-    .. link-button:: /data/examples/ocr_example
-        :type: ref
-        :text: Batch OCR processing using Ray Data
-        :classes: btn-link btn-block stretched-link
+            Batch Inference on NYC taxi data using Ray Data
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /data/examples/torch_detection
-        :type: ref
-        :text: Fine-tuning an Object Detection Model and using it for Batch Inference
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: /data/examples/ocr_example
 
-    ---
-    :img-top: /images/ray_logo.png
+            Batch OCR processing using Ray Data
 
-    .. link-button:: /data/examples/torch_image_example
-        :type: ref
-        :text: Training an Image Classifier and using it for Batch Inference
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top:  /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/torch_detection
+
+            Fine-tuning an Object Detection Model and using it for Batch Inference
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/torch_image_example
+
+            Training an Image Classifier and using it for Batch Inference
