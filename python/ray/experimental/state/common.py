@@ -554,17 +554,15 @@ class Humanify:
         """Converts miliseconds to a datetime object."""
         return datetime.datetime.fromtimestamp(x / 1000)
 
-    def to_MiB(x: int):
-        """Converts raw bytes to mebibyte."""
-        return str(x / (2**20)) + " MiB"
-
-    def to_KiB(x: int):
-        """Converts raw bytes to kibibyte."""
-        return str(x / (2**10)) + " KiB"
-
-    def to_GiB(x: int):
-        """Converts raw bytes to gibibyte."""
-        return str(x / (2**30)) + " GiB"
+    def memory(x: int):
+        """Converts raw bytes to a human readable memory size."""
+        if x >= 2**30:
+            return str(x / (2**30)) + " GiB"
+        elif x >= 2**20:
+            return str(x / (2**20)) + " MiB"
+        elif x >= 2**10:
+            return str(x / (2**10)) + " KiB"
+        return str(x) + " B"
 
     def duration(x: int):
         """Converts miliseconds to a human readable duration."""
