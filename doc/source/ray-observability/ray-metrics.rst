@@ -278,6 +278,18 @@ to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 Troubleshooting
 ---------------
 
+Getting Prometheus and Grafana to use the ray configurations when installed via homebrew on Mac OS X
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With homebrew, Prometheus and Grafana are installed as services that are automatically launched for you.
+Therefore, to configure these service, you cannot simply pass in the config files as command line arguments.
+
+Instead, follow these instructions.
+1. Change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+2. Update `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+
+You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
+
 .. _unverified-developer:
 
 Mac does not trust the developer when installing prometheus or grafana
