@@ -80,6 +80,7 @@ def test_results_are_accessible_after_shutdown():
     except AttributeError:
         pytest.fail("Map results are not accessible after executor shutdown")
 
+
 def test_actor_pool_results_are_accessible_after_shutdown():
     def f(x, y):
         return x * y
