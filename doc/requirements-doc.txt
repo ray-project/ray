@@ -46,7 +46,7 @@ git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 git+https://github.com/ray-project/ray_lightning@main#ray_lightning
 
 # Syntax highlighting
-Pygments==2.11.2
+Pygments==2.13.0
 
 # Sphinx
 sphinx==4.3.2
@@ -57,7 +57,7 @@ sphinx-jsonschema==1.17.2
 sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
 sphinx-book-theme==0.3.3
-sphinx-external-toc==0.2.3
+sphinx-external-toc==0.2.4
 sphinx-sitemap==2.2.0
 sphinxcontrib-redoc==1.6.0
 sphinx-tabs==3.4.0
