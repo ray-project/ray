@@ -10,7 +10,7 @@ import traceback
 from enum import Enum
 from functools import wraps
 from typing import Dict, Iterable, List, Tuple, TypeVar, Union
-from typing import Any, Callable, Optional, Type, Set
+from typing import Any, Callable, Optional
 
 import fastapi.encoders
 import numpy as np

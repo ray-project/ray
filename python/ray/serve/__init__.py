@@ -50,5 +50,6 @@ __all__ = [
     "Application",
     "BuiltApplication",
     "Deployment",
-    "multiplexed" "get_model_id",
+    "multiplexed",
+    "get_model_id",
 ]

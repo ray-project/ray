@@ -185,8 +185,9 @@ class ReplicaSet:
 
         # Try to find a replica that can handle this query.
         # If model id is not specified, we can assign it to any non-overladed replica.
-        # If model id is specified, we can try to assign it to a replica that has loaded, and if
-        # there is no such replica, we can assign it to any non-overloaded replica.
+        # If model id is specified, we can try to assign it to a replica that has
+        # loaded, and if there is no such replica, we can assign it to any
+        # non-overloaded replica.
         if query.metadata.model_id:
             # Try to find all replicas that has loaded the model and is not overloaded.
             candidate_replicas = [

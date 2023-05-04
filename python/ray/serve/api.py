@@ -584,8 +584,8 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
     """Multiplex a model to multiple replicas.
 
     Args:
-        num_models_per_replica: number of models to be loaded on each replica. By default,
-            it is 0, which means all models will be loaded on all replicas.
+        num_models_per_replica: number of models to be loaded on each replica.
+        By default, it is 0, which means all models will be loaded on all replicas.
     """
     if func is not None:
         if not callable(func):

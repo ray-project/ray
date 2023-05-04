@@ -192,6 +192,14 @@ class ServeController:
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.deployment_state_manager.record_handle_metrics(data, send_timestamp)
 
+    def record_model_ids(self, data: Tuple[str, str, Tuple[str]]):
+        """Record model ids for a replica of deployment
+
+        Args:
+            data: Tuple of deployment name, replica name, and model ids.
+        """
+        self.deployment_state_manager.record_model_ids(data)
+
     def _dump_autoscaling_metrics_for_testing(self):
         return self.deployment_state_manager.get_autoscaling_metrics()
 
