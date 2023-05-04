@@ -1,7 +1,9 @@
 from collections import Counter
 import copy
 import gymnasium as gym
-from gymnasium.spaces import Box
+from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
+from gymnasium.spaces import Dict as GymDict
+from gymnasium.spaces import Tuple as GymTuple
 import logging
 import numpy as np
 import os
@@ -34,6 +36,9 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
+from ray.rllib.utils.error import UnsupportedSpaceException
+
+
 from ray.tune import CLIReporter, run_experiments
 
 
@@ -1261,3 +1266,267 @@ class ModelChecker:
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
             check(v, self.output_values[main_key], rtol=rtol or 0.002)
+
+
+# def test_ckpt_restore(algo_name, tf2=False, object_store=False, replay_buffer=False):
+#     config = algorithms_and_configs[algo_name].to_dict()
+#     # If required, store replay buffer data in checkpoints as well.
+#     if replay_buffer:
+#         config["store_buffer_in_checkpoints"] = True
+
+#     frameworks = (["tf2"] if tf2 else []) + ["torch", "tf"]
+#     for fw in framework_iterator(config, frameworks=frameworks):
+#         for use_object_store in [False, True] if object_store else [False]:
+#             print("use_object_store={}".format(use_object_store))
+#             cls = get_trainable_cls(algo_name)
+#             if "DDPG" in algo_name or "SAC" in algo_name:
+#                 alg1 = cls(config=config, env="Pendulum-v1")
+#                 alg2 = cls(config=config, env="Pendulum-v1")
+#             else:
+#                 alg1 = cls(config=config, env="CartPole-v1")
+#                 alg2 = cls(config=config, env="CartPole-v1")
+
+#             policy1 = alg1.get_policy()
+
+#             res = alg1.train()
+#             print("current status: " + str(res))
+
+#             # Check optimizer state as well.
+#             optim_state = policy1.get_state().get("_optimizer_variables")
+
+#             if use_object_store:
+#                 checkpoint = alg1.save_to_object()
+#             else:
+#                 checkpoint = alg1.save()
+
+#             # Test if we can restore multiple times (at least twice, assuming failure
+#             # would mainly stem from improperly reused variables)
+#             for num_restores in range(2):
+#                 # Sync the models
+#                 if use_object_store:
+#                     alg2.restore_from_object(checkpoint)
+#                 else:
+#                     alg2.restore(checkpoint)
+
+#             # Compare optimizer state with re-loaded one.
+#             if optim_state:
+#                 s2 = alg2.get_policy().get_state().get("_optimizer_variables")
+#                 # Tf -> Compare states 1:1.
+#                 if fw in ["tf2", "tf"]:
+#                     check(s2, optim_state)
+#                 # For torch, optimizers have state_dicts with keys=params,
+#                 # which are different for the two models (ignore these
+#                 # different keys, but compare all values nevertheless).
+#                 else:
+#                     for i, s2_ in enumerate(s2):
+#                         check(
+#                             list(s2_["state"].values()),
+#                             list(optim_state[i]["state"].values()),
+#                         )
+
+#             # Compare buffer content with restored one.
+#             if replay_buffer:
+#                 data = alg1.local_replay_buffer.replay_buffers[
+#                     "default_policy"
+#                 ]._storage[42 : 42 + 42]
+#                 new_data = alg2.local_replay_buffer.replay_buffers[
+#                     "default_policy"
+#                 ]._storage[42 : 42 + 42]
+#                 check(data, new_data)
+
+#             for _ in range(1):
+#                 if "DDPG" in algo_name or "SAC" in algo_name:
+#                     obs = np.clip(
+#                         np.random.uniform(size=3),
+#                         policy1.observation_space.low,
+#                         policy1.observation_space.high,
+#                     )
+#                 else:
+#                     obs = np.clip(
+#                         np.random.uniform(size=4),
+#                         policy1.observation_space.low,
+#                         policy1.observation_space.high,
+#                     )
+#                 a1 = get_mean_action(alg1, obs)
+#                 a2 = get_mean_action(alg2, obs)
+#                 print("Checking computed actions", alg1, obs, a1, a2)
+#                 if abs(a1 - a2) > 0.1:
+#                     raise AssertionError(
+#                         "algo={} [a1={} a2={}]".format(algo_name, a1, a2)
+#                     )
+#             # Stop both algos.
+#             alg1.stop()
+#             alg2.stop()
+
+
+def check_support(alg, config, train=True, check_bounds=False):
+    # do these imports here because otherwise we have circular imports
+    from ray.rllib.examples.env.random_env import RandomEnv
+    from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as ComplexNet
+    from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
+    from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNet
+    from ray.rllib.models.torch.complex_input_net import (
+        ComplexInputNetwork as TorchComplexNet,
+    )
+    from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
+    from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNet
+    action_spaces_to_test = {
+        # Test discrete twice here until we support multi_binary action spaces
+        "discrete": Discrete(5),
+        "continuous": Box(-1.0, 1.0, (5,), dtype=np.float32),
+        "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
+        "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
+        "tuple": GymTuple(
+            [Discrete(2), Discrete(3), Box(-1.0, 1.0, (5,), dtype=np.float32)]
+        ),
+        "dict": GymDict(
+            {
+                "action_choice": Discrete(3),
+                "parameters": Box(-1.0, 1.0, (1,), dtype=np.float32),
+                "yet_another_nested_dict": GymDict(
+                    {"a": GymTuple([Discrete(2), Discrete(3)])}
+                ),
+            }
+        ),
+    }
+
+    observation_spaces_to_test = {
+        "multi_binary": MultiBinary([3, 10, 10]),
+        "discrete": Discrete(5),
+        "continuous": Box(-1.0, 1.0, (5,), dtype=np.float32),
+        "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+        "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+        "vizdoomgym": Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32),
+        "tuple": GymTuple([Discrete(10), Box(-1.0, 1.0, (5,), dtype=np.float32)]),
+        "dict": GymDict(
+            {
+                "task": Discrete(10),
+                "position": Box(-1.0, 1.0, (5,), dtype=np.float32),
+            }
+        ),
+    }
+
+    # The observation spaces that we test RLModules with
+    rlmodule_supported_observation_spaces = [
+        "multi_binary",
+        "discrete",
+        "continuous",
+        "image",
+        "vizdoomgym",
+        "tuple",
+        "dict",
+    ]
+
+    # TODO(Artur): Add back tf2 once we CNNs there
+    rlmodule_supported_frameworks = {"torch"}
+
+    # The action spaces that we test RLModules with
+    rlmodule_supported_action_spaces = ["discrete", "continuous"]
+
+    default_observation_space = default_action_space = "discrete"
+
+    config["log_level"] = "ERROR"
+    config["env"] = RandomEnv
+
+    @ray.remote
+    def _do_check(alg, config, a_name, o_name):
+        
+        # We need to copy here so that this validation does not affect the actual
+        # validation method call further down the line.
+        config_copy = config.copy()
+        config_copy.validate()
+        # If RLModules are enabled, we need to skip a few tests for now:
+        if config_copy._enable_rl_module_api:
+            # Skip PPO cases in which RLModules don't support the given spaces yet.
+            if o_name not in rlmodule_supported_observation_spaces:
+                logger.warning(
+                    "Skipping PPO test with RLModules for obs space {}".format(o_name)
+                )
+                return
+            if a_name not in rlmodule_supported_action_spaces:
+                logger.warning(
+                    "Skipping PPO test with RLModules for action space {}".format(
+                        a_name
+                    )
+                )
+                return
+
+        fw = config["framework"]
+        action_space = action_spaces_to_test[a_name]
+        obs_space = observation_spaces_to_test[o_name]
+        print(
+            "=== Testing {} (fw={}) action_space={} obs_space={} ===".format(
+                alg, fw, action_space, obs_space
+            )
+        )
+        t0 = time.time()
+        config.update_from_dict(
+            dict(
+                env_config=dict(
+                    action_space=action_space,
+                    observation_space=obs_space,
+                    reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
+                    p_terminated=1.0,
+                    check_action_bounds=check_bounds,
+                )
+            )
+        )
+        stat = "ok"
+
+        try:
+            algo = config.build()
+        except ray.exceptions.RayActorError as e:
+            if len(e.args) >= 2 and isinstance(e.args[2], UnsupportedSpaceException):
+                stat = "unsupported"
+            elif isinstance(e.args[0].args[2], UnsupportedSpaceException):
+                stat = "unsupported"
+            else:
+                raise
+        except UnsupportedSpaceException:
+            stat = "unsupported"
+        else:
+            if alg not in ["DDPG", "ES", "ARS", "SAC", "PPO"]:
+                # 2D (image) input: Expect VisionNet.
+                if o_name in ["atari", "image"]:
+                    if fw == "torch":
+                        assert isinstance(algo.get_policy().model, TorchVisionNet)
+                    else:
+                        assert isinstance(algo.get_policy().model, VisionNet)
+                # 1D input: Expect FCNet.
+                elif o_name == "continuous":
+                    if fw == "torch":
+                        assert isinstance(algo.get_policy().model, TorchFCNet)
+                    else:
+                        assert isinstance(algo.get_policy().model, FCNet)
+                # Could be either one: ComplexNet (if disabled Preprocessor)
+                # or FCNet (w/ Preprocessor).
+                elif o_name == "vector2d":
+                    if fw == "torch":
+                        assert isinstance(
+                            algo.get_policy().model, (TorchComplexNet, TorchFCNet)
+                        )
+                    else:
+                        assert isinstance(algo.get_policy().model, (ComplexNet, FCNet))
+            if train:
+                algo.train()
+            algo.stop()
+        print("Test: {}, ran in {}s".format(stat, time.time() - t0))
+
+    # TF2 has to come before TF here otherwise one of those strange errors with mixing 
+    # TF1 and TF2 happens
+    frameworks = ["tf2", "tf", "torch"]
+
+    if config._enable_rl_module_api:
+        # Only test the frameworks that are supported by RLModules.
+        frameworks = frameworks.intersection(rlmodule_supported_frameworks)
+
+    for _ in framework_iterator(config, frameworks=frameworks):
+        # Test all action spaces first.
+        for a_name in action_spaces_to_test.keys():
+            o_name = default_observation_space
+            ray.get(_do_check.remote(alg, config, a_name, o_name))
+
+        # Now test all observation spaces.
+        for o_name in observation_spaces_to_test.keys():
+            a_name = default_action_space
+            ray.get(_do_check.remote(alg, config, a_name, o_name))
