@@ -25,7 +25,7 @@ class InstanceUpdatedSuscriber(metaclass=ABCMeta):
         pass
 
 
-class InstanceStorage(object):
+class InstanceStorage:
     """Instance storage stores the states of instances in the storage. It also
     allows users to subscribe to instance status changes to trigger reconciliation
     with cloud provider."""
@@ -36,7 +36,6 @@ class InstanceStorage(object):
         storage: Storage,
         status_change_subscriber: Optional[InstanceUpdatedSuscriber] = None,
     ) -> None:
-        super().__init__()
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
@@ -140,7 +139,7 @@ class InstanceStorage(object):
         return StoreStatus(result, version)
 
     def get_instances(
-        self, instance_ids: List[str] = [], status_filter: Set[int] = {}
+        self, instance_ids: List[str] = None, status_filter: Set[int] = None
     ) -> Tuple[Dict[str, Instance], int]:
         """Get instances from the storage.
 
@@ -152,6 +151,8 @@ class InstanceStorage(object):
             Tuple[Dict[str, Instance], int]: A tuple of (instances, version).
                 The instances is a dictionary of (instance_id, instance) pairs.
         """
+        instance_ids = instance_ids or []
+        status_filter = status_filter or set()
         pairs, version = self._storage.get(self._table_name, instance_ids)
         instances = {}
         for instance_id, (instance_data, entry_version) in pairs.items():
