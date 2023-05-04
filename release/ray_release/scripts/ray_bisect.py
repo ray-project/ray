@@ -107,14 +107,9 @@ def _sanity_check(
         f" and failing revision: {failing_revision}"
     )
     outcomes = _run_test(test, [passing_revision, failing_revision], run_per_commit)
-    passed_on_passing_revision = all(
-        outcome == "passed" for outcome in outcomes[passing_revision].values()
-    )
-    failed_on_failing_revision = any(
-        outcome != "passed" for outcome in outcomes[failing_revision].values()
-    )
-
-    return passed_on_passing_revision and failed_on_failing_revision
+    if any(map(lambda x: x != "passed", outcomes[passing_revision].values())):
+        return False
+    return any(map(lambda x: x != "passed", outcomes[failing_revision].values()))
 
 
 def _run_test(
