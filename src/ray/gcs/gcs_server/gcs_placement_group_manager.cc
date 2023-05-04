@@ -756,13 +756,11 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         iter->second->GetMutableStats()->set_scheduling_state(
             rpc::PlacementGroupStats::QUEUED);
         AddToPendingQueue(iter->second, 0);
-        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-            iter->second->GetPlacementGroupID(),
-            iter->second->GetPlacementGroupTableData(),
-            [this](Status status) { SchedulePendingPlacementGroups(); }));
       }
     }
   }
+
+  SchedulePendingPlacementGroups();
 }
 
 void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
@@ -968,10 +966,7 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
                       << placement_group->GetPlacementGroupID();
         placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
         AddToPendingQueue(placement_group, 0);
-        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-            placement_group->GetPlacementGroupID(),
-            placement_group->GetPlacementGroupTableData(),
-            [this](Status status) { SchedulePendingPlacementGroups(); }));
+        SchedulePendingPlacementGroups();
         return true;
       }
     }

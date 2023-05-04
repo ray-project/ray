@@ -7,6 +7,7 @@ from functools import wraps
 import ray._private.signature
 from ray import Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
@@ -242,7 +243,8 @@ class RemoteFunction:
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
         task_options.pop("max_calls", None)
-        if client_mode_should_convert(auto_init=True):
+        auto_init_ray()
+        if client_mode_should_convert():
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
         worker = ray._private.worker.global_worker

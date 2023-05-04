@@ -3,7 +3,9 @@
 Ray Use Cases
 =============
 
-This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
+This page indexes common Ray use cases for scaling ML.
+It contains highlighted references to blogs, examples, and tutorials also located
+elsewhere in the Ray documentation.
 
 .. _ref-use-cases-llm:
 
@@ -16,139 +18,143 @@ Large language models (LLMs) and generative AI are rapidly changing industries, 
 
 Learn more about how Ray scales LLMs and generative AI with the following resources.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
-        :type: url
-        :text: [Blog] How Ray solves common production challenges for generative AI infrastructure
-        :classes: btn-link btn-block stretched-link webCrawler
-    
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
 
-    .. link-button:: https://www.anyscale.com/blog/training-175b-parameter-language-models-at-1000-gpu-scale-with-alpa-and-ray
-        :type: url
-        :text: [Blog] Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
-        :classes: btn-link btn-block stretched-link webCrawler
-    
-    ---
-    :img-top: /images/ray_logo.png
+            [Blog] How Ray solves common production challenges for generative AI infrastructure
 
-    .. link-button:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
-        :type: url
-        :text: [Blog] Faster stable diffusion fine-tuning with Ray AIR
-        :classes: btn-link btn-block stretched-link webCrawler
-    
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
-        :type: url
-        :text: [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
-        :classes: btn-link btn-block stretched-link webCrawler
+        .. button-link:: https://www.anyscale.com/blog/training-175b-parameter-language-models-at-1000-gpu-scale-with-alpa-and-ray
 
-    ---
-    :img-top: /images/ray_logo.png
+            [Blog] Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
 
-    .. link-button:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
-        :type: url
-        :text: [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
-        :classes: btn-link btn-block stretched-link chatgpt
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
 
-    .. link-button:: /ray-air/examples/gptj_deepspeed_fine_tuning
-        :type: ref
-        :text: [Example] GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
-        :classes: btn-link btn-block stretched-link antServing
+            [Blog] Faster stable diffusion fine-tuning with Ray AIR
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-air/examples/dreambooth_finetuning
-        :type: ref
-        :text: [Example] Fine-tuning DreamBooth with Ray AIR
-        :classes: btn-link btn-block stretched-link rayForward
+        .. button-link:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
 
-    ---
-    :img-top: /images/ray_logo.png
+            [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
 
-    .. link-button:: /ray-air/examples/stablediffusion_batch_prediction
-        :type: ref
-        :text: [Example] Stable Diffusion Batch Prediction with Ray AIR
-        :classes: btn-link btn-block stretched-link rayForward
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
 
-    .. link-button:: /ray-air/examples/gptj_serving
-        :type: ref
-        :text: [Example] GPT-J-6B Serving with Ray AIR
-        :classes: btn-link btn-block stretched-link webCrawler
+            [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/gptj_deepspeed_fine_tuning
+
+            [Example] GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/dreambooth_finetuning
+
+            [Example] Fine-tuning DreamBooth with Ray AIR
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/stablediffusion_batch_prediction
+
+            [Example] Stable Diffusion Batch Prediction with Ray AIR
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/gptj_serving
+
+            [Example] GPT-J-6B Serving with Ray AIR
+
 
 .. _ref-use-cases-batch-infer:
 
 Batch Inference
 ---------------
 
-Batch inference refers to generating model predictions over a set of input observations. The model could be a regression model, neural network, or simply a Python function. Ray can scale batch inference from single GPU machines to large clusters.
+Batch inference is the process of generating model predictions on a large "batch" of input data.
+Ray for batch inference works with any cloud provider and ML framework,
+and is fast and cheap for modern deep learning applications.
+It scales from single machines to large clusters with minimal code changes.
+As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray.
+To learn more about running batch inference with Ray, see the :ref:`batch inference guide<batch_inference_home>`.
 
-Performing inference on incoming batches of data can be parallelized by exporting the architecture and weights of a trained model to the shared object store. Using these model replicas, Ray AIR's :ref:`Batch Predictor <air-predictors>` scales predictions on batches across workers.
+.. figure:: batch_inference/images/batch_inference.png
 
-.. figure:: /images/batch_inference.png
-  
-  Using Ray AIR's ``BatchPredictor`` for batch inference.
 
-Learn more about batch inference with the following resources.
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
 
-    .. link-button:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
-        :type: url
-        :text: [Tutorial] Architectures for Scalable Batch Inference with Ray
-        :classes: btn-link btn-block stretched-link scalableBatchInference
-    ---
-    :img-top: /images/ray_logo.png
+            [Tutorial] Architectures for Scalable Batch Inference with Ray
 
-    .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
-        :type: url
-        :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
-        :classes: btn-link btn-block stretched-link batchActorPool
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-core/examples/batch_prediction
-        :type: ref
-        :text: [Example] Batch Prediction using Ray Core
-        :classes: btn-link btn-block stretched-link batchCore
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
 
-    .. link-button:: /data/examples/nyc_taxi_basic_processing
-        :type: ref
-        :text: [Example] Batch Inference on NYC taxi data using Ray Data
-        :classes: btn-link btn-block stretched-link nycTaxiData
+            [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /data/examples/ocr_example
-        :type: ref
-        :text: [Example] Batch OCR processing using Ray Data
-        :classes: btn-link btn-block stretched-link batchOcr
+        .. button-ref:: /ray-core/examples/batch_prediction
+
+            [Example] Batch Prediction using Ray Core
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/nyc_taxi_basic_processing
+
+            [Example] Batch Inference on NYC taxi data using Ray Data
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/ocr_example
+
+            [Example] Batch OCR processing using Ray Data
+
+
 
 .. _ref-use-cases-mmt:
 
@@ -161,7 +167,7 @@ The focus is on training many models on subsets of a dataset. This is in contras
 When any given model you want to train can fit on a single GPU, Ray can assign each training run to a separate Ray Task. In this way, all available workers are utilized to run independent remote training rather than one worker running jobs sequentially.
 
 .. figure:: /images/training_small_models.png
-  
+
   Data parallelism pattern for distributed training on large datasets.
 
 How do I do many model training on Ray?
@@ -169,71 +175,77 @@ How do I do many model training on Ray?
 
 To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune>`) library. This is the recommended library for most cases.
 
-You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node). 
+You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node).
 If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <data>` library.
-Your data must be a :ref:`supported format <input-output>`, to use Ray Data. 
+Your data must be a :ref:`supported format <input-output>`, to use Ray Data.
 
-Alternative solutions exist for less common cases: 
+Alternative solutions exist for less common cases:
 
 #. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
-#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`). 
+#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`).
 
 Learn more about many model training with the following resources.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray
-        :type: url
-        :text: [Blog] Training One Million ML Models in Record Time with Ray
-        :classes: btn-link btn-block stretched-link millionModels
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray
 
-    .. link-button:: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
-        :type: url
-        :text: [Blog] Many Models Batch Training at Scale with Ray Core
-        :classes: btn-link btn-block stretched-link manyModels
-    ---
-    :img-top: /images/ray_logo.png
+            [Blog] Training One Million ML Models in Record Time with Ray
 
-    .. link-button:: /ray-core/examples/batch_training
-        :type: ref
-        :text: [Example] Batch Training with Ray Core
-        :classes: btn-link btn-block stretched-link batchTrainingCore
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /data/examples/batch_training
-        :type: ref
-        :text: [Example] Batch Training with Ray Data
-        :classes: btn-link btn-block stretched-link batchTrainingDatasets
-    ---
-    :img-top: /images/tune.png
+        .. button-link:: https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core
 
-    .. link-button:: /tune/tutorials/tune-run
-        :type: ref
-        :text: [Guide] Tune Basic Parallel Experiments
-        :classes: btn-link btn-block stretched-link tuneBasicParallel
-    ---
-    :img-top: /images/tune.png
+            [Blog] Many Models Batch Training at Scale with Ray Core
 
-    .. link-button:: /ray-air/examples/batch_tuning
-        :type: ref
-        :text: [Example] Batch Training and Tuning using Ray Tune
-        :classes: btn-link btn-block stretched-link tuneBatch
-    ---
-    :img-top: /images/carrot.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.youtube.com/watch?v=3t26ucTy0Rs
-        :type: url
-        :text: [Talk] Scaling Instacart fulfillment ML on Ray
-        :classes: btn-link btn-block stretched-link instacartFulfillment
+        .. button-ref:: /ray-core/examples/batch_training
+
+            [Example] Batch Training with Ray Core
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/batch_training
+
+            [Example] Batch Training with Ray Data
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /tune/tutorials/tune-run
+
+            [Guide] Tune Basic Parallel Experiments
+
+    .. grid-item-card::
+        :img-top:  /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/batch_tuning
+
+            [Example] Batch Training and Tuning using Ray Tune
+
+    .. grid-item-card::
+        :img-top: /images/carrot.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.youtube.com/watch?v=3t26ucTy0Rs
+
+            [Talk] Scaling Instacart fulfillment ML on Ray
+
 
 Model Serving
 -------------
@@ -248,53 +260,58 @@ It supports complex `model deployment patterns <https://www.youtube.com/watch?v=
 
 Learn more about model serving with the following resources.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/serve.svg
+    .. grid-item-card::
+        :img-top: /images/serve.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.youtube.com/watch?v=UtH-CMpmxvI
-        :type: url
-        :text: [Talk] Productionizing ML at Scale with Ray Serve
-        :classes: btn-link btn-block stretched-link productionizingMLServe
-    ---
-    :img-top: /images/serve.svg
+        .. button-link:: https://www.youtube.com/watch?v=UtH-CMpmxvI
 
-    .. link-button:: https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve
-        :type: url
-        :text: [Blog] Simplify your MLOps with Ray & Ray Serve
-        :classes: btn-link btn-block stretched-link simplifyMLOpsServe
-    ---
-    :img-top: /images/serve.svg
+            [Talk] Productionizing ML at Scale with Ray Serve
 
-    .. link-button:: /serve/getting_started
-        :type: ref
-        :text: [Guide] Getting Started with Ray Serve
-        :classes: btn-link btn-block stretched-link gettingStartedServe
-    ---
-    :img-top: /images/serve.svg
+    .. grid-item-card::
+        :img-top: /images/serve.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /serve/model_composition
-        :type: ref
-        :text: [Guide] Model Composition in Serve
-        :classes: btn-link btn-block stretched-link compositionServe
-    ---
-    :img-top: /images/grid.png
+        .. button-link:: https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve
 
-    .. link-button:: /serve/tutorials/index
-        :type: ref
-        :text: [Gallery] Serve Examples Gallery
-        :classes: btn-link btn-block stretched-link examplesServe
-    ---
-    :img-top: /images/grid.png
+            [Blog] Simplify your MLOps with Ray & Ray Serve
 
-    .. link-button:: https://www.anyscale.com/blog?tag=ray_serve
-        :type: url
-        :text: [Gallery] More Serve Use Cases on the Blog
-        :classes: btn-link btn-block stretched-link useCasesServe
+    .. grid-item-card::
+        :img-top: /images/serve.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /serve/getting_started
+
+            [Guide] Getting Started with Ray Serve
+
+    .. grid-item-card::
+        :img-top: /images/serve.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /serve/model_composition
+
+            [Guide] Model Composition in Serve
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /serve/tutorials/index
+
+            [Gallery] Serve Examples Gallery
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/blog?tag=ray_serve
+
+            [Gallery] More Serve Use Cases on the Blog
+
 
 Hyperparameter Tuning
 ---------------------
@@ -309,53 +326,59 @@ Running multiple hyperparameter tuning experiments is a pattern apt for distribu
 
 Learn more about the Tune library with the following talks and user guides.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tune.png
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    .. link-button:: /tune/getting-started
-        :type: ref
-        :text: [Guide] Getting Started with Ray Tune
-        :classes: btn-link btn-block stretched-link gettingStartedTune
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune
-        :type: url
-        :text: [Blog] How to distribute hyperparameter tuning with Ray Tune
-        :classes: btn-link btn-block stretched-link distributeHPOTune
-    ---
-    :img-top: /images/tune.png
+        .. button-ref:: /tune/getting-started
 
-    .. link-button:: https://www.youtube.com/watch?v=KgYZtlbFYXE
-        :type: url
-        :text: [Talk] Simple Distributed Hyperparameter Optimization
-        :classes: btn-link btn-block stretched-link simpleDistributedHPO
-    ---
-    :img-top: /images/tune.png
+            [Guide] Getting Started with Ray Tune
 
-    .. link-button:: https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune
-        :type: url
-        :text: [Blog] Hyperparameter Search with 🤗 Transformers
-        :classes: btn-link btn-block stretched-link HPOTransformers
-    ---
-    :img-top: /images/grid.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /tune/examples/index
-        :type: ref
-        :text: [Gallery] Ray Tune Examples Gallery
-        :classes: btn-link btn-block stretched-link examplesTune
-    ---
-    :img-top: /images/grid.png
+        .. button-link:: https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune
 
-    .. link-button:: https://www.anyscale.com/blog?tag=ray-tune
-        :type: url
-        :text: More Tune use cases on the Blog
-        :classes: btn-link btn-block stretched-link useCasesTune
+            [Blog] How to distribute hyperparameter tuning with Ray Tune
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.youtube.com/watch?v=KgYZtlbFYXE
+
+            [Talk] Simple Distributed Hyperparameter Optimization
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune
+
+            [Blog] Hyperparameter Search with 🤗 Transformers
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /tune/examples/index
+
+            [Gallery] Ray Tune Examples Gallery
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/blog?tag=ray-tune
+
+            More Tune use cases on the Blog
+
 
 Distributed Training
 --------------------
@@ -371,53 +394,58 @@ In contrast to training many models, model parallelism partitions a large model 
 
 Learn more about the Train library with the following talks and user guides.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.youtube.com/watch?v=e-A93QftCfc
-        :type: url
-        :text: [Talk] Ray Train, PyTorch, TorchX, and distributed deep learning
-        :classes: btn-link btn-block stretched-link pyTorchTrain
-    ---
-    :img-top: /images/uber.png
+        .. button-link:: https://www.youtube.com/watch?v=e-A93QftCfc
 
-    .. link-button:: https://www.uber.com/blog/elastic-xgboost-ray/
-        :type: url
-        :text: [Blog] Elastic Distributed Training with XGBoost on Ray
-        :classes: btn-link btn-block stretched-link xgboostTrain
-    ---
-    :img-top: /images/ray_logo.png
+            [Talk] Ray Train, PyTorch, TorchX, and distributed deep learning
 
-    .. link-button:: /train/train
-        :type: ref
-        :text: [Guide] Getting Started with Ray Train
-        :classes: btn-link btn-block stretched-link gettingStartedTrain
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/uber.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-air/examples/huggingface_text_classification
-        :type: ref
-        :text: [Example] Fine-tune a 🤗 Transformers model
-        :classes: btn-link btn-block stretched-link trainingTransformers
-    ---
-    :img-top: /images/grid.png
+        .. button-link:: https://www.uber.com/blog/elastic-xgboost-ray/
 
-    .. link-button:: /train/examples
-        :type: ref
-        :text: [Gallery] Ray Train Examples Gallery
-        :classes: btn-link btn-block stretched-link examplesTrain
-    ---
-    :img-top: /images/grid.png
+            [Blog] Elastic Distributed Training with XGBoost on Ray
 
-    .. link-button:: https://www.anyscale.com/blog?tag=ray_train
-        :type: url
-        :text: [Gallery] More Train Use Cases on the Blog
-        :classes: btn-link btn-block stretched-link useCasesTrain
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /train/train
+
+            [Guide] Getting Started with Ray Train
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/huggingface_text_classification
+
+            [Example] Fine-tune a 🤗 Transformers model
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /train/examples
+
+            [Gallery] Ray Train Examples Gallery
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/blog?tag=ray_train
+
+            [Gallery] More Train Use Cases on the Blog
+
 
 Reinforcement Learning
 ----------------------
@@ -430,53 +458,58 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 
 Learn more about reinforcement learning with the following resources.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /rllib/images/rllib-logo.png
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://applied-rl-course.netlify.app/
-        :type: url
-        :text: [Course] Applied Reinforcement Learning with RLlib
-        :classes: btn-link btn-block stretched-link appliedRLCourse
-    ---
-    :img-top: /rllib/images/rllib-logo.png
+        .. button-link:: https://applied-rl-course.netlify.app/
 
-    .. link-button:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
-        :type: url
-        :text: [Blog] Intro to RLlib: Example Environments
-        :classes: btn-link btn-block stretched-link introRLlib
-    ---
-    :img-top: /rllib/images/rllib-logo.png
+            [Course] Applied Reinforcement Learning with RLlib
 
-    .. link-button:: /rllib/rllib-training
-        :type: ref
-        :text: [Guide] Getting Started with RLlib
-        :classes: btn-link btn-block stretched-link gettingStartedRLlib
-    ---
-    :img-top: /images/riot.png
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
-        :type: url
-        :text: [Talk] Deep reinforcement learning at Riot Games
-        :classes: btn-link btn-block stretched-link riotRL
-    ---
-    :img-top: /images/grid.png
+        .. button-link:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
 
-    .. link-button:: /rllib/rllib-examples
-        :type: ref
-        :text: [Gallery] RLlib Examples Gallery
-        :classes: btn-link btn-block stretched-link examplesRL
-    ---
-    :img-top: /images/grid.png
+            [Blog] Intro to RLlib: Example Environments
 
-    .. link-button:: https://www.anyscale.com/blog?tag=rllib
-        :type: url
-        :text: [Gallery] More RL Use Cases on the Blog
-        :classes: btn-link btn-block stretched-link useCasesRL
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /rllib/rllib-training
+
+            [Guide] Getting Started with RLlib
+
+    .. grid-item-card::
+        :img-top: /images/riot.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
+
+            [Talk] Deep reinforcement learning at Riot Games
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /rllib/rllib-examples
+
+            [Gallery] RLlib Examples Gallery
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/blog?tag=rllib
+
+            [Gallery] More RL Use Cases on the Blog
+
 
 ML Platform
 -----------
@@ -495,53 +528,57 @@ Spotify `uses Ray for advanced applications <https://www.anyscale.com/ray-summit
 
 The following highlights feature companies leveraging Ray's unified API to build simpler, more flexible ML platforms.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/shopify.png
+    .. grid-item-card::
+        :img-top: /images/shopify.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://shopify.engineering/merlin-shopify-machine-learning-platform
-        :type: url
-        :text: [Blog] The Magic of Merlin - Shopify's New ML Platform
-        :classes: btn-link btn-block stretched-link merlin
-    ---
-    :img-top: /images/uber.png
+        .. button-link:: https://shopify.engineering/merlin-shopify-machine-learning-platform
 
-    .. link-button:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
-        :type: url
-        :text: [Slides] Large Scale Deep Learning Training and Tuning with Ray
-        :classes: btn-link btn-block stretched-link uberScaleDL
-    ---
-    :img-top: /images/carrot.png
+            [Blog] The Magic of Merlin - Shopify's New ML Platform
 
-    .. link-button:: https://www.instacart.com/company/how-its-made/griffin-how-instacarts-ml-platform-tripled-ml-applications-in-a-year/
-        :type: url
-        :text: [Blog] Griffin: How Instacart’s ML Platform Tripled in a year
-        :classes: btn-link btn-block stretched-link instacartMLPlatformTripled
-    ---
-    :img-top: /images/predibase.png
+    .. grid-item-card::
+        :img-top: /images/uber.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.youtube.com/watch?v=B5v9B5VSI7Q
-        :type: url
-        :text: [Talk] Predibase - A low-code deep learning platform built for scale
-        :classes: btn-link btn-block stretched-link predibase
-    ---
-    :img-top: /images/gke.png
+        .. button-link:: https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view
 
-    .. link-button:: https://cloud.google.com/blog/products/ai-machine-learning/build-a-ml-platform-with-kubeflow-and-ray-on-gke
-        :type: url
-        :text: [Blog] Building a ML Platform with Kubeflow and Ray on GKE
-        :classes: btn-link btn-block stretched-link GKEMLPlatform
-    ---
-    :img-top: /images/ray_logo.png
+            [Slides] Large Scale Deep Learning Training and Tuning with Ray
 
-    .. link-button:: https://www.youtube.com/watch?v=_L0lsShbKaY
-        :type: url
-        :text: [Talk] Ray Summit Panel - ML Platform on Ray
-        :classes: btn-link btn-block stretched-link summitMLPlatform
+    .. grid-item-card::
+        :img-top: /images/carrot.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.instacart.com/company/how-its-made/griffin-how-instacarts-ml-platform-tripled-ml-applications-in-a-year/
+
+            [Blog] Griffin: How Instacart’s ML Platform Tripled in a year
+
+    .. grid-item-card::
+        :img-top: /images/predibase.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.youtube.com/watch?v=B5v9B5VSI7Q
+
+            [Talk] Predibase - A low-code deep learning platform built for scale
+
+    .. grid-item-card::
+        :img-top: /images/gke.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://cloud.google.com/blog/products/ai-machine-learning/build-a-ml-platform-with-kubeflow-and-ray-on-gke
+
+            [Blog] Building a ML Platform with Kubeflow and Ray on GKE
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.youtube.com/watch?v=_L0lsShbKaY
+
+            [Talk] Ray Summit Panel - ML Platform on Ray
 
 
 End-to-End ML Workflows
@@ -549,100 +586,104 @@ End-to-End ML Workflows
 
 The following highlights examples utilizing Ray AIR to implement end-to-end ML workflows.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/text-classification.png
+    .. grid-item-card::
+        :img-top: /images/text-classification.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-air/examples/huggingface_text_classification
-        :type: ref
-        :text: [Example] Text classification with Ray
-        :classes: btn-link btn-block stretched-link trainingTransformers
-    ---
-    :img-top: /images/image-classification.webp
+        .. button-ref:: /ray-air/examples/huggingface_text_classification
 
-    .. link-button:: /ray-air/examples/torch_image_example
-        :type: ref
-        :text: [Example] Image classification with Ray
-        :classes: btn-link btn-block stretched-link torchImageExample
-    ---
-    :img-top: /images/detection.jpeg
+            [Example] Text classification with Ray
 
-    +++
-    .. link-button:: /ray-air/examples/torch_detection
-        :type: ref
-        :text: [Example] Object detection with Ray
-        :classes: btn-link btn-block stretched-link torchImageExample
-    ---
-    :img-top: /images/credit.png
+    .. grid-item-card::
+        :img-top: /images/image-classification.webp
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-air/examples/feast_example
-        :type: ref
-        :text: [Example] Credit scoring with Ray and Feast
-        :classes: btn-link btn-block stretched-link feastExample
-    ---
-    :img-top: /images/tabular-data.png
+        .. button-ref:: /ray-air/examples/torch_image_example
 
-    .. link-button:: /ray-air/examples/xgboost_example
-        :type: ref
-        :text: [Example] Machine learning on tabular data
-        :classes: btn-link btn-block stretched-link xgboostExample
-    ---
-    :img-top: /images/timeseries.png
+            [Example] Image classification with Ray
 
-    .. link-button:: /ray-core/examples/automl_for_time_series
-        :type: ref
-        :text: [Example] AutoML for Time Series with Ray
-        :classes: btn-link btn-block stretched-link timeSeriesAutoML
-    ---
-    :img-top: /images/grid.png
+    .. grid-item-card::
+        :img-top: /images/detection.jpeg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-air/examples/index
-        :type: ref
-        :text: [Gallery] Full Ray AIR Examples Gallery
-        :classes: btn-link btn-block stretched-link AIRExamples
+        .. button-ref:: /ray-air/examples/torch_detection
+
+            [Example] Object detection with Ray
+
+    .. grid-item-card::
+        :img-top: /images/credit.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/feast_example
+
+            [Example] Credit scoring with Ray and Feast
+
+    .. grid-item-card::
+        :img-top: /images/tabular-data.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/xgboost_example
+
+            [Example] Machine learning on tabular data
+
+    .. grid-item-card::
+        :img-top: /images/timeseries.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-core/examples/automl_for_time_series
+
+            [Example] AutoML for Time Series with Ray
+
+    .. grid-item-card::
+        :img-top: /images/grid.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/index
+
+            [Gallery] Full Ray AIR Examples Gallery
+
 
 Large Scale Workload Orchestration
 ----------------------------------
 
 The following highlights feature projects leveraging Ray Core's distributed APIs to simplify the orchestration of large scale workloads.
 
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant
-        :type: url
-        :text: [Blog] Highly Available and Scalable Online Applications on Ray at Ant Group
-        :classes: btn-link btn-block stretched-link antServing
+        .. button-link:: https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant
 
-    ---
-    :img-top: /images/ray_logo.png
+            [Blog] Highly Available and Scalable Online Applications on Ray at Ant Group
 
-    .. link-button:: https://www.anyscale.com/blog/ray-forward-2022
-        :type: url
-        :text: [Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases
-        :classes: btn-link btn-block stretched-link rayForward
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/ray_logo.png
+        .. button-link:: https://www.anyscale.com/blog/ray-forward-2022
 
-    .. link-button:: https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting
-        :type: url
-        :text: [Blog] A new world record on the CloudSort benchmark using Ray
-        :classes: btn-link btn-block stretched-link rayForward
+            [Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases
 
-    ---
-    :img-top: /images/ray_logo.png
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: /ray-core/examples/web-crawler
-        :type: ref
-        :text: [Example] Speed up your web crawler by parallelizing it with Ray
-        :classes: btn-link btn-block stretched-link webCrawler
+        .. button-link:: https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting
+
+            [Blog] A new world record on the CloudSort benchmark using Ray
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-core/examples/web-crawler
+
+            [Example] Speed up your web crawler by parallelizing it with Ray

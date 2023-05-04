@@ -909,7 +909,7 @@ def run(
         trial_checkpoint_config=experiments[0].checkpoint_config,
     )
 
-    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "0"))):
+    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
         trial_runner_cls = TuneController
         runner_kwargs.pop("trial_executor")
         runner_kwargs["reuse_actors"] = reuse_actors

@@ -1899,7 +1899,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     @pytest.mark.skipif(
-        os.environ.get("TUNE_NEW_EXECUTION") == "1",
+        os.environ.get("TUNE_NEW_EXECUTION") != "0",
         reason=(
             "This test is generally flaky: The print after writing `Cleanup` "
             "to the file is printed, but the data is not always written. "
