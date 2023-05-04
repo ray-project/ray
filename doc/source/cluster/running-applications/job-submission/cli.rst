@@ -16,12 +16,6 @@ This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.
     ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit --working_dir="." -- "python script.py"``.
     Otherwise you may encounter the error ``/bin/sh: 1: python script.py: not found``.
 
-.. warning::
-
-   The entrypoint command must be provided last, and any arguments to `ray job submit` must be provided before the entrypoint command.
-   For example, use ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit -- python script.py --working_dir="."``.
-   This is to support the use of ``--`` to separate arguments to `ray job submit` from arguments to the entrypoint command.
-
 .. _ray-job-status-doc:
 
 .. click:: ray.dashboard.modules.job.cli:status
