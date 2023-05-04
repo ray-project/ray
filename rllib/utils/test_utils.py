@@ -1370,6 +1370,7 @@ def check_support(alg, config, train=True, check_bounds=False):
     )
     from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
     from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNet
+
     action_spaces_to_test = {
         # Test discrete twice here until we support multi_binary action spaces
         "discrete": Discrete(5),
@@ -1430,7 +1431,7 @@ def check_support(alg, config, train=True, check_bounds=False):
 
     @ray.remote
     def _do_check(alg, config, a_name, o_name):
-        
+
         # We need to copy here so that this validation does not affect the actual
         # validation method call further down the line.
         config_copy = config.copy()
@@ -1512,7 +1513,7 @@ def check_support(alg, config, train=True, check_bounds=False):
             algo.stop()
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
-    # TF2 has to come before TF here otherwise one of those strange errors with mixing 
+    # TF2 has to come before TF here otherwise one of those strange errors with mixing
     # TF1 and TF2 happens
     frameworks = ["tf2", "tf", "torch"]
 
