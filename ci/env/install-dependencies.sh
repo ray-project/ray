@@ -417,6 +417,8 @@ install_pip_packages() {
   fi
 
   if [ "${install_ml_no_deps}" = 1 ]; then
+    # Install these requirements first. Their dependencies may be overwritten later
+    # by the main install.
     pip install -r "${WORKSPACE_DIR}/python/requirements/ml/requirements_no_deps.txt"
   fi
 
@@ -438,14 +440,20 @@ install_pip_packages() {
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
         # We won't add requirements_dl.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
-        # Keep it sync with requirements_dl.txt
-        pip install -U "tensorflow==2.11.0" "tensorflow-probability==0.19.0"
+        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+
+        # %%;* deletes everything after ; to get rid of e.g. python version specifiers
+        pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
       else
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        # Keep it sync with requirements_dl.txt
-        pip install torch==1.13.0 torchvision==0.14.0
+        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+
+        # %%;* deletes everything after ; to get rid of e.g. python version specifiers
+        pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
         requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
       fi
   fi
