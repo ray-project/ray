@@ -316,17 +316,17 @@ def build_gallery(app):
     .. grid-item-card::
         :img-top: {item["image"]}
         :class-img-top: {classes["class-img-top"]}
-    
+
         {gh_stars}
-    
+
         {item["description"]}
-    
+
         +++
         .. {ref}:: {item["website"]}
             :color: primary
             :outline:
             :expand:
-            
+
             {item["name"]}
             """
 
