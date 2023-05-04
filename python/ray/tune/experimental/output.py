@@ -474,11 +474,6 @@ class ProgressReporter:
         tensorboard_path: Optional[str] = None,
         **kwargs,
     ):
-        self._experiment_start_paths(
-            experiment_path=experiment_path, tensorboard_path=tensorboard_path
-        )
-
-    def _experiment_start_paths(self, experiment_path: str, tensorboard_path: str):
         print(f"\nView detailed results here: {experiment_path}")
 
         if tensorboard_path:
@@ -609,8 +604,14 @@ class TuneTerminalReporter(TuneReporterBase):
                 tablefmt=AIR_TABULATE_TABLEFMT,
             )
         )
-        self._experiment_start_paths(
-            experiment_path=experiment_path, tensorboard_path=tensorboard_path
+        super().experiment_started(
+            experiment_name=experiment_name,
+            experiment_path=experiment_path,
+            searcher_str=searcher_str,
+            scheduler_str=scheduler_str,
+            total_num_samples=total_num_samples,
+            tensorboard_path=tensorboard_path,
+            **kwargs,
         )
 
     def _print_heartbeat(self, trials, *sys_args):
