@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Optional, Union
 
 import numpy as np
 import tree  # pip install dm_tree
