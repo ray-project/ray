@@ -98,7 +98,7 @@ RAY_START_HOOK = "RAY_START_HOOK"
 # job.cli.submit() function gets, passed as kwargs to this function.
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 
-DEFAULT_DASHBOARD_IP = "127.0.0.1"
+DEFAULT_DASHBOARD_IP = "0.0.0.0"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
