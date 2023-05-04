@@ -2,6 +2,29 @@
 # isort: skip_file
 # fmt: off
 
+# __pt_no_ray_start__
+import torch
+import torch.nn as nn
+import numpy as np
+from typing import Dict
+
+batches = {"data": np.ones((1, 100))}
+
+model = nn.Sequential(
+    nn.Linear(in_features=100, out_features=1),
+    nn.Sigmoid(),
+)
+model.eval()
+
+def transform(batch: Dict[str, np.ndarray]):
+    tensor = torch.as_tensor(batch["data"], dtype=torch.float32)
+    with torch.inference_mode():
+        return {"output": model(tensor).detach().numpy()}
+
+results = transform(batches)
+# __pt_no_ray_end__
+
+
 # __pt_quickstart_load_start__
 import ray
 import numpy as np
@@ -32,11 +55,14 @@ class TorchPredictor:
 # __pt_quickstart_model_end__
 
 
-# __pt_quickstart_prediction_start__
+# __pt_quickstart_prediction_test_start__
 tp = TorchPredictor()
 batch = ds.take_batch(10)
 test = tp(batch)
+# __pt_quickstart_prediction_test_end__
 
+
+# __pt_quickstart_prediction_start__
 scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(TorchPredictor, compute=scale)
 predictions.show(limit=1)

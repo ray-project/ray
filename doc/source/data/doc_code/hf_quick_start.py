@@ -2,6 +2,21 @@
 # isort: skip_file
 # fmt: off
 
+# __hf_no_ray_start__
+import numpy as np
+from typing import Dict
+from transformers import pipeline
+
+batches = {"text": np.asarray(["Complete this sentence"])}
+
+model = pipeline("text-generation", model="gpt2")
+
+def transform(batch: Dict[str, np.ndarray]):
+    return model(list(batch["text"]), max_length=20)
+
+results = transform(batches)
+# __hf_no_ray_end__
+
 # __hf_quickstart_load_start__
 import ray
 import numpy as np
@@ -26,11 +41,14 @@ class HuggingFacePredictor:
 # __hf_quickstart_model_end__
 
 
-# __hf_quickstart_prediction_start__
+# __hf_quickstart_prediction_test_start__
 hfp = HuggingFacePredictor()
 batch = ds.take_batch(10)
 test = hfp(batch)
+# __hf_quickstart_prediction_test_end__
 
+
+# __hf_quickstart_prediction_start__
 scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
 
