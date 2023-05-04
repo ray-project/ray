@@ -17,59 +17,11 @@ type RecentServeCardProps = {
   className?: string;
 };
 
-/*
-{
-    "": {
-        "name": "",
-        "route_prefix": "/test",
-        "docs_path": null,
-        "status": "RUNNING",
-        "message": "",
-        "last_deployed_time_s": 1682029771.0748637,
-        "deployed_app_config": null,
-        "deployments": {
-            "MyModelDeployment": {
-                "name": "MyModelDeployment",
-                "status": "HEALTHY",
-                "message": "",
-                "deployment_config": {
-                    "name": "MyModelDeployment",
-                    "num_replicas": 1,
-                    "max_concurrent_queries": 100,
-                    "user_config": null,
-                    "autoscaling_config": null,
-                    "graceful_shutdown_wait_loop_s": 2,
-                    "graceful_shutdown_timeout_s": 20,
-                    "health_check_period_s": 10,
-                    "health_check_timeout_s": 30,
-                    "ray_actor_options": {
-                        "runtime_env": {},
-                        "num_cpus": 1
-                    },
-                    "is_driver_deployment": false
-                },
-                "replicas": [
-                    {
-                        "replica_id": "MyModelDeployment#oJRaQg",
-                        "state": "RUNNING",
-                        "pid": 364224,
-                        "actor_name": "SERVE_REPLICA::MyModelDeployment#oJRaQg",
-                        "actor_id": "b8c9082697cd69c16109eeb804000000",
-                        "node_id": "3434841e491012452165c643fea4919d80d078554059d3e008d51713",
-                        "node_ip": "172.31.5.171",
-                        "start_time_s": 1682029903.403788
-                    }
-                ]
-            }
-        }
-    }
-}
-
-*/
-
 export const RecentServeCard = ({ className }: RecentServeCardProps) => {
   const classes = useStyles();
 
+  // Use mock data by uncommenting the following line
+  // const applications = mockServeApplications.applications;
   const { allServeApplications: applications } = useServeApplications();
 
   const sortedApplications = _.orderBy(
