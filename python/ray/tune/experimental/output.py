@@ -1,4 +1,5 @@
-from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING
+import sys
+from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
 
 import contextlib
 import collections
@@ -11,7 +12,6 @@ import numbers
 import numpy as np
 import os
 import pandas as pd
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 import textwrap
 import time
 
@@ -23,10 +23,15 @@ except ImportError:
     rich = None
 
 import ray
-from ray._private.dict import unflattened_lookup
+from ray._private.dict import unflattened_lookup, flatten_dict
+from ray._private.thirdparty.tabulate.tabulate import (
+    tabulate,
+    TableFormat,
+    Line,
+    DataRow,
+)
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.callback import Callback
-from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     EPISODE_REWARD_MEAN,
@@ -356,6 +361,92 @@ def _best_trial_str(
     )
 
 
+def _render_table_item(
+    key: str, item: Any, prefix: str = ""
+) -> Iterable[Tuple[str, str]]:
+    key = prefix + key
+    if isinstance(item, float):
+        # tabulate does not work well with mixed-type columns, so we format
+        # numbers ourselves.
+        yield key, f"{item:.5f}".rstrip("0")
+    else:
+        yield key, _max_len(item, 20)
+
+
+def _get_dict_as_table_data(
+    data: Dict,
+    include: Optional[Collection] = None,
+    exclude: Optional[Collection] = None,
+    upper_keys: Optional[Collection] = None,
+):
+    include = include or set()
+    exclude = exclude or set()
+    upper_keys = upper_keys or set()
+
+    upper = []
+    lower = []
+
+    flattened = flatten_dict(data)
+
+    for key, value in sorted(flattened.items()):
+        if include and key not in include:
+            continue
+        if key in exclude:
+            continue
+
+        for k, v in _render_table_item(str(key), value):
+            if key in upper_keys:
+                upper.append([k, v])
+            else:
+                lower.append([k, v])
+
+    if not upper:
+        return lower
+    elif not lower:
+        return upper
+    else:
+        return upper + lower
+
+
+# Copied/adjusted from tabulate
+AIR_TABULATE_TABLEFMT = TableFormat(
+    lineabove=Line("╭", "─", "─", "╮"),
+    linebelowheader=Line("├", "─", "─", "┤"),
+    linebetweenrows=None,
+    linebelow=Line("╰", "─", "─", "╯"),
+    headerrow=DataRow("│", " ", "│"),
+    datarow=DataRow("│", " ", "│"),
+    padding=1,
+    with_header_hide=None,
+)
+
+
+def _print_dict_as_table(
+    data: Dict,
+    header: Optional[str] = None,
+    include: Optional[Collection[str]] = None,
+    exclude: Optional[Collection[str]] = None,
+    division: Optional[Collection[str]] = None,
+):
+    table_data = _get_dict_as_table_data(
+        data=data, include=include, exclude=exclude, upper_keys=division
+    )
+
+    headers = [header, ""] if header else []
+
+    if not table_data:
+        return
+
+    print(
+        tabulate(
+            table_data,
+            headers=headers,
+            colalign=("left", "right"),
+            tablefmt=AIR_TABULATE_TABLEFMT,
+        )
+    )
+
+
 class ProgressReporter:
     """Periodically prints out status update."""
 
@@ -373,6 +464,26 @@ class ProgressReporter:
         self._verbosity = verbosity
         self._start_time = time.time()
         self._last_heartbeat_time = 0
+
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        print(f"\nView detailed results here: {experiment_path}")
+
+        if tensorboard_path:
+            print(
+                f"To visualize your results with TensorBoard, run: "
+                f"`tensorboard --logdir {tensorboard_path}`"
+            )
+
+        print("")
 
     @property
     def _time_heartbeat_str(self):
@@ -468,6 +579,42 @@ class TuneReporterBase(ProgressReporter):
 
 
 class TuneTerminalReporter(TuneReporterBase):
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        if total_num_samples > sys.maxsize:
+            total_num_samples_str = "infinite"
+        else:
+            total_num_samples_str = str(total_num_samples)
+
+        print(
+            tabulate(
+                [
+                    ["Search algorithm", searcher_str],
+                    ["Scheduler", scheduler_str],
+                    ["Number of trials", total_num_samples_str],
+                ],
+                headers=["Configuration for experiment", experiment_name],
+                tablefmt=AIR_TABULATE_TABLEFMT,
+            )
+        )
+        super().experiment_started(
+            experiment_name=experiment_name,
+            experiment_path=experiment_path,
+            searcher_str=searcher_str,
+            scheduler_str=scheduler_str,
+            total_num_samples=total_num_samples,
+            tensorboard_path=tensorboard_path,
+            **kwargs,
+        )
+
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
             return
@@ -486,7 +633,7 @@ class TuneTerminalReporter(TuneReporterBase):
             tabulate(
                 all_infos,
                 headers=header,
-                tablefmt="simple",
+                tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
         )
@@ -594,6 +741,7 @@ class TrainReporter(ProgressReporter):
 
 # These keys are blacklisted for printing out training/tuning intermediate/final result!
 BLACKLISTED_KEYS = {
+    "config",
     "date",
     "done",
     "hostname",
@@ -611,9 +759,10 @@ BLACKLISTED_KEYS = {
 class AirResultCallbackWrapper(Callback):
     # This is only to bypass the issue that by the time default callbacks
     # are added, there is no information on `num_samples` yet.
-    def __init__(self, verbosity):
+    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
         self._verbosity = verbosity
         self._callback = None
+        self._metrics = metrics
 
     def setup(
         self,
@@ -623,9 +772,9 @@ class AirResultCallbackWrapper(Callback):
         **info,
     ):
         self._callback = (
-            TuneResultProgressCallback(self._verbosity)
+            TuneResultProgressCallback(self._verbosity, metrics=self._metrics)
             if total_num_samples > 1
-            else TrainResultProgressCallback(self._verbosity)
+            else TrainResultProgressCallback(self._verbosity, metrics=self._metrics)
         )
 
     # everything ELSE is just passing through..
@@ -647,15 +796,33 @@ class AirResultProgressCallback(Callback):
     _intermediate_result_verbosity = None
     _addressing_tmpl = None
 
-    def __init__(self, verbosity):
+    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
         self._verbosity = verbosity
         self._start_time = time.time()
+        self._trial_last_printed_results = {}
+        self._metrics = metrics
 
-    def _print_result(self, trial, result=None):
-        print(pretty_print(result or trial.last_result, BLACKLISTED_KEYS))
+    def _print_result(self, trial, result: Optional[Dict] = None, force: bool = False):
+        """Only print result if a different result has been reported, or force=True"""
+        result = result or trial.last_result
+
+        last_result_iter = self._trial_last_printed_results.get(trial.trial_id, -1)
+        this_iter = result.get(TRAINING_ITERATION, 0)
+
+        if this_iter != last_result_iter or force:
+            _print_dict_as_table(
+                result,
+                header=f"{self._addressing_tmpl.format(trial)} result",
+                include=self._metrics,
+                exclude=BLACKLISTED_KEYS,
+                division=AUTO_RESULT_KEYS,
+            )
+            self._trial_last_printed_results[trial.trial_id] = this_iter
 
     def _print_config(self, trial):
-        print(pretty_print(trial.config))
+        _print_dict_as_table(
+            trial.config, header=f"{self._addressing_tmpl.format(trial)} config"
+        )
 
     def on_trial_result(
         self,
@@ -669,13 +836,9 @@ class AirResultProgressCallback(Callback):
             return
         curr_time, running_time = _get_time_str(self._start_time, time.time())
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"finished iter {result[TRAINING_ITERATION]} "
-                    f"at {curr_time} (running for {running_time})",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"finished iteration {result[TRAINING_ITERATION]} "
+            f"at {curr_time} (running for {running_time})."
         )
         self._print_result(trial, result)
 
@@ -689,13 +852,9 @@ class AirResultProgressCallback(Callback):
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"({finished_iter} iters) "
-                    f"finished at {curr_time} (running for {running_time})",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"completed training after {finished_iter} iterations "
+            f"at {curr_time} (running for {running_time})."
         )
         self._print_result(trial)
 
@@ -714,30 +873,26 @@ class AirResultProgressCallback(Callback):
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
         print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    f"saved checkpoint for iter {saved_iter}"
-                    f" at {checkpoint.dir_or_data}",
-                ]
-            )
+            f"{self._addressing_tmpl.format(trial)} "
+            f"saved a checkpoint for iteration {saved_iter} "
+            f"at: {checkpoint.dir_or_data}"
         )
-        print()
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
             return
         has_config = bool(trial.config)
-        print(
-            " ".join(
-                [
-                    self._addressing_tmpl.format(trial),
-                    "started with configuration:" if has_config else "started.",
-                ]
-            )
-        )
+
         if has_config:
+            print(
+                f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
+            )
             self._print_config(trial)
+        else:
+            print(
+                f"{self._addressing_tmpl.format(trial)} "
+                f"started without custom configuration."
+            )
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
