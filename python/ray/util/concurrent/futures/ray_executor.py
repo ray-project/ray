@@ -147,13 +147,14 @@ class RayExecutor(Executor):
                 result_1 = future_1.result()
         """
         self._check_shutdown_lock()
-        fn_curried = partial(fn, *args, **kwargs)
 
         future: Future[T]
         if self._actor_pool:
 
             def actor_fn(a: "ActorHandle", _: Any) -> "ObjectRef[T]":
-                oref: "ObjectRef[T]" = a.actor_function.remote(fn_curried)  # noqa: F821
+                oref: "ObjectRef[T]" = a.actor_function.remote(
+                    partial(fn, *args, **kwargs)
+                )  # noqa: F821
                 return oref
 
             self._actor_pool.submit(actor_fn, None)
@@ -165,15 +166,13 @@ class RayExecutor(Executor):
         elif self.__remote_fn:
             future = (
                 self.__remote_fn.options(name=fn.__name__)  # type: ignore[attr-defined]
-                .remote(fn_curried)
+                .remote(partial(fn, *args, **kwargs))
                 .future()
             )
         else:
             raise RuntimeError("Neither remote function nor actor pool is defined")
 
         self.futures.append(future)
-
-        del fn_curried
         return future
 
     @staticmethod
@@ -243,31 +242,14 @@ class RayExecutor(Executor):
 
         if timeout is not None:
             end_time = timeout + time.monotonic()
+        fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
+        # Yield must be hidden in closure so that the futures are submitted
+        # before the first iterator value is required.
         if self._actor_pool is not None:
 
-            # The following generator is adapted from ray.util.ActorPool.map
-            # but includes a timeout
             def result_iterator() -> Iterator[T]:
                 assert self._actor_pool is not None
-                while self._actor_pool.has_next():
-                    if timeout is None:
-                        self._actor_pool.get_next(timeout=0)
-                    else:
-                        self._actor_pool.get_next(timeout=end_time - time.monotonic())
-                for v in zip(*iterables):
-
-                    def actor_fn(a: "ActorHandle", v: Any) -> "ObjectRef[T]":
-                        oref: "ObjectRef[T]" = a.actor_function.remote(partial(fn, *v))
-                        return oref
-
-                    self._actor_pool.submit(actor_fn, v)
-                    oref: "ObjectRef[T]" = self._actor_pool._index_to_future[
-                        self._actor_pool._next_task_index - 1
-                    ]
-                    future = oref.future()  # type: ignore[attr-defined]
-                    self.futures.append(future)
-                    del oref
                 while self._actor_pool.has_next():
                     if timeout is None:
                         yield self._actor_pool.get_next(timeout=None)
@@ -280,10 +262,7 @@ class RayExecutor(Executor):
                             raise ConTimeoutError
 
         else:
-            fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
-            # Yield must be hidden in closure so that the futures are submitted
-            # before the first iterator value is required.
             def result_iterator() -> Iterator[T]:
                 try:
                     # reverse to keep finishing order
@@ -316,9 +295,7 @@ class RayExecutor(Executor):
                 futures. Futures that are completed or running will not be
                 cancelled.
         """
-        print(0, "shutdown")
         if self._shutdown_ray:
-            print(1, "shutdown")
             self._shutdown_lock = True
 
             if cancel_futures:
@@ -326,13 +303,9 @@ class RayExecutor(Executor):
                     _ = future.cancel()
 
             if wait:
-                print(2, "shutdown")
-                print(self.futures)
                 for future in self.futures:
                     if future.running():
                         _ = future.result()
-
-            print(4, "shutdown")
             ray.shutdown()
         del self.futures
         self.futures = []
