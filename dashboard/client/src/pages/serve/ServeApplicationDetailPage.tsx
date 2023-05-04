@@ -111,15 +111,17 @@ export const ServeApplicationDetailPage = () => {
           },
           {
             label: "Application config",
-            content: (
+            content: application.deployed_app_config ? (
               <CodeDialogButton
                 title={
                   application.name
                     ? `Application config for ${application.name}`
                     : `Application config`
                 }
-                code={application.deployed_app_config || "null"}
+                code={application.deployed_app_config}
               />
+            ) : (
+              <Typography>-</Typography>
             ),
           },
           {
