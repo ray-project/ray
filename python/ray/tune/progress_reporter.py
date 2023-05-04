@@ -1517,7 +1517,7 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
 
 def _detect_progress_metrics(
     trainable: Optional[Union["Trainable", Callable]]
-) -> Optional[List[str]]:
+) -> Optional[Tuple]:
     """Detect progress metrics to report."""
     if not trainable:
         return None
