@@ -844,7 +844,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors.
+        # RLModule API only works with connectors and with Learner API.
         if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
@@ -853,11 +853,15 @@ class AlgorithmConfig(_Config):
             )
 
         # Learner API requires RLModule API.
-        if self._enable_learner_api and not self._enable_rl_module_api:
+        if not (
+            self._enable_learner_api is True == self._enable_rl_module_api is True
+        ):
             raise ValueError(
-                "Learner API requires RLModule API. "
-                "Please enable RLModule API via "
-                "`config.training(_enable_rl_module_api=True)`."
+                "Learner API requires RLModule API and vice-versa! "
+                "Enable RLModule API via "
+                "`config.rl_module(_enable_rl_module_api=True)` and the Learner API "
+                "via `config.training(_enable_learner_api=True)` (or set both to "
+                "False)."
             )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
@@ -1676,7 +1680,7 @@ class AlgorithmConfig(_Config):
                 deprecation_warning(
                     old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
-                    "anymore. To get rid of this error, set `experimental("
+                    "anymore. To get rid of this error, set `rl_module("
                     "_enable_rl_module_api` to True. Native models will "
                     "be better supported by the upcoming RLModule API.",
                     # Error out if user tries to enable this

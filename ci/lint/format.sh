@@ -107,14 +107,14 @@ else
     echo "WARNING: clang-format is not installed!"
 fi
 
-#if command -v java >/dev/null; then
-#  if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-#    echo "Java code format tool google-java-format.jar is not installed, start to install it."
-#    wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
-#  fi
-#else
-#    echo "WARNING:java is not installed, skip format java files!"
-#fi
+if command -v java >/dev/null; then
+  if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+    echo "Java code format tool google-java-format.jar is not installed, start to install it."
+    wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
+  fi
+else
+    echo "WARNING:java is not installed, skip format java files!"
+fi
 
 if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
     echo "WARNING: Ray uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
