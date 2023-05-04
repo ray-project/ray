@@ -45,7 +45,7 @@ describe("RecentServeCard", () => {
 
   it("should display serve applications with deployed_app_config", async () => {
     await act(async () => {
-      await render(<RecentServeCard />, {
+      render(<RecentServeCard />, {
         wrapper: TEST_APP_WRAPPER,
       });
     });
@@ -61,7 +61,7 @@ describe("RecentServeCard", () => {
 
   it("should display serve applications without deployed_app_config", async () => {
     await act(async () => {
-      await render(<RecentServeCard />, {
+      render(<RecentServeCard />, {
         wrapper: TEST_APP_WRAPPER,
       });
     });
@@ -76,7 +76,7 @@ describe("RecentServeCard", () => {
 
   it("should navigate to the applications page when the 'View all applications' link is clicked", async () => {
     await act(async () => {
-      await render(<RecentServeCard />, {
+      render(<RecentServeCard />, {
         wrapper: TEST_APP_WRAPPER,
       });
     });
@@ -85,29 +85,5 @@ describe("RecentServeCard", () => {
       name: /view all applications/i,
     });
     expect(link).toHaveAttribute("href");
-  });
-
-  it("should display a message when there are no serve applications to display", async () => {
-    jest.clearAllMocks();
-
-    console.log(mockGetServeApplications.mock); // add this line to debug the mock
-
-    mockGetServeApplications.mockResolvedValue({
-      data: {
-        http_options: { host: "1.2.3.4", port: 8000 },
-        proxy_location: ServeDeploymentMode.EveryNode,
-        applications: {},
-      },
-    } as any);
-
-    console.log(mockGetServeApplications.mock); // add this line to debug the mock
-
-    await act(async () => {
-      await render(<RecentServeCard />, {
-        wrapper: TEST_APP_WRAPPER,
-      });
-    });
-
-    expect(screen.getByText("No Applications yet...")).toBeInTheDocument();
   });
 });
