@@ -128,8 +128,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
-  RAY_LOG(INFO) << "GcsClient connected " << options_.gcs_address_ << ":"
-                << options_.gcs_port_;
+  RAY_LOG(DEBUG) << "GcsClient connected.";
   return Status::OK();
 }
 
