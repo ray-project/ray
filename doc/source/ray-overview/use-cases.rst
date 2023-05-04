@@ -576,7 +576,7 @@ The following highlights feature companies leveraging Ray's unified API to build
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: https://www.youtube.com/watch?v=_L0lsShbKaY
+        .. button-link:: https://www.youtube.com/watch?v=_L0lsShbKaY
 
             [Talk] Ray Summit Panel - ML Platform on Ray
 
