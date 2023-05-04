@@ -552,7 +552,7 @@ class Humanify:
 
     def timestamp(x: float):
         """Converts miliseconds to a datetime object."""
-        return datetime.datetime.fromtimestamp(x / 1000)
+        return str(datetime.datetime.fromtimestamp(x / 1000))
 
     def memory(x: int):
         """Converts raw bytes to a human readable memory size."""
