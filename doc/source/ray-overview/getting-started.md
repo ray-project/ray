@@ -9,25 +9,27 @@ This guide gives a quick tour of Ray's features.
 ## Starting a local Ray cluster
 To get started, install, import, and initialize Ray. Most of the examples in this guide are based on Python, and some examples use Ray Core in Java.
 
-````{panels}
-:container: text-center
-:column: col-lg-6 px-2 py-2
-:card:
+````{eval-rst}
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-3
+    
+    .. grid-item-card::
 
-Python
-^^^
-To use Ray in Python, install it with
-```
-pip install ray
-```
+        Python
+        ^^^
+        To use Ray in Python, install it with
+        ```
+        pip install ray
+        ```
+    
+    .. grid-item-card::
 
----
-
-Java
-^^^
-
-To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and
-[ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
+        Java
+        ^^^
+        
+        To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and
+        [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
 
 ````
 
@@ -189,13 +191,13 @@ Datastreams also supports ``.filter()`` and ``.flat_map()``.
 ```
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
 :animate: fade-in-slide-down
 
 Ray Train abstracts away the complexity of setting up a distributed training
 system. Let's take following simple examples:
 
-````{tab-set}
+`````{tab-set}
 
 ````{tab-item} PyTorch
 
@@ -304,15 +306,19 @@ with 4 workers, and use it to run the new training function!
 :end-before: __tf_trainer_end__
 :dedent: 0
 ```
-````
-````
+
 
 ```{link-button} ../train/train
 :type: ref
 :text: Learn more about Ray Train
 :classes: btn-outline-primary btn-block
 ```
+
+````
+
 `````
+
+``````
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
@@ -415,10 +421,10 @@ Ray Core provides simple primitives for building and running distributed applica
 Below you find examples that show you how to turn your functions and classes easily into Ray tasks and actors,
 for both Python and Java.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
 
-````{tab-set}
+`````{tab-set}
 
 ````{tab-item} Python
 
@@ -438,8 +444,8 @@ def f(x):
 
 futures = [f.remote(i) for i in range(4)]
 print(ray.get(futures)) # [0, 1, 4, 9]
-
 ```
+
 ````
 
 ````{tab-item} Java
@@ -475,9 +481,7 @@ public class RayDemo {
         System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
     }
 }
-````
-
-````
+```
 
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
@@ -487,10 +491,13 @@ must maintain the state of your application. You can do that with Ray Actors.
 :text: Learn more about Ray Core
 :classes: btn-outline-primary btn-block
 ```
+````
 
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
+``````
+
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
 :animate: fade-in-slide-down
 
 Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
@@ -498,7 +505,7 @@ When you instantiate a class that is a Ray actor, Ray will start a remote instan
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
-````{tab-set}
+`````{tab-set}
 
 ````{tab-item} Python
 
@@ -572,10 +579,7 @@ public class RayDemo {
         System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
     }
 }
-
-````
-
-````
+```
 
 ```{link-button} ../ray-core/walkthrough
 :type: ref
@@ -583,7 +587,11 @@ public class RayDemo {
 :classes: btn-outline-primary btn-block
 ```
 
+````
+
 `````
+
+``````
 
 ## Ray Cluster Quick Start
 
