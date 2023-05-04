@@ -214,9 +214,9 @@ class Algorithm(Trainable):
         "num_env_steps_sampled",
         "num_env_steps_trained",
         "episodes_total",
-        "episode_len_mean",
-        "episode_reward_mean",
-        "evaluation/episode_reward_mean",
+        "sampler_results/episode_len_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
     )
 
     @staticmethod

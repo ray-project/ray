@@ -424,9 +424,9 @@ AIR_TABULATE_TABLEFMT = TableFormat(
 def _print_dict_as_table(
     data: Dict,
     header: Optional[str] = None,
-    include: Optional[Collection] = None,
-    exclude: Optional[Collection] = None,
-    division: Optional[Collection] = None,
+    include: Optional[Collection[str]] = None,
+    exclude: Optional[Collection[str]] = None,
+    division: Optional[Collection[str]] = None,
 ):
     table_data = _get_dict_as_table_data(
         data=data, include=include, exclude=exclude, upper_keys=division
@@ -759,7 +759,7 @@ BLACKLISTED_KEYS = {
 class AirResultCallbackWrapper(Callback):
     # This is only to bypass the issue that by the time default callbacks
     # are added, there is no information on `num_samples` yet.
-    def __init__(self, verbosity: AirVerbosity, metrics: Tuple = ()):
+    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
         self._verbosity = verbosity
         self._callback = None
         self._metrics = metrics
@@ -796,7 +796,7 @@ class AirResultProgressCallback(Callback):
     _intermediate_result_verbosity = None
     _addressing_tmpl = None
 
-    def __init__(self, verbosity: AirVerbosity, metrics: Tuple = ()):
+    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
         self._verbosity = verbosity
         self._start_time = time.time()
         self._trial_last_printed_results = {}

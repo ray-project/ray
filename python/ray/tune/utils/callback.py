@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional, Tuple, Type, Union, TYPE_CHECKING
+from typing import Collection, List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.tune.callback import Callback, CallbackList
 
@@ -45,7 +45,7 @@ def _create_default_callbacks(
     sync_config: SyncConfig,
     air_verbosity: Optional["AirVerbosity"] = None,
     metric: Optional[str] = None,
-    progress_metrics: Optional[Tuple] = None,
+    progress_metrics: Optional[Collection[str]] = None,
 ):
     """Create default callbacks for `Tuner.fit()`.
 
