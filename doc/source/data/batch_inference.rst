@@ -236,7 +236,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
 Advanced batch inference guide
 ------------------------------
 
- Let's use batch inference on a pre-trained PyTorch model for image classification
+Let's use batch inference on a pre-trained PyTorch model for image classification
 to illustrate advanced concepts of batch processing with Ray.
 
 .. important::
@@ -456,6 +456,7 @@ In many standard cases, the input batch format is the same as the output batch f
 but it's good to be aware of the differences.
 
 .. margin::
+
     We refer to batch formats by name in Ray Data (using strings).
     For instance, the batch format used to represent Pandas dataframes is called ``"pandas"``.
     We often use batch format names and the libraries they represent interchangeably.

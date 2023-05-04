@@ -127,14 +127,16 @@ Use the trained model for batch prediction with a ``BatchPredictor``.
     :start-after: __air_xgb_batchpred_start__
     :end-before: __air_xgb_batchpred_end__
 ```
+
+```{button-ref} air
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray AIR
+```
 `````
 
-
-```{link-button} air
-:type: ref
-:text: Learn more about Ray AIR
-:classes: btn-outline-primary btn-block
-```
 
 ## Ray Libraries Quick Start
 
@@ -184,10 +186,12 @@ Datastreams also supports ``.filter()`` and ``.flat_map()``.
 :end-before: __data_transform_end__
 ```
 
-```{link-button} ../data/data
-:type: ref
-:text: Learn more about Ray Data
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../data/data
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Data
 ```
 `````
 
@@ -307,11 +311,12 @@ with 4 workers, and use it to run the new training function!
 :dedent: 0
 ```
 
+```{button-ref}  ../train/train
+:color: primary
+:outline:
+:expand:
 
-```{link-button} ../train/train
-:type: ref
-:text: Learn more about Ray Train
-:classes: btn-outline-primary btn-block
+Learn more about Ray Train
 ```
 
 ````
@@ -349,10 +354,12 @@ If TensorBoard is installed, automatically visualize all trial results:
 tensorboard --logdir ~/ray_results
 ```
 
-```{link-button} ../tune/index
-:type: ref
-:text: Learn more about Ray Tune
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../tune/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Tune
 ```
 
 `````
@@ -380,11 +387,14 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 As a result you will see `{"result": "versicolor"}`.
 
-```{link-button} ../serve/index
-:type: ref
-:text: Learn more about Ray Serve
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../serve/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Serve
 ```
+
 `````
 
 
@@ -407,10 +417,12 @@ pip install "ray[rllib]" tensorflow  # or torch
 :start-after: __quick_start_begin__
 ```
 
-```{link-button} ../rllib/index
-:type: ref
-:text: Learn more about Ray RLlib
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../rllib/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray RLlib
 ```
 
 `````
@@ -486,11 +498,14 @@ public class RayDemo {
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Learn more about Ray Core
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Core
 ```
+
 ````
 
 `````
@@ -581,10 +596,12 @@ public class RayDemo {
 }
 ```
 
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Learn more about Ray Core
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Core
 ```
 
 ````
@@ -631,10 +648,12 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-index
-:type: ref
-:text: Learn more about launching Ray Clusters
-:classes: btn-outline-primary btn-block
+```{button-ref}  cluster-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters
 ```
 
 `````
@@ -660,10 +679,12 @@ pip install "ray[default]"
 ```
 ````
 
-```{link-button} ../ray-core/ray-dashboard
-:type: ref
-:text: Learn more about Ray Dashboard.
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-core/ray-dashboard
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Dashboard
 ```
 
 `````
@@ -736,10 +757,12 @@ See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```
 
-```{link-button} ../ray-observability/state/state-api
-:type: ref
-:text: Learn more about Ray State APIs
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-observability/state/state-api
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray State APIs
 ```
 
 `````

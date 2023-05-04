@@ -110,7 +110,7 @@ Named actors are only accessible within their namespaces.
             ray::Init(config);
             // This fails because "orange" was defined in the "colors" namespace.
             ray::GetActor<Counter>("orange"); // return nullptr;
-            // This succceeds because the name "orange" is unused in this namespace.
+            // This succeeds because the name "orange" is unused in this namespace.
             ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("orange").Remote();
             ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("watermelon").Remote();
             ray::Shutdown();
@@ -161,7 +161,7 @@ the specified namespace, no matter what namespace of the current job is.
 
     .. tab-item:: C++
 
-        .. code-block:: cpp
+        .. code-block::
 
             // `ray start --head` has been run to launch a local cluster.
             ray::RayConfig config;
