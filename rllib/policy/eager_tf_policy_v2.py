@@ -10,6 +10,7 @@ import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -39,6 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_GRAD_UPDATES_LIFETIME,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
@@ -842,6 +844,9 @@ class EagerTFPolicyV2(Policy):
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
             if self.config.get("_enable_rl_module_api", False):
+                input_dict = NestedDict(input_dict)
+                input_dict[STATE_IN] = state_batches
+                input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
                 if explore:
                     fwd_out = self.model.forward_exploration(input_dict)
