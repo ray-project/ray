@@ -8,7 +8,6 @@ from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
