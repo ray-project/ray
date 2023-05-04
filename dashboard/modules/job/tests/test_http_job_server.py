@@ -610,7 +610,6 @@ def test_version_endpoint(job_sdk_client):
 
 def test_request_headers(job_sdk_client):
     client = job_sdk_client
-    address = client.get_address()
     with patch("requests.request") as mock_request:
         _ = client._do_request(
             "POST",
@@ -619,7 +618,7 @@ def test_request_headers(job_sdk_client):
         )
         mock_request.assert_called_with(
             "POST",
-            f"{address}/api/jobs/",
+            "http://127.0.0.1:8265/api/jobs/",
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},

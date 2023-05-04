@@ -312,7 +312,7 @@ class DashboardHead:
         # if it's listening to all interfaces.
         dashboard_http_host = (
             self.ip
-            if self.http_host == ray_constants.DEFAULT_DASHBOARD_IP
+            if self.http_host != ray_constants.DEFAULT_DASHBOARD_IP
             else http_host
         )
         await asyncio.gather(

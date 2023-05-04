@@ -407,7 +407,7 @@ def debug(address):
     default=ray_constants.DEFAULT_DASHBOARD_IP,
     help="the host to bind the dashboard server to, either localhost "
     "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 0.0.0.0",
+    "is 127.0.0.1",
 )
 @click.option(
     "--dashboard-port",

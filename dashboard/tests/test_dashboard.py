@@ -297,7 +297,6 @@ def test_dashboard_address_local(ray_start_with_dashboard):
     [
         {"dashboard_host": "0.0.0.0"},
         {"dashboard_host": "::"},
-        {"dashboard_host": ""},  # default to 0.0.0.0
     ],
     indirect=True,
 )
