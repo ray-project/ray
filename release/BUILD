@@ -466,6 +466,17 @@ py_test(
 )
 
 py_test(
+    name = "test_bisect",
+    size = "small",
+    srcs = ["ray_release/tests/test_bisect.py"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_buildkite",
     size = "small",
     srcs = ["ray_release/tests/test_buildkite.py"],
@@ -566,6 +577,17 @@ py_test(
 )
 
 py_test(
+    name = "test_log_aggregator",
+    size = "small",
+    srcs = ["ray_release/tests/test_log_aggregator.py"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_run_script",
     size = "small",
     srcs = ["ray_release/tests/test_run_script.py"],
@@ -602,26 +624,4 @@ py_test(
         bk_require("freezegun"),
         bk_require("pytest"),
     ],
-)
-
-py_test(
-    name = "test_bisect",
-    size = "small",
-    srcs = ["ray_release/tests/test_bisect.py"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_log_aggregator",
-    size = "small",
-    srcs = ["ray_release/tests/test_log_aggregator.py"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = ["//:ray_lib"],
 )
