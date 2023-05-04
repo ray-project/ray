@@ -691,6 +691,12 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   const auto &bundle_spec = bundle.second;
   std::vector<scheduling::ResourceID> bundle_resource_ids;
   absl::flat_hash_map<std::string, FixedPoint> wildcard_resources;
+
+  if (cluster_resource_manager.HasNode(node_id)) {
+    // If the node is dead, we do not need to release the bundle resources.
+    return true;
+  }
+
   // Subtract wildcard resources and delete bundle resources.
   for (const auto &entry : bundle_spec->GetFormattedResources()) {
     auto resource_id = scheduling::ResourceID(entry.first);
