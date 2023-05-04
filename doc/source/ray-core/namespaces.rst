@@ -161,10 +161,9 @@ the specified namespace, no matter what namespace of the current job is.
 
     .. tab-item:: C++
 
-        .. code-block:: c++
+        .. code-block:: cpp
 
             // `ray start --head` has been run to launch a local cluster.
-
             ray::RayConfig config;
             ray::Init(config);
             // Create an actor with specified namespace.

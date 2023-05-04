@@ -54,12 +54,12 @@ Ray's unified compute framework consists of three layers:
         **Scale machine learning workloads**
         ^^^
         Build ML applications with a toolkit of libraries for distributed 
-        :doc:`data processing <../data/data.rst>`, 
-        :doc:`model training <../train/train.rst>`, 
-        :doc:`tuning <../tune/index.rst>`, 
-        :doc:`reinforcement learning <../rllib/index.rst>`, 
-        :doc:`model serving <../serve/index.rst>`, 
-        and :doc:`more <../ray-more-libs/index.rst>`.
+        :doc:`data processing <../data/data>`, 
+        :doc:`model training <../train/train>`, 
+        :doc:`tuning <../tune/index>`, 
+        :doc:`reinforcement learning <../rllib/index>`, 
+        :doc:`model serving <../serve/index>`, 
+        and :doc:`more <../ray-more-libs/index>`.
         +++
         .. button-ref:: ../ray-air/getting-started
             :color: primary
@@ -73,8 +73,8 @@ Ray's unified compute framework consists of three layers:
         **Build distributed applications**
         ^^^
         Build and run distributed applications with a 
-        :doc:`simple and flexible API <../ray-core/walkthrough.rst>`.
-        :doc:`Parallelize <../ray-core/walkthrough.rst>` single machine code with 
+        :doc:`simple and flexible API <../ray-core/walkthrough>`.
+        :doc:`Parallelize <../ray-core/walkthrough>` single machine code with 
         little to zero code changes.
         
         +++
