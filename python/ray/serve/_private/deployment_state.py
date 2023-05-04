@@ -235,6 +235,12 @@ class ActorReplicaWrapper:
 
         self.scheduling_strategy = scheduling_strategy
 
+        self._model_ids: List[str] = []
+
+    @property
+    def model_ids(self) -> List[str]:
+        return self._model_ids
+
     @property
     def replica_tag(self) -> str:
         return self._replica_tag
@@ -773,6 +779,7 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
+            model_ids=self._actor.model_ids,
         )
 
     @property

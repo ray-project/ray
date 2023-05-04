@@ -325,6 +325,7 @@ class RunningReplicaInfo:
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
+    model_ids: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -341,6 +342,7 @@ class RunningReplicaInfo:
                     str(self.actor_handle._actor_id),
                     str(self.max_concurrent_queries),
                     str(self.is_cross_language),
+                    str(self.model_ids),
                 ]
             )
         )

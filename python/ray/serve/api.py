@@ -52,9 +52,7 @@ from ray.serve._private.utils import (
 from ray.serve._private import api as _private_api
 
 import ray
-from ray.serve import context
-from inspect import iscoroutinefunction
-from ray._private.async_compat import sync_to_async
+from ray.serve.multiplexed import ModelMultiplexWrapper
 
 
 logger = logging.getLogger(__file__)
@@ -581,9 +579,6 @@ def delete(name: str, _blocking: bool = True):
     client.delete_apps([name], blocking=_blocking)
 
 
-from collections import OrderedDict
-
-
 @PublicAPI(stability="alpha")
 def multiplexed(func=None, num_models_per_replica: int = 0):
     """Multiplex a model to multiple replicas.
@@ -604,35 +599,6 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
             "@serve.multiplex can only be used to decorate functions or methods "
             "with at least one 'model_id: str' argument."
         )
-
-    class ModelMultiplexWrapper:
-        def __init__(self, model_load_func, self_args, num_models_per_replica=0):
-            self.models = OrderedDict()
-            self._func = sync_to_async(model_load_func)
-            self.self_args = self_args
-
-        async def load_model(self, model_id: str, *args, **kwargs):
-            if type(model_id) != str:
-                raise TypeError(
-                    "The first argument of the decorated function must be a string "
-                    "representing the model ID. Got type '{}' instead.".format(
-                        type(model_id)
-                    )
-                )
-
-            if model_id in self.models:
-                return self.models[model_id]
-            if self.self_args is None:
-                self.models[model_id] = await self._func(model_id, *args, **kwargs)
-            else:
-                self.models[model_id] = await self._func(
-                    self.self_args, model_id, *args, **kwargs
-                )
-            return self.models[model_id]
-
-        def unload_model(self):
-            tag, _ = self.models.popitem(last=False)
-            del self.models[tag]
 
     def _multiplex_decorator(func):
         @wraps(func)

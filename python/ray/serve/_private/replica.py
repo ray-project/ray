@@ -519,7 +519,6 @@ class RayServeReplica:
 
             # Set request context variables for subsequent handle so that
             # handle can pass the correct request context to subsequent replicas.
-            print("set routing tag handle request: ", request.metadata.model_id)
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
                     request.metadata.route,
