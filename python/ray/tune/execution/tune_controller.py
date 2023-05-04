@@ -35,6 +35,7 @@ from ray.tune.search import SearchAlgorithm
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow
+from ray.tune.utils.log import _dedup_logs
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util.annotations import DeveloperAPI
@@ -42,6 +43,7 @@ from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @DeveloperAPI
@@ -438,7 +440,10 @@ class TuneController(_TuneControllerBase):
             trial_to_run = self._scheduler_alg.choose_trial_to_run(self._wrapped())
 
         if trial_to_run:
-            logger.debug(f"Chose trial to run from scheduler: {trial_to_run}")
+            if _dedup_logs("trial_to_run_chosen", trial_to_run.trial_id):
+                logger.debug(
+                    f"Chose trial to run from scheduler: {trial_to_run} [dedup]"
+                )
             if (
                 trial_to_run not in self._staged_trials
                 and trial_to_run not in self._trial_to_actor
@@ -451,7 +456,11 @@ class TuneController(_TuneControllerBase):
                 self._schedule_trial_actor(trial_to_run)
             else:
                 # Otherwise, only try to use the cached actor
-                logger.debug(f"Trying to re-use actor for trial to run: {trial_to_run}")
+                if _dedup_logs("trial_to_run_reuse", trial_to_run.trial_id):
+                    logger.debug(
+                        f"Trying to re-use actor for trial to run: {trial_to_run} "
+                        f"[dedup]"
+                    )
                 self._maybe_reuse_cached_actor(trial_to_run)
 
         ###
@@ -460,7 +469,7 @@ class TuneController(_TuneControllerBase):
             new_candidates = []
 
             while candidates:
-                if len(self._staged_trials) >= self._max_pending_trials:
+                if self._actor_manager.num_pending_actors >= self._max_pending_trials:
                     break
 
                 trial = candidates.pop(0)

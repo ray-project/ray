@@ -17,6 +17,13 @@ from ray.tune.search._mock import _MockSuggestionAlgorithm
 
 
 @pytest.fixture(scope="function")
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8, num_gpus=0)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture(scope="function")
 def ray_start_4_cpus_2_gpus_extra():
     address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
     yield address_info
@@ -253,9 +260,7 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_searcher_save_restore(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
-):
+def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
     """Searchers state should be saved and restored in the experiment checkpoint.
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testSearcherSaveRestore
@@ -290,9 +295,9 @@ def test_searcher_save_restore(
         experiment_spec = {
             "run": "__fake",
             "num_samples": 20,
-            "config": {"sleep": 1},
-            "stop": {"training_iteration": 3},
-            "resources_per_trial": PlacementGroupFactory([{"CPU": 0.5}]),
+            "config": {"sleep": 10},
+            "stop": {"training_iteration": 2},
+            "resources_per_trial": PlacementGroupFactory([{"CPU": 1}]),
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
         search_alg.add_configurations(experiments)
@@ -314,6 +319,9 @@ def test_searcher_save_restore(
     runner.checkpoint()
     trials = runner.get_trials()
     [runner._schedule_trial_stop(t) for t in trials if t.status is not Trial.ERROR]
+
+    runner.cleanup()
+
     del runner
 
     searcher = create_searcher()
