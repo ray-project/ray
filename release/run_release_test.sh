@@ -7,7 +7,7 @@ if [[ -n "$DEBUG" ]]; then
   set -x
 fi
 
-cd "$(dirname $0)" || exit 1
+cd "$(dirname "$0")" || exit 1
 
 reason() {
   # Keep in sync with e2e.py ExitCode enum
@@ -150,7 +150,7 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
 
   REASON="$(reason "${EXIT_CODE}")"
   RUNTIME=$((END-START))
-  ALL_EXIT_CODES+=($EXIT_CODE)
+  ALL_EXIT_CODES+=("$EXIT_CODE")
 
   case ${EXIT_CODE} in
     0)
