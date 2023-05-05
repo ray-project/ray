@@ -20,23 +20,6 @@ _encode_decode_deprecation_message = (
 )
 
 
-def _warn_about_bad_checkpoint_type(expected_checkpoint_cls: Type[Checkpoint]):
-    return
-    # Do not print warnings in 2.1 yet.
-    # TODO(ml-team): Change this once we have full API parity with framework
-    # checkpoints. Also turn on test_torch_trainer::test_torch_bad_checkpoint_warning
-    # warnings.warn(
-    #     f"You have reported a checkpoint with the `{Checkpoint}` "
-    #     "type, but the intended checkpoint type for the Trainer "
-    #     f"you are using is `{expected_checkpoint_cls}`. "
-    #     "Not using the intended checkpoint type may cause "
-    #     "exceptions or other issues, especially during "
-    #     "serialization and deserialization. The checkpoint "
-    #     "type will be changed automatically. "
-    #     "This behavior may change in the future."
-    # )
-
-
 @DeveloperAPI
 class BackendConfig:
     """Parent class for configurations of training backend."""

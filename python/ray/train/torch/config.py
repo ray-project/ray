@@ -6,7 +6,7 @@ from typing import Optional
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
+from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
@@ -217,10 +217,10 @@ class _TorchBackend(Backend):
     ):
         worker_group.execute(_set_torch_distributed_env_vars)
 
+    # TODO(ml-team): Remove in 2.6.
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint):
         checkpoint = super()._encode_data(checkpoint)
         if type(checkpoint) is Checkpoint:
-            _warn_about_bad_checkpoint_type(TorchCheckpoint)
             checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
         return checkpoint
