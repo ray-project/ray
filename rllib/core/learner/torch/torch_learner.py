@@ -105,7 +105,6 @@ class TorchLearner(Learner):
         if self.hps.lr_schedule is not None:
             value = self.lr_schedule_per_module[module_id].value(t=timestep)
             self.curr_lr_per_module[module_id].data = torch.tensor(value)
-            value = value.item()
         return {LEARNER_RESULTS_CURR_LR_KEY: value}
 
     @override(Learner)
