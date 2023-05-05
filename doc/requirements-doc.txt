@@ -49,14 +49,14 @@ git+https://github.com/ray-project/ray_lightning@main#ray_lightning
 Pygments==2.13.0
 
 # Sphinx
-sphinx==6.2.1
+sphinx==5.3.0  # upgrade to 6.2.1 later, and ultimately 7.x
 sphinx-click==3.0.2
 sphinx-copybutton==0.4.0
 sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
 sphinx-version-warning==1.1.2
 sphinx-book-theme==1.0.1
-sphinx-external-toc==0.2.4
+sphinx-external-toc==0.3.1
 sphinx-sitemap==2.2.0
 sphinxcontrib-redoc==1.6.0
 sphinx-tabs==3.4.0
@@ -73,4 +73,7 @@ jupytext==1.13.6
 
 # Pin urllib to avoid downstream ssl incompatibility issues
 urllib3 < 1.27
-pyyaml==6.0
+PyYAML==6.0
+
+# TODO: https://github.com/executablebooks/sphinx-external-toc/issues/90
+#     needs to be fixed to upgrade to sphinx >= 6.0.0
