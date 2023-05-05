@@ -298,7 +298,7 @@ def deployment(
 
     Args:
         name: Name uniquely identifying this deployment within the application.
-            If not provided, the name of the class or function will be used.
+            If not provided, the name of the class or function is used.
         num_replicas: The number of replicas to run that will handle requests to
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
