@@ -132,6 +132,10 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     for batch_format in batch_formats:
         for compute in ["tasks", "actors"]:
             test_name = f"map-batches-{batch_format}-{compute}-multi-files"
+
+            if compute == "actors":
+                compute = ActorPoolStrategy(min_size=1, max_size=float("inf"))
+
             benchmark.run(
                 test_name,
                 map_batches,
