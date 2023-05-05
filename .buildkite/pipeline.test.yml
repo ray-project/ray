@@ -19,7 +19,7 @@
       release/...
 
 - label: ":shield: release tests"
-  conditions: ["BUILDKITE_PULL_REQUEST"]
+  if: build.pull_request.id != null
   instance_size: small
   commands:
     - python ci/test/ray_release_test.py
