@@ -98,8 +98,8 @@ trainer = TorchTrainer(
     preprocessor=preprocessor,
 )
 # Execute training.
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 0.6559339960416158, ...}
 # __air_pytorch_train_end__
 
