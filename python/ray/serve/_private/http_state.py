@@ -36,7 +36,6 @@ class HTTPProxyState:
         self._actor_started = False
         self._health_check_obj_ref = self._actor_handle.check_health.remote()
         self._last_health_check_time: float = time.time()
-        self._consecutive_health_check_failures = 0
 
     @property
     def status(self) -> HTTPProxyStatus:
@@ -52,12 +51,11 @@ class HTTPProxyState:
         try:
             ray.get(self._health_check_obj_ref)
             self._status = HTTPProxyStatus.HEALTHY
-            self._consecutive_health_check_failures = 0
         except Exception as e:
             logger.warning(
                 f"Health check for HTTP proxy {self._actor_name} failed: {e}"
             )
-            self._consecutive_health_check_failures += 1
+            self._status = HTTPProxyStatus.UNHEALTHY
 
         self._health_check_obj_ref = None
 
@@ -74,9 +72,6 @@ class HTTPProxyState:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
                 self._check_health_obj_ref_result()
-                self._health_check_obj_ref = None
-                if self._consecutive_health_check_failures > 3:
-                    self._status = HTTPProxyStatus.UNHEALTHY
             # If the HTTP Proxy has been blocked for more than 5 seconds, mark unhealthy
             elif time.time() - self._last_health_check_time > 5:
                 self._status = HTTPProxyStatus.UNHEALTHY
