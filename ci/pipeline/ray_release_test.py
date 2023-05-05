@@ -11,12 +11,12 @@ def main() -> int:
     CI and buildkite environment only.
     """
     logger = get_logger()
-    changed_files = get_changed_files()
+    changed_files = _get_changed_files()
     logger.info(f"Changed files: {changed_files}")
     return 0
 
 
-def get_changed_files() -> List[str]:
+def _get_changed_files() -> List[str]:
     """
     Get the list of changed files in the current PR.
     """
