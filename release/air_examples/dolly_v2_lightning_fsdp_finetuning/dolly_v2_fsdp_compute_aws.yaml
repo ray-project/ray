@@ -1,11 +1,6 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-provider:
-    type: aws
-    region: us-west-2
-    availability_zone: us-west-2a, us-west-2b, us-west-2c, us-west-2d
-
 head_node_type:
     name: head_node
     instance_type: g4dn.8xlarge

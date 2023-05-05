@@ -8,6 +8,7 @@ python:
     - "datasets"
     - "evaluate"
     - "scikit-learn"
+    - "boto3"
   conda_packages: []
 
 post_build_cmds:
