@@ -29,6 +29,7 @@ def main(artifact_dir: str) -> int:
     CI and buildkite environment only.
     """
     logger = get_logger()
+<<<<<<< HEAD:ci/pipeline/ray_release_test.py
     changed_files = _get_changed_files()
 =======
     changed_files = get_changed_files()
