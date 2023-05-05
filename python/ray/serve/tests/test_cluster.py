@@ -152,7 +152,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     replica = get_replicas(ReplicaState.STARTING)[0]
 
     # currently there are no resources to allocate the replica
-    assert replica.check_started() == ReplicaStartupStatus.PENDING_ALLOCATION
+    assert replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
@@ -160,7 +160,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) >= 2))
 
     def is_replica_pending_initialization():
-        status = replica.check_started()
+        status, _ = replica.check_started()
         print(status)
         return status == ReplicaStartupStatus.PENDING_INITIALIZATION
 
@@ -169,7 +169,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     # send signal to complete replica intialization
     signal.send.remote()
     wait_for_condition(
-        lambda: replica.check_started() == ReplicaStartupStatus.SUCCEEDED
+        lambda: replica.check_started()[0] == ReplicaStartupStatus.SUCCEEDED
     )
 
 

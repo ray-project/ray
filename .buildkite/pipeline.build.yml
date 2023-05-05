@@ -493,6 +493,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
+    # Install latest pyspark. We cannot move this to the requirements file as subdependencies conflict
+    - pip install -U https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
     - ./ci/env/env_info.sh
     - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
       --test_env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1

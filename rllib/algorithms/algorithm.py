@@ -210,12 +210,14 @@ class Algorithm(Trainable):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
-    _progress_metrics = [
-        "sampler_results/episode_reward_mean",
-        "evaluation/sampler_results/episode_reward_mean",
+    _progress_metrics = (
         "num_env_steps_sampled",
         "num_env_steps_trained",
-    ]
+        "episodes_total",
+        "sampler_results/episode_len_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
+    )
 
     @staticmethod
     def from_checkpoint(
