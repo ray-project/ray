@@ -30,9 +30,14 @@ def _get_test_targets_for_changed_files(changed_files: List[str]) -> str:
     Get the test target for the changed files.
     """
     coverage_file = _get_coverage_file()
-    coverage_info = subprocess.check_output(
-        ["coverage", "report", f"--data-file={coverage_file}"]
-    ).decode("utf-8")
+    coverage_info = subprocess.check_output([
+        "coverage", 
+        "json", 
+        f"--data-file={coverage_file}", 
+        "--show-contexts", 
+        f"--include={','.join(changed_files)}",
+        "-o /tmp/ray_release_coverage.json"
+    ]).decode("utf-8")
     return coverage_info
 
 
@@ -63,7 +68,8 @@ def _get_changed_files() -> List[str]:
     """
     Get the list of changed files in the current PR.
     """
-    base_branch = os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"]
+#    base_branch = os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"]
+    base_branch = "can-coverage"
     return (
         subprocess.check_output(
             ["git", "diff", "--name-only", f"origin/{base_branch}..HEAD"]
