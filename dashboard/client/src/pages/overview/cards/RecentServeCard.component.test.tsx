@@ -47,44 +47,6 @@ describe("RecentServeCard", () => {
     } as any);
   });
 
-  it("should display a message when there are no serve applications to display", async () => {
-    jest.clearAllMocks();
-
-    mockGetServeApplications.mockReset();
-    const testResult = await mockGetServeApplications();
-    console.log("testResult: ", testResult);
-
-    console.log(
-      "mockGetServeApplications.mockResolvedValue: ",
-      mockGetServeApplications.mockResolvedValue,
-    );
-    console.log(mockGetServeApplications.mock); // add this line to debug the mock
-
-    mockGetServeApplications.mockResolvedValue({
-      data: {
-        http_options: { host: "1.2.3.4", port: 8000 },
-        proxy_location: ServeDeploymentMode.EveryNode,
-        applications: {},
-      },
-    } as any);
-    const testResultAfterSetValue = await mockGetServeApplications();
-    console.log("testResultAfterSetValue: ", testResultAfterSetValue);
-
-    console.log(mockGetServeApplications.mock); // add this line to debug the mock
-    // await sleep(1000);
-    // await act(async () => {
-    render(<RecentServeCard />, {
-      wrapper: TEST_APP_WRAPPER,
-    });
-    // });
-    // expect(mockGetServeApplications).toHaveBeenCalled();
-
-    await expect(
-      screen.getByText("No Applications yet..."),
-    ).toBeInTheDocument();
-    // expect(mockGetServeApplications).toHaveBeenCalledTimes(1);
-  });
-
   it.skip("should display serve applications with deployed_app_config", async () => {
     await act(async () => {
       await render(<RecentServeCard />, {
@@ -127,5 +89,41 @@ describe("RecentServeCard", () => {
       name: /view all applications/i,
     });
     expect(link).toHaveAttribute("href");
+  });
+
+  it("should display a message when there are no serve applications to display", async () => {
+    jest.clearAllMocks();
+    mockGetServeApplications.mockReset();
+    // const testResult = await mockGetServeApplications();
+    // console.log("testResult: ", testResult);
+
+    // console.log(
+    //   "mockGetServeApplications.mockResolvedValue: ",
+    //   mockGetServeApplications.mockResolvedValue,
+    // );
+    // console.log(mockGetServeApplications.mock); // add this line to debug the mock
+
+    mockGetServeApplications.mockResolvedValue({
+      data: {
+        http_options: { host: "1.2.3.4", port: 8000 },
+        proxy_location: ServeDeploymentMode.EveryNode,
+        applications: {},
+      },
+    } as any);
+    // const testResultAfterSetValue = await mockGetServeApplications();
+    // console.log("testResultAfterSetValue: ", testResultAfterSetValue);
+
+    // console.log(mockGetServeApplications.mock); // add this line to debug the mock
+    await sleep(1000);
+    await act(async () => {
+      render(<RecentServeCard />, {
+        wrapper: TEST_APP_WRAPPER,
+      });
+    });
+
+    await expect(
+      screen.getByText("No Applications yet..."),
+    ).toBeInTheDocument();
+    // expect(mockGetServeApplications).toHaveBeenCalledTimes(1);
   });
 });
