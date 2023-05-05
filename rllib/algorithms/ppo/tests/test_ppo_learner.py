@@ -116,6 +116,8 @@ class TestPPO(unittest.TestCase):
             learner_group.set_weights(algo.get_weights())
             learner_group.update(train_batch.as_multi_agent())
 
+            algo.stop()
+
     def test_save_load_state(self):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (

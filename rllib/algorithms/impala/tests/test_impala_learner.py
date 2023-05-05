@@ -7,8 +7,7 @@ from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
-from ray.rllib.utils.test_utils import check
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
@@ -80,8 +79,8 @@ class TestImpalaLearner(unittest.TestCase):
         config.exploration_config = {}
 
         for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             if fw == "tf2":
                 train_batch = tf.nest.map_structure(
@@ -96,7 +95,6 @@ class TestImpalaLearner(unittest.TestCase):
             # enabled.
             check(policy_loss, 0.0)
 
-            train_batch = SampleBatch(FAKE_BATCH)
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()
@@ -112,8 +110,10 @@ class TestImpalaLearner(unittest.TestCase):
             )
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
-            learner_group.set_weights(trainer.get_weights())
+            learner_group.set_weights(algo.get_weights())
             learner_group.update(train_batch.as_multi_agent())
+
+            algo.stop()
 
 
 if __name__ == "__main__":
