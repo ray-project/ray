@@ -138,7 +138,6 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # Override some of APPOConfig's default values with AlphaStar-specific
         # values.
-        self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
         self.policies = None
         self.simple_optimizer = True

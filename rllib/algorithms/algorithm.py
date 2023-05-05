@@ -723,10 +723,10 @@ class Algorithm(Trainable):
         self.learner_group = None
         if self.config._enable_learner_api:
             # TODO (Kourosh): This is an interim solution where policies and modules
-            # co-exist. In this world we have both policy_map and MARLModule that need
-            # to be consistent with one another. To make a consistent parity between
-            # the two we need to loop through the policy modules and create a simple
-            # MARLModule from the RLModule within each policy.
+            #  co-exist. In this world we have both policy_map and MARLModule that need
+            #  to be consistent with one another. To make a consistent parity between
+            #  the two we need to loop through the policy modules and create a simple
+            #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_spec = local_worker.marl_module_spec
             learner_group_config = self.config.get_learner_group_config(module_spec)
