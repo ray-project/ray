@@ -3,45 +3,42 @@
 ML Tensor Support
 =================
 
-Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Ray Data provides a unified tensor data type that can be used to represent, transform, and store tensor data:
+Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Ray Data provides tensor extension types that integrate with Pandas and Arrow.
 
 * For Pandas, Ray Data will transparently convert ``List[np.ndarray]`` columns to and from the :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` extension type.
 * For Parquet, Ray Data has an Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` that allows tensors to be loaded from and stored in the Parquet format.
-* In addition, single-column tensor datastreams can be created from NumPy (.npy) files.
 
 Ray Data automatically converts between the extension types/arrays above. This means you can think of a ``Tensor`` as a first-class data type in Ray Data.
 
-Creating Tensor Datastreams
----------------------------
+Loading Tensor Data
+-------------------
 
-This section shows how to create single and multi-column tensor datastreams.
+This section shows how to create datastreams that include tensor data.
 
 .. tab-set::
 
     .. tab-item:: Synthetic Data
 
-      Create a synthetic tensor datastream from a range of integers.
-
-      **Single-column only**:
+      Create synthetic tensor data from a range of integers.
 
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
         :start-after: __create_range_begin__
         :end-before: __create_range_end__
 
-    .. tab-item:: Pandas UDF
+    .. tab-item:: Images
 
-      Create tensor datastreams by returning ``List[np.ndarray]`` columns from a Pandas
-      :ref:`user-defined function <transform_datastreams_writing_udfs>`.
-
-      **Single-column**:
+      Load image data stored as individual files using :func:`~ray.data.read_images`:
 
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
-        :start-after: __create_pandas_begin__
-        :end-before: __create_pandas_end__
+        :start-after: __create_images_begin__
+        :end-before: __create_images_end__
 
-      **Multi-column**:
+    .. tab-item:: Pandas UDF
+
+      Create tensor columns by returning ``List[np.ndarray]`` columns from a Pandas
+      :ref:`user-defined function <transform_datastreams_writing_udfs>`.
 
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
@@ -50,9 +47,7 @@ This section shows how to create single and multi-column tensor datastreams.
 
     .. tab-item:: NumPy
 
-      Create from in-memory NumPy data or from previously saved NumPy (.npy) files.
-
-      **Single-column only**:
+      Create from in-memory NumPy data or previously saved NumPy (.npy) files.
 
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
@@ -95,55 +90,21 @@ This section shows how to create single and multi-column tensor datastreams.
         :start-after: __create_parquet_3_begin__
         :end-before: __create_parquet_3_end__
 
-    .. tab-item:: Images
+Processing Tensor Data
+----------------------
 
-      Load image data stored as individual files using :func:`~ray.data.read_images`:
-
-      **Image and label columns**:
-
-      .. literalinclude:: ./doc_code/tensor.py
-        :language: python
-        :start-after: __create_images_begin__
-        :end-before: __create_images_end__
-
-.. note::
-
-  By convention, single-column tensor datastreams are represented with a single ``__value__`` column.
-  This kind of datastream will be converted automatically to/from NumPy ndarray format in all transformation and consumption APIs.
-
-Transforming / Consuming Tensor Data
-------------------------------------
-
-Like any other Datastream, Datastreams with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=\<format\>) <ray.data.Datastream.iter_batches>` and :meth:`ds.map_batches(fn, batch_format=\<format\>) <ray.data.Datastream.map_batches>` APIs. This section shows the available batch formats and their behavior:
+Like any other Datastream, Datastreams with tensor columns can be processed in batches via :meth:`ds.iter_batches <ray.data.Datastream.iter_batches>` and :meth:`ds.map_batches <ray.data.Datastream.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
 .. tab-set::
 
-    .. tab-item:: "default"
-
-      **Single-column**:
+    .. tab-item:: "numpy" (default)
 
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
-        :start-after: __consume_native_begin__
-        :end-before: __consume_native_end__
-
-      **Multi-column**:
-
-      .. literalinclude:: ./doc_code/tensor.py
-        :language: python
-        :start-after: __consume_native_2_begin__
-        :end-before: __consume_native_2_end__
+        :start-after: __consume_numpy_2_begin__
+        :end-before: __consume_numpy_2_end__
 
     .. tab-item:: "pandas"
-
-      **Single-column**:
-
-      .. literalinclude:: ./doc_code/tensor.py
-        :language: python
-        :start-after: __consume_pandas_begin__
-        :end-before: __consume_pandas_end__
-
-      **Multi-column**:
 
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
@@ -152,40 +113,15 @@ Like any other Datastream, Datastreams with tensor columns can be consumed / tra
 
     .. tab-item:: "pyarrow"
 
-      **Single-column**:
-
-      .. literalinclude:: ./doc_code/tensor.py
-        :language: python
-        :start-after: __consume_pyarrow_begin__
-        :end-before: __consume_pyarrow_end__
-
-      **Multi-column**:
-
       .. literalinclude:: ./doc_code/tensor.py
         :language: python
         :start-after: __consume_pyarrow_2_begin__
         :end-before: __consume_pyarrow_2_end__
 
-    .. tab-item:: "numpy"
+Saving Tensor Data
+------------------
 
-      **Single-column**:
-
-      .. literalinclude:: ./doc_code/tensor.py
-        :language: python
-        :start-after: __consume_numpy_begin__
-        :end-before: __consume_numpy_end__
-
-      **Multi-column**:
-
-      .. literalinclude:: ./doc_code/tensor.py
-        :language: python
-        :start-after: __consume_numpy_2_begin__
-        :end-before: __consume_numpy_2_end__
-
-Saving Tensor Datastreams
--------------------------
-
-Because tensor datastreams rely on Datastreams-specific extension types, they can only be
+Because tensor data relies on Datastream-specific extension types, they can only be
 saved in formats that preserve Arrow metadata (currently only Parquet). In addition,
 single-column tensor datastreams can be saved in NumPy format.
 
