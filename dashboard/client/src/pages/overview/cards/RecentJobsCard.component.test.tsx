@@ -54,6 +54,8 @@ describe("RecentJobsCard", () => {
   it("renders", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
+    console.log(mockedUseJobList.mock.results);
+
     await screen.findByText("01000000");
     expect(screen.getByText("02000000")).toBeVisible();
     expect(screen.getByText("raysubmit_23456")).toBeVisible();

@@ -26,6 +26,7 @@ export const useServeApplications = () => {
   const { data, error } = useSWR(
     "useServeApplications",
     async () => {
+      console.log("before call API");
       const rsp = await getServeApplications();
 
       if (rsp) {
