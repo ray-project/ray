@@ -368,18 +368,18 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
+    # This is needed or else the Ray Client tests run into a gRPC forking problem
+    # similar to https://github.com/grpc/grpc/issues/31885
+    - pip install pip install grpcio==1.50.0
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=client_tests,small_size_python_tests
+      -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
       --test_env=DOCKER_HOST=tcp://docker:2376
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
-      -- python/ray/tests/...
-    # This is needed or else the Ray Client tests run into a gRPC forking problem
-    # similar to https://github.com/grpc/grpc/issues/31885
-    - pip install pip install grpcio==1.50.0
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       -- python/ray/autoscaler/v2/...
