@@ -4,11 +4,7 @@ import os
 import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 
 import transformers
@@ -92,17 +88,18 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     shards, with each Actor training on a single shard.
     All the other datasets will not be split.
 
+    Please note that if you use a custom ``transformers.Trainer`` subclass,
+    the ``get_train_dataloader`` method will be wrapped around to disable
+    sharding by ``transformers.IterableDatasetShard``, as the dataset will
+    already be sharded on the Ray AIR side.
+
     You can also provide ``datasets.Dataset`` object or other dataset objects
     allowed by ``transformers.Trainer`` directly in the ``trainer_init_per_worker``
     function, without specifying the ``datasets`` dict. It is recommended to initialize
     those objects inside the function, as otherwise they will be serialized and passed
     to the function, which may lead to long runtime and memory issues with large
-    amounts of data.
-
-    Please note that if you use a custom ``transformers.Trainer`` subclass,
-    the ``get_train_dataloader`` method will be wrapped around to disable
-    sharding by ``transformers.IterableDatasetShard``, as the dataset will
-    already be sharded on the Ray AIR side.
+    amounts of data. In this case, the training dataset will be split
+    automatically by Transformers.
 
     HuggingFace loggers will be automatically disabled, and the ``local_rank``
     argument in ``TrainingArguments`` will be automatically set. Please note

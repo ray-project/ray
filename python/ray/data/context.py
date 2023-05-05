@@ -55,7 +55,7 @@ DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 DEFAULT_MIN_PARALLELISM = 200
 
 # Wether to use actor based block prefetcher.
-DEFAULT_ACTOR_PREFETCHER_ENABLED = True
+DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 # Whether to use push-based shuffle by default.
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -107,7 +107,7 @@ DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 # Enable strict schema mode (experimental). In this mode, we only allow structured
 # schemas, and default to numpy as the batch format.
-DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "0")))
+DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "1")))
 
 # Set this to True to use the legacy iter_batches codepath prior to 2.4.
 DEFAULT_USE_LEGACY_ITER_BATCHES = False
@@ -120,6 +120,9 @@ OK_PREFIX = "✔️ "
 
 # Default batch size for batch transformations.
 DEFAULT_BATCH_SIZE = 4096
+
+# Default batch size for batch transformations in strict mode.
+STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
 
 # Whether to enable progress bars.
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(

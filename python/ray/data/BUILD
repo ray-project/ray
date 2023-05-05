@@ -43,6 +43,14 @@ py_test(
 )
 
 py_test(
+    name = "test_nonstrict_mode",
+    size = "small",
+    srcs = ["tests/test_nonstrict_mode.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_sql",
     size = "small",
     srcs = ["tests/test_sql.py"],

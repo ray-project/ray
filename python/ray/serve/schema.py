@@ -15,6 +15,7 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def _route_prefix_format(cls, v):
@@ -304,9 +305,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     """
 
     name: str = Field(
-        # TODO(cindy): eventually we should set the default app name to a non-empty
-        # string and forbid empty app names.
-        default="",
+        default=SERVE_DEFAULT_APP_NAME,
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -320,6 +319,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
+        ...,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -536,8 +536,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
-        default=[],
-        description=("The set of Serve applications to run on the Ray cluster."),
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")

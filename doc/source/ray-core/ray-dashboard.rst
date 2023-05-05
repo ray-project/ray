@@ -440,26 +440,28 @@ Advanced Usage
 Changing Dashboard Ports
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: Single-node local cluster
+.. tab-set::
 
-  **CLI**
+    .. tab-item:: Single-node local cluster
 
-  To customize the port on which the dashboard runs, you can pass
-  the ``--dashboard-port`` argument with ``ray start`` in the command line.
+      **CLI**
 
-  **ray.init**
+      To customize the port on which the dashboard runs, you can pass
+      the ``--dashboard-port`` argument with ``ray start`` in the command line.
 
-  If you need to customize the port on which the dashboard will run, you can pass the
-  keyword argument ``dashboard_port`` in your call to ``ray.init()``.
+      **ray.init**
 
-.. tabbed:: VM Cluster Launcher
+      If you need to customize the port on which the dashboard will run, you can pass the
+      keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 
-  To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument 
-  and specify the desired port number in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
+    .. tab-item:: VM Cluster Launcher
 
-.. tabbed:: Kuberay
+      To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument
+      and specify the desired port number in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
 
-  See the `Specifying non-default ports <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports>`_ page.
+    .. tab-item:: Kuberay
+
+      See the `Specifying non-default ports <https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports>`_ page.
 
 Viewing Built-in Dashboard API Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -521,28 +523,30 @@ Dashboard is included in the `ray[default]` installation by default and automati
 
 To disable the dashboard, use the following arguments `--include-dashboard`.
 
-.. tabbed:: Single-node local cluster
+.. tab-set::
 
-  **CLI**
+    .. tab-item:: Single-node local cluster
 
-  .. code-block:: bash
+      **CLI**
 
-      ray start --include-dashboard=False
+      .. code-block:: bash
 
-  **ray.init**
+          ray start --include-dashboard=False
 
-  .. code-block:: python
+      **ray.init**
 
-      ray.init(include_dashboard=False)
+      .. code-block:: python
 
-.. tabbed:: VM Cluster Launcher
+          ray.init(include_dashboard=False)
 
-  To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument 
-  in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
+    .. tab-item:: VM Cluster Launcher
 
-.. tabbed:: Kuberay
+      To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument
+      in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
 
-  TODO
+    .. tab-item:: Kuberay
+
+      TODO
 
 .. _dash-reference:
 

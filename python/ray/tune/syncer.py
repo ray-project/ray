@@ -1,4 +1,5 @@
 import abc
+import urllib.parse
 from functools import partial
 import threading
 from typing import (
@@ -18,7 +19,18 @@ import os
 import time
 from dataclasses import dataclass
 
+try:
+    import fsspec
+except Exception:
+    fsspec = None
+
+try:
+    import s3fs
+except Exception:
+    s3fs = None
+
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
@@ -33,6 +45,7 @@ from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
@@ -145,14 +158,6 @@ class SyncConfig:
         Note that self.syncer is omitted here; seems to have some overlap
         with existing configuration settings here in the SyncConfig class.
         """
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {
@@ -197,6 +202,31 @@ class SyncConfig:
             )
         if not upload_dir and isinstance(self.syncer, Syncer):
             raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
+
+        parsed = urllib.parse.urlparse(upload_dir)
+        # Todo: Only warn for pyarrow versions that are affected by
+        # https://github.com/apache/arrow/issues/32372#issuecomment-1421097792
+        if (
+            parsed.scheme
+            and not s3fs
+            and parsed.scheme.startswith("s3")
+            and log_once("fsspec_missing")
+        ):
+            logger.warning(
+                "You are using S3 for remote storage, but you don't have `s3fs` "
+                "installed. Due to a bug in PyArrow, this can lead to significant "
+                "slowdowns. To avoid this, install s3fs with "
+                "`pip install fsspec s3fs`."
+            )
+        elif not fsspec and log_once("fsspec_missing"):
+            logger.warning(
+                "You are using remote storage, but you don't have `fsspec` "
+                "installed. This can lead to inefficient syncing behavior. "
+                "To avoid this, install fsspec with "
+                "`pip install fsspec`. Depending on your remote storage provider, "
+                "consider installing the respective fsspec-package "
+                "(see https://github.com/fsspec)."
+            )
 
         if isinstance(self.syncer, Syncer):
             return self.syncer.validate_upload_dir(upload_dir or self.upload_dir)

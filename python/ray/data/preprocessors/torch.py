@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Union, Optional, Mapping
 
 import numpy as np
 
@@ -63,6 +63,8 @@ class TorchVisionPreprocessor(Preprocessor):
         transform: The TorchVision transform you want to apply. This transform should
             accept a ``np.ndarray`` or ``torch.Tensor`` as input and return a
             ``torch.Tensor`` as output.
+        output_columns: The output name for each input column. If not specified, this
+            defaults to the same set of columns as the columns.
         batched: If ``True``, apply ``transform`` to batches of shape
             :math:`(B, H, W, C)`. Otherwise, apply ``transform`` to individual images.
     """  # noqa: E501
@@ -73,21 +75,32 @@ class TorchVisionPreprocessor(Preprocessor):
         self,
         columns: List[str],
         transform: Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"],
+        output_columns: Optional[List[str]] = None,
         batched: bool = False,
     ):
+        if not output_columns:
+            output_columns = columns
+        if len(columns) != len(output_columns):
+            raise ValueError(
+                "The length of columns should match the "
+                f"length of output_columns: {columns} vs {output_columns}."
+            )
         self._columns = columns
+        self._output_columns = output_columns
         self._torchvision_transform = transform
         self._batched = batched
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}(columns={self._columns}, "
+            f"{self.__class__.__name__}("
+            f"columns={self._columns}, "
+            f"output_columns={self._output_columns}, "
             f"transform={self._torchvision_transform!r})"
         )
 
     def _transform_numpy(
-        self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
-    ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
+        self, data_batch: Dict[str, "np.ndarray"]
+    ) -> Dict[str, "np.ndarray"]:
         import torch
         from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 
@@ -98,15 +111,15 @@ class TorchVisionPreprocessor(Preprocessor):
             except TypeError:
                 # Transforms like `ToTensor` expect a `np.ndarray` as input.
                 output = self._torchvision_transform(array)
-
-            if not isinstance(output, torch.Tensor):
+            if isinstance(output, torch.Tensor):
+                output = output.numpy()
+            if not isinstance(output, np.ndarray):
                 raise ValueError(
                     "`TorchVisionPreprocessor` expected your transform to return a "
-                    "`torch.Tensor`, but your transform returned a "
+                    "`torch.Tensor` or `np.ndarray`, but your transform returned a "
                     f"`{type(output).__name__}` instead."
                 )
-
-            return output.numpy()
+            return output
 
         def transform_batch(batch: np.ndarray) -> np.ndarray:
             if self._batched:
@@ -115,14 +128,15 @@ class TorchVisionPreprocessor(Preprocessor):
                 [apply_torchvision_transform(array) for array in batch]
             )
 
-        if isinstance(np_data, dict):
-            outputs = np_data
-            for column in self._columns:
-                outputs[column] = transform_batch(np_data[column])
+        if isinstance(data_batch, Mapping):
+            for input_col, output_col in zip(self._columns, self._output_columns):
+                data_batch[output_col] = transform_batch(data_batch[input_col])
         else:
-            outputs = transform_batch(np_data)
+            # TODO(ekl) deprecate this code path. Unfortunately, predictors are still
+            # sending schemaless arrays to preprocessors.
+            data_batch = transform_batch(data_batch)
 
-        return outputs
+        return data_batch
 
     def preferred_batch_format(cls) -> BatchFormat:
         return BatchFormat.NUMPY

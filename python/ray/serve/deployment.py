@@ -12,6 +12,7 @@ from typing import (
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from ray.serve.context import get_global_client
+from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
 from ray.dag.function_node import FunctionNode
 from ray.serve.config import (
@@ -31,8 +32,95 @@ from ray.serve.schema import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@PublicAPI(stability="beta")
+class Application(DAGNodeBase):
+    """One or more deployments bound with arguments that can be deployed together.
+
+    Can be passed into another `Deployment.bind()` to compose multiple deployments in a
+    single application, passed to `serve.run`, or deployed via a Serve config file.
+
+    For example, to define an Application and run it in Python:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve import Application
+
+            @serve.deployment
+            class MyDeployment:
+                pass
+
+            app: Application = MyDeployment.bind(OtherDeployment.bind())
+            serve.run(app)
+
+    To run the same app using the command line interface (CLI):
+
+        .. code-block:: bash
+
+            serve run python_file:app
+
+    To deploy the same app via a config file:
+
+        .. code-block:: yaml
+
+            applications:
+                my_app:
+                    import_path: python_file:app
+
+    """
+
+    def __init__(
+        self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
+    ):
+        if _internal_dag_node is None:
+            raise RuntimeError("This class should not be constructed directly.")
+
+        self._internal_dag_node = _internal_dag_node
+
+    def _get_internal_dag_node(self) -> Union[ClassNode, FunctionNode]:
+        if self._internal_dag_node is None:
+            raise RuntimeError("Application object should not be constructed directly.")
+
+        return self._internal_dag_node
+
+    @classmethod
+    def _from_internal_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
+        return cls(_internal_dag_node=dag_node)
+
+    # Proxy all method calls to the underlying DAG node. This allows this class to be
+    # passed in place of the ClassNode or FunctionNode in the DAG building code.
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_internal_dag_node(), name)
+
+
 @PublicAPI
 class Deployment:
+    """Class (or function) decorated with the `@serve.deployment` decorator.
+
+    This is run on a number of replica actors. Requests to those replicas call
+    this class.
+
+    One or more deployments can be composed together into an `Application` which is
+    then run via `serve.run` or a config file.
+
+    Example:
+
+    .. code-block:: python
+
+        @serve.deployment
+        class MyDeployment:
+            def __init__(self, name: str):
+                self._name = name
+
+            def __call__(self, request):
+                return "Hello world!"
+
+            app = MyDeployment.bind()
+            # Run via `serve.run` or the `serve run` CLI command.
+            serve.run(app)
+
+    """
+
     def __init__(
         self,
         func_or_class: Union[Callable, str],
@@ -46,13 +134,6 @@ class Deployment:
         is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
-        """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
-
-        Deployments should be created, retrieved, and updated using
-        `@serve.deployment`, `serve.get_deployment`, and `Deployment.options`,
-        respectively.
-        """
-
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -120,10 +201,6 @@ class Deployment:
 
     @property
     def version(self) -> Optional[str]:
-        """Version of this deployment.
-
-        If None, will be redeployed every time `.deploy()` is called.
-        """
         return self._version
 
     @property
@@ -160,17 +237,14 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Positional args passed to the underlying class's constructor."""
         return self._init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
-        """Keyword args passed to the underlying class's constructor."""
         return self._init_kwargs
 
     @property
     def url(self) -> Optional[str]:
-        """Full HTTP url for this deployment."""
         if self._route_prefix is None or self._is_driver_deployment:
             # this deployment is not exposed over HTTP
             return None
@@ -184,11 +258,11 @@ class Deployment:
         )
 
     @PublicAPI(stability="beta")
-    def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
-        """Bind the provided arguments and return a class or function node.
+    def bind(self, *args, **kwargs) -> Application:
+        """Bind the arguments to the deployment and return an Application.
 
-        The returned bound deployment can be deployed or bound to other
-        deployments to create a deployment graph.
+        The returned Application can be deployed using `serve.run` (or via
+        config file) or bound to another deployment for composition.
         """
 
         copied_self = copy(self)
@@ -196,7 +270,7 @@ class Deployment:
         schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):
-            return FunctionNode(
+            dag_node = FunctionNode(
                 self._func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
@@ -207,7 +281,7 @@ class Deployment:
                 },
             )
         else:
-            return ClassNode(
+            dag_node = ClassNode(
                 self._func_or_class,
                 args,
                 kwargs,
@@ -217,6 +291,8 @@ class Deployment:
                     "is_from_serve_deployment": True,
                 },
             )
+
+        return Application._from_internal_dag_node(dag_node)
 
     @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)
@@ -342,14 +418,7 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
 
-        Args:
-            Refer to @serve.deployment decorator docstring for all non-private
-            arguments.
-
-            _internal: If True, this function won't log deprecation warnings
-                and won't update this deployment's config's
-                user_configured_option_names. It should only be True when used
-                internally by Serve. It should be False when called by users.
+        Refer to the `@serve.deployment` decorator docs for available arguments.
         """
 
         # NOTE: The user_configured_option_names should be the first thing that's
@@ -469,10 +538,13 @@ class Deployment:
         is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
-        """Overwrite this deployment's options. Mutates the deployment.
+        """Overwrite this deployment's options in-place.
 
         Only those options passed in will be updated, all others will remain
         unchanged.
+
+        Refer to the @serve.deployment decorator docstring for all non-private
+        arguments.
         """
 
         validated = self.options(

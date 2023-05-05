@@ -191,73 +191,75 @@ You can save trial artifacts directly in the trainable, as shown below:
 .. tip:: Make sure that any logging calls or objects stay within scope of the Trainable.
     You may see pickling or other serialization errors or inconsistent logs otherwise.
 
-.. tabbed:: Function API
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: Function API
 
-        import logging_library  # ex: mlflow, wandb
-        from ray.air import session
+        .. code-block:: python
 
-        def trainable(config):
-            logging_library.init(
-                name=trial_id,
-                id=trial_id,
-                resume=trial_id,
-                reinit=True,
-                allow_val_change=True)
-            logging_library.set_log_path(os.getcwd())
+            import logging_library  # ex: mlflow, wandb
+            from ray.air import session
 
-            for step in range(100):
-                logging_library.log_model(...)
-                logging_library.log(results, step=step)
-
-                # You can also just write to a file directly.
-                # The working directory is set to the trial directory, so
-                # you don't need to worry about multiple workers saving
-                # to the same location.
-                with open(f"./artifact_{step}.txt", "w") as f:
-                    f.write("Artifact Data")
-
-                session.report(results)
-
-
-.. tabbed:: Class API
-
-    .. code-block:: python
-
-        import logging_library  # ex: mlflow, wandb
-        from ray import tune
-
-        class CustomLogging(tune.Trainable)
-            def setup(self, config):
-                trial_id = self.trial_id
+            def trainable(config):
                 logging_library.init(
                     name=trial_id,
                     id=trial_id,
                     resume=trial_id,
                     reinit=True,
-                    allow_val_change=True
-                )
+                    allow_val_change=True)
                 logging_library.set_log_path(os.getcwd())
 
-            def step(self):
-                logging_library.log_model(...)
+                for step in range(100):
+                    logging_library.log_model(...)
+                    logging_library.log(results, step=step)
 
-                # You can also write to a file directly.
-                # The working directory is set to the trial directory, so
-                # you don't need to worry about multiple workers saving
-                # to the same location.
-                with open(f"./artifact_{self.iteration}.txt", "w") as f:
-                    f.write("Artifact Data")
+                    # You can also just write to a file directly.
+                    # The working directory is set to the trial directory, so
+                    # you don't need to worry about multiple workers saving
+                    # to the same location.
+                    with open(f"./artifact_{step}.txt", "w") as f:
+                        f.write("Artifact Data")
 
-            def log_result(self, result):
-                res_dict = {
-                    str(k): v
-                    for k, v in result.items()
-                    if (v and "config" not in k and not isinstance(v, str))
-                }
-                step = result["training_iteration"]
-                logging_library.log(res_dict, step=step)
+                    session.report(results)
+
+
+    .. tab-item:: Class API
+
+        .. code-block:: python
+
+            import logging_library  # ex: mlflow, wandb
+            from ray import tune
+
+            class CustomLogging(tune.Trainable)
+                def setup(self, config):
+                    trial_id = self.trial_id
+                    logging_library.init(
+                        name=trial_id,
+                        id=trial_id,
+                        resume=trial_id,
+                        reinit=True,
+                        allow_val_change=True
+                    )
+                    logging_library.set_log_path(os.getcwd())
+
+                def step(self):
+                    logging_library.log_model(...)
+
+                    # You can also write to a file directly.
+                    # The working directory is set to the trial directory, so
+                    # you don't need to worry about multiple workers saving
+                    # to the same location.
+                    with open(f"./artifact_{self.iteration}.txt", "w") as f:
+                        f.write("Artifact Data")
+
+                def log_result(self, result):
+                    res_dict = {
+                        str(k): v
+                        for k, v in result.items()
+                        if (v and "config" not in k and not isinstance(v, str))
+                    }
+                    step = result["training_iteration"]
+                    logging_library.log(res_dict, step=step)
 
 
 In the code snippet above, ``logging_library`` refers to whatever 3rd party logging library you are using.

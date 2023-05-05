@@ -20,15 +20,9 @@ from argparse import Namespace
 from typing import Optional, Tuple, Union
 import tempfile
 from pathlib import Path
-
+from packaging.version import Version
 
 from contextlib import nullcontext
-
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
 
 import accelerate
 

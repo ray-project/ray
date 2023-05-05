@@ -2,6 +2,7 @@ import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
+from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
 from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
@@ -321,7 +322,8 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             None if the current task or actor wasn't
             created with any placement group.
     """
-    if client_mode_should_convert(auto_init=True):
+    auto_init_ray()
+    if client_mode_should_convert():
         # Client mode is only a driver.
         return None
     worker = ray._private.worker.global_worker
@@ -374,7 +376,6 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-
     bundles = placement_group.bundle_specs
     resources_valid = _valid_resource_shape(resources, bundles)
     placement_resources_valid = _valid_resource_shape(placement_resources, bundles)
