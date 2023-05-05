@@ -404,10 +404,10 @@ def debug(address):
 @click.option(
     "--dashboard-host",
     required=False,
-    default="localhost",
+    default=ray_constants.DEFAULT_DASHBOARD_IP,
     help="the host to bind the dashboard server to, either localhost "
     "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is localhost.",
+    "is 127.0.0.1",
 )
 @click.option(
     "--dashboard-port",
@@ -429,6 +429,12 @@ def debug(address):
     type=int,
     default=None,
     help="the port for dashboard agents to listen for grpc on.",
+)
+@click.option(
+    "--dashboard-grpc-port",
+    type=int,
+    default=None,
+    help="The port for the dashboard head to listen for grpc on.",
 )
 @click.option(
     "--block",
@@ -552,6 +558,7 @@ def start(
     dashboard_port,
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
+    dashboard_grpc_port,
     block,
     plasma_directory,
     autoscaling_config,
@@ -638,6 +645,7 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
+        dashboard_grpc_port=dashboard_grpc_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,

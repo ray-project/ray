@@ -185,7 +185,7 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     tuner = Tuner(
         trainer,
         param_space={"train_loop_config": {"max_iter": 10}},
-    ).restore(trial.local_dir)
+    ).restore(trial.local_dir, trainable=trainer)
     analysis = tuner.fit()._experiment_analysis
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
@@ -261,14 +261,12 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     )
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        with pytest.warns() as warn_record:
-            tuner = Tuner.restore(
-                str(tmpdir / "restore_new_trainer"),
-                trainable=trainer,
-                resume_errored=True,
-            )
-        # Should warn about the RunConfig being ignored
-        assert any("RunConfig" in str(record.message) for record in warn_record)
+        tuner = Tuner.restore(
+            str(tmpdir / "restore_new_trainer"),
+            trainable=trainer,
+            resume_errored=True,
+        )
+        assert "they will be ignored in the resumed run" in caplog.text
 
     results = tuner.fit()
     assert not results.errors

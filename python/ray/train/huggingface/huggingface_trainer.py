@@ -4,11 +4,7 @@ import os
 import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 
 import transformers

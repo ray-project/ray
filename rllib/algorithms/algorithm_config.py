@@ -1,5 +1,4 @@
 import copy
-import dataclasses
 import logging
 import math
 import os
@@ -18,7 +17,7 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -316,16 +315,14 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
+        self.grad_clip = None
+        self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
-        self.learner_class = None
+        self._learner_class = None
         self._enable_learner_api = False
-        # experimental: this will contain the hyper-parameters that are passed to the
-        # Learner, for computing loss, etc. New algorithms have to set this to their
-        # own default. .training() will modify the fields of this object.
-        self._learner_hps = LearnerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -466,10 +463,6 @@ class AlgorithmConfig(_Config):
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
         self.no_done_at_end = DEPRECATED_VALUE
-
-    @property
-    def learner_hps(self) -> LearnerHPs:
-        return self._learner_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -881,7 +874,6 @@ class AlgorithmConfig(_Config):
         # RLModule.forward_exploration() method or setup model parameters such that it
         # will disable the stochasticity of this method (e.g. by setting the std to 0
         # or setting temperature to 0 for the Categorical distribution).
-
         if self._enable_rl_module_api and not self.explore:
             raise ValueError(
                 "When RLModule API is enabled, explore parameter cannot be False. "
@@ -893,6 +885,13 @@ class AlgorithmConfig(_Config):
                 "or setup model parameters such that it will disable the "
                 "stochasticity of this method (e.g. by setting the std to 0 or "
                 "setting temperature to 0 for the Categorical distribution)."
+            )
+
+        # Validate grad clipping settings.
+        if self.grad_clip_by not in ["value", "norm", "global_norm"]:
+            raise ValueError(
+                f"`grad_clip_by` ({self.grad_clip_by}) must be one of: 'value', "
+                "'norm', or 'global_norm'!"
             )
 
         # TODO: Deprecate self.simple_optimizer!
@@ -1030,11 +1029,6 @@ class AlgorithmConfig(_Config):
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
                 "(i.e. num_learner_workers = 0)"
             )
-
-        # resolve learner class
-        if self._enable_learner_api and self.learner_class is None:
-            learner_class_path = self.get_default_learner_class()
-            self.learner_class = deserialize_type(learner_class_path)
 
     def build(
         self,
@@ -1591,8 +1585,11 @@ class AlgorithmConfig(_Config):
 
     def training(
         self,
+        *,
         gamma: Optional[float] = NotProvided,
         lr: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
@@ -1605,6 +1602,29 @@ class AlgorithmConfig(_Config):
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
             lr: The default learning rate.
+            grad_clip: The value to use for gradient clipping. Depending on the
+                `grad_clip_by` setting, gradients will either be clipped by value,
+                norm, or global_norm (see docstring on `grad_clip_by` below for more
+                details). If `grad_clip` is None, gradients will be left unclipped.
+            grad_clip_by: If 'value': Will clip all computed gradients individually
+                inside the interval [-grad_clip, +grad_clip].
+                If 'norm', will compute the L2-norm of each weight/bias
+                gradient tensor and then clip all gradients such that this L2-norm does
+                not exceed `grad_clip`. The L2-norm of a tensor is computed via:
+                `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of the
+                tensor (no matter what the shape of this tensor is).
+                If 'global_norm', will compute the square of the L2-norm of each
+                weight/bias gradient tensor, sum up all these squared L2-norms across
+                all given gradient tensors (e.g. the entire module to
+                be updated), square root that overall sum, and then clip all gradients
+                such that this "global" L2-norm does not exceed the given value.
+                The global L2-norm over a list of tensors (e.g. W and V) is computed
+                via:
+                `sqrt[SUM(w0^2, w1^2, ..., wn^2) + SUM(v0^2, v1^2, ..., vm^2)]`, where
+                w[i] and v[j] are the elements of the tensors W and V (no matter what
+                the shapes of these tensors are).
+                Note that if `grad_clip` is None, the `grad_clip_by` setting has no
+                effect.
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
@@ -1633,6 +1653,10 @@ class AlgorithmConfig(_Config):
             self.gamma = gamma
         if lr is not NotProvided:
             self.lr = lr
+        if grad_clip is not NotProvided:
+            self.grad_clip = grad_clip
+        if grad_clip_by is not NotProvided:
+            self.grad_clip_by = grad_clip_by
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if model is not NotProvided:
@@ -1668,7 +1692,7 @@ class AlgorithmConfig(_Config):
         if _enable_learner_api is not NotProvided:
             self._enable_learner_api = _enable_learner_api
         if learner_class is not NotProvided:
-            self.learner_class = learner_class
+            self._learner_class = learner_class
 
         return self
 
@@ -2506,6 +2530,20 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    @property
+    def learner_class(self) -> Type["Learner"]:
+        """Returns the Learner sub-class to use by this Algorithm.
+
+        Either
+        a) User sets a specific learner class via calling `.training(learner_class=...)`
+        b) User leaves learner class unset (None) and the AlgorithmConfig itself
+        figures out the actual learner class by calling its own
+        `.get_default_learner_class()` method.
+        """
+        return self._learner_class or self.get_default_learner_class()
+
+    # TODO: Make rollout_fragment_length as read-only property and replace the current
+    #  self.rollout_fragment_length a private variable.
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
@@ -2541,6 +2579,8 @@ class AlgorithmConfig(_Config):
         else:
             return self.rollout_fragment_length
 
+    # TODO: Make evaluation_config as read-only property and replace the current
+    #  self.evaluation_config a private variable.
     def get_evaluation_config_object(
         self,
     ) -> Optional["AlgorithmConfig"]:
@@ -2834,6 +2874,8 @@ class AlgorithmConfig(_Config):
 
         return policies, is_policy_to_train
 
+    # TODO: Move this to those algorithms that really need this, which is currently
+    #  only A2C and PG.
     def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
         """Detects mismatches for `train_batch_size` vs `rollout_fragment_length`.
 
@@ -3089,8 +3131,10 @@ class AlgorithmConfig(_Config):
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={
                     "lr": self.lr,
+                    "grad_clip": self.grad_clip,
+                    "grad_clip_by": self.grad_clip_by,
                 },
-                learner_hps=self.learner_hps,
+                learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
@@ -3102,6 +3146,20 @@ class AlgorithmConfig(_Config):
         )
 
         return config
+
+    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
+        """Returns a new LearnerHyperparameters instance for the respective Learner.
+
+        The LearnerHyperparameters is a dataclass containing only those config settings
+        from AlgorithmConfig that are used by the algorithm's specific Learner
+        sub-class. They allow distributing only those settings relevant for learning
+        across a set of learner workers (instead of having to distribute the entire
+        AlgorithmConfig object).
+
+        Note that LearnerHyperparameters should always be derived directly from a
+        AlgorithmConfig object's own settings and considered frozen/read-only.
+        """
+        return LearnerHyperparameters()
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
@@ -3206,10 +3264,6 @@ class AlgorithmConfig(_Config):
             config["model"]["custom_model"] = serialize_type(
                 config["model"]["custom_model"]
             )
-
-        # Serialize dataclasses.
-        if isinstance(config.get("_learner_hps"), LearnerHPs):
-            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
         ma_config = config.get("multiagent")
