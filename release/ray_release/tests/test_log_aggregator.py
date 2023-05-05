@@ -1,3 +1,5 @@
+import sys
+import pytest
 from ray_release.log_aggregator import LogAggregator
 
 
@@ -24,10 +26,10 @@ def test_compute_signature():
             [
                 "Traceback (most recent call last):",
                 '   File "/tmp/something", line 584',
-                "Exception: yaya45",
+                '   File "/tmp/another", deedeebeeaacfa-abc' "Exception: yaya45",
             ]
         )
-        == "somethingline Exception: yaya"
+        == "somethingline another-abcException: yaya"
     )
 
 
@@ -66,3 +68,7 @@ def test_compute_stack_trace():
         )
         == error_trace
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

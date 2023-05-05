@@ -13,7 +13,7 @@ all mars scheduler optimizations. If ray tasks mode is used, all tasks will be s
 pipeline capabilities provided by ray futures.
 
 
-.. _`Mars`: https://docs.pymars.org
+.. _`Mars`: https://mars-project.readthedocs.io/en/latest/
 
 
 Installation
@@ -75,4 +75,4 @@ Interact with Datastream:
     df2 = ds.to_mars()
     print(df2.head(5).execute())
 
-Refer to _`Mars on Ray`: https://docs.pymars.org/en/latest/installation/ray.html for more information.
+Refer to _`Mars on Ray`: https://mars-project.readthedocs.io/en/latest/installation/ray.html#mars-ray for more information.
