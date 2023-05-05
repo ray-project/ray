@@ -119,6 +119,34 @@ def test_grpc_message_size(shutdown_only):
     ray.get(bar.remote(*[f() for _ in range(200)]))
 
 
+def test_default_worker_import_dependency():
+    """
+    Test ray's python worker import doesn't import the not-allowed dependencies.
+    """
+    # We don't allow numpy to be imported in the worker script to avoid slow
+    # worker startup time, as well as interfering with OMP_NUM_THREADS which
+    # is used by numpy when imported.
+    # See https://github.com/ray-project/ray/issues/33891
+    blocked_deps = ["numpy"]
+
+    # Remove the ray module and the blocked deps from sys.modules.
+    sys.modules.pop("ray", None)
+    assert "ray" not in sys.modules
+    for dep in blocked_deps:
+        sys.modules.pop(dep, None)
+        assert dep not in sys.modules
+
+    # This imports the python worker.
+    import ray._private.workers.default_worker  # noqa: F401
+
+    # Check that the ray module is imported.
+    assert "ray" in sys.modules
+
+    # Check that the blocked deps are not imported.
+    for dep in blocked_deps:
+        assert dep not in sys.modules
+
+
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
     import os
@@ -333,6 +361,25 @@ def test_invalid_arguments():
 
     ray.remote(_metadata={"data": 1})(f)
     ray.remote(_metadata={"data": 1})(A)
+
+    # Check invalid resource quantity
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The precision of the fractional quantity of resource num_gpus"
+            " cannot go beyond 0.0001"
+        ),
+    ):
+        ray.remote(num_gpus=0.0000001)(f)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The precision of the fractional quantity of resource custom_resource"
+            " cannot go beyond 0.0001"
+        ),
+    ):
+        ray.remote(resources={"custom_resource": 0.0000001})(f)
 
 
 def test_options():

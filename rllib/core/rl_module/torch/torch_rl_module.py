@@ -9,6 +9,8 @@ torch, nn = try_import_torch()
 
 
 class TorchRLModule(nn.Module, RLModule):
+    framwork: str = "torch"
+
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
@@ -33,24 +35,12 @@ class TorchRLModule(nn.Module, RLModule):
         return pathlib.Path("module_state.pt")
 
     @override(RLModule)
-    def save_state_to_file(self, path: Union[str, pathlib.Path]):
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         torch.save(self.state_dict(), str(path))
 
     @override(RLModule)
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
         self.set_state(torch.load(str(path)))
-
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Makes the module distributed."""
-        # TODO (Avnish): Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        """Returns True if the module is distributed."""
-        # TODO (Avnish): Implement this.
-        return False
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
@@ -58,6 +48,7 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
         # we do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
+        self.config = self.unwrapped().config
 
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
@@ -65,36 +56,40 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
 
     @override(RLModule)
     def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
-        return self.module._forward_inference(*args, **kwargs)
+        return self.unwrapped()._forward_inference(*args, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
-        return self.module._forward_exploration(*args, **kwargs)
+        return self.unwrapped()._forward_exploration(*args, **kwargs)
 
     @override(RLModule)
     def get_state(self, *args, **kwargs):
-        return self.module.get_state(*args, **kwargs)
+        return self.unwrapped().get_state(*args, **kwargs)
 
     @override(RLModule)
     def set_state(self, *args, **kwargs):
-        self.module.set_state(*args, **kwargs)
+        self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state_to_file(self, *args, **kwargs) -> str:
-        return self.module.save_state_to_file(*args, **kwargs)
+    def save_state(self, *args, **kwargs):
+        self.unwrapped().save_state(*args, **kwargs)
 
     @override(RLModule)
-    def load_state_from_file(self, *args, **kwargs):
-        self.module.load_state_from_file(*args, **kwargs)
+    def load_state(self, *args, **kwargs):
+        self.unwrapped().load_state(*args, **kwargs)
 
     @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Kourosh): Not to sure about this make_distributed api belonging to
-        # RLModule or the Learner? For now the logic is kept in Learner.
-        # We should see if we can use this api end-point for both tf
-        # and torch instead of doing it in the learner.
-        pass
+    def save_to_checkpoint(self, *args, **kwargs):
+        self.unwrapped().save_to_checkpoint(*args, **kwargs)
 
     @override(RLModule)
-    def is_distributed(self) -> bool:
-        return True
+    def _save_module_metadata(self, *args, **kwargs):
+        self.unwrapped()._save_module_metadata(*args, **kwargs)
+
+    @override(RLModule)
+    def _module_metadata(self, *args, **kwargs):
+        return self.unwrapped()._module_metadata(*args, **kwargs)
+
+    @override(RLModule)
+    def unwrapped(self) -> "RLModule":
+        return self.module

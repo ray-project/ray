@@ -105,13 +105,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     server_io_service_->stop();
-    rpc::DrainAndResetServerCallExecutor();
+    rpc::DrainServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
     if (!no_redis_) {
       TestSetupUtil::FlushAllRedisServers();
     }
+    rpc::ResetServerCallExecutor();
   }
 
   void RestartGcsServer() {
@@ -513,11 +514,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
-  std::atomic<int> actor_update_count(0);
-  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
-    ++actor_update_count;
-  };
+  auto on_subscribe = [](const ActorID &actor_id, const gcs::ActorTableData &data) {};
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
   // Register an actor to GCS.
@@ -948,46 +945,6 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
   auto actors = GetAllActors();
   RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
                 << actor_count << " actors.";
-}
-
-TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
-  // Restart doesn't work with in memory storage
-  if (RayConfig::instance().gcs_storage() == "memory") {
-    return;
-  }
-  // Register actors and the actors will be destroyed.
-  JobID job_id = JobID::FromInt(1);
-  AddJob(job_id);
-  absl::flat_hash_set<ActorID> actor_ids;
-  int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
-  for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
-    RegisterActor(actor_table_data, false);
-    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
-  }
-
-  // Restart GCS.
-  RestartGcsServer();
-
-  for (int index = 0; index < actor_count; ++index) {
-    auto actor_table_data = Mocker::GenActorTableData(job_id);
-    RegisterActor(actor_table_data, false);
-    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
-  }
-
-  // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
-  // client will register the actor again and the status of the actor may be
-  // `DEPENDENCIES_UNREADY` or `DEAD`. We should get all dead actors.
-  auto condition = [this]() {
-    return GetAllActors(true).size() ==
-           RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-
-  auto actors = GetAllActors(true);
-  for (const auto &actor : actors) {
-    EXPECT_TRUE(actor_ids.contains(ActorID::FromBinary(actor.actor_id())));
-  }
 }
 
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {

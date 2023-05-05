@@ -7,10 +7,12 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+from functools import wraps
 import gc
 import inspect
 import logging
 import msgpack
+import io
 import os
 import pickle
 import setproctitle
@@ -59,12 +61,17 @@ from ray.includes.common cimport (
     CObjectReference,
     CRayObject,
     CRayStatus,
+    CErrorTableData,
     CGcsClientOptions,
+    CGcsNodeInfo,
+    CJobTableData,
+    CLogBatch,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
+    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -126,6 +133,7 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
+    RpcError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -169,6 +177,11 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
+cdef extern from "ray/common/constants.h" nogil:
+    cdef int kResourceUnitScaling
+
+RESOURCE_UNIT_SCALING = kResourceUnitScaling
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -206,6 +219,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
+    elif status.IsRpcError():
+        raise RpcError(message, rpc_code=status.rpc_code())
     else:
         raise RaySystemError(message)
 
@@ -463,12 +478,13 @@ cdef prepare_args_internal(
                 serialized_arg = worker.get_serialization_context(
                 ).serialize(arg)
             except TypeError as e:
+                sio = io.StringIO()
+                ray.util.inspect_serializability(arg, print_file=sio)
                 msg = (
                     "Could not serialize the argument "
                     f"{repr(arg)} for a task or actor "
-                    f"{function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
-                    "for more information.")
+                    f"{function_descriptor.repr}:\n"
+                    f"{sio.getvalue()}")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
@@ -578,6 +594,7 @@ cdef store_task_errors(
         exc,
         task_exception,
         actor,
+        actor_id,
         function_name,
         CTaskType task_type,
         proctitle,
@@ -598,15 +615,22 @@ cdef store_task_errors(
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
 
+    if actor_id is None or actor_id.is_nil():
+        actor_id = None
+    else:
+        actor_id = actor_id.hex()
+
     if isinstance(exc, RayTaskError):
         # Avoid recursive nesting of RayTaskError.
         failure_object = RayTaskError(function_name, backtrace,
                                       exc.cause, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
     else:
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
@@ -690,6 +714,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         worker, error,
                         False,  # task_exception
                         None,  # actor
+                        None,  # actor id
                         function_name, task_type, title,
                         dynamic_returns, application_error)
             if num_errors_stored == 0:
@@ -732,6 +757,7 @@ cdef void execute_task(
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
+    actor_id = None
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
@@ -772,7 +798,8 @@ cdef void execute_task(
         print(task_name_magic_token, end="")
         print(task_name_magic_token, file=sys.stderr, end="")
     else:
-        actor = worker.actors[core_worker.get_actor_id()]
+        actor_id = core_worker.get_actor_id()
+        actor = worker.actors[actor_id]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
 
@@ -858,7 +885,8 @@ cdef void execute_task(
                     args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
+                actor_id = core_worker.get_actor_id()
+                actor = worker.actors[actor_id]
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
@@ -997,7 +1025,7 @@ cdef void execute_task(
                     returns)
         except Exception as e:
             num_errors_stored = store_task_errors(
-                    worker, e, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
@@ -1131,7 +1159,9 @@ cdef execute_task_with_cancellation_handler(
                 # Task cancellation can happen anytime so we don't really need
                 # to differentiate between mid-task or not.
                 False,  # task_exception
-                actor, execution_info.function_name,
+                actor,
+                actor_id,
+                execution_info.function_name,
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
@@ -1515,6 +1545,269 @@ cdef class EmptyProfileEvent:
 
     def __exit__(self, *args):
         pass
+
+
+def _auto_reconnect(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            ray._private.utils._CALLED_FREQ[f.__name__] += 1
+        remaining_retry = self._nums_reconnect_retry
+        while True:
+            try:
+                return f(self, *args, **kwargs)
+            except RpcError as e:
+                import grpc
+                if e.rpc_code in [
+                    grpc.StatusCode.UNAVAILABLE.value[0],
+                    grpc.StatusCode.UNKNOWN.value[0],
+                ]:
+                    if remaining_retry <= 0:
+                        logger.error(
+                            "Failed to connect to GCS. Please check"
+                            " `gcs_server.out` for more details."
+                        )
+                        raise
+                    logger.debug(
+                        f"Failed to send request to gcs, reconnecting. Error {e}"
+                    )
+                    try:
+                        self._connect()
+                    except Exception:
+                        logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
+                    remaining_retry -= 1
+                    continue
+                raise
+
+    return wrapper
+
+
+cdef class GcsClient:
+    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+    cdef:
+        shared_ptr[CPythonGcsClient] inner
+        object address
+        object _nums_reconnect_retry
+
+    def __cinit__(self, address, nums_reconnect_retry=5):
+        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
+        self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
+        self.address = address
+        self._nums_reconnect_retry = nums_reconnect_retry
+        self._connect()
+
+    def _connect(self):
+        check_status(self.inner.get().Connect())
+
+    @property
+    def address(self):
+        return self.address
+
+    @property
+    def _nums_reconnect_retry(self):
+        return self._nums_reconnect_retry
+
+    @_auto_reconnect
+    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string value
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
+        if status.IsKeyError():
+            return None
+        else:
+            check_status(status)
+            return value
+
+    @_auto_reconnect
+    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            c_vector[c_string] c_keys
+            c_string c_key
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            unordered_map[c_string, c_string] c_result
+            unordered_map[c_string, c_string].iterator it
+
+        for c_key in keys:
+            c_keys.push_back(c_key)
+        with nogil:
+            check_status(self.inner.get().InternalKVMultiGet(
+                ns, c_keys, timeout_ms, c_result))
+
+        result = {}
+        it = c_result.begin()
+        while it != c_result.end():
+            key = dereference(it).first
+            value = dereference(it).second
+            result[key] = value
+            postincrement(it)
+        return result
+
+    @_auto_reconnect
+    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
+                        namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int num_added
+        with nogil:
+            check_status(self.inner.get().InternalKVPut(
+                ns, key, value, overwrite, timeout_ms, num_added))
+
+        return num_added
+
+    @_auto_reconnect
+    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
+                        namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int num_deleted
+        with nogil:
+            check_status(self.inner.get().InternalKVDel(
+                ns, key, del_by_prefix, timeout_ms, num_deleted))
+
+        return num_deleted
+
+    @_auto_reconnect
+    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] keys
+            c_string key
+
+        with nogil:
+            check_status(self.inner.get().InternalKVKeys(
+                ns, prefix, timeout_ms, keys))
+
+        result = []
+
+        for key in keys:
+            result.append(key)
+
+        return result
+
+    @_auto_reconnect
+    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool exists
+        with nogil:
+            check_status(self.inner.get().InternalKVExists(
+                ns, key, timeout_ms, exists))
+        return exists
+
+    @_auto_reconnect
+    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string c_uri = uri.encode()
+        with nogil:
+            check_status(self.inner.get().PinRuntimeEnvUri(
+                c_uri, expiration_s, timeout_ms))
+
+    @_auto_reconnect
+    def get_all_node_info(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CGcsNodeInfo node_info
+            c_vector[CGcsNodeInfo] node_infos
+        with nogil:
+            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+
+        result = {}
+        for node_info in node_infos:
+            result[node_info.node_id()] = {
+                "node_name": node_info.node_name(),
+                "state": node_info.state()
+            }
+        return result
+
+    @_auto_reconnect
+    def get_all_job_info(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CJobTableData job_info
+            c_vector[CJobTableData] job_infos
+        with nogil:
+            check_status(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
+
+        result = {}
+        for job_info in job_infos:
+            result[job_info.job_id()] = {
+                "is_dead": job_info.is_dead(),
+                "config": {
+                    "ray_namespace": job_info.config().ray_namespace().decode()
+                }
+            }
+        return result
+
+cdef class GcsPublisher:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
+    cdef:
+        shared_ptr[CPythonGcsPublisher] inner
+
+    def __cinit__(self, address):
+        self.inner.reset(new CPythonGcsPublisher(address))
+        check_status(self.inner.get().Connect())
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id=None, num_retries=None):
+        cdef:
+            CErrorTableData error_info
+            int64_t c_num_retries = num_retries if num_retries else -1
+            c_string c_key_id = key_id
+
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        assert isinstance(job_id, ray.JobID)
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
+
+        with nogil:
+            check_status(
+                self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
+
+    def publish_logs(self, log_json: dict):
+        cdef:
+            CLogBatch log_batch
+            c_string c_job_id
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
+
+        c_job_id = job_id.encode() if job_id else b""
+        with nogil:
+            check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
+
+    def publish_function_key(self, key: bytes):
+        cdef:
+            CPythonFunction python_function
+
+        python_function.set_key(key)
+
+        with nogil:
+            check_status(self.inner.get().PublishFunctionKey(python_function))
+
 
 cdef class CoreWorker:
 
@@ -1952,6 +2245,8 @@ cdef class CoreWorker:
                 NodeID.from_hex(python_scheduling_strategy.node_id).binary())
             c_node_affinity_scheduling_strategy[0].set_soft(
                 python_scheduling_strategy.soft)
+            c_node_affinity_scheduling_strategy[0].set_spill_on_unavailable(
+                python_scheduling_strategy._spill_on_unavailable)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
@@ -2193,7 +2488,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            optional[c_vector[CObjectReference]] return_refs
+            c_vector[CObjectReference] return_refs
             c_vector[CObjectID] incremented_put_arg_ids
 
         with self.profile_event(b"submit_task"):
@@ -2206,12 +2501,13 @@ cdef class CoreWorker:
                 &incremented_put_arg_ids)
 
             with nogil:
-                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name))
+                        name, num_returns, c_resources, concurrency_group_name),
+                    return_refs)
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -2221,28 +2517,25 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                     put_arg_id)
 
-            if return_refs.has_value():
+            if status.ok():
                 # The initial local reference is already acquired internally
                 # when adding the pending task.
-                return VectorToObjectRefs(return_refs.value(),
+                return VectorToObjectRefs(return_refs,
                                           skip_adding_local_ref=True)
             else:
-                actor = self.get_actor_handle(actor_id)
-                actor_handle = (CCoreWorkerProcess.GetCoreWorker()
-                                .GetActorHandle(c_actor_id))
-                raise PendingCallsLimitExceeded("The task {} could not be "
-                                                "submitted to {} because more "
-                                                "than {} tasks are queued on "
-                                                "the actor. This limit "
-                                                "can be adjusted with the "
-                                                "`max_pending_calls` actor "
-                                                "option.".format(
-                                                    function_descriptor
-                                                    .function_name,
-                                                    repr(actor),
-                                                    (dereference(actor_handle)
-                                                        .MaxPendingCalls())
-                                                ))
+                if status.IsOutOfResource():
+                    actor = self.get_actor_handle(actor_id)
+                    actor_handle = (CCoreWorkerProcess.GetCoreWorker()
+                                    .GetActorHandle(c_actor_id))
+                    raise PendingCallsLimitExceeded(
+                        f"The task {function_descriptor.function_name} could not be "
+                        f"submitted to {repr(actor)} because more than"
+                        f" {(dereference(actor_handle).MaxPendingCalls())}"
+                        " tasks are queued on the actor. This limit can be adjusted"
+                        " with the `max_pending_calls` actor option.")
+                else:
+                    raise Exception(f"Failed to submit task to actor {actor_id} "
+                                    f"due to {status.message()}")
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:

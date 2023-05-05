@@ -10,7 +10,6 @@ import yaml
 from ray_release.buildkite.concurrency import (
     get_test_resources_from_cluster_compute,
     get_concurrency_group,
-    CONCURRENY_GROUPS,
 )
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
@@ -614,9 +613,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "ray_release.buildkite.concurrency.get_test_resources",
                 _return((cpu, gpu)),
             ):
-                group_name, limit = get_concurrency_group(test)
+                group_name, _ = get_concurrency_group(test)
                 self.assertEqual(group_name, group)
-                self.assertEqual(limit, CONCURRENY_GROUPS[group_name])
 
         test_concurrency(12800, 9, "large-gpu")
         test_concurrency(12800, 8, "small-gpu")

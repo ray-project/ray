@@ -1,4 +1,3 @@
-import inspect
 from typing import Any, Callable, Dict, List, Union
 
 from ray.dag.dag_node import DAGNode
@@ -34,13 +33,6 @@ class DeploymentFunctionNode(DAGNode):
                 "deployment_schema"
             ]
             deployment_shell = schema_to_deployment(deployment_schema)
-
-            # Prefer user specified name to override the generated one.
-            if (
-                inspect.isfunction(func_body)
-                and deployment_shell.name != func_body.__name__
-            ):
-                self._deployment_name = deployment_shell.name
 
             # Set the route prefix, prefer the one user supplied,
             # otherwise set it to /deployment_name

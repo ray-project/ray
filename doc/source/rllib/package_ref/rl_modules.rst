@@ -16,7 +16,6 @@ Single Agent
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     SingleAgentRLModuleSpec
     SingleAgentRLModuleSpec.build
@@ -27,7 +26,6 @@ RLModule Configuration
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     RLModuleConfig
     RLModuleConfig.to_dict
@@ -41,7 +39,6 @@ Multi Agent
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     MultiAgentRLModuleSpec
     MultiAgentRLModuleSpec.build
@@ -60,7 +57,6 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     RLModule
     RLModule.as_multi_agent
@@ -100,8 +96,8 @@ Saving and Loading
 
     ~RLModule.get_state
     ~RLModule.set_state
-    ~RLModule.save_state_to_file
-    ~RLModule.load_state_from_file
+    ~RLModule.save_state
+    ~RLModule.load_state
     ~RLModule.save_to_checkpoint
     ~RLModule.from_checkpoint
 
@@ -116,10 +112,9 @@ Constructor
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     MultiAgentRLModule
-    MultiAgentRLModule.build
+    MultiAgentRLModule.setup
     MultiAgentRLModule.as_multi_agent
 
 Modifying the underlying RL modules
@@ -137,5 +132,5 @@ Saving and Loading
 .. autosummary::
     :toctree: doc/
 
-    ~MultiAgentRLModule.load_state_from_dir
-    ~MultiAgentRLModule.save_state_to_dir
+    ~MultiAgentRLModule.save_state
+    ~MultiAgentRLModule.load_state

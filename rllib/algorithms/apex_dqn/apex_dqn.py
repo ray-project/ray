@@ -426,7 +426,7 @@ class ApexDQN(DQN):
                 batch = local_sampling_worker.sample()
                 actor_id = random.choice(self._replay_actor_manager.healthy_actor_ids())
                 self._replay_actor_manager.foreach_actor(
-                    lambda actor: actor.add_batch(batch),
+                    lambda actor: actor.add(batch),
                     remote_actor_ids=[actor_id],
                     timeout_seconds=0,
                 )

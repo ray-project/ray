@@ -178,7 +178,7 @@ def train_func(config: dict):
 
     for _ in range(config.get("epoch", 3)):
         tf_dataset = dataset.to_tf("x", "y", batch_size=32)
-        multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
+        multi_worker_model.fit(tf_dataset, callbacks=[ReportCheckpointCallback()])
 
 
 def test_keras_callback_e2e():
@@ -205,7 +205,7 @@ def test_keras_callback_e2e():
 
 
 def test_keras_callback_is_deprecated():
-    with pytest.warns(DeprecationWarning):
+    with pytest.raises(DeprecationWarning):
         Callback()
 
 

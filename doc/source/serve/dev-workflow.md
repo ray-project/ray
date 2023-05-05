@@ -88,7 +88,7 @@ When making the transition from your local machine to a remote cluster, you'll n
 Let's see a simple example that just packages the code. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
 
 ```bash
-serve run  --address=ray://<head-node-ip-address>:10001 --working_dir="./project/src" local_dev:graph
+serve run  --address=ray://<head-node-ip-address>:10001 --working-dir="./project/src" local_dev:graph
 ```
 
 This will connect to the remote cluster via Ray Client, upload the `working_dir` directory, and run your serve application.  Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
@@ -110,4 +110,5 @@ You can also specify the `runtime_env` via a YAML file; see [serve run](serve_cl
 
 ## What's Next?
 
+View details about your Serve application in the [Ray dashboard](dash-serve-view).
 Once you are ready to deploy to production, see the [Production Guide](serve-in-production).

@@ -606,7 +606,7 @@ def wrap_function(
                     "    # ...\n"
                     '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "
-                    "https://docs.ray.io/en/master/tune/api_docs/trainable.html\n"
+                    "https://docs.ray.io/en/latest/tune/api/trainable.html\n"
                 )
                 warnings.warn(
                     warning_msg,

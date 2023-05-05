@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
-import warnings
 
 import ray
 
@@ -45,7 +44,7 @@ _TUNER_FAILED_MSG = (
     "The Ray Tune run failed. Please inspect the previous error messages for a "
     "cause. After fixing the issue, you can restart the run from scratch or "
     "continue this run. To continue this run, you can use "
-    '`tuner = Tuner.restore("{path}")`.'
+    '`tuner = Tuner.restore("{path}", trainable=...)`.'
 )
 
 
@@ -118,7 +117,7 @@ class Tuner:
 
     .. code-block:: python
 
-        tuner = Tuner.restore(results.experiment_path)
+        tuner = Tuner.restore(results.experiment_path, trainable=trainer)
         tuner.fit()
 
     ``results.experiment_path`` can be retrieved from the
@@ -150,7 +149,7 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        if self._is_ray_client and get_air_verbosity():
+        if self._is_ray_client and get_air_verbosity() is not None:
             logger.warning(
                 "Ignoring AIR_VERBOSITY setting, "
                 "as it doesn't support ray client mode yet."
@@ -175,16 +174,10 @@ class Tuner:
     def restore(
         cls,
         path: str,
-        trainable: Optional[
-            Union[str, Callable, Type[Trainable], "BaseTrainer"]
-        ] = None,
+        trainable: Union[str, Callable, Type[Trainable], "BaseTrainer"],
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        # Deprecated
-        overwrite_trainable: Optional[
-            Union[str, Callable, Type[Trainable], "BaseTrainer"]
-        ] = None,
         param_space: Optional[Dict[str, Any]] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
@@ -215,11 +208,10 @@ class Tuner:
             trainable: The trainable to use upon resuming the experiment.
                 This should be the same trainable that was used to initialize
                 the original Tuner.
-                NOTE: Starting in 2.5, this will be a required parameter.
             param_space: The same `param_space` that was passed to
                 the original Tuner. This can be optionally re-specified due
                 to the `param_space` potentially containing Ray object
-                references (tuning over Ray Datasets or tuning over
+                references (tuning over Datastreams or tuning over
                 several `ray.put` object references). **Tune expects the
                 `param_space` to be unmodified**, and the only part that
                 will be used during restore are the updated object references.
@@ -230,29 +222,11 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-            overwrite_trainable: Deprecated. Use the `trainable` argument instead.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
-
-        if overwrite_trainable:
-            if not trainable:
-                trainable = overwrite_trainable
-            warning_message = (
-                "`overwrite_trainable` has been renamed to `trainable`. "
-                "The old argument will be removed starting from version 2.5."
-            )
-            warnings.warn(warning_message, DeprecationWarning)
-
-        if not trainable:
-            warning_message = (
-                "Passing in the experiment's `trainable` will be a required argument "
-                "to `Tuner.restore` starting from version 2.5. "
-                "Please specify the trainable to avoid this warning."
-            )
-            warnings.warn(warning_message)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
@@ -305,7 +279,7 @@ class Tuner:
             exp_dir = os.path.join(local_dir, name)
 
             if Tuner.can_restore(exp_dir):
-                tuner = Tuner.restore(exp_dir, resume_errored=True)
+                tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
             else:
                 tuner = Tuner(
                     train_fn,
@@ -350,8 +324,12 @@ class Tuner:
         In such cases, there will be instruction like the following printed out
         at the end of console output to inform users on how to resume.
 
-        Please use tuner = Tuner.restore("~/ray_results/tuner_resume")
-        to resume.
+        Please use `Tuner.restore` to resume.
+
+        .. code-block:: python
+
+            tuner = Tuner.restore("~/ray_results/tuner_resume", trainable=trainable)
+            tuner.fit()
 
         Raises:
             RayTaskError: If user-provided trainable raises an exception
@@ -401,7 +379,8 @@ class Tuner:
 
             from ray.tune import Tuner
 
-            tuner = Tuner.restore("/path/to/experiment')
+            # `trainable` is what was passed in to the original `Tuner`
+            tuner = Tuner.restore("/path/to/experiment', trainable=trainable)
             results = tuner.get_results()
 
         Returns:

@@ -54,22 +54,15 @@ class JobRunner(CommandRunner):
         except Exception as e:
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
-    def prepare_remote_env(self):
-        # Copy wait script to working dir
-        wait_script = os.path.join(os.path.dirname(__file__), "_wait_cluster.py")
-        # Copy wait script to working dir
-        if os.path.exists("wait_cluster.py"):
-            os.unlink("wait_cluster.py")
-        os.link(wait_script, "wait_cluster.py")
+    def _copy_script_to_working_dir(self, script_name):
+        script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
+        if os.path.exists(script_name):
+            os.unlink(script_name)
+        os.link(script, script_name)
 
-        # Copy prometheus metrics script to working dir
-        metrics_script = os.path.join(
-            os.path.dirname(__file__), "_prometheus_metrics.py"
-        )
-        # Copy prometheus metrics script to working dir
-        if os.path.exists("prometheus_metrics.py"):
-            os.unlink("prometheus_metrics.py")
-        os.link(metrics_script, "prometheus_metrics.py")
+    def prepare_remote_env(self):
+        self._copy_script_to_working_dir("wait_cluster.py")
+        self._copy_script_to_working_dir("prometheus_metrics.py")
 
         # Do not upload the files here. Instead, we use the job runtime environment
         # to automatically upload the local working dir.
@@ -125,7 +118,7 @@ class JobRunner(CommandRunner):
 
         return time_taken
 
-    def get_last_logs(self, scd_id: Optional[str] = None):
+    def get_last_logs_ex(self, scd_id: Optional[str] = None):
         try:
             return self.job_manager.get_last_logs()
         except Exception as e:

@@ -17,6 +17,9 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
+    @Deprecated(
+        message="Use get_xxx_id() methods to get relevant ids instead", warning=True
+    )
     def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
@@ -356,7 +359,7 @@ _runtime_context = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 

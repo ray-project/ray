@@ -42,6 +42,14 @@ logger = logging.getLogger(__name__)
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
 
 
+@pytest.fixture(autouse=True)
+def pre_envs(monkeypatch):
+    # To make test run faster
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    ray_constants.NUM_REDIS_GET_RETRIES = 2
+    yield
+
+
 def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
     """Wait for a Redis server to be available.
 
@@ -1135,3 +1143,23 @@ def enable_syncer_test(request, monkeypatch):
     yield
     monkeypatch.delenv("RAY_use_ray_syncer")
     ray._raylet.Config.initialize("")
+
+
+@pytest.fixture(scope="function")
+def temp_file(request):
+    with tempfile.NamedTemporaryFile("r+b") as fp:
+        yield fp
+
+
+@pytest.fixture(scope="module")
+def random_ascii_file(request):
+    import random
+    import string
+
+    file_size = getattr(request, "param", 1 << 10)
+
+    with tempfile.NamedTemporaryFile(mode="r+b") as fp:
+        fp.write("".join(random.choices(string.ascii_letters, k=file_size)).encode())
+        fp.flush()
+
+        yield fp

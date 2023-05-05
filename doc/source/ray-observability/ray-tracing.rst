@@ -54,29 +54,31 @@ Below is an example tracing startup hook that sets up the default tracing provid
 
 For open-source users who want to experiment with tracing, Ray has a default tracing startup hook that exports spans to the folder ``/tmp/spans``. To run using this default hook, you can run the following code sample to set up tracing and trace a simple Ray task.
 
-.. tabbed:: ray start
+.. tab-set::
 
-    .. code-block:: shell
+    .. tab-item:: ray start
 
-        $ ray start --head --tracing-startup-hook=ray.util.tracing.setup_local_tmp_tracing:setup_tracing
-        $ python
-        >>> ray.init()
-        >>> @ray.remote
-            def my_function():
-                return 1
+        .. code-block:: shell
 
-            obj_ref = my_function.remote()
+            $ ray start --head --tracing-startup-hook=ray.util.tracing.setup_local_tmp_tracing:setup_tracing
+            $ python
+            >>> ray.init()
+            >>> @ray.remote
+                def my_function():
+                    return 1
 
-.. tabbed:: ray.init()
+                obj_ref = my_function.remote()
 
-    .. code-block:: python
+    .. tab-item:: ray.init()
 
-        >>> ray.init(_tracing_startup_hook="ray.util.tracing.setup_local_tmp_tracing:setup_tracing")
-        >>> @ray.remote
-            def my_function():
-                return 1
+        .. code-block:: python
 
-            obj_ref = my_function.remote()
+            >>> ray.init(_tracing_startup_hook="ray.util.tracing.setup_local_tmp_tracing:setup_tracing")
+            >>> @ray.remote
+                def my_function():
+                    return 1
+
+                obj_ref = my_function.remote()
 
 If you want to provide your own custom tracing startup hook, provide your startup hook in the format of ``module:attribute`` where the attribute is the ``setup_tracing`` function to be run.
 

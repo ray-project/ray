@@ -338,15 +338,41 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
+
+  const auto filter_fn = [](const rpc::GetAllActorInfoRequest::Filters &filters,
+                            const rpc::ActorTableData &data) {
+    if (filters.has_actor_id() &&
+        ActorID::FromBinary(filters.actor_id()) != ActorID::FromBinary(data.actor_id())) {
+      return false;
+    }
+    if (filters.has_job_id() &&
+        JobID::FromBinary(filters.job_id()) != JobID::FromBinary(data.job_id())) {
+      return false;
+    }
+    if (filters.has_state() && filters.state() != data.state()) {
+      return false;
+    }
+    return true;
+  };
+
   if (request.show_dead_jobs() == false) {
     auto total_actors = registered_actors_.size() + destroyed_actors_.size();
     reply->set_total(total_actors);
 
     auto count = 0;
+    auto num_filtered = 0;
     for (const auto &iter : registered_actors_) {
       if (limit != -1 && count >= limit) {
         break;
       }
+
+      // With filters, skip the actor if it doesn't match the filter.
+      if (request.has_filters() &&
+          !filter_fn(request.filters(), iter.second->GetActorTableData())) {
+        ++num_filtered;
+        continue;
+      }
+
       count += 1;
       *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
@@ -355,9 +381,17 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
       if (limit != -1 && count >= limit) {
         break;
       }
+      // With filters, skip the actor if it doesn't match the filter.
+      if (request.has_filters() &&
+          !filter_fn(request.filters(), iter.second->GetActorTableData())) {
+        ++num_filtered;
+        continue;
+      }
+
       count += 1;
       *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
+    reply->set_num_filtered(num_filtered);
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     return;
@@ -367,7 +401,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   // We don't maintain an in-memory cache of all actors which belong to dead
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback, limit](
+      [reply, send_reply_callback, limit, request, filter_fn](
           absl::flat_hash_map<ActorID, rpc::ActorTableData> &&result) {
         auto total_actors = result.size();
 
@@ -377,9 +411,15 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         auto ptr = google::protobuf::Arena::Create<
             absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
         auto count = 0;
+        auto num_filtered = 0;
         for (const auto &pair : *ptr) {
           if (limit != -1 && count >= limit) {
             break;
+          }
+          // With filters, skip the actor if it doesn't match the filter.
+          if (request.has_filters() && !filter_fn(request.filters(), pair.second)) {
+            ++num_filtered;
+            continue;
           }
           count += 1;
 
@@ -387,6 +427,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
           reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
               const_cast<rpc::ActorTableData *>(&pair.second));
         }
+        reply->set_num_filtered(num_filtered);
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
         RAY_LOG(DEBUG) << "Finished getting all actor info.";
       });
@@ -720,7 +761,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
-                   << ", job id = " << actor_id.JobId();
+                   << ", job id = " << actor_id.JobId()
+                   << " owner node id = " << owner_node_id;
     std::shared_ptr<rpc::CoreWorkerClientInterface> client =
         worker_client_factory_(actor->GetOwnerAddress());
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
@@ -735,14 +777,15 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << owner_id
-                        << " failed, destroying actor child, job id = "
-                        << actor_id.JobId();
-        } else {
-          RAY_LOG(INFO) << "Actor " << actor_id
-                        << " is out of scope, destroying actor, job id = "
-                        << actor_id.JobId();
+          RAY_LOG(WARNING) << "Failed to wait for actor " << actor_id
+                           << " out of scope, job id = " << actor_id.JobId()
+                           << ", error: " << status.ToString();
+          // TODO(iycheng): Retry it in other PR.
+          return;
         }
+        RAY_LOG(INFO) << "Actor " << actor_id
+                      << " is out of scope, destroying actor, job id = "
+                      << actor_id.JobId();
 
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
@@ -916,6 +959,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT &&
                           disconnect_type != rpc::WorkerExitType::USER_ERROR;
+
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {

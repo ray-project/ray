@@ -20,13 +20,13 @@ class Result:
     This is the class produced by Trainer.fit().
     It contains a checkpoint, which can be used for resuming training and for
     creating a Predictor object. It also contains a metrics object describing
-    training metrics. ``error`` is included so that non successful runs
+    training metrics. ``error`` is included so that unsuccessful runs
     and trials can be represented as well.
 
     The constructor is a private API.
 
     Attributes:
-        metrics: The final metrics as reported by an Trainable.
+        metrics: The final metrics as reported by a Trainable.
         checkpoint: The final checkpoint of the Trainable.
         error: The execution error of the Trainable run, if the trial finishes in error.
         metrics_dataframe: The full result dataframe of the Trainable.
@@ -37,6 +37,7 @@ class Result:
             saved checkpoints is determined by the ``checkpoint_config``
             argument of ``run_config`` (by default, all checkpoints will
             be saved).
+
     """
 
     metrics: Optional[Dict[str, Any]]
