@@ -1,4 +1,5 @@
-from typing import List, Dict, Optional, Tuple, Any, TYPE_CHECKING, Collection
+import sys
+from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
 
 import contextlib
 import collections
@@ -22,7 +23,7 @@ except ImportError:
     rich = None
 
 import ray
-from ray._private.dict import unflattened_lookup
+from ray._private.dict import unflattened_lookup, flatten_dict
 from ray._private.thirdparty.tabulate.tabulate import (
     tabulate,
     TableFormat,
@@ -110,22 +111,27 @@ def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
     delta: datetime.timedelta = current_time_dt - start_time_dt
 
     rest = delta.total_seconds()
-    days = rest // (60 * 60 * 24)
+    days = int(rest // (60 * 60 * 24))
 
     rest -= days * (60 * 60 * 24)
-    hours = rest // (60 * 60)
+    hours = int(rest // (60 * 60))
 
     rest -= hours * (60 * 60)
-    minutes = rest // 60
+    minutes = int(rest // 60)
 
-    seconds = rest - minutes * 60
+    seconds = int(rest - minutes * 60)
 
+    running_for_str = ""
     if days > 0:
-        running_for_str = f"{days:.0f} days, "
-    else:
-        running_for_str = ""
+        running_for_str += f"{days:d}d "
 
-    running_for_str += f"{hours:02.0f}:{minutes:02.0f}:{seconds:05.2f}"
+    if hours > 0 or running_for_str:
+        running_for_str += f"{hours:d}hr "
+
+    if minutes > 0 or running_for_str:
+        running_for_str += f"{minutes:d}min "
+
+    running_for_str += f"{seconds:d}s"
 
     return f"{current_time_dt:%Y-%m-%d %H:%M:%S}", running_for_str
 
@@ -360,36 +366,36 @@ def _best_trial_str(
     )
 
 
-def _render_table_item(key: str, item: Any, prefix: str = ""):
+def _render_table_item(
+    key: str, item: Any, prefix: str = ""
+) -> Iterable[Tuple[str, str]]:
     key = prefix + key
     if isinstance(item, float):
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
         yield key, f"{item:.5f}".rstrip("0")
-    elif isinstance(item, list):
-        yield key, None
-        for sv in item:
-            yield from _render_table_item("", sv, prefix=prefix + "-")
-    elif isinstance(item, Dict):
-        yield key, None
-        for sk, sv in item.items():
-            yield from _render_table_item(str(sk), sv, prefix=prefix + "/")
     else:
-        yield key, item
+        yield key, _max_len(item, 20)
 
 
 def _get_dict_as_table_data(
     data: Dict,
+    include: Optional[Collection] = None,
     exclude: Optional[Collection] = None,
     upper_keys: Optional[Collection] = None,
 ):
+    include = include or set()
     exclude = exclude or set()
     upper_keys = upper_keys or set()
 
     upper = []
     lower = []
 
-    for key, value in sorted(data.items()):
+    flattened = flatten_dict(data)
+
+    for key, value in sorted(flattened.items()):
+        if include and key not in include:
+            continue
         if key in exclude:
             continue
 
@@ -423,11 +429,12 @@ AIR_TABULATE_TABLEFMT = TableFormat(
 def _print_dict_as_table(
     data: Dict,
     header: Optional[str] = None,
-    exclude: Optional[Collection] = None,
-    division: Optional[Collection] = None,
+    include: Optional[Collection[str]] = None,
+    exclude: Optional[Collection[str]] = None,
+    division: Optional[Collection[str]] = None,
 ):
     table_data = _get_dict_as_table_data(
-        data=data, exclude=exclude, upper_keys=division
+        data=data, include=include, exclude=exclude, upper_keys=division
     )
 
     headers = [header, ""] if header else []
@@ -463,10 +470,34 @@ class ProgressReporter:
         self._start_time = time.time()
         self._last_heartbeat_time = 0
 
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        print(f"\nView detailed results here: {experiment_path}")
+
+        if tensorboard_path:
+            print(
+                f"To visualize your results with TensorBoard, run: "
+                f"`tensorboard --logdir {tensorboard_path}`"
+            )
+
+        print("")
+
     @property
     def _time_heartbeat_str(self):
-        current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
-        return f"Current time: {current_time_str} " f"(running for {running_for_str})"
+        current_time_str, running_time_str = _get_time_str(
+            self._start_time, time.time()
+        )
+        return (
+            f"Current time: {current_time_str}. Total running time: " + running_time_str
+        )
 
     def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
@@ -557,6 +588,42 @@ class TuneReporterBase(ProgressReporter):
 
 
 class TuneTerminalReporter(TuneReporterBase):
+    def experiment_started(
+        self,
+        experiment_name: str,
+        experiment_path: str,
+        searcher_str: str,
+        scheduler_str: str,
+        total_num_samples: int,
+        tensorboard_path: Optional[str] = None,
+        **kwargs,
+    ):
+        if total_num_samples > sys.maxsize:
+            total_num_samples_str = "infinite"
+        else:
+            total_num_samples_str = str(total_num_samples)
+
+        print(
+            tabulate(
+                [
+                    ["Search algorithm", searcher_str],
+                    ["Scheduler", scheduler_str],
+                    ["Number of trials", total_num_samples_str],
+                ],
+                headers=["Configuration for experiment", experiment_name],
+                tablefmt=AIR_TABULATE_TABLEFMT,
+            )
+        )
+        super().experiment_started(
+            experiment_name=experiment_name,
+            experiment_path=experiment_path,
+            searcher_str=searcher_str,
+            scheduler_str=scheduler_str,
+            total_num_samples=total_num_samples,
+            tensorboard_path=tensorboard_path,
+            **kwargs,
+        )
+
     def _print_heartbeat(self, trials, *sys_args):
         if self._verbosity < self._heartbeat_threshold:
             return
@@ -575,7 +642,7 @@ class TuneTerminalReporter(TuneReporterBase):
             tabulate(
                 all_infos,
                 headers=header,
-                tablefmt="simple",
+                tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
         )
@@ -701,9 +768,10 @@ BLACKLISTED_KEYS = {
 class AirResultCallbackWrapper(Callback):
     # This is only to bypass the issue that by the time default callbacks
     # are added, there is no information on `num_samples` yet.
-    def __init__(self, verbosity):
+    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
         self._verbosity = verbosity
         self._callback = None
+        self._metrics = metrics
 
     def setup(
         self,
@@ -713,9 +781,9 @@ class AirResultCallbackWrapper(Callback):
         **info,
     ):
         self._callback = (
-            TuneResultProgressCallback(self._verbosity)
+            TuneResultProgressCallback(self._verbosity, metrics=self._metrics)
             if total_num_samples > 1
-            else TrainResultProgressCallback(self._verbosity)
+            else TrainResultProgressCallback(self._verbosity, metrics=self._metrics)
         )
 
     # everything ELSE is just passing through..
@@ -737,10 +805,11 @@ class AirResultProgressCallback(Callback):
     _intermediate_result_verbosity = None
     _addressing_tmpl = None
 
-    def __init__(self, verbosity):
+    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
         self._verbosity = verbosity
         self._start_time = time.time()
         self._trial_last_printed_results = {}
+        self._metrics = metrics
 
     def _print_result(self, trial, result: Optional[Dict] = None, force: bool = False):
         """Only print result if a different result has been reported, or force=True"""
@@ -753,6 +822,7 @@ class AirResultProgressCallback(Callback):
             _print_dict_as_table(
                 result,
                 header=f"{self._addressing_tmpl.format(trial)} result",
+                include=self._metrics,
                 exclude=BLACKLISTED_KEYS,
                 division=AUTO_RESULT_KEYS,
             )
@@ -773,11 +843,11 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"finished iteration {result[TRAINING_ITERATION]} "
-            f"at {curr_time} (running for {running_time})."
+            f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
 
@@ -786,14 +856,14 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._start_end_verbosity:
             return
-        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         finished_iter = 0
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"completed training after {finished_iter} iterations "
-            f"at {curr_time} (running for {running_time})."
+            f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
 

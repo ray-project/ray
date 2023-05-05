@@ -593,7 +593,6 @@ TEST_F(SyncerTest, Broadcast) {
 
   // Change the resource in s2 and make sure s1 && s3 are correct
   s2.local_versions[0] = 1;
-
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, node_id = s2.syncer->GetLocalNodeID()]() mutable {
         return s1.received_versions[node_id][0] == 1;
@@ -605,6 +604,13 @@ TEST_F(SyncerTest, Broadcast) {
         return s3.received_versions[node_id][0] == 1;
       },
       5));
+  ASSERT_EQ(
+      0,
+      s1.syncer->GetSyncMessage(s1.syncer->GetLocalNodeID(), MessageType::RESOURCE_VIEW)
+          ->version());
+  ASSERT_EQ(nullptr,
+            s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
+                                      MessageType::RESOURCE_VIEW));
 }
 
 bool CompareViews(const std::vector<SyncerServerTest *> &servers,

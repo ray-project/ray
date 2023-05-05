@@ -174,7 +174,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "tf_only", "no_tf_static_graph"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
@@ -599,7 +599,6 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-# TODO (Sven): Enable tf2 for this test.
 py_test(
     name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
@@ -930,7 +929,7 @@ py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/appo/tests/tf/test_appo_learner.py"]
+    srcs = ["algorithms/appo/tests/test_appo_learner.py"]
 )
 
 # ARS

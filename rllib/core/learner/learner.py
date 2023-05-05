@@ -47,6 +47,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -65,6 +66,9 @@ ParamDictType = Dict[ParamRef, ParamType]
 POLICY_LOSS_KEY = "policy_loss"
 VF_LOSS_KEY = "vf_loss"
 ENTROPY_KEY = "entropy"
+
+# Additional update keys
+LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
 @dataclass
@@ -98,7 +102,10 @@ class LearnerHyperparameters:
     respective AlgorithmConfig class.
     """
 
-    pass
+    # TODO (Sven): Move lr from - currently - optimizer config to only exist here.
+    # lr: float = None
+
+    lr_schedule: Optional[List[List[Union[int, float]]]] = None
 
 
 class Learner:
@@ -614,6 +621,26 @@ class Learner:
             logger.debug("Learner already built. Skipping build.")
             return
         self._is_built = True
+
+        # Generic LR scheduling tools.
+        self.lr_scheduler = None
+        if self.hps.lr_schedule is not None:
+            # Custom schedule, based on list of
+            # ([ts], [value to be reached by ts])-tuples.
+            self.lr_schedule_per_module = defaultdict(
+                lambda: PiecewiseSchedule(
+                    self.hps.lr_schedule,
+                    outside_value=self.hps.lr_schedule[-1][-1],
+                    framework=None,
+                )
+            )
+            self.curr_lr_per_module = defaultdict(
+                lambda: self._get_tensor_variable(self._optimizer_config["lr"])
+            )
+        # If no schedule, pin learning rate to its given (fixed) value.
+        else:
+            self.curr_lr_per_module = defaultdict(lambda: self._optimizer_config["lr"])
+
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
             self._optimizer_parameters[optimizer] = []
@@ -749,7 +776,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     def additional_update_per_module(
         self, module_id: ModuleID, **kwargs
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
         See `additional_update` for more details.
@@ -761,7 +788,7 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
-        raise NotImplementedError
+        return {}
 
     @OverrideToImplementCustomLogic
     def postprocess_gradients(
@@ -1100,6 +1127,26 @@ class Learner:
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
+
+    @abc.abstractmethod
+    def _get_tensor_variable(
+        self,
+        value: Any,
+        dtype: Any = None,
+        trainable: bool = False,
+    ) -> TensorType:
+        """Returns a framework-specific tensor variable with the initial given value.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-class.
+
+        Args:
+            value: The initial value for the tensor variable variable.
+
+        Returns:
+            The framework specific tensor variable of the given initial value,
+            dtype and trainable/requires_grad property.
+        """
 
 
 @dataclass
