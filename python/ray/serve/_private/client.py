@@ -22,6 +22,7 @@ from ray.serve._private.constants import (
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
+    BYTED_RAY_SERVE_TIMEOUT,
 )
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.controller import ServeController
@@ -155,7 +156,9 @@ class ServeControllerClient:
                 f"Deployments still alive: {live_names}."
             )
 
-    def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
+    def _wait_for_deployment_healthy(
+        self, name: str, timeout_s: int = -1, min_replica: int = -1
+    ):
         """Waits for the named deployment to enter "HEALTHY" status.
 
         Raises RuntimeError if the deployment enters the "UNHEALTHY" status
@@ -187,6 +190,26 @@ class ServeControllerClient:
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
+
+                if min_replica != -1 and status.message.find("[bytedance]") != -1:
+                    first_bytedance = status.message.find("[bytedance]")
+                    last_bytedance = status.message.rfind("[bytedance]")
+                    import re
+
+                    available_replicas = re.findall(
+                        r"[-+]?(?:\d*\.*\d+)",
+                        status.message[first_bytedance:last_bytedance],
+                    )
+                    if len(available_replicas) != 1:
+                        logger.warn(
+                            f"can not find available replicas message from {status.message}"
+                        )
+
+                    if int(available_replicas[0]) >= min_replica:
+                        logger.warn(
+                            f"available replicas is large than {min_replica}, complete deploy!"
+                        )
+                        break
 
             logger.debug(
                 f"Waiting for {name} to be healthy, current status: "
@@ -320,8 +343,18 @@ class ServeControllerClient:
         tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
-            self._wait_for_deployment_healthy(name)
+            default_min_replicas = 1
+            import os
+
+            if os.environ.get("BYTED_RAY_SERVE_MIN_REPLICA") is not None:
+                default_min_replicas = int(
+                    os.environ.get("BYTED_RAY_SERVE_MIN_REPLICA")
+                )
+            self._wait_for_deployment_healthy(
+                name, BYTED_RAY_SERVE_TIMEOUT, default_min_replicas
+            )
             self.log_deployment_ready(name, version, url, tag)
+            os.environ.pop("BYTED_RAY_SERVE_MIN_REPLICA", None)
 
     @_ensure_connected
     def deploy_application(

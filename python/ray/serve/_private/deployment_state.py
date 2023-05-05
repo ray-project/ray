@@ -1842,6 +1842,8 @@ class DeploymentState:
             ReplicaState.RECOVERING, stop_on_slow=True
         )
 
+        all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
+
         slow_start_replicas = slow_start + slow_update + slow_recover
         running_replicas_changed = (
             running_replicas_changed
@@ -1875,6 +1877,7 @@ class DeploymentState:
                     f"to install. "
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}."
+                    f"[bytedance] available replica number: {all_running_replica_cnt} [bytedance]"
                 )
                 logger.warning(message)
                 if _SCALING_LOG_ENABLED:
@@ -1895,6 +1898,7 @@ class DeploymentState:
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
+                    f"[bytedance] available replica number: {all_running_replica_cnt} [bytedance]"
                 )
                 logger.warning(message)
                 # If status is UNHEALTHY, leave the status and message as is.
@@ -1931,7 +1935,6 @@ class DeploymentState:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
             # we manage.
-
             running_replicas_changed = self._scale_deployment_replicas()
 
             # Check the state of existing replicas and transition if necessary.

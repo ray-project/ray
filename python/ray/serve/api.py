@@ -244,6 +244,7 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
+    min_replicas: Default[Optional[int]] = 0,
     init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
     init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
@@ -332,6 +333,11 @@ def deployment(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
         )
+
+    if min_replicas != 0:
+        min_replicas = min(min_replicas, num_replicas)
+        import os
+        os.environ["BYTED_RAY_SERVE_MIN_REPLICA"] = str(min_replicas)
 
     if version is not DEFAULT.VALUE:
         logger.warning(

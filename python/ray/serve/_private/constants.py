@@ -228,3 +228,8 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 # Serve gauge metric set period.
 RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+
+# Timeout for Ray deployment ready
+BYTED_RAY_SERVE_TIMEOUT = (
+    int(os.environ.get("BYTED_RAY_SERVE_TIMEOUT_SECONDS", "-1")) or None
+)
