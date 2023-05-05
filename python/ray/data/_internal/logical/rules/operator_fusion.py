@@ -107,8 +107,8 @@ class OperatorFusionRule(Rule):
 
         # We currently only support fusing for the following cases:
         # - MapOperator -> MapOperator
-        # - MapOperator -> AllToAllOperator (only
-        #   RandomShuffle LogicalOperator is currently supported)
+        # - MapOperator -> AllToAllOperator (only RandomShuffle
+        # LogicalOperator is currently supported)
         if not isinstance(down_op, (MapOperator, AllToAllOperator)) or not isinstance(
             up_op, MapOperator
         ):
@@ -277,10 +277,6 @@ class OperatorFusionRule(Rule):
         name = up_op.name + "->" + down_op.name
         down_logical_op: AbstractAllToAll = self._op_map.pop(down_op)
         up_logical_op: AbstractUDFMap = self._op_map.pop(up_op)
-        assert isinstance(down_logical_op, RandomShuffle), (
-            "Current rule supports fusing RandomShuffle downstream operators only, "
-            f"but got {type(down_logical_op).__name__}"
-        )
 
         # Fuse transformation functions.
         down_transform_fn = down_op.get_transformation_fn()

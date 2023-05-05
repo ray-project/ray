@@ -721,22 +721,31 @@ def test_read_map_batches_operator_fusion_with_sort_operator(
 def test_read_map_batches_operator_fusion_with_aggregate_operator(
     ray_start_regular_shared, enable_optimizer
 ):
-    # Note: We currently do not fuse MapBatches->Repartition.
+    from ray.data.aggregate import AggregateFn
+
+    # Note: We currently do not fuse MapBatches->Aggregate.
     # This test is to ensure that we don't accidentally fuse them, until
     # we implement it later.
     def fn(batch):
-        return {"id": [x + 1 for x in batch["id"]]}
+        return {"id": [x % 2 for x in batch["id"]]}
 
-    n = 10
-    ds = ray.data.range(n)
-    ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.repartition(2)
-    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    n = 100
+    grouped_ds = ray.data.range(n).map_batches(fn, batch_size=None).groupby("id")
+    agg_ds = grouped_ds.aggregate(
+        AggregateFn(
+            init=lambda k: [0, 0],
+            accumulate_row=lambda a, r: [a[0] + r["id"], a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
+            name="foo",
+        ),
+    )
+    agg_ds.take_all() == [{"id": 0, "foo": 0.0}, {"id": 1, "foo": 1.0}]
     # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Repartition" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
-    assert "Repartition" in ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
+    assert "DoRead->MapBatches->Aggregate" not in agg_ds.stats()
+    assert "DoRead->MapBatches" in agg_ds.stats()
+    assert "Aggregate" in agg_ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "Aggregate"])
 
 
 def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_optimizer):
