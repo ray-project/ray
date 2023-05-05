@@ -3,6 +3,12 @@
 Performance Tips and Tuning
 ===========================
 
+Monitoring your application
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+View the Ray dashboard to monitor your application and troubleshoot issues. To learn
+more about the Ray dashboard, read :ref:`Ray Dashboard <ray-dashboard>`.
+
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -29,7 +35,7 @@ These stats can be used to understand the performance of your Datastream workloa
 
 .. code-block::
 
-    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s                                                                                                                                                
+    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s
     * Remote wall time: 101.55ms min, 331.39ms max, 135.24ms mean, 2.16s total
     * Remote cpu time: 7.42ms min, 15.88ms max, 11.01ms mean, 176.15ms total
     * Peak heap memory usage (MiB): 157.18 min, 157.73 max, 157 mean
