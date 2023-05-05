@@ -27,7 +27,8 @@ _LOGGER_DEPRECATION_WARNING = (
 @Deprecated(
     message=_LOGGER_DEPRECATION_WARNING.format(
         old="Logger", new="ray.tune.logger.LoggerCallback"
-    )
+    ),
+    warning=True,
 )
 @DeveloperAPI
 class Logger(abc.ABC):

@@ -28,7 +28,8 @@ VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 @Deprecated(
     message=_LOGGER_DEPRECATION_WARNING.format(
         old="JsonLogger", new="ray.tune.json.JsonLoggerCallback"
-    )
+    ),
+    warning=True,
 )
 @PublicAPI
 class JsonLogger(Logger):

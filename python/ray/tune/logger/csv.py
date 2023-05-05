@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 @Deprecated(
     message=_LOGGER_DEPRECATION_WARNING.format(
         old="CSVLogger", new="ray.tune.csv.CSVLoggerCallback"
-    )
+    ),
+    warning=True,
 )
 @PublicAPI
 class CSVLogger(Logger):
