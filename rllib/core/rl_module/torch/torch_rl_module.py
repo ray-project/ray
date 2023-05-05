@@ -1,7 +1,7 @@
 import abc
 import pathlib
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Mapping, Tuple, Union, Type
 
 from ray.rllib.core.models.specs.checker import (
@@ -49,14 +49,16 @@ class TorchCompileConfig:
         compile_forward_train: Whether to compile the forward_train method.
         compile_forward_inference: Whether to compile the forward_inference method.
         compile_forward_exploration: Whether to compile the forward_exploration method.
-        torch_dynamo_backend: The torch.dynamo backend to use. One of
+        torch_dynamo_backend: The torch.dynamo backend to use.
+        kwargs: Additional keyword arguments to pass to `torch.compile()`
 
     """
 
-    compile_forward_train = False
-    compile_forward_inference = False
-    compile_forward_exploration = False
-    torch_dynamo_backend = "aot_eager" if sys.platform == "darwin" else "inductor"
+    compile_forward_train: bool = False
+    compile_forward_inference: bool = False
+    compile_forward_exploration: bool = False
+    torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "inductor"
+    kwargs: dict = field(default_factory=lambda: dict())
 
     def maybe_compile_forward_methods(
         self, rl_module: "TorchRLModule"
@@ -67,11 +69,17 @@ class TorchCompileConfig:
             rl_module: The RLModule to compile the forward methods of.
         """
         if self.compile_forward_train:
-            rl_module.compile_forward_train(backend=self.torch_dynamo_backend)
+            rl_module.compile_forward_train(
+                backend=self.torch_dynamo_backend, **self.kwargs
+            )
         if self.compile_forward_inference:
-            rl_module.compile_forward_inference(backend=self.torch_dynamo_backend)
+            rl_module.compile_forward_inference(
+                backend=self.torch_dynamo_backend, **self.kwargs
+            )
         if self.compile_forward_exploration:
-            rl_module.compile_forward_exploration(backend=self.torch_dynamo_backend)
+            rl_module.compile_forward_exploration(
+                backend=self.torch_dynamo_backend, **self.kwargs
+            )
 
         return rl_module
 
