@@ -39,7 +39,7 @@ class Application(DAGNodeBase):
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
     single application, passed to `serve.run`, or deployed via a Serve config file.
 
-    For example, to define an app and run it in Python:
+    For example, to define an Application and run it in Python:
 
         .. code-block:: python
 
@@ -97,8 +97,8 @@ class Application(DAGNodeBase):
 class Deployment:
     """Class (or function) decorated with the `@serve.deployment` decorator.
 
-    This class will be run on a number of replica actors. Requests to those replicas
-    will call this class.
+    This is run on a number of replica actors. Requests to those replicas call
+    this class.
 
     One or more deployments can be composed together into an `Application` which is
     then run via `serve.run` or a config file.
