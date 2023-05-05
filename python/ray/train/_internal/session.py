@@ -76,7 +76,7 @@ class _TrainSession:
         dataset_shard: Optional[Union[Datastream, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
-        # Deprecated
+        # TODO(ml-team): Deprecated, remove in 2.6.
         encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
         # If True and the worker is on the same node as driver,
