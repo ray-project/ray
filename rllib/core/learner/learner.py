@@ -775,7 +775,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     def additional_update_per_module(
         self, module_id: ModuleID, **kwargs
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
         See `additional_update` for more details.

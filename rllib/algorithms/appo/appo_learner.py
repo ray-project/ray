@@ -84,7 +84,8 @@ class AppoLearner(ImpalaLearner):
         #  updates.
         #  We should instead have the target / kl threshold update be based off
         #  of the train_batch_size * some target update frequency * num_sgd_iter.
-        results = {}
+        results = super().additional_update_per_module(module_id, timestep=timestep)
+
         if (timestep - last_update) >= self.hps.target_update_frequency_ts:
             self._update_module_target_networks(module_id)
             results[NUM_TARGET_UPDATES] = 1

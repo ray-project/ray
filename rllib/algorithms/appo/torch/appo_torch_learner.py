@@ -28,7 +28,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class APPOTorchLearner(TorchLearner, AppoLearner):
+class APPOTorchLearner(AppoLearner, TorchLearner):
     """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
 
     @override(TorchLearner)

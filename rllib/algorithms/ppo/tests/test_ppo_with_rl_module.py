@@ -16,7 +16,7 @@ from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -54,7 +54,7 @@ def get_model_config(framework, lstm=False):
 
 class MyCallbacks(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(
             stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],

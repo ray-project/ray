@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-class ImpalaTfLearner(TfLearner, ImpalaLearner):
+class ImpalaTfLearner(ImpalaLearner, TfLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
     @override(TfLearner)

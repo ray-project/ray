@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(TfLearner, AppoLearner):
+class APPOTfLearner(AppoLearner, TfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
     @override(TfLearner)

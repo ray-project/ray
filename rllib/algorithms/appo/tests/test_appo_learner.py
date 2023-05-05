@@ -149,9 +149,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                 results = algo.train()
                 if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_POLICY_ID):
                     break
-            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY
-            ]
+            curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
             self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
 
 

@@ -489,7 +489,7 @@ class PPO(Algorithm):
                 timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
             )
             for pid, res in additional_results.items():
-                train_results[pid][LEARNER_STATS_KEY].update(res)
+                train_results[pid].update(res)
 
             return train_results
 
