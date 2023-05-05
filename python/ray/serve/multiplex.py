@@ -19,7 +19,7 @@ import asyncio
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class ModelMultiplexWrapper:
+class _ModelMultiplexWrapper:
     def __init__(self, model_load_func, self_args, num_models_per_replica=0):
         # The models are stored in an OrderedDict to ensure LRU caching.
         self.models = OrderedDict()

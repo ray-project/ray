@@ -52,7 +52,7 @@ from ray.serve._private.utils import (
 from ray.serve._private import api as _private_api
 
 import ray
-from ray.serve.multiplex import ModelMultiplexWrapper
+from ray.serve.multiplex import _ModelMultiplexWrapper
 
 
 logger = logging.getLogger(__file__)
@@ -612,7 +612,7 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
                 args = args[1:]
             multiplex_attr = f"__serve_multiplex_{func.__name__}"
             if not hasattr(multiplex_object, multiplex_attr):
-                model_multiplex_wrapper = ModelMultiplexWrapper(
+                model_multiplex_wrapper = _ModelMultiplexWrapper(
                     func, self, num_models_per_replica
                 )
                 setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
