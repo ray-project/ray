@@ -2,6 +2,31 @@
 # isort: skip_file
 # fmt: off
 
+# __tf_super_quick_start__
+import ray
+import numpy as np
+from typing import Dict
+
+ds = ray.data.from_numpy(np.ones((1, 100)))
+
+class TFPredictor:
+    def __init__(self):
+        from tensorflow import keras
+
+        input_layer = keras.Input(shape=(100,))
+        output_layer = keras.layers.Dense(1, activation="sigmoid")
+        self.model = keras.Sequential([input_layer, output_layer])
+
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict:
+        return {"output": self.model(batch["data"]).numpy()}
+
+scale = ray.data.ActorPoolStrategy(size=2)
+predictions = ds.map_batches(TFPredictor, compute=scale)
+predictions.show(limit=1)
+# {'output': array([0.45119727])}
+# __tf_super_quick_end__
+
+
 # __tf_no_ray_start__
 from tensorflow import keras
 import numpy as np
@@ -17,7 +42,6 @@ def transform(batch: Dict[str, np.ndarray]):
     return {"output": model(batch["data"]).numpy()}
 
 results = transform(batches)
-
 # __tf_no_ray_end__
 
 
@@ -55,8 +79,8 @@ test = tfp(batch)
 # __tf_quickstart_prediction_start__
 scale = ray.data.ActorPoolStrategy(size=2)
 
-predicted_probabilities = ds.map_batches(TFPredictor, compute=scale)
-predicted_probabilities.show(limit=1)
+predictions = ds.map_batches(TFPredictor, compute=scale)
+predictions.show(limit=1)
 # {'output': array([0.45119727])}
 # __tf_quickstart_prediction_end__
 # fmt: on

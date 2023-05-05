@@ -2,6 +2,28 @@
 # isort: skip_file
 # fmt: off
 
+# __hf_super_quick_start__
+import ray
+import numpy as np
+import pandas as pd
+from typing import Dict
+
+ds = ray.data.from_pandas(pd.DataFrame(["Complete this", "for me"], columns=["text"]))
+
+class HuggingFacePredictor:
+    def __init__(self):
+        from transformers import pipeline
+        self.model = pipeline("text-generation", model="gpt2")
+
+    def __call__(self, batch: Dict[str, np.ndarray]):
+        model_out = self.model(list(batch["text"]), max_length=20)
+        return pd.DataFrame({"output": model_out})
+
+scale = ray.data.ActorPoolStrategy(size=2)
+predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
+predictions.show(limit=1)
+# __hf_super_quick_end__
+
 # __hf_no_ray_start__
 import numpy as np
 from typing import Dict

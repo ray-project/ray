@@ -8,8 +8,9 @@ Running Batch Inference
     In this tutorial you'll learn what batch inference is, why you might want to use
     Ray for it, and how to use Ray Data effectively for this task.
     If you are familiar with the basics of inference tasks, jump straight to
-    code in the :ref:`quickstart section <batch_inference_quickstart>` or the
-    :ref:`advanced guide<batch_inference_advanced_pytorch_example>`.
+    code in the :ref:`quickstart section <batch_inference_quickstart>`, our detailed
+    :ref:`walk-through<batch_inference_walk_through>`,
+    or our :ref:`in-depth guide for PyTorch models<batch_inference_advanced_pytorch_example>`.
 
 Batch inference refers to generating model predictions on a set of input data.
 The model can range from a simple Python function to a complex neural network.
@@ -65,6 +66,42 @@ use case does not require scaling yet:
 
 Quick Start
 -----------
+
+If you're impatient and want to see a copy-paste example right away,
+here are a few simple examples.
+Just pick one of the frameworks you like and run the code in your terminal.
+If you want a more detailed rundown of the same examples, skip ahead to the
+:ref:`following batch inference walk-through with Ray<batch_inference_walk_through>`.
+
+
+.. tabs::
+
+    .. group-tab:: HuggingFace
+
+        .. literalinclude:: ./doc_code/hf_quick_start.py
+            :language: python
+            :start-after: __hf_super_quick_start__
+            :end-before: __hf_super_quick_end__
+
+    .. group-tab:: PyTorch
+
+        .. literalinclude:: ./doc_code/pytorch_quick_start.py
+            :language: python
+            :start-after: __pt_super_quick_start__
+            :end-before: __pt_super_quick_end__
+
+    .. group-tab:: TensorFlow
+
+        .. literalinclude:: ./doc_code/tf_quick_start.py
+            :language: python
+            :start-after: __tf_super_quick_start__
+            :end-before: __tf_super_quick_end__
+
+
+.. _batch_inference_walk_through:
+
+Walk-through: Batch Inference with Ray
+--------------------------------------
 
 Running batch inference is conceptually easy and requires three steps:
 
@@ -301,10 +338,10 @@ on the full dataset. Below you see how to do that in our running examples.
 
 .. _batch_inference_advanced_pytorch_example:
 
-Advanced batch inference guide
-------------------------------
+Advanced Guide to Batch Inference with PyTorch
+----------------------------------------------
 
- Let's use batch inference on a pre-trained PyTorch model for image classification
+Let's use batch inference on a pre-trained PyTorch model for image classification
 to illustrate advanced concepts of batch processing with Ray.
 
 .. important::
