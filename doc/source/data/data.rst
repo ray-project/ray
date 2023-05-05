@@ -52,7 +52,7 @@ Streaming Preprocessing for ML Training
 ---------------------------------------
 
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
-Ray Data is intended to serve as a last-mile bridge from storage or ETL pipeline outputs to distributed
+Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
 applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems.
 
