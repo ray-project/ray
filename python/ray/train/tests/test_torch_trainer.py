@@ -218,42 +218,6 @@ def test_single_worker_failure(ray_start_4_cpus):
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
-# See comment in backend.py::_warn_about_bad_checkpoint_type
-# for why test_torch_bad_checkpoint_warning is commented out
-
-# def test_torch_bad_checkpoint_warning(ray_start_4_cpus):
-#     """Test that a warning is printed if bad checkpoint type is used."""
-
-#     def train_func():
-#         model = torch.nn.Linear(1, 1).state_dict()
-#         session.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
-
-#     scaling_config = ScalingConfig(num_workers=2)
-#     trainer = TorchTrainer(
-#         train_loop_per_worker=train_func,
-#         scaling_config=scaling_config,
-#     )
-#     output = io.StringIO()
-#     with redirect_stdout(output), redirect_stderr(output):
-#         trainer.fit()
-#     output = output.getvalue()
-#     assert "You have reported a checkpoint" not in output
-
-#     def train_func():
-#         model = torch.nn.Linear(1, 1).state_dict()
-#         session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
-
-#     trainer = TorchTrainer(
-#         train_loop_per_worker=train_func,
-#         scaling_config=scaling_config,
-#     )
-#     output = io.StringIO()
-#     with redirect_stdout(output), redirect_stderr(output):
-#         trainer.fit()
-#     output = output.getvalue()
-#     assert "You have reported a checkpoint" in output
-
-
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
