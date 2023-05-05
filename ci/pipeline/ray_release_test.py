@@ -48,7 +48,7 @@ def _run_tests(test_targets: Set[str]) -> None:
     )
 
 
-def _get_test_targets_for_changed_files(changed_files: List[str]) -> str:
+def _get_test_targets_for_changed_files(changed_files: List[str]) -> Set[str]:
     """
     Get the test target for the changed files.
     """
@@ -62,14 +62,30 @@ def _get_test_targets_for_changed_files(changed_files: List[str]) -> str:
             f"--include={','.join(changed_files)}",
         ]
     )
+    # coverage data is generated into a json file named coverage.json, with the
+    # following format:
+    # {
+    #   "files": {
+    #      "file_name": {
+    #        "contexts": {
+    #          "line_number": ["test_name"]
+    #           ...
+    #        }
+    #      }
+    #      ...
+    #   }
+    # }
+    #
     coverage_data = json.load(open("coverage.json"))
     test_targets = set()
-    for file_metadata in coverage_data["files"].values():
-        contexts = file_metadata["contexts"]
-        for tests_per_line in contexts.values():
-            for test_per_line in tests_per_line:
+    for data in coverage_data["files"].values():
+        context = data["contexts"]
+        for tests in context.values():
+            for test in tests:
+                # test is in the format of file/path/test_name.py::run,
+                # convert it to test target in the format of //release::test_name
                 test_targets.add(
-                    f"//release:{test_per_line.split('::')[0].split('/')[-1][:-3]}",
+                    f"//release:{test.split('::')[0].split('/')[-1][:-3]}",
                 )
     return test_targets
 
