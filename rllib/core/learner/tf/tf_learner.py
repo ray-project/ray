@@ -532,7 +532,9 @@ class TfLearner(Learner):
             # tf Variable `self.curr_lr_per_module[module_id]`. When tf creates the
             # optimizer, maybe it detaches its lr value from the given variable?
             self._named_optimizers[module_id].lr = value
-        return {LEARNER_RESULTS_CURR_LR_KEY: self._named_optimizers[module_id].lr}
+        return {
+            LEARNER_RESULTS_CURR_LR_KEY: self._named_optimizers[module_id].lr.numpy()
+        }
 
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
