@@ -176,11 +176,19 @@ class RAY_EXPORT PythonGcsSubscriber {
   /// \return Status
   Status Connect();
 
+  /// Register a subscription for the subscriber's channel type.
+  ///
+  /// Before the registration, published messages in the channel
+  /// will not be saved for the subscriber.
+  Status Subscribe(const std::string& subscriber_id, rpc::ChannelType channel_type);
+
   /// Polls for new error message.
   /// Both key_id and data are out parameters.
   Status PollError(std::string* key_id, rpc::ErrorTableData* data);
+
   /// Polls for new log messages.
   Status PollLogs(std::string* key_id, rpc::LogBatch* data);
+
   /// Polls for new function key messages.
   Status PollFunctionKey(std::string* key_id, rpc::PythonFunction* data);
  private:

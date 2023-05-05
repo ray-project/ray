@@ -314,5 +314,26 @@ Status PythonGcsSubscriber::Connect() {
   return Status::OK();
 }
 
+Status PythonGcsSubscriber::Subscribe(const std::string& subscriber_id, rpc::ChannelType channel_type) {
+  // TODO: Add locking
+  grpc::ClientContext context;
+
+  rpc::GcsSubscriberCommandBatchRequest request;
+  request.set_subscriber_id(subscriber_id);
+  // TODO: Fill this out
+  request.set_sender_id("XXXXX");
+  auto *cmd = request.add_commands();
+  cmd->set_channel_type(channel_type);
+
+  rpc::GcsSubscriberCommandBatchReply reply;
+  grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+
+  return Status::OK();
+}
+
+Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* data) {
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray
