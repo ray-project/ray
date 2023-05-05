@@ -103,7 +103,8 @@ class LearnerHyperparameters:
     """
 
     # TODO (Sven): Move lr from - currently - optimizer config to only exist here.
-    lr: float = None
+    # lr: float = None
+
     lr_schedule: Optional[List[List[Union[int, float]]]] = None
 
 
@@ -634,11 +635,11 @@ class Learner:
                 )
             )
             self.curr_lr_per_module = defaultdict(
-                lambda: self._get_tensor_variable(self.hps.lr)
+                lambda: self._get_tensor_variable(self._optimizer_config["lr"])
             )
         # If no schedule, pin learning rate to its given (fixed) value.
         else:
-            self.curr_lr_per_module = defaultdict(lambda: self.hps.lr)
+            self.curr_lr_per_module = defaultdict(lambda: self._optimizer_config["lr"])
 
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
