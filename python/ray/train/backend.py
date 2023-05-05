@@ -79,38 +79,17 @@ class Backend(metaclass=Singleton):
         Session API is available at this point."""
         pass
 
+    # TODO(ml-team): Remove in 2.6.
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``encode_data`` is deprecated."""
-        if cls.encode_data != Backend.encode_data:
+        if cls._encode_data != Backend._encode_data:
             raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
 
+    # TODO(ml-team): Remove in 2.6.
     @classmethod
     def _decode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
-        """Temporary method until ``decode_data`` is deprecated."""
-        if cls.decode_data != Backend.decode_data:
+        if cls._decode_data != Backend._decode_data:
             raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
-
-    @Deprecated(message=_encode_decode_deprecation_message)
-    @staticmethod
-    def encode_data(data_dict: Dict) -> EncodedData:
-        """Logic to encode a data dict before sending to the driver.
-
-        This function will be called on the workers for any data that is
-        sent to the driver via ``session.report()``.
-        """
-
-        return data_dict
-
-    @Deprecated(message=_encode_decode_deprecation_message)
-    @staticmethod
-    def decode_data(encoded_data: EncodedData) -> Dict:
-        """Logic to decode an encoded data dict.
-
-        This function will be called on the driver after receiving the
-        encoded data dict from the worker.
-        """
-
-        return encoded_data
