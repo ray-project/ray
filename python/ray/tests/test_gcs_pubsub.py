@@ -5,7 +5,6 @@ import re
 
 import ray
 from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
     GcsLogSubscriber,
     GcsFunctionKeySubscriber,
     GcsAioPublisher,
@@ -21,7 +20,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)

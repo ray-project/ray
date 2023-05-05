@@ -1810,7 +1810,13 @@ cdef class GcsPublisher:
 
 
 cdef class GcsErrorSubscriber:
-    pass
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    cdef:
+        shared_ptr[CPythonGcsSubscriber] inner
+
+    def __cinit__(self, address):
+        self.inner.reset(new CPythonGcsSubscriber(address))
+        check_status(self.inner.get().Connect())
 
 
 cdef class CoreWorker:

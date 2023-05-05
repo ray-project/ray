@@ -361,6 +361,12 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
 
+    cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
+
+        CPythonGcsSubscriber(const c_string& gcs_address)
+
+        CRayStatus Connect()
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
