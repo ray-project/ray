@@ -25,11 +25,7 @@ from ray.serve._private.http_util import (
     Response,
     set_socket_reuse_port,
 )
-from ray.serve._private.common import (
-    EndpointInfo,
-    EndpointTag,
-    ApplicationName,
-)
+from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,

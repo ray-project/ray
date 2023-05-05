@@ -759,6 +759,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
         )
 
 
+@PublicAPI(stability="alpha")
 class HTTPProxyDetails(BaseModel):
     status: HTTPProxyStatus
 
