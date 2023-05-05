@@ -19,7 +19,11 @@
       release/...
 
 - label: ":shield: release tests"
+<<<<<<< HEAD
   if: build.pull_request.id != null
+=======
+  conditions: ["BUILDKITE_PULL_REQUEST"]
+>>>>>>> 0ccebbe38a (Add a script to run tests using coverage information)
   instance_size: small
   commands:
     - pip install coverage
