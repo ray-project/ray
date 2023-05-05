@@ -27,6 +27,7 @@ from ray.serve.schema import HTTPProxyDetails
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+PROXY_HEALTH_CHECK_PERIOD_S = 10
 class HTTPProxyState:
     def __init__(self, actor_handle: ActorHandle, actor_name: str):
         self._actor_handle = actor_handle
@@ -68,20 +69,23 @@ class HTTPProxyState:
             self._check_health_obj_ref_result()
             self._actor_started = True
 
+        randomized_period_s = PROXY_HEALTH_CHECK_PERIOD_S * random.uniform(0.9, 1.1)
+
         if self._health_check_obj_ref:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
                 self._check_health_obj_ref_result()
-            # If the HTTP Proxy has been blocked for more than 5 seconds, mark unhealthy
-            elif time.time() - self._last_health_check_time > 5:
-                self._status = HTTPProxyStatus.UNHEALTHY
-                logger.warning(
-                    f"Health check for HTTP Proxy {self._actor_name} took more than 5 "
-                    "seconds."
-                )
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check
-        elif time.time() - self._last_health_check_time > 10 * random.uniform(0.9, 1.1):
+        if time.time() - self._last_health_check_time > randomized_period_s:
+            # If the HTTP Proxy has been blocked for more than 5 seconds, mark unhealthy
+            if time.time() - self._last_health_check_time > 5:
+                self._status = HTTPProxyStatus.UNHEALTHY
+                logger.warning(
+                    f"Health check for HTTP Proxy {self._actor_name} took more than "
+                    f"{PROXY_HEALTH_CHECK_PERIOD_S} seconds."
+                )
+
             self._health_check_obj_ref = self._actor_handle.check_health.remote()
             self._last_health_check_time = time.time()
 
