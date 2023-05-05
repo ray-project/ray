@@ -140,26 +140,22 @@ versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
 FORUM_LINK = "https://discuss.ray.io"
 versionwarning_messages = {
-    # Re-enable this after Ray Summit.
-    # "latest": (
-    #     "This document is for the latest pip release. "
-    #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
-    # ),
-    # "master": (
-    #     "<b>Got questions?</b> Join "
-    #     f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
-    #     "for Q&A on all things Ray, as well as to share and learn use cases "
-    #     "and best practices with the Ray community."
-    # ),
+    "latest": (
+        "This document is for the latest pip release. "
+        'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    ),
+    "master": (
+        "<b>Got questions?</b> Join "
+        f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
+        "for Q&A on all things Ray, as well as to share and learn use cases "
+        "and best practices with the Ray community."
+    ),
 }
 
 versionwarning_body_selector = "#main-content"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
-
-# The encoding of source files.
-# source_encoding = 'utf-8-sig'
 
 # The master toctree document.
 master_doc = "index"
@@ -174,10 +170,7 @@ author = "The Ray Team"
 # built documents.
 from ray import __version__ as version
 
-# The full version, including alpha/beta/rc tags.
 release = version
-
-language = None
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -186,27 +179,8 @@ exclude_patterns = [
     "templates/*",
 ]
 
-# If "DOC_LIB" is found, only build that top-level navigation item.
-build_one_lib = os.getenv("DOC_LIB")
-
-all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
-all_toc_libs += [
-    "cluster",
-    "tune",
-    "data",
-    "train",
-    "rllib",
-    "serve",
-    "workflows",
-]
-if build_one_lib and build_one_lib in all_toc_libs:
-    all_toc_libs.remove(build_one_lib)
-    exclude_patterns += all_toc_libs
-
-
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "lovelace"
-
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
@@ -271,57 +245,12 @@ html_title = f"Ray {release}"
 
 language = 'en'
 
-
-# A shorter title for the navigation bar.  Default is the same as html_title.
-# html_short_title = None
-
-# The name of an image file (within the static path) to use as favicon of the
-# docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
-# pixels large.
 html_favicon = "_static/favicon.ico"
 
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Raydoc"
-
-# -- Options for LaTeX output ---------------------------------------------
-
-latex_elements = {
-    # The paper size ('letterpaper' or 'a4paper').
-    # 'papersize': 'letterpaper',
-    # The font size ('10pt', '11pt' or '12pt').
-    # 'pointsize': '10pt',
-    # Additional stuff for the LaTeX preamble.
-    # 'preamble': '',
-    # Latex figure (float) alignment
-    # 'figure_align': 'htbp',
-}
-
-latex_documents = [
-    (master_doc, "Ray.tex", "Ray Documentation", author, "manual"),
-]
-
-# -- Options for manual page output ---------------------------------------
-
-man_pages = [(master_doc, "ray", "Ray Documentation", [author], 1)]
-
-# -- Options for Texinfo output -------------------------------------------
-texinfo_documents = [
-    (
-        master_doc,
-        "Ray",
-        "Ray Documentation",
-        author,
-        "Ray",
-        "Ray provides a simple, universal API for building distributed applications.",
-        "Miscellaneous",
-    ),
-]
 
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"

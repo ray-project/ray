@@ -22,19 +22,6 @@ make develop && open _build/html/index.html
 > **_NOTE:_**  The above command is for development. To reproduce build failures from the
 > CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
 
-## Building just one sub-project
-
-Often your changes in documentation just concern one sub-project, such as Tune or Train.
-To build just this one sub-project, and ignore the rest
-(leading to build warnings due to broken references etc.), run the following command:
-
-```shell
-DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
-```
-where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/`
-directory either called `tune`, `rllib`, `train`, `cluster`, `serve`, `data` or the ones starting
-with `ray-`, e.g. `ray-observability`.
-
 ## Announcements and includes
 
 To add new announcements and other messaging to the top or bottom of a documentation page,
