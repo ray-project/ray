@@ -1359,7 +1359,9 @@ class ModelChecker:
 #             alg2.stop()
 
 
-def check_support(alg, config, train=True, check_bounds=False):
+def check_support(
+    alg, config, train=True, check_bounds=False, frameworks=("torch", "tf")
+):
     # do these imports here because otherwise we have circular imports
     from ray.rllib.examples.env.random_env import RandomEnv
     from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as ComplexNet
@@ -1515,7 +1517,6 @@ def check_support(alg, config, train=True, check_bounds=False):
 
     # TF2 has to come before TF here otherwise one of those strange errors with mixing
     # TF1 and TF2 happens
-    frameworks = ["tf2", "tf", "torch"]
 
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.

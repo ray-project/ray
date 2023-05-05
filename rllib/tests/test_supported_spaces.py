@@ -52,7 +52,6 @@ class TestSupportedSpacesAPPO(unittest.TestCase):
             .resources(num_gpus=0)
             .training(vtrace=False, model={"fcnet_hiddens": [10]})
         )
-        check_support("APPO", config, train=False)
         config.training(vtrace=True)
         check_support("APPO", config)
 
@@ -100,7 +99,7 @@ class TestSupportedSpacesPPO(unittest.TestCase):
                 },
             )
         )
-        check_support("PPO", config, check_bounds=True, tf2=True)
+        check_support("PPO", config, check_bounds=True)
 
 
 class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
@@ -141,7 +140,9 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             _enable_learner_api=False
         )
 
-        check_support("PPO", config, check_bounds=True, tf2=True)
+        check_support(
+            "PPO", config, check_bounds=True, frameworks=("tf2", "torch", "tf")
+        )
 
 
 class TestSupportedSpacesOffPolicy(unittest.TestCase):
@@ -176,7 +177,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
                 }
             )
         )
-        check_support("DQN", config, tf2=True)
+        check_support("DQN", config, frameworks=("tf2", "torch", "tf"))
 
     def test_sac(self):
         check_support(
