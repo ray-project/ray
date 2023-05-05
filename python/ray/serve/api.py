@@ -52,7 +52,7 @@ from ray.serve._private.utils import (
 from ray.serve._private import api as _private_api
 
 import ray
-from ray.serve.multiplexed import ModelMultiplexWrapper
+from ray.serve.multiplex import ModelMultiplexWrapper
 
 
 logger = logging.getLogger(__file__)
