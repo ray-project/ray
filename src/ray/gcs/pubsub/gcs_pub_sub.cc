@@ -236,16 +236,15 @@ constexpr int MAX_GCS_PUBLISH_RETRIES = 60;
 Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request,
                                                 int64_t num_retries,
                                                 int64_t timeout_ms) {
-  grpc::ClientContext context;
-  if (timeout_ms != -1) {
-    context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(timeout_ms));
-  }
-
   int count = num_retries == -1 ? MAX_GCS_PUBLISH_RETRIES : num_retries;
   rpc::GcsPublishReply reply;
   grpc::Status status;
   while (count > 0) {
+    grpc::ClientContext context;
+    if (timeout_ms != -1) {
+      context.set_deadline(std::chrono::system_clock::now() +
+                           std::chrono::milliseconds(timeout_ms));
+    }
     status = pubsub_stub_->GcsPublish(&context, request, &reply);
     if (status.error_code() == grpc::StatusCode::OK) {
       if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
