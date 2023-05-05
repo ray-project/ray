@@ -365,8 +365,6 @@ def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
     the list of PIDs that are children of the Ray worker
     processes.
     """
-    ray_start_cluster.add_node()
-    ray_start_cluster.wait_for_nodes()
 
     output_file_path = tmp_path / "leaked_pids.json"
     driver_script = f"""
@@ -376,7 +374,7 @@ import multiprocessing
 import shutil
 import time
 import os
-ray.init("{ray_start_cluster.address}")
+
 @ray.remote
 class Actor:
     def create_leaked_child_process(self, num_to_leak):
@@ -426,6 +424,7 @@ while True:
     print(os.getpid())
     time.sleep(1)
     """
+
     driver_proc = run_string_as_driver_nonblocking(driver_script)
 
     # Wait for the json file containing the child PIDS
@@ -444,15 +443,9 @@ while True:
     assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
 
     # Valdiate children of worker process die after SIGINT.
-    def check():
-        for proc in processes:
-            if proc.is_running():
-                print(proc)
-        return all([not proc.is_running() for proc in processes])
-
     driver_proc.send_signal(signal.SIGINT)
     wait_for_condition(
-        condition_predictor=check,
+        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
         timeout=30,
     )
 
