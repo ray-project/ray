@@ -5,6 +5,9 @@ debian_packages:
 
 python:
   pip_packages:
+    # Install boto3 to workaround a temporary issue with python and urllib3.
+    # TODO(jungong) : remove this.
+    - boto3
     - myst-parser==0.15.2
     - myst-nb==0.13.1
     - jupytext==1.13.6
