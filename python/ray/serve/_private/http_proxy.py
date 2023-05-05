@@ -551,4 +551,7 @@ Please make sure your http-host and http-port are specified correctly."""
         await server.serve(sockets=[sock])
 
     async def check_health(self):
+        """No-op method to check on the health of the HTTP Proxy.
+        Make sure the async event loop is not blocked.
+        """
         pass
