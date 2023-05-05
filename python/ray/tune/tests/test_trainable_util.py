@@ -74,24 +74,6 @@ class TrainableUtilTest(unittest.TestCase):
             parent = os.path.dirname(found_dir)
             TrainableUtil.find_checkpoint_dir(parent)
 
-    def testPickleCheckpoint(self):
-        for i in range(5):
-            path = os.path.join(self.checkpoint_dir, str(i))
-            with open(path, "w") as f:
-                f.write(str(i))
-
-        checkpoint_path = os.path.join(self.checkpoint_dir, "0")
-
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        loaded = cloudpickle.loads(data_dict)
-
-        checkpoint_name = os.path.basename(checkpoint_path)
-        self.assertEqual(loaded["checkpoint_name"], checkpoint_name)
-
-        for i in range(5):
-            path = os.path.join(self.checkpoint_dir, str(i))
-            self.assertEqual(loaded["data"][str(i)], open(path, "rb").read())
-
 
 class FlattenDictTest(unittest.TestCase):
     def test_output_type(self):
