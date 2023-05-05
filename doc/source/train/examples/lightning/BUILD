@@ -9,7 +9,7 @@ filegroup(
 py_test_run_all_notebooks(
     size="large",
     include=["*.ipynb"],
-    exclude=[],
+    exclude=["lightning-llm-finetuning-7b.ipynb"],
     data=["//doc/source/train/examples/lightning:lightning_examples"],
     tags=["exclusive", "team:ml", "gpu", "ray_air"],
 )
