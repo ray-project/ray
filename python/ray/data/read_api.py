@@ -83,6 +83,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import dask
@@ -303,6 +304,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
 
 
 @PublicAPI
+@wrap_auto_init
 def read_datasource(
     datasource: Datasource,
     *,
