@@ -121,10 +121,3 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
 });
-
-window.onload = function() {
-    let parentDiv = document.getElementsByClassName("footer-content")[0];
-    let childDiv = document.getElementsByClassName("rate-the-docs")[0];
-    parentDiv.appendChild(childDiv);
-
-};
