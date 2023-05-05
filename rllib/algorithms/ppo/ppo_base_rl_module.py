@@ -46,7 +46,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return []
+        return [SampleBatch.OBS]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -57,11 +57,7 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
-        specs = self.input_specs_exploration()
-        specs.append(SampleBatch.ACTIONS)
-        if SampleBatch.OBS in specs:
-            specs.append(SampleBatch.NEXT_OBS)
-        return specs
+        return self.input_specs_exploration()
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:

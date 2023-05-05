@@ -28,19 +28,66 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
+        self._retrace_on_set_weights = False
+        self.__compiled_forward_train = None
+
         if self.config and self.config.model_config_dict.get("torch_compile") is True:
             # Replace original forward methods by compiled versions of themselves
             backend = self.config.model_config_dict["torch_dynamo_backend"]
 
-            self._forward_train = torch.compile(
-                self._forward_train, backend=backend
-            )
+            
             self._forward_inference = torch.compile(
                 self._forward_inference, backend=backend
             )
             self._forward_exploration = torch.compile(
                 self._forward_exploration, backend=backend
             )
+    
+    @attribute
+    def _compiled_forward_train(self):
+        return self.__compiled_forward_train
+    
+    @attribute.setter
+    def _compiled_forward_train(self, value):
+        raise ValueError("Cannot set _compiled_forward_train directly. Use compile_forward_train() instead.")
+
+    def compile_forward_train(self, backend="inductor", retrace_on_set_weights=True):
+        """Compiles the forward_train method."""
+        self.__compiled_forward_train = torch.compile(
+            self._forward_train, backend=backend
+        )
+        self._retrace_on_set_weights = retrace_on_set_weights
+
+    @attribute
+    def _compiled_forward_inferece(self):
+        return self.__compiled_forward_inference
+
+    @attribute.setter
+    def _compiled_forward_inference(self, value):
+        raise ValueError("Cannot set _compiled_forward_inference directly. Use compile_forward_inference() instead.")
+
+    def compile_forward_inference(self, backend="inductor", retrace_on_set_weights=True):
+        """Compiles the forward_inference method."""
+        self.__compiled_forward_inference = torch.compile(
+            self._forward_inference, backend=backend
+        )
+        self._retrace_on_set_weights = retrace_on_set_weights
+
+    @attribute
+    def _compiled_forward_exploration(self):
+        return self.__compiled_forward_exploration
+    
+    @attribute.setter
+    def _compiled_forward_exploration(self, value):
+        raise ValueError("Cannot set _compiled_forward_exploration directly. Use compile_forward_exploration() instead.")
+
+    def compile_forward_exploration(self, backend="inductor", retrace_on_set_weights=True):
+        """Compiles the forward_exploration method."""
+        self.__compiled_forward_exploration = torch.compile(
+            self._forward_exploration, backend=backend
+        )
+        self._retrace_on_set_weights = retrace_on_set_weights
+
 
     @abc.abstractmethod
     def get_action_dist_cls(self) -> Type[TorchDistribution]:
@@ -66,8 +113,7 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
-        # If we use torch compile, we need to retrace the forward methods
-        if self.config and self.config.model_config_dict.get("torch_compile") is True:
+        if _retrace_on_set_weights:
             torch._dynamo.reset()
 
     def _module_state_file_name(self) -> pathlib.Path:
