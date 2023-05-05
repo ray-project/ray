@@ -118,7 +118,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     ) -> ray_client_pb2.InitResponse:
         if request.job_config:
             job_config = pickle.loads(request.job_config)
-            job_config.client_job = True
+            job_config._client_job = True
         else:
             job_config = None
         current_job_config = None

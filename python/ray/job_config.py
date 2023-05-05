@@ -16,10 +16,9 @@ class JobConfig:
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
         runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
-        metadata:
+        metadata: An opaque metadata dictionary.
+        ray_namespace: A namespace is a logical grouping of jobs and named actors.
         default_actor_lifetime: The default value of actor lifetime.
-        py_driver_sys_path: A list of directories that
-            specify the search path for python workers.
     """
 
     def __init__(
@@ -30,29 +29,33 @@ class JobConfig:
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
-        py_driver_sys_path: List[str] = None,
+        _client_job: bool = False,
+        _py_driver_sys_path: List[str] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
-        #: The jvm options for java workers of the job.
-        #: Second jvm options for java workers of the job.
+        #: A list of directories or jar files that
+        #: specify the search path for user code.
         self.code_search_path = code_search_path or []
         # It's difficult to find the error that caused by the
         # code_search_path is a string. So we assert here.
         assert isinstance(self.code_search_path, (list, tuple)), (
             f"The type of code search path is incorrect: " f"{type(code_search_path)}"
         )
-        self.client_job = False
+        self._client_job = _client_job
+        #: An opaque metadata dictionary.
         self.metadata = metadata or {}
+        #: A namespace is a logical grouping of jobs and named actors.
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
-        self.py_driver_sys_path = py_driver_sys_path or []
+        # A list of directories that specify the search path for python workers.
+        self._py_driver_sys_path = []
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
 
-    def serialize(self):
+    def serialize(self) -> str:
         """Serialize the struct into protobuf string"""
         return self.get_proto_job_config().SerializeToString()
 
@@ -114,7 +117,7 @@ class JobConfig:
                 pb.ray_namespace = self.ray_namespace
             pb.jvm_options.extend(self.jvm_options)
             pb.code_search_path.extend(self.code_search_path)
-            pb.py_driver_sys_path.extend(self.py_driver_sys_path)
+            pb.py_driver_sys_path.extend(self._py_driver_sys_path)
             for k, v in self.metadata.items():
                 pb.metadata[k] = v
 
@@ -159,8 +162,8 @@ class JobConfig:
             jvm_options=job_config_json.get("jvm_options", None),
             code_search_path=job_config_json.get("code_search_path", None),
             runtime_env=job_config_json.get("runtime_env", None),
-            client_job=job_config_json.get("client_job", False),
             metadata=job_config_json.get("metadata", None),
             ray_namespace=job_config_json.get("ray_namespace", None),
-            py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
+            _client_job=job_config_json.get("client_job", False),
+            _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
         )
