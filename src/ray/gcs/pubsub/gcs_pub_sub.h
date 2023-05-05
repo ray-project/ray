@@ -137,11 +137,22 @@ class GcsSubscriber {
 class RAY_EXPORT PythonGcsPublisher {
  public:
   explicit PythonGcsPublisher(const std::string &gcs_address);
+
+  /// Connect to the publisher service of the GCS.
+  /// This function must be called before calling other functions.
+  ///
+  /// \return Status
   Status Connect();
+
+  /// Publish error information to GCS.
   Status PublishError(const std::string &key_id,
                       const rpc::ErrorTableData &data,
                       int64_t num_retries);
+
+  /// Publish logs to GCS.
   Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
+
+  /// Publish a function key to GCS.
   Status PublishFunctionKey(const rpc::PythonFunction &python_function);
 
  private:
