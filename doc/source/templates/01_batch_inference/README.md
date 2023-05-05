@@ -16,12 +16,12 @@ to help you build your own application!
 At a high level, this template will:
 
 1.  [Load your dataset using Ray
-    Data.](https://docs.ray.io/en/latest/data/creating-datastreams.html)
+    Data.](https://docs.ray.io/en/latest/data/loading-data.html)
 2.  [Preprocess your dataset before feeding it to your
-    model.](https://docs.ray.io/en/latest/data/transforming-datastreams.html)
+    model.](https://docs.ray.io/en/latest/data/transforming-data.html)
 3.  [Initialize your model and perform inference on a shard of your
     dataset with a remote
-    actor.](https://docs.ray.io/en/latest/data/transforming-datastreams.html#callable-class-udfs)
+    actor.](https://docs.ray.io/en/latest/data/transforming-data.html#callable-class-udfs)
 4.  [Save your prediction
     results.](https://docs.ray.io/en/latest/data/api/input_output.html)
 

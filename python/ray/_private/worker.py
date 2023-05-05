@@ -897,7 +897,7 @@ class Worker:
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
@@ -1110,7 +1110,7 @@ _global_node = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def init(
     address: Optional[str] = None,
     *,
@@ -1654,7 +1654,7 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -2001,7 +2001,7 @@ def listen_error_messages(worker, threads_stopped):
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def is_initialized() -> bool:
     """Check if ray.init has been called yet.
 
@@ -2428,7 +2428,7 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get(
     object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
     *,
@@ -2555,7 +2555,7 @@ def get(
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def put(
     value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
 ) -> "ray.ObjectRef":
@@ -2617,7 +2617,7 @@ blocking_wait_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def wait(
     object_refs: List["ray.ObjectRef"],
     *,
@@ -2739,7 +2739,7 @@ def wait(
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
 
@@ -2774,7 +2774,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
 
@@ -2804,7 +2804,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
     """Cancels a task according to the following conditions.
 
