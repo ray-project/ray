@@ -37,6 +37,7 @@ from ray.tune.experimental.output import (
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
+from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -957,10 +958,24 @@ def run(
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
+        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+            tensorboard_path = runner._local_experiment_path
+        else:
+            tensorboard_path = None
+
         if air_progress_reporter and isinstance(
             air_progress_reporter, TuneRichReporter
         ):
             stack.enter_context(air_progress_reporter.with_live())
+        elif air_progress_reporter:
+            air_progress_reporter.experiment_started(
+                experiment_name=runner._experiment_dir_name,
+                experiment_path=runner.experiment_path,
+                searcher_str=search_alg.__class__.__name__,
+                scheduler_str=scheduler.__class__.__name__,
+                total_num_samples=search_alg.total_samples,
+                tensorboard_path=tensorboard_path,
+            )
 
         try:
             while (

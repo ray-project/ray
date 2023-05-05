@@ -304,12 +304,21 @@ class DashboardHead:
             logger.info("Initialize the http server.")
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
+            logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
             logger.info("http server disabled.")
+
+        # We need to expose dashboard's node's ip for other worker nodes
+        # if it's listening to all interfaces.
+        dashboard_http_host = (
+            self.ip
+            if self.http_host != ray_constants.DEFAULT_DASHBOARD_IP
+            else http_host
+        )
         await asyncio.gather(
             self.gcs_aio_client.internal_kv_put(
                 ray_constants.DASHBOARD_ADDRESS.encode(),
-                f"{http_host}:{http_port}".encode(),
+                f"{dashboard_http_host}:{http_port}".encode(),
                 True,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             ),
