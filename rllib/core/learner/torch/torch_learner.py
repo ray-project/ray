@@ -101,7 +101,7 @@ class TorchLearner(Learner):
         self, module_id: ModuleID, *, timestep: int, **kwargs
     ) -> Mapping[str, Any]:
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        value = self.hps.lr
+        value = self._optimizer_config["lr"]
         if self.hps.lr_schedule is not None:
             value = self.lr_schedule_per_module[module_id].value(t=timestep)
             self.curr_lr_per_module[module_id].data = torch.tensor(value)
