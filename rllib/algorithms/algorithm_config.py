@@ -316,6 +316,7 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
+        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
