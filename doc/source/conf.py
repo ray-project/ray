@@ -269,6 +269,9 @@ html_theme_options = {
 # "<project> v<release> documentation".
 html_title = f"Ray {release}"
 
+language = 'en'
+
+
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
 
