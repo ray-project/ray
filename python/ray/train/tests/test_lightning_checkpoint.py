@@ -117,7 +117,9 @@ def test_fsdp_checkpoint():
 
     config_builder = (
         LightningConfigBuilder()
-        .module(LinearModule, input_dim=input_dim, output_dim=output_dim, strategy="fsdp")
+        .module(
+            LinearModule, input_dim=input_dim, output_dim=output_dim, strategy="fsdp"
+        )
         .trainer(max_epochs=num_epochs, accelerator="gpu")
         .strategy("fsdp")
         .checkpointing(save_last=True)
