@@ -223,10 +223,11 @@ py_test_run_all_subdirectory(
     include = ["source/data/doc_code/*.py"],
     exclude = [
         "source/ray-air/doc_code/predictors.py",
-        "source/data/doc_code/creating_datastreams_untested.py"
+        "source/data/doc_code/loading_data_untested.py",
+        "source/data/doc_code/torch_image_batch_trained.py"
     ],
     extra_srcs = [],
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:data"],
 )
 
 # --------------------------------------------------------------------

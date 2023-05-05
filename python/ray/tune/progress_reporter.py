@@ -9,7 +9,7 @@ import sys
 import textwrap
 import time
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -1517,7 +1517,7 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
 
 def _detect_progress_metrics(
     trainable: Optional[Union["Trainable", Callable]]
-) -> Optional[List[str]]:
+) -> Optional[Collection[str]]:
     """Detect progress metrics to report."""
     if not trainable:
         return None

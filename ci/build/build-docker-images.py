@@ -433,7 +433,9 @@ def build_or_pull_base_images(
 def prep_ray_ml():
     root_dir = _get_root_dir()
 
-    requirements_files = ["python/requirements.txt"]
+    requirements_files = [
+        "python/requirements.txt",
+    ]
     ml_requirements_files = [
         "python/requirements/ml/requirements_ml_docker.txt",
         "python/requirements/ml/requirements_dl.txt",
@@ -441,6 +443,7 @@ def prep_ray_ml():
         "python/requirements/ml/requirements_rllib.txt",
         "python/requirements/ml/requirements_train.txt",
         "python/requirements/ml/requirements_upstream.txt",
+        "python/requirements/ml/requirements_no_deps.txt",
     ]
     # We don't need these in the ml docker image
     ignore_requirements = [

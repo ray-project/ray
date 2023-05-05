@@ -48,7 +48,9 @@ def main(
             f"Concurrency input need to be a positive number, received: {concurrency}"
         )
     test = _get_test(test_name)
-    pre_sanity_check = _sanity_check(test, passing_commit, failing_commit)
+    pre_sanity_check = _sanity_check(
+        test, passing_commit, failing_commit, run_per_commit
+    )
     if not pre_sanity_check:
         logger.info(
             "Failed pre-saniy check, the test might be flaky or fail due to"
@@ -93,7 +95,9 @@ def _bisect(
     return commit_list[-1]
 
 
-def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
+def _sanity_check(
+    test: Test, passing_revision: str, failing_revision: str, run_per_commit: int
+) -> bool:
     """
     Sanity check that the test indeed passes on the passing revision, and fails on the
     failing revision
@@ -102,15 +106,14 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
         f"Sanity check passing revision: {passing_revision}"
         f" and failing revision: {failing_revision}"
     )
-    outcomes = _run_test(test, [passing_revision, failing_revision])
-    return (
-        outcomes[passing_revision][0] == "passed"
-        and outcomes[failing_revision][0] != "passed"
-    )
+    outcomes = _run_test(test, [passing_revision, failing_revision], run_per_commit)
+    if any(map(lambda x: x != "passed", outcomes[passing_revision].values())):
+        return False
+    return any(map(lambda x: x != "passed", outcomes[failing_revision].values()))
 
 
 def _run_test(
-    test: Test, commits: Set[str], run_per_commit: int = 1
+    test: Test, commits: Set[str], run_per_commit: int
 ) -> Dict[str, Dict[int, str]]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:

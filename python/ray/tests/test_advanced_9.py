@@ -258,7 +258,7 @@ assert ray.get_runtime_context().get_job_id() == '02000000'
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Not valid on win32.")
 def test_gcs_connection_no_leak(ray_start_cluster):
     cluster = ray_start_cluster
     head_node = cluster.add_node()
