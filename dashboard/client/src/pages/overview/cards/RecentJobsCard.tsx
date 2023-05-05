@@ -20,9 +20,9 @@ type RecentJobsCardProps = {
 
 const getLink = (job: UnifiedJob) => {
   if (job.job_id !== null && job.job_id !== "") {
-    return `?/jobs/${job.job_id}`;
+    return `/jobs/${job.job_id}`;
   } else if (job.submission_id !== null && job.submission_id !== "") {
-    return `?/jobs/${job.submission_id}`;
+    return `/jobs/${job.submission_id}`;
   }
   return undefined;
 };

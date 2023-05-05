@@ -2,8 +2,8 @@ import { createStyles, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
 import {
-  RiCheckboxCircleFill,
   RiCloseCircleFill,
+  RiRecordCircleFill,
   RiStopCircleFill,
 } from "react-icons/ri";
 import { ServeApplication } from "../type/serve";
@@ -45,7 +45,7 @@ export const ServeStatusIcon = ({
   switch (app.status) {
     case "RUNNING":
       return (
-        <RiCheckboxCircleFill
+        <RiRecordCircleFill
           data-testid="serve-status-icon"
           className={classNames(classes.icon, classes.colorSuccess)}
         />
