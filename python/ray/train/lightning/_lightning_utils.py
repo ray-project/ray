@@ -87,7 +87,7 @@ class RayFSDPStrategy(FSDPStrategy):
 
     def lightning_module_state_dict(self) -> Dict[str, Any]:
         """Gathers the full state dict by unsharding all the parameters."""
-        assert self.model is not None
+        assert self.model is not None, "Failed to unshard an empty FSDP model!"
 
         if _LIGHTNING_GREATER_EQUAL_2_0:
             with FullyShardedDataParallel.state_dict_type(
