@@ -15,8 +15,8 @@ Each block holds a set of records in an `Arrow table <https://arrow.apache.org/d
 `pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
 Having multiple blocks in a datastream allows for parallel transformation and ingest.
 
-For ML use cases, Datastream natively supports mixing ndarrays with tabular data. To
-learn more, read :ref:`Working with array-like data <working_with_tensors>`.
+For ML use cases, Datastream natively supports mixing tensors with tabular data. To
+learn more, read :ref:`Working with tensor data <working_with_tensors>`.
 
 The following figure visualizes a datastream with three blocks, each holding 1000 rows. Note that certain blocks
 may not be computed yet. Normally, callers iterate over datastream blocks in a streaming fashion, so that not all
