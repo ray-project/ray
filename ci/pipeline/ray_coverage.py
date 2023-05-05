@@ -44,7 +44,7 @@ def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
     _run_test(test_target, coverage_file)
     coverage_info = _collect_coverage(coverage_file)
     logger.info(coverage_info)
-    if productionize:
+    if upload:
         s3_file_name = _persist_coverage_info(coverage_file)
         logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
     return 0
@@ -52,11 +52,11 @@ def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
 
 def _persist_coverage_info(coverage_file: str) -> str:
     s3_file_name = (
-        f"continuous-release/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
+        f"{S3_BUCKET_FILEPATH}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
     )
     boto3.client("s3").upload_file(
         coverage_file,
-        "ray-release-automation-results",
+        S3_BUCKET_NAME,
         s3_file_name,
     )
     return s3_file_name
