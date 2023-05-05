@@ -1809,6 +1809,10 @@ cdef class GcsPublisher:
             check_status(self.inner.get().PublishFunctionKey(python_function))
 
 
+cdef class GcsErrorSubscriber:
+    pass
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,

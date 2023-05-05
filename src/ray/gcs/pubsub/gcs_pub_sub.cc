@@ -299,5 +299,20 @@ Status PythonGcsPublisher::PublishFunctionKey(
   return DoPublishWithRetries(request, -1, -1);
 }
 
+PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address) {
+  std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+  RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
+  RAY_CHECK(address.size() == 2);
+  gcs_address_ = address[0];
+  gcs_port_ = std::stoi(address[1]);
+}
+
+Status PythonGcsSubscriber::Connect() {
+  auto arguments = PythonGrpcChannelArguments();
+  channel_ = rpc::BuildChannel(gcs_address_, gcs_port_, arguments);
+  pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray
