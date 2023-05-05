@@ -1,25 +1,90 @@
 import abc
 import pathlib
+import sys
+from dataclasses import dataclass
 from typing import Any, Mapping, Union, Type
 
+from ray.rllib.core.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+)
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import SampleBatchType
 
 torch, nn = try_import_torch()
+
+
+@dataclass
+class TorchCompileConfig:
+    """Configuration options for RLlib's usage of torch.compile in RLModules.
+
+    # On `torch.compile` in Torch RLModules
+    `torch.compile` invokes torch's dynamo JIT compiler that can potentially bring
+    speedups to RL Module's forward methods.
+    This is a performance optimization that should be disabled for debugging.
+
+    General usage:
+    - Usually, you only want to `RLModule._forward_train` to be compiled on
+      instances of RLModule used for learning. (e.g. the learner)
+    - In some cases, it can bring speedups to also compile
+      `RLModule._forward_exploration` on instances used for exploration. (e.g.
+      RolloutWorker)
+    - In some cases, it can bring speedups to also compile
+      `RLModule._forward_inference` on instances used for inference. (e.g.
+      RolloutWorker)
+
+    Note that different backends are available on different platforms.
+    Also note that the default backend for torch dynamo is "aot_eager" on macOS.
+    This is a debugging backend that is expected not to improve performance because
+    the inductor backend is not supported on OSX so far.
+
+    Args:
+        compile_forward_train: Whether to compile the forward_train method.
+        compile_forward_inference: Whether to compile the forward_inference method.
+        compile_forward_exploration: Whether to compile the forward_exploration method.
+        torch_dynamo_backend: The torch.dynamo backend to use. One of
+
+    """
+
+    compile_forward_train = False
+    compile_forward_inference = False
+    compile_forward_exploration = False
+    torch_dynamo_backend = "aot_eager" if sys.platform == "darwin" else "inductor"
+
+    def maybe_compile_forward_methods(
+        self, rl_module: "TorchRLModule"
+    ) -> "TorchRLModule":
+        """Compiles the forward methods of the given RLModule according to this config.
+
+        Args:
+            rl_module: The RLModule to compile the forward methods of.
+        """
+        if self.compile_forward_train:
+            rl_module.compile_forward_train(backend=self.torch_dynamo_backend)
+        if self.compile_forward_inference:
+            rl_module.compile_forward_inference(backend=self.torch_dynamo_backend)
+        if self.compile_forward_exploration:
+            rl_module.compile_forward_exploration(backend=self.torch_dynamo_backend)
+
+        return rl_module
 
 
 class TorchRLModule(nn.Module, RLModule):
     """A base class for RLlib torch RLModules.
 
-    Note that the `_forward` methods of this class are meant to be torch.compiled:
+    Note that the `_forward` methods of this class are meant to be 'torch.compiled'
+    individually:
         - TorchRLModule._forward_train()
         - TorchRLModule._forward_inference()
         - TorchRLModule._forward_exploration()
-    Generally, they should only contain torch-native tensor manipulations, or
+    As a rule of thumb, they should only contain torch-native tensor manipulations, or
     otherwise they may yield wrong outputs. In particular, the creation of RLlib
     distributions inside these methods should be avoided when using torch.compile.
+    When in doubt, you can use torch.dynamo.explain() to check whether a compiled
+    method has broken up into multiple sub-graphs.
     """
 
     framwork: str = "torch"
@@ -28,28 +93,74 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
+        # Whether to retrace torch compiled forward methods on set_weights.
         self._retrace_on_set_weights = False
-        self.__compiled_forward_train = None
 
-        if self.config and self.config.model_config_dict.get("torch_compile") is True:
-            # Replace original forward methods by compiled versions of themselves
-            backend = self.config.model_config_dict["torch_dynamo_backend"]
+    @check_input_specs("_input_specs_inference")
+    @check_output_specs("_output_specs_inference")
+    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+        """Forward-pass during evaluation, called from the sampler.
 
-            
-            self._forward_inference = torch.compile(
-                self._forward_inference, backend=backend
-            )
-            self._forward_exploration = torch.compile(
-                self._forward_exploration, backend=backend
-            )
-    
-    @attribute
-    def _compiled_forward_train(self):
-        return self.__compiled_forward_train
-    
-    @attribute.setter
-    def _compiled_forward_train(self, value):
-        raise ValueError("Cannot set _compiled_forward_train directly. Use compile_forward_train() instead.")
+        This method should not be overriden to implement a custom forward inference
+        method. Instead, override the _forward_inference method.
+
+        Args:
+            batch: The input batch. This input batch should comply with
+                input_specs_inference().
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The output of the forward pass. This output should comply with the
+            ouptut_specs_inference().
+        """
+        # If this forward method was compiled, we call the compiled version.
+        if hasattr(self, "__compiled_forward_inference"):
+            return self.__compiled_forward_inference(batch, **kwargs)
+        return self._forward_inference(batch, **kwargs)
+
+    @check_input_specs("_input_specs_exploration")
+    @check_output_specs("_output_specs_exploration")
+    def forward_exploration(
+        self, batch: SampleBatchType, **kwargs
+    ) -> Mapping[str, Any]:
+        """Forward-pass during exploration, called from the sampler.
+
+        This method should not be overriden to implement a custom forward exploration
+        method. Instead, override the _forward_exploration method.
+
+        Args:
+            batch: The input batch. This input batch should comply with
+                input_specs_exploration().
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The output of the forward pass. This output should comply with the
+            ouptut_specs_exploration().
+        """
+        # If this forward method was compiled, we call the compiled version.
+        if hasattr(self, "__compiled_forward_exploration"):
+            return self.__compiled_forward_exploration(batch, **kwargs)
+        return self._forward_exploration(batch, **kwargs)
+
+    @check_input_specs("_input_specs_train")
+    @check_output_specs("_output_specs_train")
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+        """Forward-pass during training called from the learner. This method should
+        not be overriden. Instead, override the _forward_train method.
+
+        Args:
+            batch: The input batch. This input batch should comply with
+                input_specs_train().
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The output of the forward pass. This output should comply with the
+            ouptut_specs_train().
+        """
+        # If this forward method was compiled, we call the compiled version.
+        if hasattr(self, "__compiled_forward_train"):
+            return self.__compiled_forward_train(batch, **kwargs)
+        return self._forward_train(batch, **kwargs)
 
     def compile_forward_train(self, backend="inductor", retrace_on_set_weights=True):
         """Compiles the forward_train method."""
@@ -58,36 +169,23 @@ class TorchRLModule(nn.Module, RLModule):
         )
         self._retrace_on_set_weights = retrace_on_set_weights
 
-    @attribute
-    def _compiled_forward_inferece(self):
-        return self.__compiled_forward_inference
-
-    @attribute.setter
-    def _compiled_forward_inference(self, value):
-        raise ValueError("Cannot set _compiled_forward_inference directly. Use compile_forward_inference() instead.")
-
-    def compile_forward_inference(self, backend="inductor", retrace_on_set_weights=True):
+    def compile_forward_inference(
+        self, backend="inductor", retrace_on_set_weights=True
+    ):
         """Compiles the forward_inference method."""
         self.__compiled_forward_inference = torch.compile(
             self._forward_inference, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
 
-    @attribute
-    def _compiled_forward_exploration(self):
-        return self.__compiled_forward_exploration
-    
-    @attribute.setter
-    def _compiled_forward_exploration(self, value):
-        raise ValueError("Cannot set _compiled_forward_exploration directly. Use compile_forward_exploration() instead.")
-
-    def compile_forward_exploration(self, backend="inductor", retrace_on_set_weights=True):
+    def compile_forward_exploration(
+        self, backend="inductor", retrace_on_set_weights=True
+    ):
         """Compiles the forward_exploration method."""
         self.__compiled_forward_exploration = torch.compile(
             self._forward_exploration, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
-
 
     @abc.abstractmethod
     def get_action_dist_cls(self) -> Type[TorchDistribution]:
@@ -113,7 +211,7 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
-        if _retrace_on_set_weights:
+        if self._retrace_on_set_weights:
             torch._dynamo.reset()
 
     def _module_state_file_name(self) -> pathlib.Path:

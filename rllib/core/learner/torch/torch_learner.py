@@ -15,7 +15,10 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchRLModule,
+    TorchCompileConfig,
+)
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
@@ -52,6 +55,7 @@ class TorchLearner(Learner):
         self,
         *,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
+        torch_compile_config: Optional[Mapping[str, TorchCompileConfig]] = None,
         **kwargs,
     ):
         super().__init__(
@@ -195,6 +199,7 @@ class TorchLearner(Learner):
         module = self._module[module_id]
         if isinstance(module, TorchRLModule):
             self._module[module_id].to(self._device)
+
             if self.distributed:
                 self._module.add_module(
                     module_id, TorchDDPRLModule(module), override=True

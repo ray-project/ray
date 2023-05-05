@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import (
@@ -419,6 +420,10 @@ class AlgorithmConfig(_Config):
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
         self.__prior_exploration_config = None
+        # Separate configs for how to compile instaces of RL Modules used for
+        # learning or sampling.
+        self.torch_compile_learner_config = TorchCompileConfig()
+        self.torch_compile_policy_config = TorchCompileConfig()
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -2413,6 +2418,8 @@ class AlgorithmConfig(_Config):
         self,
         *,
         rl_module_spec: Optional[ModuleSpec] = NotProvided,
+        torch_compile_learner_config=NotProvided,
+        torch_compile_worker_config=NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
@@ -2427,11 +2434,24 @@ class AlgorithmConfig(_Config):
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
+            torch_compile_worker_config: The config to use for torch.compile on the
+                workers. If not specified, the default is to not compile forward
+                methods on the workers because retracing can be expensive.
+            torch_compile_learner_config: The config to use for torch.compile on the
+                learner. If not specified, the default is to compile forward methods on
+                the learner.
+
         Returns:
             This updated AlgorithmConfig object.
         """
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
+
+        if torch_compile_worker_config is not NotProvided:
+            self.torch_compile_worker_config = torch_compile_worker_config
+
+        if torch_compile_learner_config is not NotProvided:
+            self.torch_compile_learner_config = torch_compile_learner_config
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api

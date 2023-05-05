@@ -88,6 +88,7 @@ class TorchPolicyV2(Policy):
         # Create model.
         if self.config.get("_enable_rl_module_api", False):
             model = self.make_rl_module()
+
             dist_class = None
         else:
             model, dist_class = self._init_model_and_dist_class()

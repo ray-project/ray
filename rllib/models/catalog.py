@@ -3,7 +3,6 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
-import sys
 import tree  # pip install dm_tree
 from typing import List, Optional, Type, Union
 
@@ -189,39 +188,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # used for debugging. Note that this flag is only relevant for instances of
     # RLlib's Model class. These are commonly generated from ModelConfigs in RLModules.
     "always_check_shapes": False,
-
-    # === Options for usage of torch.compile in RLModules ===
-    # torch.compile invokes torch's dynamo JIT compiler that can potentially bring 
-    # speedups to RL Module's forward methods.
-    # This is a performance optimization that should be disabled for debugging.
-    # This has no effect for models outside RLModule.
-    #
-    # General usage:
-    # - Usually, you only want to `RLModule._forward_train` to be compiled on instances 
-    #   of RLModule used for learning. 
-    # - In some cases, it can bring speedups to also compile `RLModule._forward_exploration`
-    #   on instances used for exploration.
-    # - In some cases, it can bring speedups to also compile `RLModule._forward_inference`
-    #   on instances used for inference.
-    # 
-    # Note that different backends are available on different platforms.
-    # Also note that the default backend for torch dynamo is "aot_eager" on macOS.
-    # This is a debugging backend that is expected not to improve performance because
-    # the inductor backend is not supported on OSX thus far.
-    "torch_compile_config_learner" = {
-        "compile_foward_train": True,
-        "compile_forward_inference": False,
-        "compile_forward_exploration": False,
-        # The backend to use for torch dynamo.
-        "torch_dynamo_backend": "aot_eager" if sys.platform == "darwin" else "inductor",
-        }
-    "torch_compile_config_worker" = {
-        "compile_foward_train": False,
-        "compile_forward_inference": False,
-        "compile_forward_exploration": False,
-        # The backend to use for torch dynamo.
-        "torch_dynamo_backend": "aot_eager" if sys.platform == "darwin" else "inductor",
-    }
 
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.

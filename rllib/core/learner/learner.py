@@ -22,6 +22,7 @@ from typing import (
 
 import ray
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -77,9 +78,12 @@ class FrameworkHyperparameters:
             This is useful for speeding up the training loop. However, it is not
             compatible with all tf operations. For example, tf.print is not supported
             in tf.function.
+        troch_compile_config: The TorchCompileConfig to use for compiling the RL
+            Module in Torch.
     """
 
     eager_tracing: bool = False
+    torch_compile_config: Optional[TorchCompileConfig] = TorchCompileConfig()
 
 
 @dataclass
