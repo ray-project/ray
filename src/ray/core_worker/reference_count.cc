@@ -1169,7 +1169,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message for " << object_id
                  << ", message has " << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
-  object_info_publisher_->Publish(pub_message);
+  object_info_publisher_->Publish(std::move(pub_message));
 }
 
 void ReferenceCounter::SetRefRemovedCallback(
@@ -1459,7 +1459,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
   FillObjectInformationInternal(it, object_locations_msg);
 
-  object_info_publisher_->Publish(pub_message);
+  object_info_publisher_->Publish(std::move(pub_message));
 }
 
 Status ReferenceCounter::FillObjectInformation(

@@ -11,12 +11,10 @@ from ray.rllib.policy.tf_mixins import (
     GradStatsMixin,
     TargetNetworkMixin,
 )
-
 from ray.rllib.algorithms.impala.impala_tf_policy import (
     VTraceClipGradients,
     VTraceOptimizer,
 )
-
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -61,7 +59,7 @@ class APPOTfPolicyWithRLModule(
         KLCoeffMixin.__init__(self, config)
         GradStatsMixin.__init__(self)
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
-        # construct the target model and make its weights the same as the model
+        # Construct the target model and make its weights the same as the model.
         self.target_model = self.make_rl_module()
         self.target_model.set_weights(self.model.get_weights())
 
@@ -146,15 +144,17 @@ class APPOTfPolicyWithRLModule(
                 dtype=tf.float32,
             )
         ) * self.config["gamma"]
+
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
             target_action_log_probs=old_target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
-            discounts=discounts_time_major,
         )
 
         is_ratio = tf.clip_by_value(
@@ -185,7 +185,7 @@ class APPOTfPolicyWithRLModule(
         mean_vf_loss = 0.5 * tf.math.reduce_mean(delta**2)
 
         # The entropy loss.
-        mean_entropy_loss = -tf.math.reduce_mean(target_actions_logp_time_major)
+        mean_entropy_loss = -tf.math.reduce_mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (

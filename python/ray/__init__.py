@@ -192,11 +192,10 @@ serialization = _DeprecationWrapper("serialization", ray._private.serialization)
 state = _DeprecationWrapper("state", ray._private.state)
 
 
-__all__ = [
+RAY_APIS = {
     "__version__",
     "_config",
     "get_runtime_context",
-    "actor",
     "autoscaler",
     "available_resources",
     "cancel",
@@ -207,7 +206,6 @@ __all__ = [
     "get_actor",
     "get_gpu_ids",
     "init",
-    "internal",
     "is_initialized",
     "java_actor_class",
     "java_function",
@@ -221,19 +219,68 @@ __all__ = [
     "shutdown",
     "show_in_dashboard",
     "timeline",
-    "util",
     "wait",
-    "widgets",
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
-]
+}
+
+# Public APIs that should automatically trigger ray.init().
+AUTO_INIT_APIS = {
+    "cancel",
+    "get",
+    "get_actor",
+    "get_gpu_ids",
+    "kill",
+    "put",
+    "wait",
+}
+
+# Public APIs that should not automatically trigger ray.init().
+NON_AUTO_INIT_APIS = {
+    "ClientBuilder",
+    "LOCAL_MODE",
+    "Language",
+    "SCRIPT_MODE",
+    "WORKER_MODE",
+    "__version__",
+    "_config",
+    "autoscaler",
+    "available_resources",
+    "client",
+    "cluster_resources",
+    "cpp_function",
+    "get_runtime_context",
+    "init",
+    "is_initialized",
+    "java_actor_class",
+    "java_function",
+    "method",
+    "nodes",
+    "remote",
+    "show_in_dashboard",
+    "shutdown",
+    "timeline",
+}
+
+assert RAY_APIS == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
+from ray._private.auto_init_hook import wrap_auto_init_for_all_apis  # noqa: E402
+
+wrap_auto_init_for_all_apis(AUTO_INIT_APIS)
+del wrap_auto_init_for_all_apis
+
+
+__all__ = list(RAY_APIS)
 
 # Subpackages
 __all__ += [
-    "data",
-    "workflow",
+    "actor",
     "autoscaler",
+    "data",
+    "internal",
+    "util",
+    "widgets",
+    "workflow",
 ]
 
 # ID types

@@ -19,7 +19,7 @@
 #include <iostream>
 #include <vector>
 
-#define RESOURCE_UNIT_SCALING 10000
+#include "ray/common/constants.h"
 
 /// Fixed point data type.
 class FixedPoint {
@@ -28,9 +28,9 @@ class FixedPoint {
 
  public:
   FixedPoint() : FixedPoint(0.0) {}
-  FixedPoint(double d) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }  // NOLINT
+  FixedPoint(double d) { i_ = (int64_t)(d * kResourceUnitScaling); }  // NOLINT
 
-  FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }  // NOLINT
+  FixedPoint(int i) { i_ = (i * kResourceUnitScaling); }  // NOLINT
 
   FixedPoint(int64_t i) : FixedPoint((double)i) {}  // NOLINT
 
@@ -72,23 +72,23 @@ class FixedPoint {
 
   FixedPoint operator+(double const d) const {
     FixedPoint res;
-    res.i_ = i_ + static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
+    res.i_ = i_ + static_cast<int64_t>(d * kResourceUnitScaling);
     return res;
   }
 
   FixedPoint operator-(double const d) const {
     FixedPoint res;
-    res.i_ = i_ - static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
+    res.i_ = i_ - static_cast<int64_t>(d * kResourceUnitScaling);
     return res;
   }
 
   FixedPoint operator=(double const d) {
-    i_ = static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
+    i_ = static_cast<int64_t>(d * kResourceUnitScaling);
     return *this;
   }
 
   FixedPoint operator+=(double const d) {
-    i_ += static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
+    i_ += static_cast<int64_t>(d * kResourceUnitScaling);
     return *this;
   }
 
@@ -104,7 +104,7 @@ class FixedPoint {
   bool operator==(FixedPoint const &ru1) const { return (i_ == ru1.i_); };
   bool operator!=(FixedPoint const &ru1) const { return (i_ != ru1.i_); };
 
-  [[nodiscard]] double Double() const { return round(i_) / RESOURCE_UNIT_SCALING; };
+  [[nodiscard]] double Double() const { return round(i_) / kResourceUnitScaling; };
 
   friend std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1);
 };

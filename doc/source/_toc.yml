@@ -24,6 +24,7 @@ parts:
           - file: ray-core/examples/overview
             title: "Examples"
             sections:
+              - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
               - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
@@ -54,6 +55,7 @@ parts:
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
+              - file: ray-air/examples/opt_deepspeed_batch_inference
               - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
@@ -83,7 +85,7 @@ parts:
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
-      - file: data/dataset
+      - file: data/data
         title: Ray Data
         sections:
           - file: data/getting-started
@@ -94,10 +96,9 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch Training with Ray Datasets
+                title: Batch Training with Ray Data
               - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Datasets
-              - file: data/examples/advanced-pipelines
+                title: Scaling OCR with Ray Data
               - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api
@@ -396,6 +397,7 @@ parts:
             sections:
               - file: ray-contribute/development
               - file: ray-contribute/docs
+              - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
           - file: ray-core/configure

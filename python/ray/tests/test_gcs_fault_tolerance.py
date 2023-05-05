@@ -17,6 +17,9 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
+from ray._private.gcs_pubsub import (
+    GcsErrorSubscriber,
+)
 
 import psutil
 
@@ -647,6 +650,45 @@ def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
 
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get_actor("A")
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.skip(
+    reason="python publisher and subscriber doesn't handle gcs server failover"
+)
+def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis):
+    address_info = ray_start_regular_with_external_redis
+    gcs_server_addr = address_info["gcs_address"]
+
+    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
+
+    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
+    print("sending error message 1")
+    publisher.publish_error(b"aaa_id", "", "test error message 1")
+
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    print("sending error message 2")
+    publisher.publish_error(b"bbb_id", "", "test error message 2")
+    print("done")
+
+    (key_id, err) = subscriber.poll()
+    assert key_id == b"bbb_id"
+    assert err.error_message == "test error message 2"
+
+    subscriber.close()
 
 
 @pytest.fixture

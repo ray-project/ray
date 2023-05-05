@@ -355,7 +355,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
-  tags = ["exclusive", "large_size_python_tests_shard_2", "team:serve"],
+  tags = ["exclusive", "large_size_python_tests_shard_2", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["pip_install_test-0.5-py3-none-any.whl"],
 )
@@ -369,7 +369,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_5.py",
   ],
   size = "large",
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -377,7 +377,7 @@ py_test(
   name = "test_runtime_env_complicated",
   size = "large",
   srcs = ["test_runtime_env_complicated.py"],
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["//python/ray/experimental/packaging/example_pkg"],
 )
@@ -386,7 +386,7 @@ py_test(
     name = "test_actor_group",
     size = "medium",
     srcs = ["test_actor_group.py"],
-    tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serve"],
+    tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
     deps = ["//:ray_lib", ":conftest"]
 )
 
@@ -452,7 +452,7 @@ py_test(
         "test_runtime_env_validation_1_schema.json",
         "test_runtime_env_validation_2_schema.json",
     ],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -460,7 +460,7 @@ py_test(
     name = "test_runtime_env_ray_minimal",
     size = "medium",
     srcs = ["test_runtime_env_ray_minimal.py"],
-    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serve"],
+    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

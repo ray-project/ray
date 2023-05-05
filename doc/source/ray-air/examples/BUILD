@@ -51,6 +51,7 @@ py_test_run_all_notebooks(
         "gptj_serving.ipynb",  # Requires GPUs
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
         "gptj_deepspeed_fine_tuning.ipynb",  # Requires release test
+        "opt_deepspeed_batch_inference.ipynb", # Requires release test
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],

@@ -117,6 +117,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsNotFound()
         c_bool IsObjectUnknownOwner()
         c_bool IsRpcError()
+        c_bool IsOutOfResource()
 
         c_string ToString()
         c_string CodeAsString()
@@ -341,6 +342,25 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetAllJobInfo(
             int64_t timeout_ms, c_vector[CJobTableData]& result)
 
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+    unordered_map[c_string, double] PythonGetResourcesTotal(
+        const CGcsNodeInfo& node_info)
+
+cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
+
+    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
+
+        CPythonGcsPublisher(const c_string& gcs_address)
+
+        CRayStatus Connect()
+
+        CRayStatus PublishError(
+            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
+
+        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
+
+        CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
@@ -350,11 +370,45 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string node_id() const
         c_string node_name() const
         int state() const
+        c_string node_manager_address() const
+        c_string node_manager_hostname() const
+        int node_manager_port() const
+        int object_manager_port() const
+        c_string object_store_socket_name() const
+        c_string raylet_socket_name() const
+        int metrics_export_port() const
+        void ParseFromString(const c_string &serialized)
+
+    cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
+        ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
+
+    cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
+        void set_key(const c_string &key)
+
+    cdef cppclass CErrorTableData "ray::rpc::ErrorTableData":
+        c_string job_id() const
+        c_string type() const
+        c_string error_message() const
+        double timestamp() const
+
+        void set_job_id(const c_string &job_id)
+        void set_type(const c_string &type)
+        void set_error_message(const c_string &error_message)
+        void set_timestamp(double timestamp)
+
+    cdef cppclass CLogBatch "ray::rpc::LogBatch":
+        void set_ip(const c_string &ip)
+        void set_pid(const c_string &pid)
+        void set_job_id(const c_string &job_id)
+        void set_is_error(c_bool is_error)
+        void add_lines(const c_string &line)
+        void set_actor_name(const c_string &actor_name)
+        void set_task_name(const c_string &task_name)
 
 
 cdef extern from "ray/common/task/task_spec.h" nogil:

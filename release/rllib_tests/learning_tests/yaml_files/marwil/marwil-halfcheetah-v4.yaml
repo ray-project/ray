@@ -3,7 +3,7 @@ marwil-halfcheetah-v4:
     run: MARWIL
     pass_criteria:
         # Can not check throughput for offline methods.
-        evaluation/episode_reward_mean: 400.0
+        evaluation/sampler_results/episode_reward_mean: 400.0
         timesteps_total: 2500000
     stop:
         time_total_s: 1800

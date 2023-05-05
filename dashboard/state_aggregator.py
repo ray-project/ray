@@ -377,16 +377,10 @@ class StateAPIManager:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
-        job_id = None
-        for filter in option.filters:
-            if filter[0] == "job_id" and filter[1] == "=":
-                # Filtering by job_id == xxxx, pass it to source side filtering.
-                # tuple consists of (job_id, predicate, value)
-                job_id = filter[2]
         try:
             reply = await self._client.get_all_task_info(
                 timeout=option.timeout,
-                job_id=job_id,
+                filters=option.filters,
                 exclude_driver=option.exclude_driver,
             )
         except DataSourceUnavailable:
@@ -476,6 +470,10 @@ class StateAPIManager:
             del data["object_ref"]
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
+            data["type"] = data["type"].upper()
+            data["task_status"] = (
+                "NIL" if data["task_status"] == "-" else data["task_status"]
+            )
             result.append(data)
 
         # Add callsite warnings if it is not configured.
@@ -595,7 +593,7 @@ class StateAPIManager:
         all_events = await self._client.get_all_cluster_events()
         for _, events in all_events.items():
             for _, event in events.items():
-                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
                 result.append(event)
 
         num_after_truncation = len(result)
