@@ -10,6 +10,7 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
+from ray._private.test_utils import wait_for_condition
 
 
 def test_generator_oom(ray_start_regular):
@@ -41,6 +42,61 @@ def test_generator_oom(ray_start_regular):
         large_values_generator.options(num_returns=num_returns).remote(num_returns)[0]
     )
 
+
+# SANG-TODO Add a test to check streaming
+@pytest.mark.parametrize("use_actors", [False])
+@pytest.mark.parametrize("store_in_plasma", [False])
+def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
+    """Verify the generator is working in a streaming fashion."""
+    ray.init()
+    remote_generator_fn = None
+    if use_actors:
+
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            def generator(self, num_returns, store_in_plasma):
+                for i in range(num_returns):
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
+    else:
+
+        @ray.remote(max_retries=0)
+        def generator(num_returns, store_in_plasma):
+            for i in range(num_returns):
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
+
+        remote_generator_fn = generator
+
+    """Verify num_returns=X is streaming"""
+    gen = remote_generator_fn.options(num_returns=3).remote(3, store_in_plasma)
+    for ref in gen:
+        id = ref.hex()
+        print(ray.get(ref))
+        del ref
+        from ray.experimental.state.api import list_objects
+        assert wait_for_condition(
+            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0)
+
+    """Verify num_returns="dynamic" is streaming"""
+    gen = remote_generator_fn.options(num_returns="dynamic").remote(3, store_in_plasma)
+    for ref in gen:
+        id = ref.hex()
+        print(ray.get(ref))
+        del ref
+        from ray.experimental.state.api import list_objects
+        assert wait_for_condition(
+            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0)
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
@@ -216,8 +272,8 @@ def test_dynamic_generator_retry_exception(ray_start_regular, store_in_plasma):
         assert ray.get(ref)[0] == i
 
 
-@pytest.mark.parametrize("use_actors", [False])
-@pytest.mark.parametrize("store_in_plasma", [False])
+@pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize("store_in_plasma", [False, True])
 def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
     if not use_actors:
 
@@ -261,33 +317,40 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
     for i, ref in enumerate(gen):
         print(ray.get(ref))
         print(i, ref)
-        # assert ray.get(ref)[0] == i
+        assert ray.get(ref)[0] == i
 
     # Test empty generator.
     gen = ray.get(
         remote_generator_fn.options(num_returns="dynamic").remote(0, store_in_plasma)
     )
+    with pytest.raises(StopIteration):
+        next(gen)
+    gen = ray.get(
+        remote_generator_fn.options(num_returns="dynamic").remote(0, store_in_plasma)
+    )
     assert len(list(gen)) == 0
 
-    # # Check that passing as task arg.
+    # Check that passing as task arg.
+    # SANG-TODO This is not allowed.
     # gen = remote_generator_fn.options(num_returns="dynamic").remote(10, store_in_plasma)
     # assert ray.get(read.remote(gen))
     # assert ray.get(read.remote(ray.get(gen)))
 
-    # # Also works if we override num_returns with a static value.
+    # Also works if we override num_returns with a static value.
     # ray.get(
     #     read.remote(
     #         remote_generator_fn.options(num_returns=10).remote(10, store_in_plasma)
     #     )
     # )
 
-    # # Normal remote functions don't work with num_returns="dynamic".
-    # @ray.remote(num_returns="dynamic")
-    # def static(num_returns):
-    #     return list(range(num_returns))
+    # Normal remote functions don't work with num_returns="dynamic".
+    @ray.remote(num_returns="dynamic")
+    def static(num_returns):
+        return list(range(num_returns))
 
-    # with pytest.raises(ray.exceptions.RayTaskError):
-    #     ray.get(static.remote(3))
+    with pytest.raises(ray.exceptions.RayTaskError):
+        gen = ray.get(static.remote(3))
+        next(gen)
 
 
 def test_dynamic_generator_distributed(ray_start_cluster):

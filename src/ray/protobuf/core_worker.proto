@@ -385,7 +385,9 @@ message RayletNotifyGCSRestartReply {}
 message WriteObjectRefStreamRequest {
   repeated ReturnObject dynamic_return_objects = 1;
   Address worker_addr = 2;
-  int64 finished_idx = 3;
+  int64 idx = 3;
+  bool finished = 4;
+  bytes generator_id = 5;
 }
 
 message WriteObjectRefStreamReply {}

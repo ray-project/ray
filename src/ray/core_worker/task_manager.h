@@ -96,7 +96,7 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                double timestamp)>;
 
 struct ObjectRefStreamReader {
-  std::queue<ObjectID> refs;
+  absl::flat_hash_map<int64_t, ObjectID> idx_to_refs;
   int64_t last = -1;
   int64_t curr = 0;
 };

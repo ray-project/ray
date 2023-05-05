@@ -1030,7 +1030,6 @@ Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
                                    rpc::Address *owner_address) const {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   if (!has_owner) {
-    RAY_LOG(DEBUG) << "SANG-TODO Should never happen";
     std::ostringstream stream;
     stream << "An application is trying to access a Ray object whose owner is unknown"
            << "(" << object_id
@@ -1685,30 +1684,37 @@ void CoreWorker::TriggerGlobalGC() {
 
 Status CoreWorker::ObjectRefStreamWrite(
     const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
-    int64_t finished_idx) {
-  RAY_LOG(DEBUG) << "Write the object ref stream";
+    const ObjectID &generator_id,
+    const rpc::Address &caller_address,
+    int64_t idx,
+    bool finished) {
+  RAY_LOG(INFO) << "SANG-TODO Write the object ref stream, index: " << idx << " finished: " << finished << ", id: " << dynamic_return_object.first;
   rpc::WriteObjectRefStreamRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
-  request.set_finished_idx(finished_idx);
-  rpc::Address owner_address;
-  RAY_RETURN_NOT_OK(GetOwnerAddress(dynamic_return_object.first, &owner_address));
-  auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+  request.set_idx(idx);
+  request.set_finished(finished);
+  request.set_generator_id(generator_id.Binary());
+  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
-  auto return_object_proto = request.add_dynamic_return_objects();
-  SerializeReturnObject(
-      dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
-  std::vector<ObjectID> deleted;
-  ReferenceCounter::ReferenceTableProto borrowed_refs;
-  reference_counter_->PopAndClearLocalBorrowers(
-      {dynamic_return_object.first}, &borrowed_refs, &deleted);
-  memory_store_->Delete(deleted);
+  // Object id is nil if it is the close operations.
+  // SANG-TODO Support a separate endpoint Close.
+  if (!dynamic_return_object.first.IsNil()) {
+    auto return_object_proto = request.add_dynamic_return_objects();
+    SerializeReturnObject(
+        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    std::vector<ObjectID> deleted;
+    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    memory_store_->Delete(deleted);
+  }
 
   client->WriteObjectRefStream(
       request, [](const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
         if (status.ok()) {
-          RAY_LOG(DEBUG) << "Succeeded to send the object ref";
+          RAY_LOG(INFO) << "SANG-TODO Succeeded to send the object ref";
         } else {
-          RAY_LOG(DEBUG) << "Failed to send the object ref";
+          RAY_LOG(INFO) << "SANG-TODO Failed to send the object ref";
         }
       });
   return Status::OK();
@@ -2863,13 +2869,13 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId() {
+ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &caller_address) {
   const auto &task_spec = worker_context_.GetCurrentTask();
   const auto return_id =
       ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(
-      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+      return_id, ObjectID::Nil(), caller_address);
   return return_id;
 }
 
@@ -3424,7 +3430,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 void CoreWorker::HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
                                             rpc::WriteObjectRefStreamReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "SANG-TODO HandleWriteObjectRefStream";
+  RAY_LOG(INFO) << "SANG-TODO HandleWriteObjectRefStream";
   task_manager_->HandleIntermediateResult(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

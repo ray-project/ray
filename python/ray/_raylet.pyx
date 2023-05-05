@@ -209,6 +209,7 @@ class StreamingObjectRefGeneratorV2:
         while obj.is_nil():
             r, _ = ray.wait([self._generator_ref], timeout=0)
             if len(r) > 0:
+                print("ray.get sang-todo")
                 ray.get(r)
             time.sleep(0.01)
             obj = self._handle_next()
@@ -631,7 +632,7 @@ cdef store_task_errors(
         proctitle,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_string* application_error,
-        ):
+        const CAddress &caller_address):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -668,7 +669,8 @@ cdef store_task_errors(
         errors.append(failure_object)
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
-        returns)
+        returns,
+        caller_address)
 
     ray._private.utils.push_error_to_driver(
         worker,
@@ -690,27 +692,34 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         c_bool is_reattempt,
         function_name,
         function_descriptor,
-        title):
+        title,
+        const CAddress &caller_address):
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
 
     try:
         i = 0
+        assert dynamic_returns[0].size() == 0
         for output in generator:
-            if dynamic_returns[0].size() > 0:
-                CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), -1)
-                dynamic_returns[0].pop_back()
             core_worker.store_task_outputs(
                 worker, [output],
                 dynamic_returns,
+                caller_address,
                 generator_id)
             assert dynamic_returns[0].size() == 1
+            print("SANG-TODO Writes an index ", i)
+            CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), generator_id, caller_address, i, False)
             i += 1
-            # SANG-TODO Report the dynamic returns and pop it out.
-        CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), i)
-        dynamic_returns[0].pop_back()
+            dynamic_returns[0].pop_back()
+            assert dynamic_returns[0].size() == 0
+        print("SANG-TODO Closes an index ", i)
+        # Close it.
+        CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+            c_pair[CObjectID, shared_ptr[CRayObject]](CObjectID.Nil(), shared_ptr[CRayObject]()), generator_id, caller_address, i, True)
     except Exception as error:
+        print("SANG-TODO hahahahaha")
+        print(error)
         is_retryable_error[0] = determine_if_retryable(
             error,
             serialized_retry_exception_allowlist,
@@ -736,7 +745,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 # generate one additional ObjectRef. This last
                 # ObjectRef will contain the error.
                 error_id = (CCoreWorkerProcess.GetCoreWorker()
-                            .AllocateDynamicReturnId())
+                            .AllocateDynamicReturnId(caller_address))
                 dynamic_returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             error_id, shared_ptr[CRayObject]()))
@@ -749,7 +758,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         False,  # task_exception
                         None,  # actor
                         function_name, task_type, title,
-                        dynamic_returns, application_error)
+                        dynamic_returns, application_error, caller_address)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -935,6 +944,23 @@ cdef void execute_task(
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
+                        # # The function was a generator.
+                        # if returns[0].size() == 1 and inspect.isgenerator(outputs):
+                        #     execute_dynamic_generator_and_store_task_outputs(
+                        #             outputs,
+                        #             returns[0][0].first,
+                        #             task_type,
+                        #             serialized_retry_exception_allowlist,
+                        #             dynamic_returns,
+                        #             is_retryable_error,
+                        #             application_error,
+                        #             is_reattempt,
+                        #             function_name,
+                        #             function_descriptor,
+                        #             title)
+
+                        #     # Swap out the generator for an ObjectRef generator.
+                        #     outputs = (ObjectRefGenerator([]), )
                         next_breakpoint = (
                             ray._private.worker.global_worker.debugger_breakpoint)
                         if next_breakpoint != b"":
@@ -1014,7 +1040,6 @@ cdef void execute_task(
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
-                num_returns = returns[0].size()
                 if dynamic_returns != NULL:
                     if not inspect.isgenerator(outputs):
                         raise ValueError(
@@ -1034,24 +1059,22 @@ cdef void execute_task(
                             is_reattempt,
                             function_name,
                             function_descriptor,
-                            title)
+                            title,
+                            caller_address)
 
                     task_exception = False
                     dynamic_refs = []
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
 
-                # TODO(swang): For generator tasks, iterating over outputs will
-                # actually run the task. We should run the usual handlers for
-                # task cancellation, retrying on application exception, etc. for
-                # all generator tasks, both static and dynamic.
                 core_worker.store_task_outputs(
                     worker, outputs,
-                    returns)
+                    returns,
+                    caller_address)
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
-                    task_type, title, returns, application_error)
+                    task_type, title, returns, application_error, caller_address)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -1188,7 +1211,8 @@ cdef execute_task_with_cancellation_handler(
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL)
+                NULL,
+                caller_address)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -2752,6 +2776,7 @@ cdef class CoreWorker:
                             worker, outputs,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
+                            const CAddress &caller_address,
                             CObjectID ref_generator_id=CObjectID.Nil()):
         cdef:
             CObjectID return_id
@@ -2793,7 +2818,7 @@ cdef class CoreWorker:
                         num_returns))
             while i >= returns[0].size():
                 return_id = (CCoreWorkerProcess.GetCoreWorker()
-                             .AllocateDynamicReturnId())
+                             .AllocateDynamicReturnId(caller_address))
                 returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             return_id, shared_ptr[CRayObject]()))

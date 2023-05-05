@@ -705,7 +705,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Status ObjectRefStreamWrite(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
-      int64_t finished_idx);
+      const ObjectID &generator_id,
+      const rpc::Address &caller_address,
+      int64_t idx,
+      bool finished);
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -954,7 +957,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// decides at task invocation time how many returns the task should have.
   ///
   /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId();
+  ObjectID AllocateDynamicReturnId(const rpc::Address &caller_address);
 
   /// Get a handle to an actor.
   ///
