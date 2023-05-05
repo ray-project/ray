@@ -1,0 +1,6 @@
+# These requirements have outdated or incompatible downstream dependencies.
+# Thus we install them on a best effort basis before any other packages
+# (without constraints), but their dependencies may be overwritten afterwards.
+
+# mosaicml requires importlib-metadata>5, but flake8 is not compatible with it
+mosaicml==0.12.1

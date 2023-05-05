@@ -125,6 +125,12 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
   std::string DebugString() const;
 
+  void AsyncWaitTerminated(std::function<void()> callback) {
+    // Async wait until the connection is disconnected.
+    socket_.async_wait(local_stream_socket::wait_type::wait_error,
+                       [callback = std::move(callback)](auto) { callback(); });
+  }
+
  protected:
   /// A private constructor for a server connection.
   ServerConnection(local_stream_socket &&socket);
