@@ -4,7 +4,9 @@
 
 # __hf_quickstart_load_start__
 import ray
+import numpy as np
 import pandas as pd
+from typing import Dict
 
 
 prompts = pd.DataFrame(["Complete these sentences", "for me"], columns=["text"])
@@ -18,13 +20,18 @@ class HuggingFacePredictor:
         from transformers import pipeline
         self.model = pipeline("text-generation", model="gpt2")
 
-    def __call__(self, batch):  # <2>
-        return self.model(list(batch["text"]), max_length=20)
+    def __call__(self, batch: Dict[str, np.ndarray]):  # <2>
+        model_out = self.model(list(batch["text"]), max_length=20)
+        return pd.DataFrame({"output": model_out})
 # __hf_quickstart_model_end__
 
 
 # __hf_quickstart_prediction_start__
-scale = ray.data.ActorPoolStrategy(2)
+hfp = HuggingFacePredictor()
+batch = ds.take_batch(10)
+test = hfp(batch)
+
+scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
 
 predictions.show(limit=1)

@@ -3,6 +3,12 @@
 Performance Tips and Tuning
 ===========================
 
+Monitoring your application
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+View the Ray dashboard to monitor your application and troubleshoot issues. To learn
+more about the Ray dashboard, read :ref:`Ray Dashboard <ray-dashboard>`.
+
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -29,7 +35,7 @@ These stats can be used to understand the performance of your Datastream workloa
 
 .. code-block::
 
-    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s                                                                                                                                                
+    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s
     * Remote wall time: 101.55ms min, 331.39ms max, 135.24ms mean, 2.16s total
     * Remote cpu time: 7.42ms min, 15.88ms max, 11.01ms mean, 176.15ms total
     * Peak heap memory usage (MiB): 157.18 min, 157.73 max, 157 mean
@@ -57,6 +63,41 @@ Mapping individual records using :meth:`.map(fn) <ray.data.Datastream.map>` can 
 Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Datastream.map_batches>` and writing your ``batch_fn`` to
 perform vectorized pandas operations.
 
+.. _data_format_overheads:
+
+Format Overheads
+~~~~~~~~~~~~~~~~
+
+Converting between the internal block types (Arrow, Pandas)
+and the requested batch format (``"numpy"``, ``"pandas"``, ``"pyarrow"``)
+may incur data copies; which conversions cause data copying is given in the below table:
+
+
+.. list-table:: Data Format Conversion Costs
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Block Type x Batch Format
+     - ``"pandas"``
+     - ``"numpy"``
+     - ``"pyarrow"``
+     - ``None``
+   * - Pandas Block
+     - Zero-copy
+     - Copy*
+     - Copy*
+     - Zero-copy
+   * - Arrow Block
+     - Copy*
+     - Zero-copy*
+     - Zero-copy
+     - Zero-copy
+
+.. note::
+  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
+  represented as ndarrays (except for bool arrays).
+
+
 Parquet Column Pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -81,13 +122,22 @@ This can be used in conjunction with column pruning when appropriate to get the 
 Tuning Read Parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
+
+1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
+2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
+3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
+4. The parallelism is truncated to ``min(num_files, parallelism)``.
+
+Occasionally, it is advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
+For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
+
+Tuning Read Resources
+~~~~~~~~~~~~~~~~~~~~~
+
 By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
 For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
-
-By default, Ray Data automatically selects the read parallelism based on the current cluster size and datastream size.
-However, the number of read tasks can also be increased manually via the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
 .. _shuffle_performance_tips:
 

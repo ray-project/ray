@@ -47,7 +47,10 @@ class TfCNNEncoder(TfModel, Encoder):
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        layers = []
+        # Add an input layer for the Sequential, created below. This is really
+        # important to be able to derive the model's trainable_variables early on
+        # (inside our Learners).
+        layers = [tf.keras.layers.Input(shape=config.input_dims)]
         # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TfCNN(
             input_dims=config.input_dims,

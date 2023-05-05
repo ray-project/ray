@@ -99,6 +99,8 @@ def process_dict_for_yaml_dump(data):
     for k, v in data.items():
         if isinstance(v, dict):
             data[k] = process_dict_for_yaml_dump(v)
+        if isinstance(v, list):
+            data[k] = [process_dict_for_yaml_dump(item) for item in v]
         elif isinstance(v, str):
             data[k] = remove_ansi_escape_sequences(v)
 
@@ -120,12 +122,12 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-@click.group(help="CLI for managing Serve instances on a Ray cluster.")
+@click.group(help="CLI for managing Serve applications on a Ray cluster.")
 def cli():
     pass
 
 
-@cli.command(help="Start a detached Serve instance on the Ray cluster.")
+@cli.command(help="Start Serve on the Ray cluster.")
 @click.option(
     "--address",
     "-a",
@@ -139,21 +141,21 @@ def cli():
     default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
-    help="Host for HTTP servers to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
+    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
 )
 @click.option(
     "--http-port",
     default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
-    help="Port for HTTP servers to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
+    help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--http-location",
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP servers. Defaults to HeadOnly.",
+    help="Location of the HTTP proxies. Defaults to HeadOnly.",
 )
 def start(address, http_host, http_port, http_location):
     ray.init(
@@ -298,7 +300,7 @@ def deploy(config_file_name: str, address: str):
     "-p",
     required=False,
     type=int,
-    help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
+    help=f"Port for HTTP proxies to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--blocking/--non-blocking",
@@ -503,7 +505,7 @@ def config(address: str, name: Optional[str]):
 
 
 @cli.command(
-    short_help="Get the current status of all live Serve applications and deployments.",
+    short_help="Get the current status of all Serve applications on the cluster.",
     help=(
         "Prints status information about all applications on the cluster.\n\n"
         "An application may be:\n\n"
@@ -582,7 +584,7 @@ def status(address: str, name: Optional[str]):
 
 
 @cli.command(
-    help="Deletes the Serve app.",
+    help="Shuts down Serve on the cluster, deleting all applications.",
 )
 @click.option(
     "--address",
@@ -610,7 +612,7 @@ def shutdown(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Writes a Serve Deployment Graph's config file.",
+    short_help="Generate a config file for the specified application(s).",
     help=(
         "Imports the Application at IMPORT_PATH(S) and generates a "
         "structured config for it. If the flag --multi-app is set, accepts multiple "

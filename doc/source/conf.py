@@ -45,7 +45,6 @@ extensions = [
     "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
-    "sphinxcontrib.yt",
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_nb",
@@ -433,3 +432,8 @@ redoc = [
 ]
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+
+autosummary_filename_map = {
+    "ray.serve.deployment": "ray.serve.deployment_decorator",
+    "ray.serve.Deployment": "ray.serve.Deployment",
+}
