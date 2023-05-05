@@ -761,7 +761,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
-                   << ", job id = " << actor_id.JobId();
+                   << ", job id = " << actor_id.JobId()
+                   << " owner node id = " << owner_node_id;
     std::shared_ptr<rpc::CoreWorkerClientInterface> client =
         worker_client_factory_(actor->GetOwnerAddress());
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
@@ -776,14 +777,15 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << owner_id
-                        << " failed, destroying actor child, job id = "
-                        << actor_id.JobId();
-        } else {
-          RAY_LOG(INFO) << "Actor " << actor_id
-                        << " is out of scope, destroying actor, job id = "
-                        << actor_id.JobId();
+          RAY_LOG(WARNING) << "Failed to wait for actor " << actor_id
+                           << " out of scope, job id = " << actor_id.JobId()
+                           << ", error: " << status.ToString();
+          // TODO(iycheng): Retry it in other PR.
+          return;
         }
+        RAY_LOG(INFO) << "Actor " << actor_id
+                      << " is out of scope, destroying actor, job id = "
+                      << actor_id.JobId();
 
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
@@ -957,6 +959,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT &&
                           disconnect_type != rpc::WorkerExitType::USER_ERROR;
+
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
