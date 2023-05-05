@@ -4862,7 +4862,6 @@
 #    wait_for_nodes:
 #      num_nodes: 251
 #
-#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
