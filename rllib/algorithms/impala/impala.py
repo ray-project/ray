@@ -561,58 +561,39 @@ class Impala(Algorithm):
         if not config["vtrace"]:
             raise ValueError("IMPALA with the learner API does not support non-VTrace ")
 
-        if config._enable_rl_module_api:
-            if config["framework"] == "tf2":
-                from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
-                    ImpalaTfPolicyWithRLModule,
+        if config["framework"] == "torch":
+            if config["vtrace"]:
+                from ray.rllib.algorithms.impala.impala_torch_policy import (
+                    ImpalaTorchPolicy,
                 )
 
-                return ImpalaTfPolicyWithRLModule
-            if config["framework"] == "torch":
-                from ray.rllib.algorithms.impala.torch.impala_torch_policy_rlm import (
-                    ImpalaTorchPolicyWithRLModule,
-                )
-
-                return ImpalaTorchPolicyWithRLModule
+                return ImpalaTorchPolicy
             else:
-                raise ValueError(
-                    f"IMPALA with the learner API does not support framework "
-                    f"{config['framework']} "
+                from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
+
+                return A3CTorchPolicy
+        elif config["framework"] == "tf":
+            if config["vtrace"]:
+                from ray.rllib.algorithms.impala.impala_tf_policy import (
+                    ImpalaTF1Policy,
                 )
+
+                return ImpalaTF1Policy
+            else:
+                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
+
+                return A3CTFPolicy
         else:
-            if config["framework"] == "torch":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.impala_torch_policy import (
-                        ImpalaTorchPolicy,
-                    )
+            if config["vtrace"]:
+                from ray.rllib.algorithms.impala.impala_tf_policy import (
+                    ImpalaTF2Policy,
+                )
 
-                    return ImpalaTorchPolicy
-                else:
-                    from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
-
-                    return A3CTorchPolicy
-            elif config["framework"] == "tf":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.impala_tf_policy import (
-                        ImpalaTF1Policy,
-                    )
-
-                    return ImpalaTF1Policy
-                else:
-                    from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                    return A3CTFPolicy
+                return ImpalaTF2Policy
             else:
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.impala_tf_policy import (
-                        ImpalaTF2Policy,
-                    )
+                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
-                    return ImpalaTF2Policy
-                else:
-                    from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                    return A3CTFPolicy
+                return A3CTFPolicy
 
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):

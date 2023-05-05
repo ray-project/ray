@@ -4,7 +4,7 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 
 
-# TODO: Remove once we have a RLModule capable sampler class that can replace
+"""# TODO: Remove once we have a RLModule capable sampler class that can replace
 #  `Policy.compute_actions_from_input_dict()`.
 class APPOTfPolicyWithRLModule(EagerTFPolicyV2):
     def __init__(self, observation_space, action_space, config):
@@ -27,3 +27,4 @@ class APPOTfPolicyWithRLModule(EagerTFPolicyV2):
     @override(EagerTFPolicyV2)
     def get_batch_divisibility_req(self) -> int:
         return self.config["rollout_fragment_length"]
+"""

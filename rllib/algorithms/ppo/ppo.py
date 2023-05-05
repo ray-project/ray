@@ -371,32 +371,17 @@ class PPO(Algorithm):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
 
-            if config._enable_rl_module_api:
-                from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
-                    PPOTorchPolicyWithRLModule,
-                )
+            from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
-                return PPOTorchPolicyWithRLModule
-            else:
-                from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
-
-                return PPOTorchPolicy
+            return PPOTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 
             return PPOTF1Policy
         else:
-            if config._enable_rl_module_api:
-                from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
-                    PPOTfPolicyWithRLModule,
-                )
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 
-                return PPOTfPolicyWithRLModule
-            else:
-
-                from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
-
-                return PPOTF2Policy
+            return PPOTF2Policy
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:

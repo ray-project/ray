@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 
-# TODO: Remove once we have a RLModule capable sampler class that can replace
+"""# TODO: Remove once we have a RLModule capable sampler class that can replace
 #  `Policy.compute_actions_from_input_dict()`.
 class PPOTorchPolicyWithRLModule(TorchPolicyV2):
     def __init__(self, observation_space, action_space, config):
@@ -39,3 +39,4 @@ class PPOTorchPolicyWithRLModule(TorchPolicyV2):
             return compute_gae_for_sample_batch(
                 self, sample_batch, other_agent_batches, episode
             )
+"""

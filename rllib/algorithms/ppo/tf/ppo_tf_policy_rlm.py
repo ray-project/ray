@@ -5,7 +5,7 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 
 
-# TODO: Remove once we have a RLModule capable sampler class that can replace
+""""# TODO: Remove once we have a RLModule capable sampler class that can replace
 #  `Policy.compute_actions_from_input_dict()`.
 class PPOTfPolicyWithRLModule(EagerTFPolicyV2):
     def __init__(self, observation_space, action_space, config):
@@ -32,3 +32,4 @@ class PPOTfPolicyWithRLModule(EagerTFPolicyV2):
         return compute_gae_for_sample_batch(
             self, sample_batch, other_agent_batches, episode
         )
+"""
