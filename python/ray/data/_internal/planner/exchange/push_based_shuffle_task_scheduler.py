@@ -365,7 +365,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        sub_progress_bar_dict, # TODO(Scott): typing
+        sub_progress_bar_dict,  # TODO(Scott): typing
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
@@ -437,9 +437,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             should_close_bar = False
             print("===> got shuffle map bar:", map_bar)
         else:
-            map_bar = ProgressBar(
-                bar_name, position=0, total=len(input_blocks_list)
-            )
+            map_bar = ProgressBar(bar_name, position=0, total=len(input_blocks_list))
         map_stage_executor = _PipelinedStageExecutor(
             map_stage_iter, stage.num_map_tasks_per_round, progress_bar=map_bar
         )
@@ -472,7 +470,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
-
+        # bar gets closed, because we didn't get subprog bar
+        print("===> going to close shuffle map?", should_close_bar)
         if should_close_bar:
             map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()

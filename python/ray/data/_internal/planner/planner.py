@@ -37,6 +37,7 @@ class Planner:
 
     def __init__(self):
         self._physical_op_to_logical_op: Dict[PhysicalOperator, LogicalOperator] = {}
+        self._progress_bar_index = 0
 
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
@@ -74,6 +75,8 @@ class Planner:
             physical_op = _plan_udf_map_op(logical_op, physical_children[0])
         elif isinstance(logical_op, AbstractAllToAll):
             assert len(physical_children) == 1
+            logical_op.initialize_sub_progress_bars()
+            logical_op._sub_progress_bar_dict
             physical_op = _plan_all_to_all_op(logical_op, physical_children[0])
         elif isinstance(logical_op, Zip):
             assert len(physical_children) == 2
