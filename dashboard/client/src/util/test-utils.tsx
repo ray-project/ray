@@ -1,6 +1,7 @@
 import { ThemeProvider } from "@material-ui/styles";
 import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { SWRConfig } from "swr";
 import { GlobalContext, GlobalContextType } from "../App";
 import { lightTheme } from "../theme";
 
@@ -21,11 +22,14 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     sessionName: "session-name",
   };
 
+  // Clean SWR cache bySWRConfig
   return (
     <ThemeProvider theme={lightTheme}>
-      <GlobalContext.Provider value={context}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </GlobalContext.Provider>
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <GlobalContext.Provider value={context}>
+          <MemoryRouter>{children}</MemoryRouter>
+        </GlobalContext.Provider>
+      </SWRConfig>
     </ThemeProvider>
   );
 };
