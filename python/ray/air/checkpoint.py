@@ -49,11 +49,11 @@ _FROM_CHECKPOINT_DEPRECATION_MESSAGE = (
     "`Checkpoint.from_checkpoint` is deprecated and will be removed in Ray 2.7.\n"
     "This method was used to cast a generic `Checkpoint` object to a "
     "framework-specific checkpoint (e.g., `TorchCheckpoint`), to pass into a "
-    "differnet framework-specific module (e.g., `TorchPredictor`). Instead of casting "
+    "different framework-specific module (e.g., `TorchPredictor`). Instead of casting "
     "with `from_checkpoint`, extract out the data needed to pass into one of the "
     "official constructor methods of the framework-specific checkpoint.\n\n"
     "Example (assuming that you have a `Checkpoint` object of a dict containing a "
-    "`state_dict` key:\n    "
+    "`state_dict` key):\n    "
     "torch_checkpoint = TorchCheckpoint.from_state_dict(checkpoint.to_dict()['state_dict'])\n"  # noqa: E501
 )
 
