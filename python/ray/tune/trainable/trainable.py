@@ -53,10 +53,8 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.tune.logger import Logger
+from ray.util.annotations import PublicAPI, RayDeprecationWarning
+from ray.tune.logger import Logger, NoopLogger
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +106,10 @@ class Trainable:
     def __init__(
         self,
         config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
+        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,  # Deprecated
-        sync_timeout: Optional[int] = None,  # Deprecated
+        custom_syncer: Optional[Syncer] = None,  # Deprecated (2.6)
+        sync_timeout: Optional[int] = None,  # Deprecated (2.6)
         sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
@@ -125,7 +123,7 @@ class Trainable:
         Args:
             config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator: Function that creates a ray.tune.Logger
+            logger_creator: (Deprecated) Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
@@ -140,6 +138,7 @@ class Trainable:
         if self.is_actor():
             disable_ipython()
 
+        # TODO(ml-team): Remove `logger_creator` in 2.7.
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
 
