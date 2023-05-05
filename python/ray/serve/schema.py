@@ -319,6 +319,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
+        ...,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -535,8 +536,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
-        default=[],
-        description=("The set of Serve applications to run on the Ray cluster."),
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")
