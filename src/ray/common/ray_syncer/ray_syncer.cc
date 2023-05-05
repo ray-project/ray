@@ -180,6 +180,20 @@ RaySyncer::~RaySyncer() {
       "");
 }
 
+std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
+    const std::string &node_id, MessageType message_type) const {
+  auto task = std::packaged_task<std::shared_ptr<const RaySyncMessage>()>(
+      [this, &node_id, message_type]() -> std::shared_ptr<const RaySyncMessage> {
+        auto &view = node_state_->GetClusterView();
+        if (auto iter = view.find(node_id); iter != view.end()) {
+          return iter->second[message_type];
+        }
+        return nullptr;
+      });
+
+  return boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
+}
+
 std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
   std::promise<std::vector<std::string>> promise;
   io_context_.dispatch(
