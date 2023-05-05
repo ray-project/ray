@@ -12,7 +12,6 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
     Test,
     DEFAULT_BUILD_TIMEOUT,
@@ -37,7 +36,6 @@ from ray_release.exception import (
     ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, handle_exception
@@ -53,29 +51,14 @@ from ray_release.util import (
 )
 
 type_str_to_command_runner = {
-    "command": SDKRunner,
-    "sdk_command": SDKRunner,
+    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
 command_runner_to_cluster_manager = {
-    SDKRunner: FullClusterManager,
     JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
-
-file_manager_str_to_file_manager = {
-    "sdk": SessionControllerFileManager,
-    "job": JobFileManager,
-    "anyscale_job": JobFileManager,
-}
-
-command_runner_to_file_manager = {
-    SDKRunner: JobFileManager,  # Use job file manager per default
-    JobRunner: JobFileManager,
-    AnyscaleJobRunner: JobFileManager,
-}
-
 
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
@@ -139,20 +122,7 @@ def _load_test_configuration(
         )
 
     cluster_manager_cls = command_runner_to_cluster_manager[command_runner_cls]
-
-    file_manager_str = test["run"].get("file_manager", None)
-    if file_manager_str:
-        if file_manager_str not in file_manager_str_to_file_manager:
-            raise ReleaseTestConfigError(
-                f"Unknown file manager: {file_manager_str}. Must be one of "
-                f"{list(file_manager_str_to_file_manager.keys())}"
-            )
-        file_manager_cls = file_manager_str_to_file_manager[file_manager_str]
-    else:
-        file_manager_cls = command_runner_to_file_manager[command_runner_cls]
-
     logger.info(f"Got command runner cls: {command_runner_cls}")
-    logger.info(f"Got file manager cls: {file_manager_cls}")
     # Extra tags to be set on resources on cloud provider's side
     extra_tags = _get_extra_tags_from_env()
     # We don't need other attributes as they can be derived from the name
@@ -169,9 +139,11 @@ def _load_test_configuration(
             anyscale_project,
             smoke_test=smoke_test,
         )
-        file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(
-            cluster_manager, file_manager, working_dir, artifact_path=artifact_path
+            cluster_manager,
+            JobFileManager(cluster_manager=cluster_manager),
+            working_dir,
+            artifact_path=artifact_path,
         )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e

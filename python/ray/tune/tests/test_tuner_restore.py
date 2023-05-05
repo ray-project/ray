@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -8,6 +9,7 @@ import unittest
 import pytest
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray import tune
 from ray.air import (
     Checkpoint,
@@ -416,7 +418,6 @@ def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path)
     remote_contents = os.listdir(check_path / "exp_dir")
 
     assert "tuner.pkl" in remote_contents
-    assert "trainable.pkl" in remote_contents
 
     prev_cp = _find_newest_experiment_checkpoint(str(check_path / "exp_dir"))
     prev_lstat = os.lstat(prev_cp)
@@ -429,7 +430,6 @@ def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path)
     assert results[0].metrics["_metric"] == 1
     local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
     assert "tuner.pkl" in local_contents
-    assert "trainable.pkl" in local_contents
 
     after_cp = _find_newest_experiment_checkpoint(
         str(tmpdir / "ray_results" / "exp_dir")
@@ -595,7 +595,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
             assert result.metrics["score"] == 2
 
 
-def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
+def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     """Test validation for trainable compatibility, when re-specifying a trainable
     on restore."""
 
@@ -633,7 +633,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
             resume_errored=True,
         )
 
-    # Can still change trainable code, but logs a warning
+    # Can technically change trainable code (not recommended!)
     def train_func_1(config):
         checkpoint = session.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
@@ -707,8 +707,8 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     fail_marker.unlink()
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
-        resume_errored=True,
         trainable=create_trainable_with_params(),
+        resume_errored=True,
     )
     results = tuner.fit()
     assert not results.errors
@@ -1053,7 +1053,40 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         assert not Tuner.can_restore(tmp_path / "new_exp")
 
 
-def testParamSpaceOverwrite(tmp_path, monkeypatch):
+def testParamSpaceOverwriteValidation(ray_start_4_cpus, tmp_path):
+    """Check that validation on restore fails if we try adding or removing
+    hyperparameters to the param_space."""
+    name = "test_param_space_valid"
+    param_space = {"a": 1, "b": {"c": tune.choice([0, 1])}, "d": tune.uniform(0, 1)}
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        param_space=param_space,
+        run_config=RunConfig(storage_path=str(tmp_path), name=name),
+    )
+    tuner.fit()
+
+    bad_param_spaces = [
+        {},
+        {"a": 1, "b": {}, "d": 2},
+        {"a": 1, "b": {"c": 2, "e": 3}, "d": 4},
+    ]
+    for bad_param_space in bad_param_spaces:
+        with pytest.raises(ValueError):
+            Tuner.restore(
+                str(tmp_path / name),
+                trainable=_train_fn_sometimes_failing,
+                param_space=bad_param_space,
+            )
+
+    # Should work with the original param space
+    Tuner.restore(
+        str(tmp_path / name),
+        trainable=_train_fn_sometimes_failing,
+        param_space=param_space,
+    )
+
+
+def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
     """Test that overwriting param space on restore propagates new refs to existing
     trials and newly generated trials."""
 
@@ -1131,6 +1164,18 @@ def testParamSpaceOverwrite(tmp_path, monkeypatch):
         # Make sure that test and test2 are updated.
         assert r.config["test"].name in ["8", "9", "10"]
         assert r.config["test2"].name in ["11", "12", "13", "14"]
+
+
+def test_tuner_pkl_backwards_compatibility(tmp_path, caplog):
+    tuner_internal = Tuner(
+        _train_fn_sometimes_failing, param_space={"a": 1}
+    )._local_tuner
+    with open(tmp_path / "tuner.pkl", "wb") as f:
+        ray_pickle.dump(tuner_internal, f)
+
+    with caplog.at_level(logging.WARNING, "ray.tune.impl.tuner_internal"):
+        tuner_internal._load_tuner_state(tmp_path / "tuner.pkl")
+        assert "run with an older version of Ray" in caplog.text
 
 
 if __name__ == "__main__":

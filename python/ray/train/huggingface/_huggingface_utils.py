@@ -72,7 +72,7 @@ class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
 
     def __iter__(self):
         for row in self.generate_examples_fn(**self.kwargs):
-            yield (0, {k: v for k, v in row.as_pydict().items()})
+            yield (0, {k: v for k, v in row.items()})
 
 
 def process_dataset_for_hf(

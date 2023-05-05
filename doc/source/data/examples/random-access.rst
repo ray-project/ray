@@ -9,17 +9,17 @@ Any Arrow-format datastream can be enabled for random access by calling ``ds.to_
 .. code-block:: python
 
     # Generate a dummy embedding table as an example.
-    ds = ray.data.range_table(100)
-    ds = ds.add_column("embedding", lambda b: b["value"] ** 2)
-    # -> schema={value: int64, embedding: int64}
+    ds = ray.data.range(100)
+    ds = ds.add_column("embedding", lambda b: b["id"] ** 2)
+    # -> schema={id: int64, embedding: int64}
 
     # Enable random access on the datastream. This launches a number of actors
     # spread across the cluster that serve random access queries to the data.
-    rmap = ds.to_random_access_dataset(key="value", num_workers=4)
+    rmap = ds.to_random_access_dataset(key="id", num_workers=4)
 
     # Example of a point query by key.
     ray.get(rmap.get_async(2))
-    # -> {"value": 2, "embedding": 4}
+    # -> {"id": 2, "embedding": 4}
 
     # Queries to missing keys return None.
     ray.get(rmap.get_async(-1))
@@ -27,7 +27,7 @@ Any Arrow-format datastream can be enabled for random access by calling ``ds.to_
 
     # Example of a multiget query.
     rmap.multiget([4, 2])
-    # -> [{"value": 4, "embedding": 16}, {"value": 2, "embedding": 4}]
+    # -> [{"id": 4, "embedding": 16}, {"id": 2, "embedding": 4}]
 
 Similar to Datastream, a RandomAccessDataset can be passed to and used from any Ray actor or task.
 

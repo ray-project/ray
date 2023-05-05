@@ -4,11 +4,11 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
-import { StatusChip } from "../../components/StatusChip";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { JobLogsLink } from "./JobDetail";
@@ -74,7 +74,7 @@ export const JobRow = ({ job }: JobRowProps) => {
         </Tooltip>
       </TableCell>
       <TableCell align="center">
-        <StatusChip type="job" status={job.status} />
+        <JobStatusWithIcon job={job} />
       </TableCell>
       <TableCell align="center">
         {start_time && start_time > 0 ? (

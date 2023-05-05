@@ -412,7 +412,7 @@ py_test(
     name = "test_lightning_checkpoint",
     size = "medium",
     srcs = ["tests/test_lightning_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )
 
@@ -420,7 +420,7 @@ py_test(
     name = "test_lightning_trainer_restore",
     size = "medium",
     srcs = ["tests/test_lightning_trainer_restore.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )
 
@@ -428,7 +428,7 @@ py_test(
     name = "test_lightning_trainer",
     size = "large",
     srcs = ["tests/test_lightning_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )
 
@@ -436,7 +436,7 @@ py_test(
     name = "test_lightning_predictor",
     size = "medium",
     srcs = ["tests/test_lightning_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )
 
