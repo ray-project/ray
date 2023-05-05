@@ -79,7 +79,7 @@ class RayFSDPStrategy(FSDPStrategy):
 
     def lightning_module_state_dict(self) -> Dict[str, Any]:
         """Gathers the full state dict to rank 0 on CPU."""
-        assert self.model is not None
+        assert self.model is not None, "Failed to get the state dict for a None model!"
 
         if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
             with FullyShardedDataParallel.state_dict_type(
