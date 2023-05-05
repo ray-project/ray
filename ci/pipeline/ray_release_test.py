@@ -11,11 +11,18 @@ def main() -> int:
     CI and buildkite environment only.
     """
     changed_files = _get_changed_files()
+=======
+    changed_files = get_changed_files()
+>>>>>>> 0ccebbe38a (Add a script to run tests using coverage information):ci/test/ray_release_test.py
     logger.info(f"Changed files: {changed_files}")
     return 0
 
 
+<<<<<<< HEAD:ci/pipeline/ray_release_test.py
 def _get_changed_files() -> List[str]:
+=======
+def get_changed_files() -> List[str]:
+>>>>>>> 0ccebbe38a (Add a script to run tests using coverage information):ci/test/ray_release_test.py
     """
     Get the list of changed files in the current PR.
     """
