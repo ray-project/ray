@@ -22,8 +22,6 @@ from ray_release.logger import logger
 from ray_release.util import url_exists, python_version_str, resolve_url
 from ray_release.aws import upload_to_s3
 
-# Testing
-
 DEFAULT_BRANCH = "master"
 DEFAULT_GIT_OWNER = "ray-project"
 DEFAULT_GIT_PACKAGE = "ray"
