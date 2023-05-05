@@ -1,10 +1,11 @@
+import abc
 import pathlib
-from typing import Any, Mapping, Union
+from typing import Any, Mapping, Union, Type
 
 from ray.rllib.core.rl_module import RLModule
+from ray.rllib.models.tf.tf_distributions import TfDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-
 
 _, tf, _ = try_import_tf()
 
@@ -35,6 +36,15 @@ class TfRLModule(RLModule, tf.keras.Model):
 
         """
         return self.forward_train(batch)
+
+    @abc.abstractmethod
+    def get_action_dist_cls(self) -> Type[TfDistribution]:
+        """Returns the action distribution class for this RL Module.
+
+        This class is used to create action distributions from outputs of the forward
+        methods. If the rare case that no action distribution class is needed,
+        this method can return None.
+        """
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:

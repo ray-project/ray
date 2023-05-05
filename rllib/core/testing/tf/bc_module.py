@@ -1,8 +1,8 @@
 import tensorflow as tf
-import tensorflow_probability as tfp
 from typing import Any, Mapping
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleConfig,
@@ -33,36 +33,33 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
 
+    def get_action_dist_cls(self):
+        return Categorical
+
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        action_logits_inference = tf.argmax(action_logits, axis=-1)
-        action_dist = tfp.distributions.Deterministic(action_logits_inference)
-        return {"action_dist": action_dist}
+        return self._forward_train(batch)
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_inference(batch)
+        return self._forward_train(batch)
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        action_dist = tfp.distributions.Categorical(logits=action_logits)
-        return {"action_dist": action_dist}
+        action_logits = self.policy(batch["obs"])
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -112,7 +109,7 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
         policy_in = tf.concat([global_enc, obs["local"]], axis=-1)
         action_logits = self.policy_head(policy_in)
 
-        return {"action_dist": tf.distributions.Categorical(logits=action_logits)}
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
 
 class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):

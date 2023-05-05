@@ -3,13 +3,15 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gymnasium as gym
 import logging
 import os
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
+import gymnasium as gym
+import tree  # pip install dm_tree
+
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -841,20 +843,25 @@ class EagerTFPolicyV2(Policy):
 
         # Use Exploration object.
         with tf.variable_creator_scope(_disallow_var_creation):
-            if self.config.get("_enable_rl_module_api", False):
+            if isinstance(self.model, RLModule):
+                action_dist_class = self.model.get_action_dist_cls()
 
                 if explore:
                     fwd_out = self.model.forward_exploration(input_dict)
-                else:
-                    fwd_out = self.model.forward_inference(input_dict)
-
-                action_dist = fwd_out[SampleBatch.ACTION_DIST]
-                if explore:
+                    action_dist = action_dist_class.from_logits(
+                        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    )
                     actions = action_dist.sample()
                     logp = action_dist.logp(actions)
                 else:
+                    fwd_out = self.model.forward_inference(input_dict)
+                    action_dist = action_dist_class.from_logits(
+                        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    )
+                    action_dist.to_deterministic()
                     actions = action_dist.sample()
                     logp = None
+
                 state_out = fwd_out.get("state_out", {})
 
                 # anything but action_dist and state_out is an extra fetch

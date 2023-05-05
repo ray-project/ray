@@ -3,6 +3,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
+import sys
 import tree  # pip install dm_tree
 from typing import List, Optional, Type, Union
 
