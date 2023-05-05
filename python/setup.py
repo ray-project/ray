@@ -252,7 +252,7 @@ if setup_spec.type == SetupType.RAY:
             "pydantic",
             "prometheus_client >= 0.7.1",
             "smart_open",
-            "virtualenv >=20.0.24",  # For pip runtime env.
+            "virtualenv >=20.0.24, != 20.21.*",  # For pip runtime env.
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
