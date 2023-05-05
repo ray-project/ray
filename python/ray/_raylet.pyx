@@ -1763,14 +1763,15 @@ cdef class GcsPublisher:
             check_status(
                 self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
 
-    def publish_logs(self, log_json):
+    def publish_logs(self, log_json: dict):
         cdef:
             CLogBatch log_batch
             c_string c_job_id
 
         job_id = log_json.get("job")
         log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
-        log_batch.set_pid(str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
         log_batch.set_job_id(job_id.encode() if job_id else b"")
         log_batch.set_is_error(bool(log_json.get("is_err")))
         for line in log_json.get("lines", []):
