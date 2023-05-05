@@ -91,12 +91,6 @@ class TestPPO(unittest.TestCase):
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
 
-            policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
-            # We shim'd the loss function of the PolicyRLM class. Always returns
-            # 0.0 b/c losses on Policies are no longer needed with the Learner API
-            # enabled.
-            check(policy_loss, 0.0)
-
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()

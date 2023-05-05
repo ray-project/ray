@@ -81,10 +81,13 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
+            old_stack = not config.get("_enable_learner_api", False)
+
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
-            VTraceClipGradients.__init__(self)
-            VTraceOptimizer.__init__(self)
+            if old_stack:
+                VTraceClipGradients.__init__(self)
+                VTraceOptimizer.__init__(self)
 
             # Initialize base class.
             base.__init__(
@@ -96,22 +99,23 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 existing_model=existing_model,
             )
 
-            # TF LearningRateSchedule depends on self.framework, so initialize
-            # after base.__init__() is called.
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
-            ValueNetworkMixin.__init__(self, config)
-            KLCoeffMixin.__init__(self, config)
-            GradStatsMixin.__init__(self)
+            if old_stack:
+                # TF LearningRateSchedule depends on self.framework, so initialize
+                # after base.__init__() is called.
+                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+                EntropyCoeffSchedule.__init__(
+                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+                )
+                ValueNetworkMixin.__init__(self, config)
+                KLCoeffMixin.__init__(self, config)
+                GradStatsMixin.__init__(self)
 
-            # Note: this is a bit ugly, but loss and optimizer initialization must
-            # happen after all the MixIns are initialized.
-            self.maybe_initialize_optimizer_and_loss()
+                # Note: this is a bit ugly, but loss and optimizer initialization must
+                # happen after all the MixIns are initialized.
+                self.maybe_initialize_optimizer_and_loss()
 
-            # Initiate TargetNetwork ops after loss initialization.
-            TargetNetworkMixin.__init__(self)
+                # Initiate TargetNetwork ops after loss initialization.
+                TargetNetworkMixin.__init__(self)
 
         @override(base)
         def make_model(self) -> ModelV2:

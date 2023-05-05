@@ -56,15 +56,16 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        ValueNetworkMixin.__init__(self, config)
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-        EntropyCoeffSchedule.__init__(
-            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-        )
-        KLCoeffMixin.__init__(self, config)
+        if not self.config.get("_enable_learner_api", False):
+            ValueNetworkMixin.__init__(self, config)
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
+            KLCoeffMixin.__init__(self, config)
 
-        # TODO: Don't require users to call this manually.
-        self._initialize_loss_from_dummy_batch()
+            # TODO: Don't require users to call this manually.
+            self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicyV2)
     def loss(
