@@ -3,6 +3,12 @@
 Performance Tips and Tuning
 ===========================
 
+Monitoring your application
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+View the Ray dashboard to monitor your application and troubleshoot issues. To learn
+more about the Ray dashboard, read :ref:`Ray Dashboard <ray-dashboard>`.
+
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
