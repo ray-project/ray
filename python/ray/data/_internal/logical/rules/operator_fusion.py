@@ -183,6 +183,7 @@ class OperatorFusionRule(Rule):
 
         # Fuse operator names.
         name = up_op.name + "->" + down_op.name
+
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
 
@@ -214,7 +215,6 @@ class OperatorFusionRule(Rule):
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
         compute = get_compute(down_logical_op._compute)
-
         ray_remote_args = down_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
@@ -275,6 +275,7 @@ class OperatorFusionRule(Rule):
 
         # Fuse operator names.
         name = up_op.name + "->" + down_op.name
+
         down_logical_op: AbstractAllToAll = self._op_map.pop(down_op)
         up_logical_op: AbstractUDFMap = self._op_map.pop(up_op)
 
