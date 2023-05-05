@@ -16,7 +16,6 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -560,7 +559,7 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        gcs_publisher = GcsPublisher(address=self.gcs_address)
+        gcs_publisher = ray._raylet.GcsPublisher(address=self.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
