@@ -120,6 +120,23 @@ def Deprecated(*args, **kwargs):
         ...   "prone. Please call h() instead.")
         ... def g(y):
         ...     return y
+
+    .. note::
+
+        In order to use this decorator with a Python `@classmethod`, this
+        must be applied as the first decorator, in the case that there are multiple
+        stacked on top of each other.
+
+        .. code-block:: python
+
+            class Test:
+
+                @classmethod
+                @DeveloperAPI
+                @Deprecated(message="...", warning=True)  # This gets applied first.
+                def foo(cls):
+                    pass
+
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])

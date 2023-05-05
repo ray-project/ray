@@ -27,7 +27,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
 )
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -43,6 +43,19 @@ _METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 # The namespace is a constant UUID to prevent conflicts, as defined in RFC-4122
 _CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181")
+
+# TODO(ml-team): Remove in 2.7.
+_FROM_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`Checkpoint.from_checkpoint` is deprecated and will be removed in Ray 2.7.\n"
+    "This method was used to cast a generic `Checkpoint` object to a "
+    "framework-specific checkpoint (e.g., `TorchCheckpoint`), to pass into a "
+    "differnet framework-specific module (e.g., `TorchPredictor`). Instead of casting "
+    "with `from_checkpoint`, extract out the data needed to pass into one of the "
+    "official constructor methods of the framework-specific checkpoint.\n\n"
+    "Example (assuming that you have a `Checkpoint` object of a dict containing a "
+    "`state_dict` key:\n    "
+    "torch_checkpoint = TorchCheckpoint.from_state_dict(checkpoint.to_dict()['state_dict'])\n"  # noqa: E501
+)
 
 logger = logging.getLogger(__name__)
 
@@ -472,6 +485,7 @@ class Checkpoint:
 
     @classmethod
     @DeveloperAPI
+    @Deprecated(message=_FROM_CHECKPOINT_DEPRECATION_MESSAGE, warning=True)
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
         """Create a checkpoint from a generic :class:`Checkpoint`.
 
