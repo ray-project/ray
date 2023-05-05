@@ -43,7 +43,7 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job, sdk_command].
+#    # Type of test. Can be [anyscale_job]
 #    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
 #    # run the actual release test.
 #    type: anyscale_job
@@ -701,6 +701,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -727,6 +728,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -753,6 +755,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -827,6 +830,25 @@
       cluster:
         cluster_env: gptj_deepspeed_env.yaml
         cluster_compute: gptj_deepspeed_compute_gce.yaml
+
+
+- name: air_example_opt_deepspeed_batch_inference
+  group: AIR examples
+  working_dir: air_examples/opt_deepspeed_batch_inference
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: 30b_deepspeed_env.yaml
+    cluster_compute: 30b_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path opt_deepspeed_batch_inference.ipynb
+
+  # variations: TODO(jungong): add GCP variation.
 
 
 #####################################
@@ -4277,7 +4299,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
+        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # Revert to the comment below once ^ closed.
+        # cluster_env: app_config.yaml
+        cluster_env: debug_app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
@@ -4796,7 +4821,9 @@
 - name: tune_air_oom
   group: core-daily-test
   working_dir: air_tests
+
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
