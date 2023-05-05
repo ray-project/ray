@@ -145,6 +145,28 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         )
 
 
+class TestSupportedSpacesDQN(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_dqn(self):
+        config = (
+            DQNConfig()
+            .reporting(min_sample_timesteps_per_iteration=1)
+            .training(
+                replay_buffer_config={
+                    "capacity": 1000,
+                }
+            )
+        )
+        check_support("DQN", config, frameworks=["tf2", "torch", "tf"])
+
+
 class TestSupportedSpacesOffPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -166,18 +188,6 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
             ),
             check_bounds=True,
         )
-
-    def test_dqn(self):
-        config = (
-            DQNConfig()
-            .reporting(min_sample_timesteps_per_iteration=1)
-            .training(
-                replay_buffer_config={
-                    "capacity": 1000,
-                }
-            )
-        )
-        check_support("DQN", config, frameworks=["tf2", "torch", "tf"])
 
     def test_sac(self):
         check_support(
