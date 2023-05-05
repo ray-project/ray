@@ -56,7 +56,6 @@ extensions = [
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
-    "sphinx_panels",
     "sphinx_design",
 ]
 
