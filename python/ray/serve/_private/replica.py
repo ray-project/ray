@@ -7,6 +7,7 @@ import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
+import traceback
 
 import starlette.responses
 
@@ -14,7 +15,7 @@ import ray
 from ray import cloudpickle
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
-from ray.util import metrics
+from ray.serve import metrics
 from ray._private.async_compat import sync_to_async
 
 from ray.serve._private.autoscaling_metrics import start_metrics_pusher
@@ -68,6 +69,7 @@ def create_replica_wrapper(name: str):
             version: DeploymentVersion,
             controller_name: str,
             detached: bool,
+            app_name: str = None,
         ):
             configure_component_logger(
                 component_type="deployment",
@@ -121,6 +123,7 @@ def create_replica_wrapper(name: str):
                 replica_tag,
                 controller_name,
                 servable_object=None,
+                app_name=app_name,
             )
 
             assert controller_name, "Must provide a valid controller_name"
@@ -155,6 +158,7 @@ def create_replica_wrapper(name: str):
                     replica_tag,
                     controller_name,
                     servable_object=_callable,
+                    app_name=app_name,
                 )
 
                 self.replica = RayServeReplica(
@@ -165,6 +169,7 @@ def create_replica_wrapper(name: str):
                     version,
                     is_function,
                     controller_handle,
+                    app_name,
                 )
                 self._init_finish_event.set()
 
@@ -232,21 +237,26 @@ def create_replica_wrapper(name: str):
         ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            await self._initialize_replica()
+            try:
+                await self._initialize_replica()
+                metadata = await self.reconfigure(deployment_config)
 
-            metadata = await self.reconfigure(deployment_config)
-
-            # A new replica should not be considered healthy until it passes an
-            # initial health check. If an initial health check fails, consider
-            # it an initialization failure.
-            await self.check_health()
-            return metadata
+                # A new replica should not be considered healthy until it passes an
+                # initial health check. If an initial health check fails, consider
+                # it an initialization failure.
+                await self.check_health()
+                return metadata
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def reconfigure(
             self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            await self.replica.reconfigure(deployment_config)
-            return await self.get_metadata()
+            try:
+                await self.replica.reconfigure(deployment_config)
+                return await self.get_metadata()
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def get_metadata(
             self,
@@ -284,6 +294,7 @@ class RayServeReplica:
         version: DeploymentVersion,
         is_function: bool,
         controller_handle: ActorHandle,
+        app_name: str,
     ) -> None:
         self.deployment_name = deployment_name
         self.replica_tag = replica_tag
@@ -292,6 +303,7 @@ class RayServeReplica:
         self.version = version
         self.deployment_config = None
         self.rwlock = aiorwlock.RWLock()
+        self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
         if not callable(user_health_check):
@@ -308,10 +320,7 @@ class RayServeReplica:
             description=(
                 "The number of queries that have been processed in this replica."
             ),
-            tag_keys=("deployment", "replica", "route"),
-        )
-        self.request_counter.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
+            tag_keys=("route",),
         )
 
         self.error_counter = metrics.Counter(
@@ -319,10 +328,7 @@ class RayServeReplica:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("deployment", "replica", "route"),
-        )
-        self.error_counter.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
+            tag_keys=("route",),
         )
 
         self.restart_counter = metrics.Counter(
@@ -330,29 +336,18 @@ class RayServeReplica:
             description=(
                 "The number of times this replica has been restarted due to failure."
             ),
-            tag_keys=("deployment", "replica"),
-        )
-        self.restart_counter.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
         )
 
         self.processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "replica", "route"),
-        )
-        self.processing_latency_tracker.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
+            tag_keys=("route",),
         )
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-            tag_keys=("deployment", "replica"),
-        )
-        self.num_processing_items.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
         )
 
         self.restart_counter.inc()

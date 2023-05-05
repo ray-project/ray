@@ -353,13 +353,11 @@ class ServeController:
                 self.deploy_apps(
                     ServeApplicationSchema.parse_obj(applications[0]),
                     deployment_time,
-                    False,
                 )
             else:
                 self.deploy_apps(
                     ServeDeploySchema.parse_obj({"applications": applications}),
                     deployment_time,
-                    False,
                 )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -408,21 +406,27 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
+        app_name: str = None,
     ) -> bool:
         """Deploys a deployment."""
-
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
+
+        # app_name is None for V1 API, reset it to empty string to avoid
+        # breaking metrics.
+        if app_name is None:
+            app_name = ""
 
         deployment_info = deploy_args_to_deployment_info(
             deployment_name=name,
             deployment_config_proto_bytes=deployment_config_proto_bytes,
             replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
-            previous_deployment=self.deployment_state_manager.get_deployment(name),
+            route_prefix=route_prefix,
             is_driver_deployment=is_driver_deployment,
+            app_name=app_name,
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if
@@ -431,7 +435,7 @@ class ServeController:
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix)
+            endpoint_info = EndpointInfo(route=route_prefix, app_name=app_name)
             self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
             self.endpoint_state.delete_endpoint(name)
@@ -467,7 +471,6 @@ class ServeController:
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
-        _internal: bool = False,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 
@@ -488,11 +491,6 @@ class ServeController:
 
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
-
-            _internal: whether the config is provided by user or internally (i.e. it is
-                restored from a checkpoint). If it is provided by the user, we need to
-                prepend the app name to each deployment name. If not, it should already
-                be prepended.
         """
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
