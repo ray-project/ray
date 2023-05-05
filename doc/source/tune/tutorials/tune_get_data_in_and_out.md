@@ -71,7 +71,7 @@ For example, passing in a large pandas DataFrame or an unserializable model obje
 Instead, use strings or other identifiers as your values, and initialize/load the objects inside your Trainable directly depending on those.
 
 ```{note}
-[Ray Datasets](datasets_getting_started) can be used as values in the search space directly.
+[Datastreams](data_getting_started) can be used as values in the search space directly.
 ```
 
 In our example, we want to tune the two model hyperparameters. We also want to set the number of epochs, so that we can easily tweak it later. For the hyperparameters, we will use the `tune.uniform` distribution. We will also modify the `training_function` to obtain those values from the `config` dictionary.

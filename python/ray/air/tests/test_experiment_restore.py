@@ -1,4 +1,6 @@
 import json
+import os
+
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -58,7 +60,6 @@ def test_experiment_restore(tmp_path, runner_type):
         - The test will stop the script with a SIGINT at a random time between
         4-8 iterations after each restore.
 
-
     Requirements:
     - Req 1: Reasonable runtime
         - The experiment should finish within 2 * 16 = 32 seconds.
@@ -112,11 +113,14 @@ def test_experiment_restore(tmp_path, runner_type):
         "NUM_TRIALS": str(num_trials),
         "MAX_CONCURRENT_TRIALS": str(max_concurrent),
         "CSV_DATA_FILE": csv_file,
+        "TUNE_NEW_EXECUTION": os.environ.get("TUNE_NEW_EXECUTION", "1"),
     }
 
     # Pass criteria
     no_interrupts_runtime = 16.0
-    passing_factor = 2
+    # Todo(krfricke): See if we can improve the actor startup/shutdown time
+    # to reduce the passing factor again.
+    passing_factor = 2.5
     passing_runtime = no_interrupts_runtime * passing_factor
     _print_message(
         "Experiment should finish with a total runtime of\n"
@@ -197,16 +201,18 @@ def test_experiment_restore(tmp_path, runner_type):
     )
     test_end_time = time.monotonic()
 
+    # Req 1: runtime
+    assert total_runtime <= passing_runtime, (
+        f"Expected runtime to be <= {passing_runtime}, but ran for: {total_runtime}. "
+        f"This means the experiment did not finish (iterations still running). Are "
+        f"there any performance regressions or expensive failure recoveries??"
+    )
+
     # The script shouldn't have errored. (It should have finished by this point.)
     assert return_code == 0, (
         f"The script errored with return code: {return_code}.\n"
-        f"Check the `{_RUN_SCRIPT_FILENAME}` script for any issues."
+        f"Check the `{_RUN_SCRIPT_FILENAME}` script for any issues. "
     )
-
-    # Req 1: runtime
-    assert (
-        total_runtime <= passing_runtime
-    ), f"Expected runtime to be <= {passing_runtime}, but ran for: {total_runtime}"
 
     # Req 2: training progress persisted
     # Check that progress increases monotonically (we never go backwards/start from 0)

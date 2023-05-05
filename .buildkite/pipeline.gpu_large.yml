@@ -49,3 +49,16 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-py37,-post_wheel_build doc/...
+
+- label: ":zap: :python: Lightning 2.0 Train GPU tests"
+  conditions:
+    ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - NO_DASHBOARD=1 ./ci/env/install-minimal.sh 3.8
+    - PYTHON=3.8 DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip uninstall -y pytorch-lightning
+    - pip install lightning==2.0.0
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 python/ray/train/...

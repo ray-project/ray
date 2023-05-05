@@ -134,7 +134,7 @@ def test_http_metrics(serve_start_shutdown):
             # Trigger RayActorError
             os._exit(0)
 
-    serve.run(A.bind())
+    serve.run(A.bind(), name="app")
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
     try:
@@ -162,8 +162,8 @@ def test_http_metrics(serve_start_shutdown):
             elif "serve_num_deployment_http_error_requests" in metrics:
                 # deployment A should have error count 2
                 if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
+                    assert 'deployment="app_A"' in metrics and "2.0" in metrics
+                if 'deployment="app_A"' not in metrics or "2.0" not in metrics:
                     return False
         return True
 
@@ -181,7 +181,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     def f(*args):
         return 1 / 0
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
@@ -193,6 +193,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == "/fake_route"
     assert num_requests[0]["method"] == "GET"
+    assert num_requests[0]["application"] == ""
     print("serve_num_http_requests working as expected.")
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
@@ -212,25 +213,134 @@ def test_http_metrics_fields(serve_start_shutdown):
         "serve_num_deployment_http_error_requests"
     )
     assert len(num_deployment_errors) == 1
-    assert num_deployment_errors[0]["deployment"] == "f"
+    assert num_deployment_errors[0]["deployment"] == "app_f"
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
+    assert num_deployment_errors[0]["application"] == "app"
     print("serve_num_deployment_http_error_requests working as expected.")
+
+    latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
+    assert len(latency_metrics) == 1
+    assert latency_metrics[0]["route"] == "/real_route"
+    assert latency_metrics[0]["application"] == "app"
+    print("serve_http_request_latency_ms working as expected.")
+
+
+def test_replica_metrics_fields(serve_start_shutdown):
+    """Test replica metrics fields"""
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    @serve.deployment
+    def g():
+        return "world"
+
+    serve.run(f.bind(), name="app1", route_prefix="/f")
+    serve.run(g.bind(), name="app2", route_prefix="/g")
+    url_f = "http://127.0.0.1:8000/f"
+    url_g = "http://127.0.0.1:8000/g"
+
+    assert "hello" == requests.get(url_f).text
+    assert "world" == requests.get(url_g).text
+
+    def verify_metrics(metric, expected_output):
+        for key in expected_output:
+            assert metric[key] == expected_output[key]
+
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
+        timeout=20,
+    )
+
+    num_requests = get_metric_dictionaries("serve_deployment_request_counter")
+    assert len(num_requests) == 2
+    expected_output = {"route": "/f", "deployment": "app1_f", "application": "app1"}
+    verify_metrics(num_requests[0], expected_output)
+
+    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
+    assert len(start_metrics) == 2
+    expected_output = {"deployment": "app1_f", "application": "app1"}
+    verify_metrics(start_metrics[0], expected_output)
+    expected_output = {"deployment": "app2_g", "application": "app2"}
+    verify_metrics(start_metrics[1], expected_output)
+
+    # Latency metrics
+    wait_for_condition(
+        lambda: len(
+            get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
+        )
+        == 2,
+        timeout=20,
+    )
+    for metric_name in [
+        "serve_deployment_processing_latency_ms_count",
+        "serve_deployment_processing_latency_ms_sum",
+    ]:
+        latency_metrics = get_metric_dictionaries(metric_name)
+        print(f"checking metric {metric_name}, {latency_metrics}")
+        assert len(latency_metrics) == 2
+        expected_output1 = {"deployment": "app1_f", "application": "app1"}
+        expected_output2 = {"deployment": "app2_g", "application": "app2"}
+        verify_metrics(latency_metrics[0], expected_output1)
+        verify_metrics(latency_metrics[1], expected_output2)
+
+    processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
+    assert len(processing_queries) == 2
+    expected_output1 = {"deployment": "app1_f", "application": "app1"}
+    expected_output2 = {"deployment": "app2_g", "application": "app2"}
+    verify_metrics(processing_queries[0], expected_output1)
+    verify_metrics(processing_queries[1], expected_output2)
+
+    @serve.deployment
+    def h():
+        return 1 / 0
+
+    serve.run(h.bind(), name="app3", route_prefix="/h")
+    assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
+        timeout=20,
+    )
+    err_requests = get_metric_dictionaries("serve_deployment_error_counter")
+    assert len(err_requests) == 1
+    expected_output = {"route": "/h", "deployment": "app3_h", "application": "app3"}
+    verify_metrics(err_requests[0], expected_output)
+
+    health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
+    assert len(health_metrics) == 3
+    expected_outputs = [
+        {"deployment": "app1_f", "application": "app1"},
+        {"deployment": "app2_g", "application": "app2"},
+        {"deployment": "app3_h", "application": "app3"},
+    ]
+    for i in range(len(health_metrics)):
+        verify_metrics(health_metrics[i], expected_outputs[i])
 
 
 class TestRequestContextMetrics:
     def _generate_metrics_summary(self, metrics):
-        """Generate "route" information from metrics.
+        """Generate "route", "application" information from metrics.
         Args:
             metrics: list of metrics, each item is a dictionary generated from
                 get_metric_dictionaries func.
-        Return: return a dictionary, key is deployment name, value is a set
-            including all routes.
+        Return: return a Tuple[dictionary, dictionary]
+            First dictionary: key is deployment name, value is a set
+            including all routes. string is to indicate the applicationn name.
+            Second dictionary: key is the deployment name, value is application name.
         """
-        metrics_summary = DefaultDict(set)
+        metrics_summary_route = DefaultDict(set)
+        metrics_summary_app = DefaultDict(str)
+
         for request_metrcis in metrics:
-            metrics_summary[request_metrcis["deployment"]].add(request_metrcis["route"])
-        return metrics_summary
+            metrics_summary_route[request_metrcis["deployment"]].add(
+                request_metrcis["route"]
+            )
+            metrics_summary_app[request_metrcis["deployment"]] = request_metrcis[
+                "application"
+            ]
+        return metrics_summary_route, metrics_summary_app
 
     def test_request_context_pass_for_http_proxy(self, serve_start_shutdown):
         """Test HTTP proxy passing request context"""
@@ -269,56 +379,46 @@ class TestRequestContextMetrics:
         )
 
         # Check replica qps & latency
-        qps_metrics = self._generate_metrics_summary(
+        qps_metrics_route, qps_metrics_app_name = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_request_counter")
         )
-        print(qps_metrics)
-        assert qps_metrics["app1_f"] == {"/app1"}
-        assert qps_metrics["app2_g"] == {"/app2"}
-        qps_metrics = self._generate_metrics_summary(
+        print(qps_metrics_route)
+        assert qps_metrics_route["app1_f"] == {"/app1"}
+        assert qps_metrics_route["app2_g"] == {"/app2"}
+        assert qps_metrics_app_name["app1_f"] == "app1"
+        assert qps_metrics_app_name["app2_g"] == "app2"
+        qps_metrics_route, qps_metrics_app_name = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_error_counter")
         )
-        assert qps_metrics["app3_h"] == {"/app3"}
-
-        latency_metrics = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
-        )
-        assert len(latency_metrics) == 3
-        assert latency_metrics["app1_f"] == {"/app1"}
-        assert latency_metrics["app2_g"] == {"/app2"}
-        assert latency_metrics["app3_h"] == {"/app3"}
+        assert qps_metrics_route["app3_h"] == {"/app3"}
+        assert qps_metrics_app_name["app3_h"] == "app3"
 
         # Check http proxy qps & latency
-        qps_metrics = get_metric_dictionaries("serve_num_http_requests")
-        len(qps_metrics) == 3
-        assert {metric["route"] for metric in qps_metrics} == {
-            "/app1",
-            "/app2",
-            "/app3",
-        }
+        for metric_name in [
+            "serve_num_http_requests",
+            "serve_http_request_latency_ms_sum",
+        ]:
+            metrics = get_metric_dictionaries(metric_name)
+            assert {metric["route"] for metric in metrics} == {
+                "/app1",
+                "/app2",
+                "/app3",
+            }
 
-        latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
-        assert {metric["route"] for metric in latency_metrics} == {
-            "/app1",
-            "/app2",
-            "/app3",
-        }
-
-        # Check handle qps
-        qps_metrics = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_handle_request_counter")
-        )
-        assert qps_metrics["app1_f"] == {"/app1"}
-        assert qps_metrics["app2_g"] == {"/app2"}
-        assert qps_metrics["app3_h"] == {"/app3"}
-
-        # Check router qps
-        qps_metrics = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_num_router_requests")
-        )
-        assert qps_metrics["app1_f"] == {"/app1"}
-        assert qps_metrics["app2_g"] == {"/app2"}
-        assert qps_metrics["app3_h"] == {"/app3"}
+        for metric_name in [
+            "serve_handle_request_counter",
+            "serve_num_router_requests",
+            "serve_deployment_processing_latency_ms_sum",
+        ]:
+            metrics_route, metrics_app_name = self._generate_metrics_summary(
+                get_metric_dictionaries("serve_handle_request_counter")
+            )
+            assert metrics_route["app1_f"] == {"/app1"}
+            assert metrics_route["app2_g"] == {"/app2"}
+            assert metrics_route["app3_h"] == {"/app3"}
+            assert metrics_app_name["app1_f"] == "app1"
+            assert metrics_app_name["app2_g"] == "app2"
+            assert metrics_app_name["app3_h"] == "app3"
 
     def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
         """Test handle passing contexts between replicas"""
@@ -348,7 +448,7 @@ class TestRequestContextMetrics:
             async def app2(self):
                 return await (await self.handle2.remote())
 
-        serve.run(G.bind(g1.bind(), g2.bind()))
+        serve.run(G.bind(g1.bind(), g2.bind()), name="app")
         resp = requests.get("http://127.0.0.1:8000/api")
         assert resp.text == '"ok1"'
         resp = requests.get("http://127.0.0.1:8000/api2")
@@ -365,12 +465,18 @@ class TestRequestContextMetrics:
             == 4,
             timeout=20,
         )
-        requests_metrics = self._generate_metrics_summary(
+        (
+            requests_metrics_route,
+            requests_metrics_app_name,
+        ) = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_request_counter")
         )
-        assert requests_metrics["G"] == {"/api", "/api2"}
-        assert requests_metrics["g1"] == {"/api"}
-        assert requests_metrics["g2"] == {"/api2"}
+        assert requests_metrics_route["app_G"] == {"/api", "/api2"}
+        assert requests_metrics_route["app_g1"] == {"/api"}
+        assert requests_metrics_route["app_g2"] == {"/api2"}
+        assert requests_metrics_app_name["app_G"] == "app"
+        assert requests_metrics_app_name["app_g1"] == "app"
+        assert requests_metrics_app_name["app_g2"] == "app"
 
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
@@ -427,6 +533,7 @@ class TestRequestContextMetrics:
         counter_metrics[0]["my_runtime_tag"] == "100"
         counter_metrics[0]["replica"] == replica_tag
         counter_metrics[0]["deployment"] == deployment_name
+        counter_metrics[0]["application"] == "app"
 
         gauge_metrics = get_metric_dictionaries("my_gauge")
         assert len(counter_metrics) == 1
@@ -434,6 +541,7 @@ class TestRequestContextMetrics:
         gauge_metrics[0]["my_runtime_tag"] == "300"
         gauge_metrics[0]["replica"] == replica_tag
         gauge_metrics[0]["deployment"] == deployment_name
+        gauge_metrics[0]["application"] == "app"
 
         histogram_metrics = get_metric_dictionaries("my_histogram_sum")
         assert len(histogram_metrics) == 1
@@ -441,6 +549,7 @@ class TestRequestContextMetrics:
         histogram_metrics[0]["my_runtime_tag"] == "200"
         histogram_metrics[0]["replica"] == replica_tag
         histogram_metrics[0]["deployment"] == deployment_name
+        gauge_metrics[0]["application"] == "app"
 
     @pytest.mark.parametrize("use_actor", [False, True])
     def test_serve_metrics_outside_serve(self, use_actor, serve_start_shutdown):
@@ -562,11 +671,11 @@ def test_actor_summary(serve_instance):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
+        {"ServeController", "HTTPProxyActor", "ServeReplica:app_f"}
     )
 
 

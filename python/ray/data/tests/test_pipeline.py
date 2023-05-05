@@ -8,12 +8,12 @@ import numpy as np
 
 import ray
 from ray.data import datastream
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
 from ray.data.datastream import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
+from ray.data.tests.util import column_udf, extract_values
 
 
 class MockLogger:
@@ -22,14 +22,20 @@ class MockLogger:
         self.infos = []
 
     def warning(self, msg):
+        if "strict mode" in msg:
+            return
         self.warnings.append(msg)
         print("warning:", msg)
 
     def info(self, msg):
+        if "strict mode" in msg:
+            return
         self.infos.append(msg)
         print("info:", msg)
 
     def debug(self, msg):
+        if "strict mode" in msg:
+            return
         print("debug:", msg)
 
 
@@ -127,11 +133,15 @@ def test_pipeline_actors(shutdown_only):
     pipe = (
         ray.data.range(3)
         .repeat(10)
-        .map(lambda x: x + 1)
-        .map(lambda x: x + 1, compute="actors", num_gpus=1)
+        .map(column_udf("id", lambda x: x + 1))
+        .map(
+            column_udf("id", lambda x: x + 1),
+            compute=ray.data.ActorPoolStrategy(),
+            num_gpus=1,
+        )
     )
 
-    assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
+    assert sorted(extract_values("id", pipe.take(999))) == sorted([2, 3, 4] * 10)
 
 
 def test_pipeline_is_parallel(shutdown_only):
@@ -173,12 +183,12 @@ def test_pipeline_is_parallel(shutdown_only):
 
 def test_window_by_bytes(ray_start_regular_shared):
     with pytest.raises(ValueError):
-        ray.data.range_table(10).window(blocks_per_window=2, bytes_per_window=2)
+        ray.data.range(10).window(blocks_per_window=2, bytes_per_window=2)
 
-    pipe = ray.data.range_table(10000000, parallelism=100).window(blocks_per_window=2)
+    pipe = ray.data.range(10000000, parallelism=100).window(blocks_per_window=2)
     assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=2)"
 
-    pipe = ray.data.range_table(10000000, parallelism=100).window(
+    pipe = ray.data.range(10000000, parallelism=100).window(
         bytes_per_window=10 * 1024 * 1024
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=2)"
@@ -187,19 +197,19 @@ def test_window_by_bytes(ray_start_regular_shared):
     for ds in dss[:-1]:
         assert ds.num_blocks() in [12, 13]
 
-    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1)
+    pipe = ray.data.range(10000000, parallelism=100).window(bytes_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 1
 
-    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1e9)
+    pipe = ray.data.range(10000000, parallelism=100).window(bytes_per_window=1e9)
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 100
 
     # Test creating from non-lazy BlockList.
     pipe = (
-        ray.data.range_table(10000000, parallelism=100)
+        ray.data.range(10000000, parallelism=100)
         .map_batches(lambda x: x)
         .window(bytes_per_window=10 * 1024 * 1024)
     )
@@ -210,42 +220,47 @@ def test_window_by_bytes(ray_start_regular_shared):
     try:
         context.optimize_fuse_read_stages = False
         dataset = ray.data.range(10).window(bytes_per_window=1)
-        assert dataset.take(10) == list(range(10))
+        assert extract_values("id", dataset.take(10)) == list(range(10))
     finally:
         context.optimize_fuse_read_stages = old
 
 
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
-    pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(lambda x: x * 2)
-    results = [p.take() for p in pipe.iter_epochs()]
+    pipe = (
+        ray.data.range(5)
+        .map(column_udf("id", lambda x: x * 2))
+        .repeat(3)
+        .map(column_udf("id", lambda x: x * 2))
+    )
+    results = [extract_values("id", p.take()) for p in pipe.iter_epochs()]
     assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
 
     # Test dataset pipeline repeat.
     pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
-    results = [p.take() for p in pipe.iter_epochs()]
+    results = [extract_values("id", p.take()) for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
 
     # Test max epochs.
     pipe = ray.data.range(3).window(blocks_per_window=2).repeat(3)
-    results = [p.take() for p in pipe.iter_epochs(2)]
+    results = [extract_values("id", p.take()) for p in pipe.iter_epochs(2)]
     assert results == [[0, 1, 2], [0, 1, 2]]
 
     # Test nested repeat.
     pipe = ray.data.range(5).repeat(2).repeat(2)
-    results = [p.take() for p in pipe.iter_epochs()]
+    results = [extract_values("id", p.take()) for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=True.
     pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
-    results = [p.take() for p in pipe.iter_epochs()]
+    results = [extract_values("id", p.take()) for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=False.
     pipe = (
         ray.data.range(5).repeat(2).rewindow(blocks_per_window=2, preserve_epoch=False)
     )
-    results = [p.take() for p in pipe.iter_epochs()]
+    results = [extract_values("id", p.take()) for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
 
 
@@ -284,15 +299,17 @@ def test_basic_pipeline(ray_start_regular_shared):
 
     pipe = ds.window(blocks_per_window=1).map(lambda x: x).map(lambda x: x)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
-    assert pipe.take() == list(range(10))
+    assert extract_values("id", pipe.take()) == list(range(10))
 
     pipe = (
-        ds.window(blocks_per_window=1).map(lambda x: x).flat_map(lambda x: [x, x + 1])
+        ds.window(blocks_per_window=1)
+        .map(lambda x: x)
+        .flat_map(lambda x: [{"id": x["id"]}, {"id": x["id"] + 1}])
     )
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
     assert pipe.count() == 20
 
-    pipe = ds.window(blocks_per_window=1).filter(lambda x: x % 2 == 0)
+    pipe = ds.window(blocks_per_window=1).filter(lambda x: x["id"] % 2 == 0)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=3)"
     assert pipe.count() == 5
 
@@ -319,10 +336,10 @@ def test_window(ray_start_regular_shared):
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
     assert len(datasets) == 4
-    assert datasets[0].take() == [0, 1, 2]
-    assert datasets[1].take() == [3, 4, 5]
-    assert datasets[2].take() == [6, 7, 8]
-    assert datasets[3].take() == [9]
+    assert extract_values("id", datasets[0].take()) == [0, 1, 2]
+    assert extract_values("id", datasets[1].take()) == [3, 4, 5]
+    assert extract_values("id", datasets[2].take()) == [6, 7, 8]
+    assert extract_values("id", datasets[3].take()) == [9]
 
     ds = ray.data.range(10, parallelism=10)
     pipe = ds.window(blocks_per_window=5)
@@ -331,10 +348,10 @@ def test_window(ray_start_regular_shared):
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
     assert len(datasets) == 4
-    assert datasets[0].take() == [0, 1, 2]
-    assert datasets[1].take() == [3, 4, 5]
-    assert datasets[2].take() == [6, 7, 8]
-    assert datasets[3].take() == [9]
+    assert extract_values("id", datasets[0].take()) == [0, 1, 2]
+    assert extract_values("id", datasets[1].take()) == [3, 4, 5]
+    assert extract_values("id", datasets[2].take()) == [6, 7, 8]
+    assert extract_values("id", datasets[3].take()) == [9]
 
 
 def test_repeat(ray_start_regular_shared):
@@ -345,7 +362,7 @@ def test_repeat(ray_start_regular_shared):
     assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=2)"
     pipe = pipe.repeat(2)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
-    assert pipe.take() == (list(range(5)) + list(range(5)))
+    assert extract_values("id", pipe.take()) == (list(range(5)) + list(range(5)))
 
     ds = ray.data.range(5)
     pipe = ds.window(blocks_per_window=1)
@@ -362,7 +379,7 @@ def test_from_iterable(ray_start_regular_shared):
     pipe = DatasetPipeline.from_iterable(
         [lambda: ray.data.range(3), lambda: ray.data.range(2)]
     )
-    assert pipe.take() == [0, 1, 2, 0, 1]
+    assert extract_values("id", pipe.take()) == [0, 1, 2, 0, 1]
 
 
 def test_repeat_forever(ray_start_regular_shared):
@@ -372,6 +389,7 @@ def test_repeat_forever(ray_start_regular_shared):
     pipe = ds.repeat()
     assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=2)"
     for i, v in enumerate(pipe.iter_rows()):
+        v = v["id"]
         assert v == i % 10, (v, i, i % 10)
         if i > 1000:
             break
@@ -404,7 +422,7 @@ def test_to_tf(ray_start_regular_shared):
     ds = ds.add_column("label", lambda x: 1)
     pipe = ds.window(blocks_per_window=2).repeat(2)
     batches = list(
-        pipe.to_tf(feature_columns="__value__", label_columns="label", batch_size=None)
+        pipe.to_tf(feature_columns="data", label_columns="label", batch_size=None)
     )
     assert len(batches) == 20
 
@@ -425,7 +443,7 @@ def test_iter_batches_batch_across_windows(ray_start_regular_shared):
     # 3 windows, each containing 3 blocks, each containing 3 rows.
     pipe = ray.data.range(27, parallelism=9).window(blocks_per_window=3)
     # 4-row batches, with batches spanning both blocks and windows.
-    batches = list(pipe.iter_batches(batch_size=4))
+    batches = list(pipe.iter_batches(batch_size=4, batch_format="pandas"))
     assert len(batches) == 7, batches
     assert all(len(e) == 4 for e in batches[:-1])
     assert len(batches[-1]) == 3
@@ -443,38 +461,38 @@ def test_iter_datasets(ray_start_regular_shared):
 
 def test_foreach_window(ray_start_regular_shared):
     pipe = ray.data.range(5).window(blocks_per_window=2)
-    pipe = pipe.foreach_window(lambda ds: ds.map(lambda x: x * 2))
-    assert pipe.take() == [0, 2, 4, 6, 8]
+    pipe = pipe.foreach_window(lambda ds: ds.map(column_udf("id", lambda x: x * 2)))
+    assert extract_values("id", pipe.take()) == [0, 2, 4, 6, 8]
 
 
 def test_schema(ray_start_regular_shared):
     pipe = ray.data.range(5).window(blocks_per_window=2)
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
 
 
 def test_schema_peek(ray_start_regular_shared):
     # Multiple datasets
     pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2)
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
     assert pipe._first_datastream is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
     assert pipe._first_datastream is None
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
 
     # Only 1 dataset
     pipe = ray.data.range(1).window(blocks_per_window=2)
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
     assert pipe._first_datastream is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 1, dss
     assert pipe._first_datastream is None
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
 
     # Empty datasets
     pipe = (
         ray.data.range(6, parallelism=6)
-        .filter(lambda x: x < 0)
+        .filter(lambda x: x["id"] < 0)
         .window(blocks_per_window=2)
     )
     assert pipe.schema() is None
@@ -487,29 +505,30 @@ def test_schema_peek(ray_start_regular_shared):
 
 def test_schema_after_repeat(ray_start_regular_shared):
     pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
     output = []
     for ds in pipe.iter_datasets():
-        output.extend(ds.take())
+        output.extend(extract_values("id", ds.take()))
     assert sorted(output) == sorted(list(range(6)) * 2)
 
     pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
-    assert pipe.schema() == int
+    assert pipe.schema().names == ["id"]
     # Test that operations still work after peek.
     pipe = pipe.map_batches(lambda batch: batch)
     output = []
     for ds in pipe.iter_datasets():
-        output.extend(ds.take())
+        output.extend(extract_values("id", ds.take()))
     assert sorted(output) == sorted(list(range(6)) * 2)
 
 
 def test_split(ray_start_regular_shared):
-    pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
+    pipe = ray.data.range(3).map(column_udf("id", lambda x: x + 1)).repeat(10)
 
     @ray.remote(num_cpus=0)
     def consume(shard, i):
         total = 0
         for row in shard.iter_rows():
+            row = row["id"]
             total += 1
             assert row == i + 1, row
         assert total == 10, total
@@ -522,13 +541,14 @@ def test_split(ray_start_regular_shared):
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
-    pipe = ray.data.range(n).map(lambda x: x + 1).repeat(2)
+    pipe = ray.data.range(n).map(column_udf("id", lambda x: x + 1)).repeat(2)
 
     @ray.remote(num_cpus=0)
     def consume(shard, i):
         total = 0
         out = []
         for row in shard.iter_rows():
+            row = row["id"]
             total += 1
             out.append(row)
         if i == 0:
@@ -548,7 +568,7 @@ def test_split_at_indices(ray_start_regular_shared):
     )
 
 
-def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset[ArrowRow], pd.DataFrame]:
+def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset, pd.DataFrame]:
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
@@ -632,29 +652,22 @@ def test_sort_each_window(ray_start_regular_shared):
     pipe = (
         ray.data.range(12, parallelism=12)
         .window(blocks_per_window=3)
-        .sort_each_window()
+        .sort_each_window("id")
     )
-    assert pipe.take() == list(range(12))
+    assert extract_values("id", pipe.take()) == list(range(12))
 
     pipe = (
         ray.data.range(12, parallelism=12)
         .window(blocks_per_window=3)
-        .sort_each_window(descending=True)
+        .sort_each_window("id", descending=True)
     )
-    assert pipe.take() == [2, 1, 0, 5, 4, 3, 8, 7, 6, 11, 10, 9]
-
-    pipe = (
-        ray.data.range(12, parallelism=12)
-        .window(blocks_per_window=3)
-        .sort_each_window(key=lambda x: -x, descending=True)
-    )
-    assert pipe.take() == list(range(12))
+    assert extract_values("id", pipe.take()) == [2, 1, 0, 5, 4, 3, 8, 7, 6, 11, 10, 9]
 
 
 def test_randomize_block_order_each_window(ray_start_regular_shared):
     pipe = ray.data.range(12).repartition(6).window(blocks_per_window=3)
     pipe = pipe.randomize_block_order_each_window(seed=0)
-    assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
+    assert extract_values("id", pipe.take()) == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
 
 
 def test_add_column(ray_start_regular_shared):
@@ -697,7 +710,7 @@ def test_random_shuffle_each_window_with_custom_resource(ray_start_cluster):
         ray.data.datasource.RangeDatasource(),
         parallelism=10,
         n=1000,
-        block_format="list",
+        block_format="arrow",
         ray_remote_args={"resources": {"bar": 1}},
     ).repeat(3)
     pipe = pipe.random_shuffle_each_window(resources={"bar": 1})
@@ -717,7 +730,7 @@ def test_in_place_transformation_doesnt_clear_objects(ray_start_regular_shared):
         for b in p.iter_batches():
             pass
         # Verify the integrity of the blocks of original dataset.
-        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+        assert extract_values("item", ds.take_all()) == [1, 2, 3, 4, 5, 6]
 
     verify_integrity(ds.repeat(10).randomize_block_order_each_window())
     verify_integrity(
@@ -751,7 +764,7 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
         splits = p.split(2, equal=True)
         ray.get([consume.remote(p) for p in splits])
         # Verify the integrity of the blocks of original dataset
-        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+        assert extract_values("item", ds.take_all()) == [1, 2, 3, 4, 5, 6]
 
     verify_integrity(ds.repeat(10).randomize_block_order_each_window())
     verify_integrity(
@@ -814,9 +827,9 @@ def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
         ds.repeat(1).randomize_block_order_each_window().map_batches(lambda x: x), True
     )
     verify_blocks(ds.repeat(1).map_batches(lambda x: x), True)
-    verify_blocks(ds.repeat(1).map(lambda x: x), True)
-    verify_blocks(ds.repeat(1).filter(lambda x: x > 3), True)
-    verify_blocks(ds.repeat(1).sort_each_window(), True)
+    verify_blocks(ds.repeat(1).map(column_udf("item", lambda x: x)), True)
+    verify_blocks(ds.repeat(1).filter(lambda x: x["item"] > 3), True)
+    verify_blocks(ds.repeat(1).sort_each_window("item"), True)
     verify_blocks(ds.repeat(1).random_shuffle_each_window(), True)
     verify_blocks(ds.repeat(1).repartition_each_window(2), True)
     verify_blocks(ds.repeat(1).rewindow(blocks_per_window=1), False)

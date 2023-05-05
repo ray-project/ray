@@ -2,7 +2,7 @@ cql-halfcheetah-v4:
     env: HalfCheetah-v4
     run: CQL
     pass_criteria:
-        evaluation/episode_reward_mean: 400.0
+        evaluation/sampler_results/episode_reward_mean: 400.0
         # Can not check throughput for offline methods.
         timesteps_total: 5000000
     stop:

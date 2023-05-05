@@ -658,13 +658,15 @@ def test_recursive_cancel_error_messages(shutdown_only, capsys):
     assert len(samples) == 10
 
     # Usually, we expect this message to be the last. That may not always be the case.
-    found_total_msg : bool = True
+    found_total_msg: bool = True
     for total_result in reversed(msgs):
-        found_total_msg = found_total_msg or (f"Total Recursive cancelation success: 0, failures:{NUM_ACTORS}" in msg)
+        found_total_msg = found_total_msg or (
+            f"Total Recursive cancelation success: 0, failures:{NUM_ACTORS}" in msg
+        )
         if found_total_msg:
             break
-    
-    assert(found_total_msg)
+
+    assert found_total_msg
 
 
 if __name__ == "__main__":
