@@ -125,11 +125,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
   std::string DebugString() const;
 
-  void AsyncWaitTerminated(std::function<void()> callback) {
-    // Async wait until the connection is disconnected.
-    socket_.async_wait(local_stream_socket::wait_type::wait_error,
-                       [callback = std::move(callback)](auto) { callback(); });
-  }
+  void AsyncWaitTerminated(std::function<void()> callback);
 
  protected:
   /// A private constructor for a server connection.
@@ -143,6 +139,9 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
     std::vector<uint8_t> write_message;
     std::function<void(const ray::Status &)> handler;
   };
+  
+  /// Whether the connection is terminating.
+  bool terminating_ = false;
 
   /// The socket connection to the server.
   local_stream_socket socket_;
@@ -156,7 +155,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
 
-  /// Whether we've met a broken-pipe error during writing.
+    /// Whether we've met a broken-pipe error during writing.
   bool async_write_broken_pipe_;
 
   /// Count of async messages sent total.

@@ -183,6 +183,22 @@ void ServerConnection::ReadBufferAsync(
         });
   }
 }
+void ServerConnection::AsyncWaitTerminated(std::function<void()> callback) {
+  RAY_CHECK(!terminating_) << "The connection is terminating";
+  terminating_ = true;
+  static char buffer[1024];
+  auto read_cb = [this, cb = std::move(callback)](boost::system::error_code ec,
+                                                  std::size_t /* length */) mutable {
+    if (ec) {
+      cb();
+    } else {
+      terminating_ = false;
+      AsyncWaitTerminated(std::move(cb));
+    }
+  };
+  socket_.async_read_some(boost::asio::mutable_buffer(buffer, sizeof(buffer)),
+                          std::move(read_cb));
+}
 
 ray::Status ServerConnection::WriteMessage(int64_t type,
                                            int64_t length,
