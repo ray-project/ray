@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
 
 
-@Deprecated(message="`UnifiedLogger` will be removed in Ray 2.7.")
+@Deprecated(message="`UnifiedLogger` will be removed in Ray 2.7.", warning=True)
 @PublicAPI
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
