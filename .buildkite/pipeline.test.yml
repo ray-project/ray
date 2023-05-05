@@ -18,6 +18,11 @@
       --test_tag_filters=release_unit
       release/...
 
+- label: ":shield: release tests"
+  conditions: ["BUILDKITE_PULL_REQUEST"]
+  instance_size: small
+  commands:
+    - python ci/test/ray_release_test.py
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]

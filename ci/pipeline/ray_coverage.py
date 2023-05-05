@@ -1,25 +1,13 @@
-import logging
 import os
 import subprocess
 import sys
 from datetime import date
+from ray_logger import get_logger
 
 import click
 import boto3
 
 
-def _get_logger():
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
-    )
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    return logger
-
-
-_logger = _get_logger()
 _COVERAGE_FILE_NAME = "ray_release.cov"
 _S3_BUCKET_NAME = "ray-test-coverage"
 _S3_BUCKET_DIR = "ci"
