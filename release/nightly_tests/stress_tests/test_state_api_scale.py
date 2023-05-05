@@ -276,7 +276,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = 0
     t_start = time.perf_counter()
-    for s in get_log(actor_id=actor._actor_id.hex(), tail=-1):
+    for s in get_log(actor_id=actor._actor_id.hex(), tail=1000000000):
         t_end = time.perf_counter()
         time_taken += t_end - t_start
         # Not including this time
