@@ -378,9 +378,9 @@ void TaskManager::HandleIntermediateResult(
     reference_counter_->AddDynamicReturn(object_id, generator_id);
     {
       absl::MutexLock lock(&mu_);
-      if (spec) {
-        spec->AddDynamicReturnId(object_id);
-      }
+      // if (spec) {
+      //   spec->AddDynamicReturnId(object_id);
+      // }
       auto &reader = dynamic_ids_from_generator_[generator_id];
       reader.idx_to_refs.emplace(idx, object_id);
     }

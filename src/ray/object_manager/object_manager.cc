@@ -278,7 +278,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
           rpc::PullRequest pull_request;
           pull_request.set_object_id(object_id.Binary());
           pull_request.set_node_id(self_node_id_.Binary());
-
+          RAY_LOG(INFO) << "SANG-TODO send a pull request for an object " << object_id;
           rpc_client->Pull(
               pull_request,
               [object_id, client_id](const Status &status, const rpc::PullReply &reply) {

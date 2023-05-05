@@ -288,10 +288,11 @@ class PullManager {
     void AddBundlePullRequest(uint64_t request_id, BundlePullRequest request) {
       requests.emplace(request_id, request);
       if (request.IsPullable()) {
+        RAY_LOG(INFO) << "SANG-TODO is pullable";
         inactive_requests.emplace(request_id);
         inactive_by_name.Increment(request.task_key);
         RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
-      }
+      } else {RAY_LOG(INFO) << "SANG-TODO is not pullable";}
     }
 
     void ActivateBundlePullRequest(uint64_t request_id) {

@@ -199,6 +199,7 @@ class ObjectRefGenerator:
 class StreamingObjectRefGeneratorV2:
     def __init__(self, generator_ref):
         self._generator_ref = generator_ref
+        self._generator_task_exception = None
 
     def __iter__(self):
         return self
@@ -207,10 +208,16 @@ class StreamingObjectRefGeneratorV2:
         core_worker = ray._private.worker.global_worker.core_worker
         obj = self._handle_next()
         while obj.is_nil():
-            r, _ = ray.wait([self._generator_ref], timeout=0)
-            if len(r) > 0:
-                print("ray.get sang-todo")
-                ray.get(r)
+            if not self._generator_task_exception:
+                r, _ = ray.wait([self._generator_ref], timeout=0)
+                if len(r) > 0:
+                    try:
+                        ray.get(r)
+                    except Exception as e:
+                        self._generator_task_exception = e
+                        return self._generator_ref
+            else:
+                raise StopIteration
             time.sleep(0.01)
             obj = self._handle_next()
         return obj
@@ -693,53 +700,56 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         function_name,
         function_descriptor,
         title,
-        const CAddress &caller_address):
+        const CAddress &caller_address,
+        actor):
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
 
-    try:
-        i = 0
-        assert dynamic_returns[0].size() == 0
-        for output in generator:
+    i = 0
+    while True:
+        try:
+            output = next(generator)
+            # Run the generator and report the intermediate result.
             core_worker.store_task_outputs(
                 worker, [output],
                 dynamic_returns,
                 caller_address,
                 generator_id)
-            assert dynamic_returns[0].size() == 1
             print("SANG-TODO Writes an index ", i)
-            CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(dynamic_returns[0].back(), generator_id, caller_address, i, False)
-            i += 1
+            # Dynamic returns should be updated by store_task_outputs
+            assert dynamic_returns[0].size() != 0, "SANG-TODO abcabc"
+            CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+                dynamic_returns[0].front(), generator_id, caller_address, i, False)
             dynamic_returns[0].pop_back()
-            assert dynamic_returns[0].size() == 0
-        print("SANG-TODO Closes an index ", i)
-        # Close it.
-        CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
-            c_pair[CObjectID, shared_ptr[CRayObject]](CObjectID.Nil(), shared_ptr[CRayObject]()), generator_id, caller_address, i, True)
-    except Exception as error:
-        print("SANG-TODO hahahahaha")
-        print(error)
-        is_retryable_error[0] = determine_if_retryable(
-            error,
-            serialized_retry_exception_allowlist,
-            function_descriptor,
-        )
-        if (
-            is_retryable_error[0]
-            and core_worker.get_current_task_retry_exceptions()
-        ):
-            logger.info("Task failed with retryable exception:"
-                        " {}.".format(
-                            core_worker.get_current_task_id()),
-                        exc_info=True)
-            raise error
-        else:
-            logger.debug("Task failed with unretryable exception:"
-                         " {}.".format(
-                             core_worker.get_current_task_id()),
-                         exc_info=True)
+            i += 1
+        except StopIteration:
+            break
+        except Exception as e:
+            is_retryable_error[0] = determine_if_retryable(
+                e,
+                serialized_retry_exception_allowlist,
+                function_descriptor,
+            )
 
+            if (
+                is_retryable_error[0]
+                and core_worker.get_current_task_retry_exceptions()
+            ):
+                logger.debug("Task failed with retryable exception:"
+                                " {}.".format(
+                                core_worker.get_current_task_id()),
+                                exc_info=True)
+                # Raise an exception directly and halt the execution
+                # because there's no need to set the exception
+                # for the return value when the task is retryable.
+                raise e
+
+            logger.debug("Task failed with unretryable exception:"
+                            " {}.".format(
+                            core_worker.get_current_task_id()),
+                            exc_info=True)
+            print("create dynamic returns")
             if not is_reattempt:
                 # If this is the first execution, we should
                 # generate one additional ObjectRef. This last
@@ -749,17 +759,15 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 dynamic_returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             error_id, shared_ptr[CRayObject]()))
-
-            # If a generator task fails mid-execution, we fail the
-            # dynamically generated nested ObjectRefs instead of
-            # the top-level ObjectRefGenerator.
+            print("store task errors")
             num_errors_stored = store_task_errors(
-                        worker, error,
-                        False,  # task_exception
-                        None,  # actor
+                        worker, e,
+                        True,  # task_exception
+                        actor,  # actor
                         function_name, task_type, title,
                         dynamic_returns, application_error, caller_address)
             if num_errors_stored == 0:
+                print("problematic situation")
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
                 # also failed to store the error in any of its
@@ -772,6 +780,26 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                     f"{dynamic_returns[0].size()} values returned "
                     "by the first execution.\n"
                     "See https://github.com/ray-project/ray/issues/28688.")
+            else:
+                print("Writes an exception")
+                CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+                    dynamic_returns[0].front(),
+                    generator_id, caller_address, i, False)
+                dynamic_returns[0].pop_back()
+                i += 1
+            break
+
+    # Close it.
+    print("SANG-TODO Closes an index ", i)
+    CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+        c_pair[CObjectID, shared_ptr[CRayObject]](CObjectID.Nil(), shared_ptr[CRayObject]()),
+        generator_id,
+        caller_address,
+        i,
+        True)
+    print("SANG-TODO c")
+    dynamic_returns[0].clear()
+    print("SANG-TODO d")
 
 
 cdef void execute_task(
@@ -944,23 +972,31 @@ cdef void execute_task(
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
-                        # # The function was a generator.
-                        # if returns[0].size() == 1 and inspect.isgenerator(outputs):
-                        #     execute_dynamic_generator_and_store_task_outputs(
-                        #             outputs,
-                        #             returns[0][0].first,
-                        #             task_type,
-                        #             serialized_retry_exception_allowlist,
-                        #             dynamic_returns,
-                        #             is_retryable_error,
-                        #             application_error,
-                        #             is_reattempt,
-                        #             function_name,
-                        #             function_descriptor,
-                        #             title)
-
-                        #     # Swap out the generator for an ObjectRef generator.
-                        #     outputs = (ObjectRefGenerator([]), )
+                        if dynamic_returns != NULL:
+                            # This function is a dynamic generator.
+                            assert returns[0].size() == 1
+                            # This should be checked at the caller.
+                            if not inspect.isgenerator(outputs):
+                                raise ValueError(
+                                        "Functions with "
+                                        "@ray.remote(num_returns=\"dynamic\" must return a "
+                                        "generator")
+                            execute_dynamic_generator_and_store_task_outputs(
+                                    outputs,
+                                    returns[0][0].first, # generator object.
+                                    task_type,
+                                    serialized_retry_exception_allowlist,
+                                    dynamic_returns,
+                                    is_retryable_error,
+                                    application_error,
+                                    is_reattempt,
+                                    function_name,
+                                    function_descriptor,
+                                    title,
+                                    caller_address,
+                                    actor)
+                            # The regular output is not used for generator.
+                            outputs = None
                         next_breakpoint = (
                             ray._private.worker.global_worker.debugger_breakpoint)
                         if next_breakpoint != b"":
@@ -1040,33 +1076,6 @@ cdef void execute_task(
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
-                if dynamic_returns != NULL:
-                    if not inspect.isgenerator(outputs):
-                        raise ValueError(
-                                "Functions with "
-                                "@ray.remote(num_returns=\"dynamic\" must return a "
-                                "generator")
-                    task_exception = True
-
-                    execute_dynamic_generator_and_store_task_outputs(
-                            outputs,
-                            returns[0][0].first,
-                            task_type,
-                            serialized_retry_exception_allowlist,
-                            dynamic_returns,
-                            is_retryable_error,
-                            application_error,
-                            is_reattempt,
-                            function_name,
-                            function_descriptor,
-                            title,
-                            caller_address)
-
-                    task_exception = False
-                    dynamic_refs = []
-                    # Swap out the generator for an ObjectRef generator.
-                    outputs = (ObjectRefGenerator(dynamic_refs), )
-
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns,

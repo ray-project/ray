@@ -236,6 +236,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/true,
                                     absl::optional<NodeID>()));
+  UpdateObjectPendingCreation(object_id, false);
   // AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
