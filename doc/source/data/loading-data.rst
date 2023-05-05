@@ -37,19 +37,15 @@ Generating Synthetic Data
         >>> import ray
         >>> ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
         >>> ds.schema()
-        Datastream(
-            num_blocks=200,
-            num_rows=409600,
-            schema={data: numpy.ndarray(shape=(64, 64), dtype=int64)}
-        )
+        Schema({'data': numpy.ndarray(shape=(64, 64), dtype=int64)})
         >>> ds.show(1)
         {'data': array([[0, 0, 0, ..., 0, 0, 0],
-              [0, 0, 0, ..., 0, 0, 0],
-              [0, 0, 0, ..., 0, 0, 0],
-              ...,
-              [0, 0, 0, ..., 0, 0, 0],
-              [0, 0, 0, ..., 0, 0, 0],
-              [0, 0, 0, ..., 0, 0, 0]])}
+               [0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0],
+               ...,
+               [0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0]])}
 
 .. _datastream_reading_from_storage:
 
