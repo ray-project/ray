@@ -101,7 +101,7 @@ Fault tolerance
 
 Datastream performs *lineage reconstruction* to recover data. If an application error or
 system failure occurs, Datastream recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-will restart the actor used for computing the block prior to re-executing the task.
+restarts the actor used for computing the block prior to re-executing the task.
 
 Fault tolerance is not supported if the original worker process that created the Datastream dies.
 This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Datastream.
