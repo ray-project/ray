@@ -32,7 +32,7 @@ Generating Synthetic Data
       Create a datastream from a range of integers, packing this integer range into
       ndarrays of the provided shape.
 
-      .. testcode::
+      .. doctest::
 
         >>> import ray
         >>> ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
