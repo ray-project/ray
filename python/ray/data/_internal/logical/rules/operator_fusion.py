@@ -288,9 +288,7 @@ class OperatorFusionRule(Rule):
         ) -> Tuple[List[RefBundle], StatsDict]:
             """To fuse MapOperator->AllToAllOperator, we store the map function
             in the TaskContext so that it may be used by the downstream
-            AllToAllOperator's transform function. Then, we can return an
-            AllToAllOperator which applies the map function before executing
-            the shuffle."""
+            AllToAllOperator's transform function."""
             ctx.upstream_map_transform_fn = up_transform_fn
             return down_transform_fn(blocks, ctx)
 
