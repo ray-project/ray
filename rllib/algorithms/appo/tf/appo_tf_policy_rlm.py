@@ -87,15 +87,11 @@ class APPOTfPolicyWithRLModule(
         drop_last = self.config["vtrace_drop_last_ts"]
 
         target_policy_fwd_out = model.forward_train(train_batch)
-        action_dist_class = type(target_policy_fwd_out[SampleBatch.ACTION_DIST])
-
         values = target_policy_fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = target_policy_fwd_out[SampleBatch.ACTION_DIST]
 
         old_target_policy_fwd_out = self.target_model.forward_train(train_batch)
-        old_target_policy_dist = action_dist_class(
-            old_target_policy_fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
+        old_target_policy_dist = old_target_policy_fwd_out[SampleBatch.ACTION_DIST]
 
         behaviour_actions_logp = train_batch[SampleBatch.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(train_batch[SampleBatch.ACTIONS])
