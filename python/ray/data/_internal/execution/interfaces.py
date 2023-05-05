@@ -233,6 +233,10 @@ class TaskContext:
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
     sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
+    # The underlying function called in a MapOperator; this is used when fusing
+    # an AllToAllOperator with an upstream MapOperator.
+    upstream_map_transform_fn: Optional["MapTransformFn"] = None
+
 
 # Block transform function applied by task and actor pools in MapOperator.
 MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]

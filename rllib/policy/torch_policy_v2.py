@@ -1179,7 +1179,6 @@ class TorchPolicyV2(Policy):
         return convert_to_numpy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
-        # TODO: (sven): Keep for a while to ensure backward compatibility.
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
