@@ -21,9 +21,6 @@ if TYPE_CHECKING:
 class TensorflowCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with TensorFlow-specific
     functionality.
-
-    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
-    ``TensorflowCheckpoint.from_checkpoint(ckpt)``.
     """
 
     _SERIALIZED_ATTRS = Checkpoint._SERIALIZED_ATTRS + ("_flavor", "_h5_file_path")

@@ -24,11 +24,7 @@ ENCODED_DATA_KEY = "torch_encoded_data"
 
 @PublicAPI(stability="beta")
 class TorchCheckpoint(Checkpoint):
-    """A :class:`~ray.air.checkpoint.Checkpoint` with Torch-specific functionality.
-
-    Create this from a generic :class:`~ray.air.checkpoint.Checkpoint` by calling
-    ``TorchCheckpoint.from_checkpoint(ckpt)``.
-    """
+    """A :class:`~ray.air.checkpoint.Checkpoint` with Torch-specific functionality."""
 
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
