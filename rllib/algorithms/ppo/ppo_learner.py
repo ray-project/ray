@@ -40,7 +40,6 @@ class PPOLearnerHyperparameters(LearnerHyperparameters):
 
 
 class PPOLearner(Learner):
-
     @override(Learner)
     def build(self) -> None:
         super().build()
@@ -60,13 +59,15 @@ class PPOLearner(Learner):
             self.curr_entropy_coeffs_per_module = defaultdict(
                 lambda: self._get_tensor_variable(self.hps.entropy_coeff)
             )
+        # If no schedule, pin entropy coeff to its given (fixed) value.
+        else:
+            self.curr_entropy_coeffs_per_module = defaultdict(
+                lambda: self.hps.entropy_coeff
+            )
 
-        # TODO (Kourosh): Create a way on the base class for users to define arbitrary
-        #  schedulers for learning rates.
-        self.lr_scheduler = None
-        if self.hps.lr_schedule:
-            raise ValueError("lr_schedule is not supported in Learner yet")
-
+        # Set up KL coefficient variables (per module).
+        # Note that the KL coeff is not controlled by a schedul, but seeks
+        # to stay close to a given kl_target value.
         self.curr_kl_coeffs_per_module = defaultdict(
             lambda: self._get_tensor_variable(self.hps.kl_coeff)
         )

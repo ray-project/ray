@@ -250,6 +250,7 @@ class PPOConfig(PGConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
+        # TODO (sven): Move to generic AlgorithmConfig.
         if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:

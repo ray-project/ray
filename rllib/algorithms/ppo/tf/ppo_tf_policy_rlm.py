@@ -16,7 +16,7 @@ from ray.rllib.policy.tf_mixins import (
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.tf_utils import (
     explained_variance,
     warn_if_infinite_kl_divergence,
@@ -81,6 +81,8 @@ class PPOTfPolicyWithRLModule(
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
 
+        if not isinstance(train_batch, NestedDict):
+            train_batch = NestedDict(train_batch)
         fwd_out = model.forward_train(train_batch)
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
 

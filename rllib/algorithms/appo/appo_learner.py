@@ -33,7 +33,7 @@ class AppoHyperparameters(ImpalaHyperparameters):
     kl_target: float = None
     clip_param: float = None
     tau: float = None
-    target_update_frequency_ts = None
+    target_update_frequency_ts: int = None
 
 
 class AppoLearner(ImpalaLearner):
@@ -89,11 +89,16 @@ class AppoLearner(ImpalaLearner):
             self._update_module_target_networks(module_id)
             results[NUM_TARGET_UPDATES] = 1
             results[LAST_TARGET_UPDATE_TS] = timestep
+        else:
+            results[NUM_TARGET_UPDATES] = 0
+            results[LAST_TARGET_UPDATE_TS] = last_update
 
-        if self.config.use_kl_loss:
-            results.update(self._update_module_kl_coeff(
-                module_id, mean_kl_loss_per_module[module_id]
-            ))
+        if self.hps.use_kl_loss and module_id in mean_kl_loss_per_module:
+            results.update(
+                self._update_module_kl_coeff(
+                    module_id, mean_kl_loss_per_module[module_id]
+                )
+            )
 
         return results
 

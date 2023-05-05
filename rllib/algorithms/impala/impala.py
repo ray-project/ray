@@ -729,24 +729,21 @@ class Impala(Algorithm):
             train_results = self.learn_on_processed_samples()
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
-                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-                #  from IMPALA (like APPO). In the old stack, we didn't have this
-                #  problem b/c IMPALA didn't need to call any additional update methods
-                #  as the entropy- and lr-schedules were handled by
-                #  `Policy.on_global_var_update()`.
-                additiona_update_kwargs=(
-                    self._get_additional_update_kwargs(train_results)
-                ),
                 timestep=self._counters[
                     NUM_ENV_STEPS_TRAINED
                     if self.config.count_steps_by == "env_steps"
                     else NUM_AGENT_STEPS_TRAINED
                 ],
+                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
+                #  from IMPALA (like APPO). In the old stack, we didn't have this
+                #  problem b/c IMPALA didn't need to call any additional update methods
+                #  as the entropy- and lr-schedules were handled by
+                #  `Policy.on_global_var_update()`.
+                **self._get_additional_update_kwargs(train_results),
             )
-            # TODO (sven): How do we get the num target update counter back into
-            #  self._counters after calling `additional_update`?
             for key, res in additional_results.items():
-                train_results[key].update(res)
+                if key in train_results:
+                    train_results[key].update(res)
         else:
             # Move train batches (of size `train_batch_size`) onto learner queue.
             self.place_processed_samples_on_learner_thread_queue()
@@ -1226,7 +1223,10 @@ class Impala(Algorithm):
             )
 
     def _get_additional_update_kwargs(self, train_results: dict) -> dict:
-        """Subclasses can override this for args to `LearnerGroup.additional_update()`.
+        """Returns the kwargs to `LearnerGroup.additional_update()`.
+
+        Should be overridden by subclasses to specify wanted/needed kwargs for
+        their own implementation of `Learner.additional_update_per_module()`.
         """
         return {}
 

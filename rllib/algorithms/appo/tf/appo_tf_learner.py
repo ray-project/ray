@@ -160,21 +160,17 @@ class APPOTfLearner(TfLearner, AppoLearner):
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
-    ):
-        results = {}
-        if module_id in sampled_kls:
-            sampled_kl = sampled_kls[module_id]
-            kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
-            # Update the current KL value based on the recently measured value.
-            # Increase.
-            # TODO (Kourosh) why not 2?
-            if sampled_kl > 2.0 * self.hps.kl_target:
-                kl_coeff_var.assign(kl_coeff_var * 1.5)
-            # Decrease.
-            elif sampled_kl < 0.5 * self.hps.kl_target:
-                kl_coeff_var.assign(kl_coeff_var * 0.5)
+        self, module_id: ModuleID, sampled_kl: float
+    ) -> Dict[str, Any]:
+        # Update the current KL value based on the recently measured value.
+        # Increase.
+        kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()})
+        if sampled_kl > 2.0 * self.hps.kl_target:
+            # TODO (Kourosh) why not *2.0?
+            kl_coeff_var.assign(kl_coeff_var * 1.5)
+        # Decrease.
+        elif sampled_kl < 0.5 * self.hps.kl_target:
+            kl_coeff_var.assign(kl_coeff_var * 0.5)
 
-        return results
+        return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()}

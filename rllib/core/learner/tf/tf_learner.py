@@ -16,6 +16,7 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
+    LEARNER_RESULTS_CURR_LR_KEY,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     ParamType,
@@ -28,7 +29,10 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -84,7 +88,9 @@ class TfLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        lr = self._optimizer_config["lr"]
+        # TODO (sven): Move lr from optimizer config to Learner HPs?
+        #  We might not need optimizer config.
+        lr = self.curr_lr_per_module[module_id]
         optim = tf.keras.optimizers.Adam(learning_rate=lr)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
@@ -513,15 +519,33 @@ class TfLearner(Learner):
 
         return self._strategy.run(helper, args=(batch,))
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, *, timestep: int, **kwargs
+    ) -> Mapping[str, Any]:
+        # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        if self.hps.lr_schedule is not None:
+            value = self.lr_schedule_per_module[module_id].value(t=timestep)
+            self.curr_lr_per_module[module_id].assign(value)
+            # Not sure why we need to do this here besides setting the original
+            # tf Variable `self.curr_lr_per_module[module_id]`. When tf creates the
+            # optimizer, maybe it detaches its lr value from the given variable?
+            self._named_optimizers[module_id].lr = value
+        return {LEARNER_RESULTS_CURR_LR_KEY: self._named_optimizers[module_id].lr}
+
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
         return tf.Variable(
             value,
             trainable=trainable,
             dtype=(
-                dtype or (
-                    tf.float32 if isinstance(value, float)
-                    else tf.int32 if isinstance(value, int)
+                dtype
+                or (
+                    tf.float32
+                    if isinstance(value, float)
+                    else tf.int32
+                    if isinstance(value, int)
                     else None
                 )
             ),

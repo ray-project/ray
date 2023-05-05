@@ -251,9 +251,7 @@ class APPOConfig(ImpalaConfig):
             clip_param=self.clip_param,
             tau=self.tau,
             target_update_frequency_ts=(
-                self.train_batch_size
-                * self.num_sgd_iter
-                * self.target_update_frequency
+                self.train_batch_size * self.num_sgd_iter * self.target_update_frequency
             ),
             **dataclasses.asdict(base_hps),
         )
@@ -304,8 +302,11 @@ class APPO(Impala):
         """
 
         if self.config._enable_learner_api:
-            self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
-            self._counters[LAST_TARGET_UPDATE_TS] = train_results[LAST_TARGET_UPDATE_TS]
+            if NUM_TARGET_UPDATES in train_results:
+                self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
+                self._counters[LAST_TARGET_UPDATE_TS] = train_results[
+                    LAST_TARGET_UPDATE_TS
+                ]
         else:
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             cur_ts = self._counters[
@@ -355,8 +356,9 @@ class APPO(Impala):
             last_update=self._counters[LAST_TARGET_UPDATE_TS],
             mean_kl_loss_per_module={
                 mid: r[LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
-                for mid, r in train_results
-            }
+                for mid, r in train_results.items()
+                if mid != ALL_MODULES
+            },
         )
 
     @override(Impala)
