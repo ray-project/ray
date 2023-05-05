@@ -1,10 +1,10 @@
 import logging
-from typing import Type, TypeVar, Dict
+from typing import TypeVar
 
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.utils import Singleton
 from ray.train._internal.worker_group import WorkerGroup
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 from ray.widgets import make_table_html_repr
 
 EncodedData = TypeVar("EncodedData")
