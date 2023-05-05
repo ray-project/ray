@@ -76,8 +76,8 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani
-/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @maxpumperla @ray-project/ray-docs
+/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen
+/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @maxpumperla @ray-project/ray-docs
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark

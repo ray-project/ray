@@ -99,6 +99,8 @@ def process_dict_for_yaml_dump(data):
     for k, v in data.items():
         if isinstance(v, dict):
             data[k] = process_dict_for_yaml_dump(v)
+        if isinstance(v, list):
+            data[k] = [process_dict_for_yaml_dump(item) for item in v]
         elif isinstance(v, str):
             data[k] = remove_ansi_escape_sequences(v)
 
