@@ -3054,62 +3054,68 @@ def remote(
     This function can be used as a decorator with no arguments
     to define a remote function or actor as follows:
 
-    >>> import ray
-    >>>
-    >>> @ray.remote
-    ... def f(a, b, c):
-    ...     return a + b + c
-    >>>
-    >>> object_ref = f.remote(1, 2, 3)
-    >>> result = ray.get(object_ref)
-    >>> assert result == (1 + 2 + 3)
-    >>>
-    >>> @ray.remote
-    ... class Foo:
-    ...     def __init__(self, arg):
-    ...         self.x = arg
-    ...
-    ...     def method(self, a):
-    ...         return self.x + a
-    >>>
-    >>> actor_handle = Foo.remote(123)
-    >>> object_ref = actor_handle.method.remote(321)
-    >>> result = ray.get(object_ref)
-    >>> assert result == (123 + 321)
+    .. testcode::
+
+        import ray
+
+        @ray.remote
+        def f(a, b, c):
+            return a + b + c
+
+        object_ref = f.remote(1, 2, 3)
+        result = ray.get(object_ref)
+        assert result == (1 + 2 + 3)
+
+        @ray.remote
+        class Foo:
+            def __init__(self, arg):
+                self.x = arg
+
+            def method(self, a):
+                return self.x + a
+
+        actor_handle = Foo.remote(123)
+        object_ref = actor_handle.method.remote(321)
+        result = ray.get(object_ref)
+        assert result == (123 + 321)
 
     Equivalently, use a function call to create a remote function or actor.
 
-    >>> def g(a, b, c):
-    ...     return a + b + c
-    >>>
-    >>> remote_g = ray.remote(g)
-    >>> object_ref = remote_g.remote(1, 2, 3)
-    >>> assert ray.get(object_ref) == (1 + 2 + 3)
+    .. testcode::
 
-    >>> class Bar:
-    ...     def __init__(self, arg):
-    ...         self.x = arg
-    ...
-    ...     def method(self, a):
-    ...         return self.x + a
-    >>>
-    >>> RemoteBar = ray.remote(Bar)
-    >>> actor_handle = RemoteBar.remote(123)
-    >>> object_ref = actor_handle.method.remote(321)
-    >>> result = ray.get(object_ref)
-    >>> assert result == (123 + 321)
+        def g(a, b, c):
+            return a + b + c
+
+        remote_g = ray.remote(g)
+        object_ref = remote_g.remote(1, 2, 3)
+        assert ray.get(object_ref) == (1 + 2 + 3)
+
+        class Bar:
+            def __init__(self, arg):
+                self.x = arg
+
+            def method(self, a):
+                return self.x + a
+
+        RemoteBar = ray.remote(Bar)
+        actor_handle = RemoteBar.remote(123)
+        object_ref = actor_handle.method.remote(321)
+        result = ray.get(object_ref)
+        assert result == (123 + 321)
 
 
     It can also be used with specific keyword arguments as follows:
 
-    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    ... def f():
-    ...     return 1, 2
-    >>>
-    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    ... class Foo:
-    ...     def method(self):
-    ...         return 1
+    .. testcode::
+
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        def f():
+            return 1, 2
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo:
+            def method(self):
+                return 1
 
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
