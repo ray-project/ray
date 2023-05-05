@@ -164,8 +164,3 @@ or remote filesystems.
 
 
 To learn more about saving datastream contents, read :ref:`Saving data <saving_data>`.
-
-Next Steps
-----------
-
-* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
