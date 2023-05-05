@@ -29,11 +29,7 @@ def main(artifact_dir: str) -> int:
     CI and buildkite environment only.
     """
     logger = get_logger()
-<<<<<<< HEAD:ci/pipeline/ray_release_test.py
     changed_files = _get_changed_files()
-=======
-    changed_files = get_changed_files()
->>>>>>> 0ccebbe38a (Add a script to run tests using coverage information):ci/test/ray_release_test.py
     logger.info(f"Changed files: {changed_files}")
     test_targets = _get_test_targets_for_changed_files(changed_files, artifact_dir)
     logger.info(test_targets)
@@ -78,9 +74,6 @@ def _get_coverage_file(artifact_dir: str) -> str:
 
 
 def _get_changed_files() -> List[str]:
-=======
-def get_changed_files() -> List[str]:
->>>>>>> 0ccebbe38a (Add a script to run tests using coverage information):ci/test/ray_release_test.py
     """
     Get the list of changed files in the current PR.
     """
