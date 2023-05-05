@@ -204,6 +204,14 @@ class ServerCallImpl : public ServerCall {
       // a new request comes in.
       factory.CreateCall();
     }
+    // TODO(jjyao) Remove after debugging is done.
+    if (call_name_ == "NodeManagerService.grpc_server.UpdateResourceUsage") {
+      static std::string gcs_address = "";
+      if (gcs_address == "" || gcs_address != context_.peer()) {
+        gcs_address = context_.peer();
+        RAY_LOG(INFO) << "Handle " << call_name_ << " request from " << context_.peer();
+      }
+    }
     (service_handler_.*handle_request_function_)(
         std::move(request_),
         reply_,
