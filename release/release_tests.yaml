@@ -847,7 +847,9 @@
   run:
     timeout: 4200
     script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
-
+  
+  variations:
+    - __suffix__: aws
 
 #####################################
 # Workspace templates release tests #
