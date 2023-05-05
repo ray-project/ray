@@ -18,7 +18,6 @@ mock
 numpy
 scikit-image
 pandas
-pickle5
 pillow
 pyarrow
 pydantic < 1.10.0
