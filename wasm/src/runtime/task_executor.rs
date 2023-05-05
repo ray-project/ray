@@ -20,7 +20,7 @@ use rmp::encode::write_i32;
 use std::collections::HashMap;
 use tracing::info;
 
-use super::{TASK_RESULT_RECEIVER, TASK_SENDER};
+use crate::engine::{TASK_RESULT_RECEIVER, TASK_SENDER};
 
 #[repr(C)]
 pub struct Resource {

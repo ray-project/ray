@@ -17,15 +17,31 @@ mod wasmtime_engine;
 
 use std::any::Any;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 
 use crate::engine::wasmtime_engine::WasmtimeEngine;
-use crate::runtime::InvocationSpec;
-use crate::runtime::ObjectID;
-use crate::runtime::RemoteFunctionHolder;
+use crate::runtime::{InvocationSpec, ObjectID, RemoteFunctionHolder, WasmTaskExecutionInfo};
 use crate::{engine::wasmedge_engine::WasmEdgeEngine, runtime::RayRuntime};
 
 use anyhow::{anyhow, Ok, Result};
+use lazy_static::lazy_static;
+use std::sync::mpsc::{channel, Receiver, Sender};
+
+// a channel for sending task to wasm engine
+pub type TaskSender = Sender<WasmTaskExecutionInfo>;
+pub type TaskReceiver = Receiver<WasmTaskExecutionInfo>;
+
+// a channel for receiving task result from wasm engine
+pub type TaskResultSender = Sender<Vec<u8>>;
+pub type TaskResultReceiver = Receiver<Vec<u8>>;
+
+// static channel variable for sending task to wasm engine
+lazy_static! {
+    pub static ref TASK_SENDER: Mutex<Option<TaskSender>> = Mutex::new(None);
+    pub static ref TASK_RECEIVER: Mutex<Option<TaskReceiver>> = Mutex::new(None);
+    pub static ref TASK_RESULT_SENDER: Mutex<Option<TaskResultSender>> = Mutex::new(None);
+    pub static ref TASK_RESULT_RECEIVER: Mutex<Option<TaskResultReceiver>> = Mutex::new(None);
+}
 
 pub trait WasmEngine {
     fn init(&self) -> Result<()>;
@@ -52,6 +68,8 @@ pub trait WasmEngine {
     fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>>;
 
     fn register_hostcalls(&mut self, hostcalls: &Hostcalls) -> Result<()>;
+
+    fn task_loop_once(&mut self) -> Result<()>;
 }
 
 pub trait WasmModule {}
@@ -81,6 +99,16 @@ impl WasmEngineFactory {
                 return Err(anyhow!("unsupported wasm engine type"));
             }
         };
+
+        // init channels
+        let (tx, rx): (TaskSender, TaskReceiver) = channel();
+        TASK_SENDER.lock().unwrap().replace(tx);
+        TASK_RECEIVER.lock().unwrap().replace(rx);
+
+        let (tx, rx): (TaskResultSender, TaskResultReceiver) = channel();
+        TASK_RESULT_SENDER.lock().unwrap().replace(tx);
+        TASK_RESULT_RECEIVER.lock().unwrap().replace(rx);
+
         Ok(engine)
     }
 }

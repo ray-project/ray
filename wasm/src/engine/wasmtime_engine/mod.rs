@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engine::{TASK_RECEIVER, TASK_RESULT_SENDER};
 use crate::runtime::common_proto::TaskType;
 use crate::runtime::{CallOptions, ObjectID};
 use crate::{
@@ -21,6 +22,7 @@ use crate::{
     runtime::{InvocationSpec, RayRuntime, RemoteFunctionHolder},
 };
 use anyhow::{anyhow, Result};
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fmt::format,
@@ -31,6 +33,9 @@ use tracing::{debug, error, info};
 use wasmtime::{
     AsContextMut, Caller, Engine, FuncType, Instance, Linker, Module, Store, Val, ValType,
 };
+
+use crate::util::RayLog;
+use rmp::encode::write_i32;
 
 mod data;
 use data::*;
@@ -226,6 +231,44 @@ impl WasmEngine for WasmtimeEngine {
                 if res.is_err() {
                     return Err(anyhow!("Failed to register hostcall"));
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn task_loop_once(&mut self) -> Result<()> {
+        let mut buf: Vec<u8> = vec![];
+        // receive task from channel with a timeout
+        let receiver = TASK_RECEIVER.lock().ok().unwrap();
+        match receiver.as_ref() {
+            Some(rx) => match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(task) => {
+                    RayLog::info(
+                        format!("task_loop_once: executing wasm task: {:?}", task).as_str(),
+                    );
+
+                    // TODO: run task
+                    write_i32(&mut buf, 0x12345678).unwrap();
+                }
+                Err(e) => {
+                    return Ok(()); // timeout
+                }
+            },
+            None => {
+                RayLog::error("task_loop_once: channel not initialized");
+                return Err(anyhow!("task_loop_once: channel not initialized"));
+            }
+        }
+
+        // we got result here
+        let sender = TASK_RESULT_SENDER.lock().ok().unwrap();
+        match sender.as_ref() {
+            Some(tx) => {
+                tx.send(buf).unwrap();
+            }
+            None => {
+                RayLog::error("task_loop_once: channel not initialized");
+                return Err(anyhow!("task_loop_once: channel not initialized"));
             }
         }
         Ok(())

@@ -17,8 +17,9 @@ use wasm_on_ray::runtime::{register_ray_hostcalls, RayConfig, RayRuntime, RayRun
 use wasm_on_ray::util;
 
 use std::sync::{Arc, RwLock};
+use tracing::error;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use tracing_subscriber;
 
@@ -50,14 +51,34 @@ async fn init_engine(args: &util::WorkerParameters) -> Result<Box<dyn WasmEngine
         util::WasmEngineType::Wasmtime => WasmEngineType::WASMTIME,
         _ => unimplemented!(),
     };
-    let mut engine = WasmEngineFactory::create_engine(engine_type).unwrap();
+    let engine = WasmEngineFactory::create_engine(engine_type).unwrap();
     engine.init().unwrap();
 
     Ok(engine)
 }
 
-async fn run_task_loop(runtime: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>) -> Result<()> {
-    runtime.write().unwrap().launch_task_loop().unwrap();
+async fn run_task_loop(ctx: &mut WorkerContext) -> Result<()> {
+    let runtime = &ctx.runtime;
+    let engine = &ctx.engine;
+    match runtime.write().unwrap().spawn_task_loop() {
+        Ok(_) => {}
+        Err(e) => {
+            error!("spawn task loop failed: {:?}", e);
+            return Err(anyhow!("spawn task loop failed: {:?}", e));
+        }
+    }
+    loop {
+        if !runtime.write().unwrap().is_running() {
+            break;
+        }
+        match engine.write().unwrap().task_loop_once() {
+            Ok(_) => {}
+            Err(e) => {
+                error!("task loop once failed: {:?}", e);
+                return Err(anyhow!("task loop once failed: {:?}", e));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -76,10 +97,10 @@ async fn main() -> Result<()> {
     // we need to run in worker mode
     cfg.is_worker = true;
 
-    let mut rt = init_runtime(&cfg, &args).await.unwrap();
-    let mut engine = init_engine(&args).await.unwrap();
+    let rt = init_runtime(&cfg, &args).await.unwrap();
+    let engine = init_engine(&args).await.unwrap();
 
-    let ctx = WorkerContext {
+    let mut ctx = WorkerContext {
         runtime: Arc::new(RwLock::new(rt)),
         engine: Arc::new(RwLock::new(engine)),
     };
@@ -87,7 +108,7 @@ async fn main() -> Result<()> {
     // setup hostcalls
     register_ray_hostcalls(&ctx.runtime, &ctx.engine).unwrap();
 
-    run_task_loop(&ctx.runtime).await.unwrap();
+    run_task_loop(&mut ctx).await.unwrap();
 
     Ok(())
 }

@@ -72,6 +72,10 @@ impl WasmEngine for WasmEdgeEngine {
     fn register_hostcalls(&mut self, hostcalls: &Hostcalls) -> Result<()> {
         unimplemented!()
     }
+
+    fn task_loop_once(&mut self) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone)]

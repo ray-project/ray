@@ -20,8 +20,6 @@ use crate::runtime::InvocationSpec;
 use crate::runtime::ObjectStore;
 use crate::runtime::TaskExecutor;
 use crate::util::get_node_ip_address;
-use crate::util::RayLog;
-use rmp::encode::write_i32;
 use std::task::Context;
 use tokio::task;
 use tracing_subscriber::fmt::format;
@@ -41,34 +39,12 @@ use super::RemoteFunctionHolder;
 use super::TaskArg;
 use super::TaskSubmitter;
 use super::TaskSubmitterFactory;
-use super::WasmTaskExecutionInfo;
-use lazy_static::lazy_static;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Mutex;
-use std::sync::{Arc, RwLock};
-use std::thread::sleep;
-use std::time::Duration;
-
-// a channel for sending task to task executor
-pub type TaskSender = Sender<WasmTaskExecutionInfo>;
-pub type TaskReceiver = Receiver<WasmTaskExecutionInfo>;
-
-// a channel for receiving task result from task executor
-pub type TaskResultSender = Sender<Vec<u8>>;
-pub type TaskResultReceiver = Receiver<Vec<u8>>;
-
-// static channel variable for sending task to task executor
-lazy_static! {
-    pub static ref TASK_SENDER: Mutex<Option<TaskSender>> = Mutex::new(None);
-    pub static ref TASK_RECEIVER: Mutex<Option<TaskReceiver>> = Mutex::new(None);
-    pub static ref TASK_RESULT_SENDER: Mutex<Option<TaskResultSender>> = Mutex::new(None);
-    pub static ref TASK_RESULT_RECEIVER: Mutex<Option<TaskResultReceiver>> = Mutex::new(None);
-}
 
 pub trait RayRuntime {
     fn do_init(&mut self) -> Result<()>;
     fn do_shutdown(&mut self) -> Result<()>;
-    fn launch_task_loop(&mut self) -> Result<()>;
+    fn spawn_task_loop(&mut self) -> Result<()>;
+    fn is_running(&self) -> bool;
 
     // object get/put related
     fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()>;
@@ -105,6 +81,9 @@ pub struct RayRuntimeClusterMode {
     task_executor: TaskExecutor,
     task_submitter: Box<dyn TaskSubmitter + Send + Sync>,
     global_state_accessor: GlobalStateAccessor,
+
+    // core worker task loop handle for progress checking
+    task_loop_handle: Option<task::JoinHandle<()>>,
 }
 
 impl RayRuntimeClusterMode {
@@ -122,6 +101,7 @@ impl RayRuntimeClusterMode {
                 super::TaskSubmitterType::Native,
             ),
             global_state_accessor: GlobalStateAccessor::new(bootstrap_address.as_str()),
+            task_loop_handle: None,
         }
     }
 
@@ -146,15 +126,6 @@ impl RayRuntime for RayRuntimeClusterMode {
             }
         };
 
-        // init channels
-        let (tx, rx): (TaskSender, TaskReceiver) = channel();
-        TASK_SENDER.lock().unwrap().replace(tx);
-        TASK_RECEIVER.lock().unwrap().replace(rx);
-
-        let (tx, rx): (TaskResultSender, TaskResultReceiver) = channel();
-        TASK_RESULT_SENDER.lock().unwrap().replace(tx);
-        TASK_RESULT_RECEIVER.lock().unwrap().replace(rx);
-
         Ok(())
     }
 
@@ -163,58 +134,23 @@ impl RayRuntime for RayRuntimeClusterMode {
         Ok(())
     }
 
-    fn launch_task_loop(&mut self) -> Result<()> {
-        debug!("launch_task_loop");
+    fn spawn_task_loop(&mut self) -> Result<()> {
         let handle = task::spawn(async move {
             unsafe {
                 crate::runtime::core::core_worker::CoreWorkerProcess_RunTaskExecutionLoop();
             }
         });
 
-        // loop until handle finished
-        loop {
-            if handle.is_finished() {
-                RayLog::info("launch_task_loop: CoreWorkerProcess task execution loop finished");
-                break;
-            }
-
-            let mut buf: Vec<u8> = vec![];
-            // receive task from channel with a timeout
-            let receiver = TASK_RECEIVER.lock().ok().unwrap();
-            match receiver.as_ref() {
-                Some(rx) => match rx.recv_timeout(Duration::from_millis(100)) {
-                    Ok(task) => {
-                        RayLog::info(
-                            format!("launch_task_loop: executing wasm task: {:?}", task).as_str(),
-                        );
-
-                        // TODO: run task
-                        write_i32(&mut buf, 0x12345678).unwrap();
-                    }
-                    Err(e) => {
-                        continue;
-                    }
-                },
-                None => {
-                    RayLog::error("launch_task_loop: channel not initialized");
-                    break;
-                }
-            }
-
-            // we got result here
-            let sender = TASK_RESULT_SENDER.lock().ok().unwrap();
-            match sender.as_ref() {
-                Some(tx) => {
-                    tx.send(buf).unwrap();
-                }
-                None => {
-                    RayLog::error("launch_task_loop: channel not initialized");
-                    break;
-                }
-            }
-        }
-        debug!("launch_task_loop done");
+        self.task_loop_handle = Some(handle);
         Ok(())
+    }
+
+    /// check if task loop is running
+    fn is_running(&self) -> bool {
+        if let Some(handle) = &self.task_loop_handle {
+            return !handle.is_finished();
+        }
+        false
     }
 
     fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
@@ -286,13 +222,17 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         Ok(())
     }
 
-    fn launch_task_loop(&mut self) -> Result<()> {
-        info!("launch_task_loop");
+    fn spawn_task_loop(&mut self) -> Result<()> {
+        info!("spawn_task_loop");
         unsafe {
             crate::runtime::core::core_worker::CoreWorkerProcess_RunTaskExecutionLoop();
         }
-        info!("launch_task_loop done");
+        info!("spawn_task_loop done");
         Ok(())
+    }
+
+    fn is_running(&self) -> bool {
+        unimplemented!()
     }
 
     fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
