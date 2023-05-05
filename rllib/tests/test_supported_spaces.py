@@ -177,7 +177,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
                 }
             )
         )
-        check_support("DQN", config, frameworks=("tf2", "torch", "tf"))
+        check_support("DQN", config, frameworks=["tf2", "torch", "tf"])
 
     def test_sac(self):
         check_support(
