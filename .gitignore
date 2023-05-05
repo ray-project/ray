@@ -234,6 +234,8 @@ tag-mapping.json
 
 # WASM build files
 wasm/target/
+*.wasm
+wasm/**/*.objdump
 
 # IntelliJ files
 .ijwb/.bazelproject
