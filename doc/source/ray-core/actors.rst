@@ -297,7 +297,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
     .. tab-item:: Python
 
-        .. testocde::
+        .. testcode::
 
             counter = Counter.remote()
 
@@ -310,10 +310,18 @@ If we instantiate an actor, we can pass the handle around to various tasks.
                 print(ray.get(counter.get_counter.remote()))
 
         .. testoutput::
-            :hide:
-            :options: +ELLIPSIS
+            :options: +SKIP
 
-            ...
+            0
+            3
+            8
+            10
+            15
+            18
+            20
+            25
+            30
+            30
 
     .. tab-item:: Java
 
