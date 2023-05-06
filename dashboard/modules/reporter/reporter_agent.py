@@ -95,127 +95,127 @@ METRICS_GAUGES = {
         "node_cpu_utilization",
         "Total CPU usage on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName", ],
     ),
     "node_cpu_count": Gauge(
         "node_cpu_count",
         "Total CPUs available on a ray node",
         "cores",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_mem_used": Gauge(
-        "node_mem_used", "Memory usage on a ray node", "bytes", ["ip", "SessionName"]
+        "node_mem_used", "Memory usage on a ray node", "bytes", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_mem_available": Gauge(
         "node_mem_available",
         "Memory available on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_mem_total": Gauge(
-        "node_mem_total", "Total memory on a ray node", "bytes", ["ip", "SessionName"]
+        "node_mem_total", "Total memory on a ray node", "bytes", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_mem_shared_bytes": Gauge(
         "node_mem_shared_bytes",
         "Total shared memory usage on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_gpus_available": Gauge(
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "NodeAddress", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gpus_utilization": Gauge(
         "node_gpus_utilization",
         "Total GPUs usage on a ray node",
         "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "NodeAddress", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_used": Gauge(
         "node_gram_used",
         "Total GPU RAM usage on a ray node",
         "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "NodeAddress", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_available": Gauge(
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "NodeAddress", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_disk_io_read": Gauge(
-        "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
+        "node_disk_io_read", "Total read from disk", "bytes", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_disk_io_write": Gauge(
-        "node_disk_io_write", "Total written to disk", "bytes", ["ip", "SessionName"]
+        "node_disk_io_write", "Total written to disk", "bytes", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_disk_io_read_count": Gauge(
         "node_disk_io_read_count",
         "Total read ops from disk",
         "io",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_disk_io_write_count": Gauge(
         "node_disk_io_write_count",
         "Total write ops to disk",
         "io",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_disk_io_read_speed": Gauge(
-        "node_disk_io_read_speed", "Disk read speed", "bytes/sec", ["ip", "SessionName"]
+        "node_disk_io_read_speed", "Disk read speed", "bytes/sec", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_disk_io_write_speed": Gauge(
         "node_disk_io_write_speed",
         "Disk write speed",
         "bytes/sec",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_disk_read_iops": Gauge(
-        "node_disk_read_iops", "Disk read iops", "iops", ["ip", "SessionName"]
+        "node_disk_read_iops", "Disk read iops", "iops", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_disk_write_iops": Gauge(
-        "node_disk_write_iops", "Disk write iops", "iops", ["ip", "SessionName"]
+        "node_disk_write_iops", "Disk write iops", "iops", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_disk_usage": Gauge(
         "node_disk_usage",
         "Total disk usage (bytes) on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_disk_free": Gauge(
         "node_disk_free",
         "Total disk free (bytes) on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_network_sent": Gauge(
-        "node_network_sent", "Total network sent", "bytes", ["ip", "SessionName"]
+        "node_network_sent", "Total network sent", "bytes", ["ip", "NodeAddress", "SessionName"]
     ),
     "node_network_received": Gauge(
         "node_network_received",
         "Total network received",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_network_send_speed": Gauge(
         "node_network_send_speed",
         "Network send speed",
         "bytes/sec",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "node_network_receive_speed": Gauge(
         "node_network_receive_speed",
         "Network receive speed",
         "bytes/sec",
-        ["ip", "SessionName"],
+        ["ip", "NodeAddress", "SessionName"],
     ),
     "component_cpu_percentage": Gauge(
         "component_cpu_percentage",
@@ -648,7 +648,7 @@ class ReporterAgent(
         Returns:
             a list of Record instances of all values 0.
         """
-        tags = {"ip": self._ip, "Component": component_name}
+        tags = {"ip": self._ip, "NodeAddress": self._ip, "Component": component_name,}
 
         records = []
         records.append(
@@ -713,7 +713,7 @@ class ReporterAgent(
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
 
-        tags = {"ip": self._ip, "Component": component_name}
+        tags = {"ip": self._ip, "NodeAddress": self._ip, "Component": component_name}
         if pid:
             tags["pid"] = pid
 
@@ -843,26 +843,26 @@ class ReporterAgent(
         cpu_record = Record(
             gauge=METRICS_GAUGES["node_cpu_utilization"],
             value=cpu_usage,
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
 
         cpu_count, _ = stats["cpus"]
         cpu_count_record = Record(
-            gauge=METRICS_GAUGES["node_cpu_count"], value=cpu_count, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_cpu_count"], value=cpu_count, tags={"ip": ip, "NodeAddress": ip}
         )
 
         # -- Mem per node --
         mem_total, mem_available, _, mem_used = stats["mem"]
         mem_used_record = Record(
-            gauge=METRICS_GAUGES["node_mem_used"], value=mem_used, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_mem_used"], value=mem_used, tags={"ip": ip, "NodeAddress": ip}
         )
         mem_available_record = Record(
             gauge=METRICS_GAUGES["node_mem_available"],
             value=mem_available,
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         mem_total_record = Record(
-            gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags={"ip": ip, "NodeAddress": ip}
         )
 
         shm_used = stats["shm"]
@@ -870,7 +870,7 @@ class ReporterAgent(
             node_mem_shared = Record(
                 gauge=METRICS_GAUGES["node_mem_shared_bytes"],
                 value=shm_used,
-                tags={"ip": ip},
+                tags={"ip": ip, "NodeAddress": ip},
             )
             records_reported.append(node_mem_shared)
 
@@ -895,7 +895,7 @@ class ReporterAgent(
         gpus_available = len(gpus)
 
         if gpus_available:
-            gpu_tags = {"ip": ip}
+            gpu_tags = {"ip": ip, "NodeAddress": ip}
             for gpu in gpus:
                 gpus_utilization, gram_used, gram_total = 0, 0, 0
                 # Consume GPU may not report its utilization.
@@ -909,7 +909,7 @@ class ReporterAgent(
                 gram_available = gram_total - gram_used
 
                 if gpu_index is not None:
-                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
+                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index), "NodeAddress": ip}
                     if gpu_name:
                         gpu_tags["GpuDeviceName"] = gpu_name
 
@@ -948,57 +948,57 @@ class ReporterAgent(
         disk_read_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_read"],
             value=disk_io_stats[0],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_write_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_write"],
             value=disk_io_stats[1],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_read_count_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_read_count"],
             value=disk_io_stats[2],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_write_count_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_write_count"],
             value=disk_io_stats[3],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_io_speed_stats = stats["disk_io_speed"]
         disk_read_speed_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_read_speed"],
             value=disk_io_speed_stats[0],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_write_speed_record = Record(
             gauge=METRICS_GAUGES["node_disk_io_write_speed"],
             value=disk_io_speed_stats[1],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_read_iops_record = Record(
             gauge=METRICS_GAUGES["node_disk_read_iops"],
             value=disk_io_speed_stats[2],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         disk_write_iops_record = Record(
             gauge=METRICS_GAUGES["node_disk_write_iops"],
             value=disk_io_speed_stats[3],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         used = stats["disk"]["/"].used
         free = stats["disk"]["/"].free
         disk_utilization = float(used / (used + free)) * 100
         disk_usage_record = Record(
-            gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_disk_usage"], value=used, tags={"ip": ip, "NodeAddress": ip}
         )
         disk_free_record = Record(
-            gauge=METRICS_GAUGES["node_disk_free"], value=free, tags={"ip": ip}
+            gauge=METRICS_GAUGES["node_disk_free"], value=free, tags={"ip": ip, "NodeAddress": ip}
         )
         disk_utilization_percentage_record = Record(
             gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
             value=disk_utilization,
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
 
         # -- Network speed (send/receive) stats per node --
@@ -1006,12 +1006,12 @@ class ReporterAgent(
         network_sent_record = Record(
             gauge=METRICS_GAUGES["node_network_sent"],
             value=network_stats[0],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         network_received_record = Record(
             gauge=METRICS_GAUGES["node_network_received"],
             value=network_stats[1],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
 
         # -- Network speed (send/receive) per node --
@@ -1019,12 +1019,12 @@ class ReporterAgent(
         network_send_speed_record = Record(
             gauge=METRICS_GAUGES["node_network_send_speed"],
             value=network_speed_stats[0],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
         network_receive_speed_record = Record(
             gauge=METRICS_GAUGES["node_network_receive_speed"],
             value=network_speed_stats[1],
-            tags={"ip": ip},
+            tags={"ip": ip, "NodeAddress": ip},
         )
 
         """

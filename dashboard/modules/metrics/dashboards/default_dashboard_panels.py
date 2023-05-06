@@ -38,11 +38,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(max_over_time(ray_tasks{{IsRetry="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                expr='sum(max_over_time(ray_tasks{{IsRetry="0",State=~"FINISHED|FAILED",NodeAddress=~"$NodeAddress",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
                 legend="{{State}}",
             ),
             Target(
-                expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",NodeAddress=~"$NodeAddress",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
                 legend="{{State}} (retry)",
             ),
         ],
@@ -54,11 +54,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",NodeAddress=~"$NodeAddress",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
             ),
             Target(
-                expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",NodeAddress=~"$NodeAddress",{global_filters}}}) by (Name)',
                 legend="{{Name}} (retry)",
             ),
         ],
@@ -70,7 +70,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr="sum(ray_actors{{{global_filters}}}) by (State)",
+                expr='sum(ray_actors{{NodeAddress=~"$NodeAddress",{global_filters}}}) by (State)',
                 legend="{{State}}",
             )
         ],
@@ -82,7 +82,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr='sum(ray_actors{{State!="DEAD",{global_filters}}}) by (Name)',
+                expr='sum(ray_actors{{State!="DEAD",NodeAddress=~"$NodeAddress",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
             )
         ],
@@ -90,12 +90,12 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
-        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. PENDING means the number of CPUs that will be available when new nodes are up after the autoscaler scales up.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
+        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. PENDING means the number of CPUs that will be available when new nodes are up after the autoscaler scales up.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments. \n\nThis graph does not use the NodeAddress variable.",
         unit="cores",
         targets=[
             Target(
-                expr='sum(ray_resources{{Name="CPU",State="USED",{global_filters}}}) by (instance)',
-                legend="CPU Usage: {{instance}}",
+                expr='sum(ray_resources{{Name="CPU",State="USED",{global_filters}}}) by (NodeAddress)',
+                legend="CPU Usage: {{NodeAddress}}",
             ),
             Target(
                 expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
@@ -116,11 +116,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_object_store_memory{{{global_filters}}}) by (Location)",
+                expr='sum(ray_object_store_memory{{NodeAddress=~"$NodeAddress",{global_filters}}}) by (Location)',
                 legend="{{Location}}",
             ),
             Target(
-                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}})',
+                expr='sum(ray_resources{{Name="object_store_memory",NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -128,12 +128,12 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=28,
         title="Scheduler GPUs (logical slots)",
-        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.",
+        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.\n\nThis graph does not use the NodeAddress variable.",
         unit="GPUs",
         targets=[
             Target(
                 expr='ray_resources{{Name="GPU",State="USED",{global_filters}}}',
-                legend="GPU Usage: {{instance}}",
+                legend="GPU Usage: {{NodeAddress}}",
             ),
             Target(
                 expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
@@ -154,7 +154,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="placement groups",
         targets=[
             Target(
-                expr="sum(ray_placement_groups{{{global_filters}}}) by (State)",
+                expr='sum(ray_placement_groups{{NodeAddress=~"$NodeAddress",{global_filters}}}) by (State)',
                 legend="{{State}}",
             )
         ],
@@ -166,11 +166,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr='ray_node_cpu_utilization{{instance=~"$Instance",{global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100',
-                legend="CPU Usage: {{instance}}",
+                expr='ray_node_cpu_utilization{{NodeAddress=~"$NodeAddress",{global_filters}}} * ray_node_cpu_count{{NodeAddress=~"$NodeAddress",{global_filters}}} / 100',
+                legend="CPU Usage: {{NodeAddress}}",
             ),
             Target(
-                expr="sum(ray_node_cpu_count{{{global_filters}}})",
+                expr='sum(ray_node_cpu_count{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -182,11 +182,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
-                legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                expr='ray_node_gpus_utilization{{NodeAddress=~"$NodeAddress",{global_filters}}} / 100',
+                legend="GPU Usage: {{NodeAddress}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
-                expr="sum(ray_node_gpus_available{{{global_filters}}})",
+                expr='sum(ray_node_gpus_available{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -198,11 +198,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}',
-                legend="Disk Used: {{instance}}",
+                expr='ray_node_disk_usage{{NodeAddress=~"$NodeAddress",{global_filters}}}',
+                legend="Disk Used: {{NodeAddress}}",
             ),
             Target(
-                expr="sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})",
+                expr='sum(ray_node_disk_free{{NodeAddress=~"$NodeAddress",{global_filters}}}) + sum(ray_node_disk_usage{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -214,12 +214,12 @@ DEFAULT_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}',
-                legend="Write: {{instance}}",
+                expr='ray_node_disk_io_write_speed{{NodeAddress=~"$NodeAddress",{global_filters}}}',
+                legend="Write: {{NodeAddress}}",
             ),
             Target(
-                expr='ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}',
-                legend="Read: {{instance}}",
+                expr='ray_node_disk_io_read_speed{{NodeAddress=~"$NodeAddress",{global_filters}}}',
+                legend="Read: {{NodeAddress}}",
             ),
         ],
     ),
@@ -230,11 +230,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_mem_used{{instance=~"$Instance",{global_filters}}}',
-                legend="Memory Used: {{instance}}",
+                expr='ray_node_mem_used{{NodeAddress=~"$NodeAddress",{global_filters}}}',
+                legend="Memory Used: {{NodeAddress}}",
             ),
             Target(
-                expr="sum(ray_node_mem_total{{{global_filters}}})",
+                expr='sum(ray_node_mem_total{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -242,12 +242,12 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=44,
         title="Node Out of Memory Failures by Name",
-        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.\n\nThis graph does not use the NodeAddress variable.",
         unit="failures",
         targets=[
             Target(
-                expr='ray_memory_manager_worker_eviction_total{{instance=~"$Instance",{global_filters}}}',
-                legend="OOM Killed: {{Name}}, {{instance}}",
+                expr='ray_memory_manager_worker_eviction_total{{{global_filters}}}',
+                legend="OOM Killed: {{Name}}",
             ),
         ],
     ),
@@ -258,15 +258,15 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="(sum(ray_component_rss_mb{{{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_mem_shared_bytes{{{global_filters}}}) by (Component))",
+                expr='(sum(ray_component_rss_mb{{NodeAddress=~"$NodeAddress",{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_mem_shared_bytes{{NodeAddress=~"$NodeAddress",{global_filters}}}) by (Component))',
                 legend="{{Component}}",
             ),
             Target(
-                expr="sum(ray_node_mem_shared_bytes{{{global_filters}}})",
+                expr='sum(ray_node_mem_shared_bytes{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="shared_memory",
             ),
             Target(
-                expr="sum(ray_node_mem_total{{{global_filters}}})",
+                expr='sum(ray_node_mem_total{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -279,11 +279,11 @@ DEFAULT_GRAFANA_PANELS = [
         targets=[
             Target(
                 # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
-                expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
+                expr='sum(ray_component_cpu_percentage{{NodeAddress=~"$NodeAddress",{global_filters}}}) by (Component) / 100',
                 legend="{{Component}}",
             ),
             Target(
-                expr="sum(ray_node_cpu_count{{{global_filters}}})",
+                expr='sum(ray_node_cpu_count{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="MAX",
             ),
         ],
@@ -295,11 +295,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024',
-                legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                expr='ray_node_gram_used{{NodeAddress=~"$NodeAddress",{global_filters}}} * 1024 * 1024',
+                legend="Used GRAM: {{NodeAddress}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
-                expr="(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024",
+                expr='(sum(ray_node_gram_available{{NodeAddress=~"$NodeAddress",{global_filters}}}) + sum(ray_node_gram_used{{NodeAddress=~"$NodeAddress",{global_filters}}})) * 1024 * 1024',
                 legend="MAX",
             ),
         ],
@@ -311,19 +311,19 @@ DEFAULT_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='ray_node_network_receive_speed{{instance=~"$Instance",{global_filters}}}',
-                legend="Recv: {{instance}}",
+                expr='ray_node_network_receive_speed{{NodeAddress=~"$NodeAddress",{global_filters}}}',
+                legend="Recv: {{NodeAddress}}",
             ),
             Target(
-                expr='ray_node_network_send_speed{{instance=~"$Instance",{global_filters}}}',
-                legend="Send: {{instance}}",
+                expr='ray_node_network_send_speed{{NodeAddress=~"$NodeAddress",{global_filters}}}',
+                legend="Send: {{NodeAddress}}",
             ),
         ],
     ),
     Panel(
         id=24,
         title="Node Count",
-        description="A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
+        description="A total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.\n\nThis graph does not use the NodeAddress variable.",
         unit="nodes",
         targets=[
             Target(
@@ -348,32 +348,32 @@ DEFAULT_GRAFANA_PANELS = [
         targets=[
             # CPU
             Target(
-                expr="avg(ray_node_cpu_utilization{{{global_filters}}})",
+                expr='avg(ray_node_cpu_utilization{{NodeAddress=~"$NodeAddress",{global_filters}}})',
                 legend="CPU (physical)",
             ),
             # GPU
             Target(
-                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
+                expr='sum(ray_node_gpus_utilization{{NodeAddress=~"$NodeAddress",{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource="GPU",NodeAddress=~"$NodeAddress",{global_filters}}}) or vector(0))',
                 legend="GPU (physical)",
             ),
             # Memory
             Target(
-                expr="sum(ray_node_mem_used{{{global_filters}}}) / on() (sum(ray_node_mem_total{{{global_filters}}})) * 100",
+                expr='sum(ray_node_mem_used{{NodeAddress=~"$NodeAddress",{global_filters}}}) / on() (sum(ray_node_mem_total{{NodeAddress=~"$NodeAddress",{global_filters}}})) * 10',
                 legend="Memory (RAM)",
             ),
             # GRAM
             Target(
-                expr="sum(ray_node_gram_used{{{global_filters}}}) / on() (sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 100",
+                expr='sum(ray_node_gram_used{{NodeAddress=~"$NodeAddress",{global_filters}}}) / on() (sum(ray_node_gram_available{{NodeAddress=~"$NodeAddress",{global_filters}}}) + sum(ray_node_gram_used{{NodeAddress=~"$NodeAddress",{global_filters}}})) * 100',
                 legend="GRAM",
             ),
             # Object Store
             Target(
-                expr='sum(ray_object_store_memory{{{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",{global_filters}}}) * 100',
+                expr='sum(ray_object_store_memory{{NodeAddress=~"$NodeAddress",{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",NodeAddress=~"$NodeAddress",{global_filters}}}) * 100',
                 legend="Object Store Memory",
             ),
             # Disk
             Target(
-                expr="sum(ray_node_disk_usage{{{global_filters}}}) / on() (sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})) * 100",
+                expr='sum(ray_node_disk_usage{{NodeAddress=~"$NodeAddress",{global_filters}}}) / on() (sum(ray_node_disk_free{{NodeAddress=~"$NodeAddress",{global_filters}}}) + sum(ray_node_disk_usage{{NodeAddress=~"$NodeAddress",{global_filters}}})) * 100',
                 legend="Disk",
             ),
         ],
