@@ -95,6 +95,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    CChannelType,
+    RAY_ERROR_INFO_CHANNEL,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1815,8 +1817,12 @@ cdef class GcsErrorSubscriber:
         shared_ptr[CPythonGcsSubscriber] inner
 
     def __cinit__(self, address):
-        self.inner.reset(new CPythonGcsSubscriber(address))
+        # TODO: subscriber_id
+        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, b""))
         check_status(self.inner.get().Connect())
+
+    def subscribe(self):
+        check_status(self.inner.get().Subscribe())
 
 
 cdef class CoreWorker:

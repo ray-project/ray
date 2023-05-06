@@ -168,7 +168,11 @@ class RAY_EXPORT PythonGcsPublisher {
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsSubscriber {
  public:
-  explicit PythonGcsSubscriber(const std::string &gcs_address);
+  explicit PythonGcsSubscriber(
+    const std::string &gcs_address,
+    rpc::ChannelType channel_type,
+    const std::string& subscriber_id
+  );
 
   /// Connect to the subscriber service of the GCS.
   /// This function must be called before calling other functions.
@@ -180,7 +184,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   ///
   /// Before the registration, published messages in the channel
   /// will not be saved for the subscriber.
-  Status Subscribe(const std::string& subscriber_id, rpc::ChannelType channel_type);
+  Status Subscribe( );
 
   /// Polls for new error message.
   /// Both key_id and data are out parameters.
@@ -191,11 +195,14 @@ class RAY_EXPORT PythonGcsSubscriber {
 
   /// Polls for new function key messages.
   Status PollFunctionKey(std::string* key_id, rpc::PythonFunction* data);
+
  private:
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;
   std::string gcs_address_;
   int gcs_port_;
+  rpc::ChannelType channel_type_;
+  std::string subscriber_id_;
 };
 
 /// Construct the arguments for synchronous gRPC clients
