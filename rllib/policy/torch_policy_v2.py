@@ -1101,8 +1101,11 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
+        print(self.model)
+
         extra_fetches = {}
         if isinstance(self.model, RLModule):
+            print("is RLModule!")
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
             else:
