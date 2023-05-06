@@ -55,11 +55,11 @@ and macOS by choosing the option that best matches your use case.
           * - `pip install -U "ray[tune]"`
             - Core, Tune
           * - `pip install -U "ray[serve]"`
-            - Core, Serve
+            - Core, Dashboard, Cluster Launcher, Serve
           * - `pip install -U "ray[rllib]"`
-            - Core, RLlib
+            - Core, Tune, RLlib
           * - `pip install -U "ray[air]"`
-            - Core, Data, Train, Tune, Serve
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
           * - `pip install -U "ray[all]"`
             - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
 
