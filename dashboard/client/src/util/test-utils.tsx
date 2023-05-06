@@ -22,9 +22,11 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     sessionName: "session-name",
   };
 
-  // Clean SWR cache bySWRConfig
   return (
     <ThemeProvider theme={lightTheme}>
+      {/*
+        Clean SWR cache by SWRConfig
+      */}
       <SWRConfig value={{ provider: () => new Map() }}>
         <GlobalContext.Provider value={context}>
           <MemoryRouter>{children}</MemoryRouter>
