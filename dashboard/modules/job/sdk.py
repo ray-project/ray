@@ -61,7 +61,7 @@ class JobSubmissionClient(SubmissionClient):
         headers: Headers to use when sending requests to the HTTP job server, used
             for cases like authentication to a remote cluster.
         verify: Boolean indication to verify the server's TLS certificate or a path to
-            a file or directory of trusted certificates.
+            a file or directory of trusted certificates. Default: True.
     """
 
     def __init__(

@@ -9,13 +9,12 @@ import tempfile
 from typing import Any, Dict, List, Optional, Union
 from pkg_resources import packaging
 import ray
+import ssl
 
 try:
     import requests
-    import ssl
 except ImportError:
     requests = None
-    ssl = None
 
 
 from ray._private.runtime_env.packaging import (
@@ -230,8 +229,12 @@ class SubmissionClient:
         if isinstance(self._verify, str):
             if os.path.isdir(self._verify):
                 cafile, capath = None, self._verify
-            else:
+            elif os.path.isfile(self._verify):
                 cafile, capath = self._verify, None
+            else:
+                raise FileNotFoundError(
+                    f"Path to CA certificates: '{self._verify}', does not exist."
+                )
             self._ssl_context = ssl.create_default_context(cafile=cafile, capath=capath)
         else:
             if self._verify is False:
