@@ -871,6 +871,27 @@ class AlgorithmConfig(_Config):
             self.training(_enable_learner_api=True)
             self.enable_connectors = True
 
+        # LR-schedule checking.
+        # For the new Learner API stack, any schedule must start at ts 0 to avoid
+        # ambiguity (user might think that the `lr` setting plays a role as well
+        # of that that's the initial LR, when it isn't).
+        if self._enable_learner_api and self.lr_schedule is not None:
+            if not isinstance(self.lr_schedule, (list, tuple)) or (
+                len(self.lr_schedule) < 2
+            ):
+                raise ValueError(
+                    f"Invalid `lr_schedule` ({self.lr_schedule}) specified! Must be a "
+                    "list of at least 2 tuples, each of the form "
+                    "(`timestep`, `learning rate to reach`), e.g. "
+                    "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
+                )
+            elif self.lr_schedule[0][0] != 0:
+                raise ValueError(
+                    "When providing a `lr_schedule`, the first timestep must be 0 and "
+                    "the corresponding lr value is the initial learning rate! You "
+                    f"provided ts={self.lr_schedule[0][0]} lr={self.lr_schedule[0][1]}."
+                )
+
         # Explore parameter cannot be False with RLModule API enabled.
         # The reason is that `explore` is not just a parameter that will get passed
         # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
@@ -1611,7 +1632,7 @@ class AlgorithmConfig(_Config):
             lr_schedule: Learning rate schedule. In the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 Intermediary timesteps will be assigned to interpolated learning rate
-                values. A schedule should normally start from timestep 0.
+                values. A schedule must start from timestep 0.
             grad_clip: The value to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more

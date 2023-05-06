@@ -49,7 +49,6 @@ class ImpalaLearner(Learner):
         super().build()
 
         # Build entropy coeff scheduling tools.
-        self.entropy_coeff_scheduler = None
         if self.hps.entropy_coeff_schedule:
             # Custom schedule, based on list of
             # ([ts], [value to be reached by ts])-tuples.
@@ -60,8 +59,10 @@ class ImpalaLearner(Learner):
                     framework=None,
                 )
             )
+            # As initial entropy coeff value, use the first timestep's (must be 0)
+            # value.
             self.curr_entropy_coeffs_per_module = defaultdict(
-                lambda: self._get_tensor_variable(self.hps.entropy_coeff)
+                lambda: self._get_tensor_variable(self.hps.entropy_coeff_schedule[0][1])
             )
 
     @override(Learner)

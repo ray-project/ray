@@ -8,8 +8,6 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 torch, nn = try_import_torch()
 
 
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
 @DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
@@ -17,7 +15,9 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
-        if lr_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if lr_schedule is None or self.config.get("_enable_learner_api", False):
             self.cur_lr = lr
         else:
             self._lr_schedule = PiecewiseSchedule(
@@ -42,7 +42,11 @@ class EntropyCoeffSchedule:
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if entropy_coeff_schedule is None or (
+            self.config.get("_enable_learner_api", False)
+        ):
             self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format

@@ -33,7 +33,9 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
-        if lr_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if lr_schedule is None or self.config.get("_enable_learner_api", False):
             self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         else:
             self._lr_schedule = PiecewiseSchedule(
@@ -78,7 +80,11 @@ class EntropyCoeffSchedule:
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if entropy_coeff_schedule is None or (
+            self.config.get("_enable_learner_api", False)
+        ):
             self.entropy_coeff = get_variable(
                 entropy_coeff, framework="tf", tf_name="entropy_coeff", trainable=False
             )
