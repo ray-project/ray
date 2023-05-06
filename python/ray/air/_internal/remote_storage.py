@@ -136,6 +136,36 @@ def is_non_local_path_uri(uri: str) -> bool:
 _cached_fs = {}
 
 
+def is_mounted(path: str) -> bool:
+    """Checks if a path is within a mounted filesystem.
+
+    This will return True for paths within NFS mounts, which is the main usage.
+
+    Example: /efs/a/b/c -> True
+    1. /nfs/a/b/c -> False
+    2. /nfs/a/b   -> False
+    3. /nfs/a     -> False
+    4. /nfs       -> True
+
+    Example: / -> False
+
+    Example: ~/ray_results -> False
+    1. /users/name/ray_results  -> False
+    2. /users/name              -> False
+    3. /users                   -> False
+    """
+    resolved_path = Path(path).expanduser().resolve()
+    parents = list(resolved_path.parents)
+    if not parents:
+        return False
+
+    if resolved_path.is_mount():
+        return True
+
+    parents.pop()  # / is always a mounted filesystem, so ignore that
+    return any(parent.is_mount() for parent in parents)
+
+
 def is_local_path(path: str) -> bool:
     """Check if a given path is a local path or a remote URI."""
     if sys.platform == "win32":

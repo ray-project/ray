@@ -10,6 +10,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
+    is_mounted,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
@@ -213,6 +214,21 @@ def test_get_fs_and_path():
             or "pyarrow and local java libraries required for HDFS" in str_e
         )
         assert find_error
+
+
+def test_is_mounted(tmp_path):
+    """Test `is_mounted` storage utility."""
+    # /dev is technically a mounted filesystem -- just using it for this test
+    assert is_mounted("/dev")
+    assert is_mounted("/dev/a/b/c")
+
+    # Local paths should return False
+    assert not is_mounted(str(tmp_path / "ray_results"))
+    assert not is_mounted("~/ray_results")
+    assert not is_mounted("")  # cwd
+
+    # Exclude /, which is trivially a mounted local filesystem
+    assert not is_mounted("/")
 
 
 if __name__ == "__main__":
