@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Callable
 import pytest
 import sys
 import time
@@ -394,7 +395,12 @@ def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
 
 
 def test_detect_reuse_mixins():
-    from ray.tune.integration.mlflow import mlflow_mixin
+    class DummyMixin:
+        pass
+
+    def dummy_mixin(func: Callable):
+        func.__mixins__ = (DummyMixin,)
+        return func
 
     assert not _check_mixin("PPO")
 
@@ -402,13 +408,13 @@ def test_detect_reuse_mixins():
         pass
 
     assert not _check_mixin(train)
-    assert _check_mixin(mlflow_mixin(train))
+    assert _check_mixin(dummy_mixin(train))
 
     class MyTrainable(Trainable):
         pass
 
     assert not _check_mixin(MyTrainable)
-    assert _check_mixin(mlflow_mixin(MyTrainable))
+    assert _check_mixin(dummy_mixin(MyTrainable))
 
 
 def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
@@ -459,7 +465,7 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
         max_concurrent_trials=2,
         local_dir=str(tmp_path),
         name=exp_name,
-        sync_config=tune.SyncConfig(upload_dir=f"file://{tmp_target}"),
+        storage_path=f"file://{tmp_target}",
         trial_dirname_creator=lambda t: str(t.config.get("id")),
         checkpoint_freq=1,
     )
@@ -540,9 +546,8 @@ def test_artifact_syncing_with_actor_reuse(
             max_concurrent_trials=2,
             local_dir=str(local_dir),
             name=exp_name,
-            sync_config=tune.SyncConfig(
-                upload_dir=f"file://{tmp_target}", sync_artifacts=True
-            ),
+            storage_path=f"file://{tmp_target}",
+            sync_config=tune.SyncConfig(sync_artifacts=True),
             trial_dirname_creator=lambda t: str(t.config.get("id")),
             checkpoint_freq=1,
         )

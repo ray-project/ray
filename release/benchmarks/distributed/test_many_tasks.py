@@ -9,6 +9,7 @@ from dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
+    summarize_worker_startup_time,
 )
 
 sleep_time = 300
@@ -93,6 +94,12 @@ def test(num_tasks):
     del api_caller
     del monitor_actor
     test_utils.wait_for_condition(no_resource_leaks)
+
+    try:
+        summarize_worker_startup_time()
+    except Exception as e:
+        print("Failed to summarize worker startup time.")
+        print(e)
 
     rate = num_tasks / (end_time - start_time - sleep_time)
     print(

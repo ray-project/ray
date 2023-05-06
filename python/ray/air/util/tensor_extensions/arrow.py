@@ -136,7 +136,7 @@ class ArrowTensorType(pa.PyExtensionType):
 
     def __str__(self) -> str:
         return (
-            f"ArrowTensorType(shape={self.shape}, dtype={self.storage_type.value_type})"
+            f"numpy.ndarray(shape={self.shape}, dtype={self.storage_type.value_type})"
         )
 
     def __repr__(self) -> str:
@@ -604,7 +604,7 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
 
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
-        return f"ArrowVariableShapedTensorType(dtype={dtype}, ndim={self.ndim})"
+        return f"numpy.ndarray(ndim={self.ndim}, dtype={dtype})"
 
     def __repr__(self) -> str:
         return str(self)

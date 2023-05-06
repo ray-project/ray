@@ -202,7 +202,9 @@ class StateAPIManager:
 
         """
         try:
-            reply = await self._client.get_all_actor_info(timeout=option.timeout)
+            reply = await self._client.get_all_actor_info(
+                timeout=option.timeout, filters=option.filters
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
@@ -219,7 +221,7 @@ class StateAPIManager:
                 ],
             )
             result.append(data)
-        num_after_truncation = len(result)
+        num_after_truncation = len(result) + reply.num_filtered
         result = self._filter(result, option.filters, ActorState, option.detail)
         num_filtered = len(result)
 
@@ -332,6 +334,8 @@ class StateAPIManager:
             data["ip"] = data["worker_address"]["ip_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
+            data["worker_launch_time_ms"] = int(data["worker_launch_time_ms"])
+            data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
             result.append(data)
 
         num_after_truncation = len(result)
@@ -472,6 +476,10 @@ class StateAPIManager:
             del data["object_ref"]
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
+            data["type"] = data["type"].upper()
+            data["task_status"] = (
+                "NIL" if data["task_status"] == "-" else data["task_status"]
+            )
             result.append(data)
 
         # Add callsite warnings if it is not configured.
@@ -591,7 +599,7 @@ class StateAPIManager:
         all_events = await self._client.get_all_cluster_events()
         for _, events in all_events.items():
             for _, event in events.items():
-                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
                 result.append(event)
 
         num_after_truncation = len(result)

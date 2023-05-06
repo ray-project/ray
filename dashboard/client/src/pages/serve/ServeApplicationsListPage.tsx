@@ -21,6 +21,7 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { HelpInfo } from "../../components/Tooltip";
 import { useServeApplications } from "./hook/useServeApplications";
 import { ServeApplicationRow } from "./ServeApplicationRow";
+import { ServeMetricsSection } from "./ServeMetricsSection";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -32,6 +33,9 @@ const useStyles = makeStyles((theme) =>
     },
     helpInfo: {
       marginLeft: theme.spacing(1),
+    },
+    metricsSection: {
+      marginTop: theme.spacing(4),
     },
   }),
 );
@@ -195,6 +199,7 @@ export const ServeApplicationsListPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
+      <ServeMetricsSection className={classes.metricsSection} />
     </div>
   );
 };

@@ -54,8 +54,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-# We need this builder function because we want to share the same
-# custom logics between TF1 dynamic and TF2 eager policies.
+# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
 class APPOTorchPolicy(
     VTraceOptimizer,
     LearningRateSchedule,

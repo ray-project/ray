@@ -132,7 +132,7 @@ Status TaskExecutor::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
-    bool *is_application_error,
+    std::string *application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
     bool is_reattempt) {
@@ -149,7 +149,6 @@ Status TaskExecutor::ExecuteTask(
   // TODO(Clark): Support exception allowlist for retrying application-level
   // errors for C++.
   *is_retryable_error = false;
-  *is_application_error = false;
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
@@ -216,7 +215,8 @@ Status TaskExecutor::ExecuteTask(
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
     meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
         reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
-    *is_application_error = true;
+    // Pass formatted exception string to CoreWorker
+    *application_error = status.ToString();
 
     msgpack::sbuffer buf;
     if (cross_lang) {

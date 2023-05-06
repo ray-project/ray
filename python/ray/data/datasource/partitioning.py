@@ -17,7 +17,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 @DeveloperAPI
 class PartitionStyle(str, Enum):
-    """Supported dataset partition styles.
+    """Supported datastream partition styles.
 
     Inherits from `str` to simplify plain text serialization/deserialization.
 
@@ -41,7 +41,7 @@ class Partitioning:
     """Partition scheme used to describe path-based partitions.
 
     Path-based partition formats embed all partition keys and values directly in
-    their dataset file paths.
+    their datastream file paths.
     """
 
     #: The partition style - may be either HIVE or DIRECTORY.
@@ -53,7 +53,7 @@ class Partitioning:
     #: directories.
     base_dir: Optional[str] = None
     #: The partition key field names (i.e. column names for tabular
-    #: datasets). When non-empty, the order and length of partition key
+    #: datastreams). When non-empty, the order and length of partition key
     #: field names must match the order and length of partition values.
     #: Required when parsing DIRECTORY partitioned paths or generating
     #: HIVE partitioned paths.
@@ -112,7 +112,7 @@ class PathPartitionEncoder:
     """Callable that generates directory path strings for path-based partition formats.
 
     Path-based partition formats embed all partition keys and values directly in
-    their dataset file paths.
+    their datastream file paths.
 
     Two path partition formats are currently supported - HIVE and DIRECTORY.
 
@@ -140,7 +140,7 @@ class PathPartitionEncoder:
             base_dir: "/"-delimited base directory that all partition paths will be
                 generated under (exclusive).
             field_names: The partition key field names (i.e. column names for tabular
-                datasets). Required for HIVE partition paths, optional for DIRECTORY
+                datastreams). Required for HIVE partition paths, optional for DIRECTORY
                 partition paths. When non-empty, the order and length of partition key
                 field names must match the order and length of partition values.
             filesystem: Filesystem that will be used for partition path file I/O.
@@ -229,7 +229,7 @@ class PathPartitionParser:
     """Partition parser for path-based partition formats.
 
     Path-based partition formats embed all partition keys and values directly in
-    their dataset file paths.
+    their datastream file paths.
 
     Two path partition formats are currently supported - HIVE and DIRECTORY.
 
@@ -274,7 +274,7 @@ class PathPartitionParser:
                 Optional for HIVE partitioning. When non-empty, the order and length of
                 partition key field names must match the order and length of partition
                 directories discovered. Partition key field names are not required to
-                exist in the dataset schema.
+                exist in the datastream schema.
             filesystem: Filesystem that will be used for partition path file I/O.
 
         Returns:
@@ -452,7 +452,7 @@ class PathPartitionFilter:
                 Optional for HIVE partitioning. When non-empty, the order and length of
                 partition key field names must match the order and length of partition
                 directories discovered. Partition key field names are not required to
-                exist in the dataset schema.
+                exist in the datastream schema.
             filesystem: Filesystem that will be used for partition path file I/O.
 
         Returns:

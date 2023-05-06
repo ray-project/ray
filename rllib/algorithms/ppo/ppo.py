@@ -9,6 +9,7 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
+import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
@@ -16,8 +17,11 @@ from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.ppo.ppo_learner_config import PPOLearnerHPs
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.ppo_learner import (
+    PPOLearnerHyperparameters,
+    LEARNER_RESULTS_KL_KEY,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -94,7 +98,6 @@ class PPOConfig(PGConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # PPO specific settings:
-        self._learner_hps = PPOLearnerHPs()
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -121,6 +124,16 @@ class PPOConfig(PGConfig):
 
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
+
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -155,6 +168,21 @@ class PPOConfig(PGConfig):
             return PPOTfLearner
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+    @override(AlgorithmConfig)
+    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return PPOLearnerHyperparameters(
+            use_critic=self.use_critic,
+            kl_coeff=self.kl_coeff,
+            vf_loss_coeff=self.vf_loss_coeff,
+            entropy_coeff=self.entropy_coeff,
+            entropy_coeff_schedule=self.entropy_coeff_schedule,
+            clip_param=self.clip_param,
+            vf_clip_param=self.vf_clip_param,
+            kl_target=self.kl_target,
+            **dataclasses.asdict(base_hps),
+        )
 
     @override(AlgorithmConfig)
     def training(
@@ -202,7 +230,7 @@ class PPOConfig(PGConfig):
                 tune this if you set vf_share_layers=True inside your model's config.
             entropy_coeff: Coefficient of the entropy regularizer.
             entropy_coeff_schedule: Decay schedule for the entropy regularizer.
-            clip_param: PPO clip parameter.
+            clip_param: The PPO clip parameter.
             vf_clip_param: Clip param for the value function. Note that this is
                 sensitive to the scale of the rewards. If your expected V is large,
                 increase this.
@@ -222,6 +250,7 @@ class PPOConfig(PGConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
+        # TODO (sven): Move to generic AlgorithmConfig.
         if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
@@ -296,17 +325,6 @@ class PPOConfig(PGConfig):
         # Check `entropy_coeff` for correctness.
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
-        # learner hps need to be updated inside of config.validate in order to have
-        # the correct values for when a user starts an experiment from a dict. This is
-        # as oppposed to assigning the values inthe builder functions such as `training`
-        self._learner_hps.use_critic = self.use_critic
-        self._learner_hps.kl_coeff = self.kl_coeff
-        self._learner_hps.vf_loss_coeff = self.vf_loss_coeff
-        self._learner_hps.entropy_coeff = self.entropy_coeff
-        self._learner_hps.entropy_coeff_schedule = self.entropy_coeff_schedule
-        self._learner_hps.clip_param = self.clip_param
-        self._learner_hps.vf_clip_param = self.vf_clip_param
-        self._learner_hps.kl_target = self.kl_target
 
 
 class UpdateKL:
@@ -422,12 +440,12 @@ class PPO(Algorithm):
             train_results = multi_gpu_train_one_step(self, train_batch)
 
         if self.config._enable_learner_api:
-            # the train results's loss keys are pids to their loss values. But we also
+            # The train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
             # TODO (Kourosh): We should also not be using train_results as a message
-            # passing medium to infer whcih policies to update. We could use
-            # policies_to_train variable that is given by the user to infer this.
+            #  passing medium to infer which policies to update. We could use
+            #  policies_to_train variable that is given by the user to infer this.
             policies_to_update = set(train_results.keys()) - {ALL_MODULES}
         else:
             policies_to_update = list(train_results.keys())
@@ -461,18 +479,17 @@ class PPO(Algorithm):
 
         if self.config._enable_learner_api:
             kl_dict = {
-                # TODO (Kourosh): Train results don't match the old format. The thing
-                # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
-                # we need get here?
-                pid: train_results[pid][LEARNER_STATS_KEY].get("mean_kl_loss")
+                pid: train_results[pid][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
-            self.learner_group.additional_update(
+            additional_results = self.learner_group.additional_update(
                 module_ids_to_update=policies_to_update,
                 sampled_kl_values=kl_dict,
                 timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
             )
+            for pid, res in additional_results.items():
+                train_results[pid].update(res)
 
             return train_results
 

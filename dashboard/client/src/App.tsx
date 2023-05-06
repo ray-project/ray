@@ -15,7 +15,7 @@ import { MainNavLayout } from "./pages/layout/MainNavLayout";
 import { SideTabPage } from "./pages/layout/SideTabLayout";
 import { LogsLayout } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
-import { getMetricsInfo } from "./pages/metrics/utils";
+import { DashboardUids, getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { ClusterMainPageLayout } from "./pages/node";
 import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
@@ -45,14 +45,20 @@ export type GlobalContextType = {
   ipLogMap: { [key: string]: string };
   namespaceMap: { [key: string]: string[] };
   /**
+   * Whether the initial metrics context has been fetched or not.
+   * This can be used to determine the difference between Grafana
+   * not being set up vs the status not being fetched yet.
+   */
+  metricsContextLoaded: boolean;
+  /**
    * The host that is serving grafana. Only set if grafana is
    * running as detected by the grafana healthcheck endpoint.
    */
   grafanaHost: string | undefined;
   /**
-   * The uid of the default dashboard that powers the Metrics page.
+   * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
-  grafanaDefaultDashboardUid: string | undefined;
+  dashboardUids: DashboardUids | undefined;
   /**
    * Whether prometheus is runing or not
    */
@@ -67,8 +73,9 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMapByIp: {},
   ipLogMap: {},
   namespaceMap: {},
+  metricsContextLoaded: false,
   grafanaHost: undefined,
-  grafanaDefaultDashboardUid: undefined,
+  dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
 });
@@ -79,8 +86,9 @@ const App = () => {
     nodeMapByIp: {},
     ipLogMap: {},
     namespaceMap: {},
+    metricsContextLoaded: false,
     grafanaHost: undefined,
-    grafanaDefaultDashboardUid: undefined,
+    dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
   });
@@ -109,16 +117,13 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const {
-        grafanaHost,
-        sessionName,
-        prometheusHealth,
-        grafanaDefaultDashboardUid,
-      } = await getMetricsInfo();
+      const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
+        await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
+        metricsContextLoaded: true,
         grafanaHost,
-        grafanaDefaultDashboardUid,
+        dashboardUids,
         sessionName,
         prometheusHealth,
       }));

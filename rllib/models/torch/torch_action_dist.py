@@ -622,7 +622,7 @@ class TorchDirichlet(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
-        self.last_sample = nn.functional.softmax(self.dist.concentration)
+        self.last_sample = nn.functional.softmax(self.dist.concentration, dim=-1)
         return self.last_sample
 
     @override(ActionDistribution)
@@ -637,10 +637,6 @@ class TorchDirichlet(TorchDistributionWrapper):
     @override(ActionDistribution)
     def entropy(self):
         return self.dist.entropy()
-
-    @override(ActionDistribution)
-    def kl(self, other):
-        return self.dist.kl_divergence(other.dist)
 
     @staticmethod
     @override(ActionDistribution)

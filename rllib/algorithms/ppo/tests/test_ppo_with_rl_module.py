@@ -1,12 +1,22 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-
+from ray.rllib.algorithms.ppo.ppo_learner import (
+    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+)
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
+from ray.rllib.core.learner.learner import (
+    LEARNER_RESULTS_CURR_LR_KEY,
+)
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -43,36 +53,27 @@ def get_model_config(framework, lstm=False):
 
 
 class MyCallbacks(DefaultCallbacks):
-    @staticmethod
-    def _check_lr_torch(policy, policy_id):
-        for j, opt in enumerate(policy._optimizers):
-            for p in opt.param_groups:
-                assert p["lr"] == policy.cur_lr, "LR scheduling error!"
-
-    @staticmethod
-    def _check_lr_tf(policy, policy_id):
-        lr = policy.cur_lr
-        sess = policy.get_session()
-        if sess:
-            lr = sess.run(lr)
-            optim_lr = sess.run(policy._optimizer._lr)
-        else:
-            lr = lr.numpy()
-            optim_lr = policy._optimizer.lr.numpy()
-        assert lr == optim_lr, "LR scheduling error!"
-
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
-        # Learning rate should go to 0 after 1 iter.
-        check(stats["cur_lr"], 5e-5 if algorithm.iteration == 1 else 0.0)
+        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
-        check(stats["entropy_coeff"], 0.1 if algorithm.iteration == 1 else 0.05)
-
-        algorithm.workers.foreach_policy(
-            self._check_lr_torch
-            if algorithm.config.framework_str == "torch"
-            else self._check_lr_tf
+        check(
+            stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
+            0.05 if algorithm.iteration == 1 else 0.0,
         )
+
+        # Learning rate should decrease by 0.0001 per iteration.
+        check(
+            stats[LEARNER_RESULTS_CURR_LR_KEY],
+            0.0003 if algorithm.iteration == 1 else 0.0002,
+        )
+        # Compare reported curr lr vs the actual lr found in the optimizer object.
+        optim = algorithm.learner_group._learner._named_optimizers[DEFAULT_POLICY_ID]
+        actual_optimizer_lr = (
+            optim.param_groups[0]["lr"]
+            if algorithm.config.framework_str == "torch"
+            else optim.lr
+        )
+        check(stats[LEARNER_RESULTS_CURR_LR_KEY], actual_optimizer_lr)
 
 
 class TestPPO(unittest.TestCase):
@@ -92,23 +93,24 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .training(
                 num_sgd_iter=2,
-                # Setup lr schedule for testing.
-                lr_schedule=[[0, 5e-5], [128, 0.0]],
+                # Setup lr schedule for testing lr-scheduling correctness.
+                lr_schedule=[[0, 0.0004], [512, 0.0]],  # 512=4x128
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
-                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
+                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],  # 256=2x128
                 train_batch_size=128,
+                _enable_learner_api=True,
             )
             .rollouts(
                 num_rollout_workers=1,
                 # Test with compression.
-                compress_observations=True,
+                # compress_observations=True,
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
-        )  # For checking lr-schedule correctness.
+        )
 
         num_iterations = 2
 
@@ -117,9 +119,6 @@ class TestPPO(unittest.TestCase):
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
-                if env == "ALE/Breakout-v5" and fw == "tf2":
-                    # TODO(Artur): Implement CNN in TF2.
-                    continue
                 print("Env={}".format(env))
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
@@ -127,10 +126,13 @@ class TestPPO(unittest.TestCase):
                     config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
-                    policy = algo.get_policy()
+                    optim = algo.learner_group._learner._named_optimizers[
+                        DEFAULT_POLICY_ID
+                    ]
                     entropy_coeff = algo.get_policy().entropy_coeff
-                    lr = policy.cur_lr
+                    lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
                     check(entropy_coeff, 0.1)
+                    # Check initial LR directly set in optimizer.
                     check(lr, config.lr)
 
                     for i in range(num_iterations):
@@ -160,7 +162,7 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        for fw in framework_iterator(
+        for _ in framework_iterator(
             config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
             # Default Agent should be setup with StochasticSampling.
@@ -188,6 +190,67 @@ class TestPPO(unittest.TestCase):
                     )
                 )
             check(np.mean(actions), 1.5, atol=0.2)
+            trainer.stop()
+
+    def test_ppo_free_log_std_with_rl_modules(self):
+        """Tests the free log std option works."""
+        config = (
+            (
+                ppo.PPOConfig()
+                .environment("Pendulum-v1")
+                .rollouts(
+                    num_rollout_workers=0,
+                )
+                .training(
+                    gamma=0.99,
+                    model=dict(
+                        fcnet_hiddens=[10],
+                        fcnet_activation="linear",
+                        free_log_std=True,
+                        vf_share_layers=True,
+                    ),
+                )
+            )
+            .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
+        )
+
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+            trainer = config.build()
+            policy = trainer.get_policy()
+
+            # Check the free log std var is created.
+            if fw == "torch":
+                matching = [
+                    v for (n, v) in policy.model.named_parameters() if "log_std" in n
+                ]
+            else:
+                matching = [
+                    v for v in policy.model.trainable_variables if "log_std" in str(v)
+                ]
+            assert len(matching) == 1, matching
+            log_std_var = matching[0]
+
+            # linter yells at you if you don't pass in the parameters.
+            # reason: https://docs.python-guide.org/writing/gotchas/
+            # #late-binding-closures
+            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
+                if fw == "torch":
+                    return log_std_var.detach().cpu().numpy()[0]
+                else:
+                    return log_std_var.numpy()[0]
+
+            # Check the variable is initially zero.
+            init_std = get_value()
+            assert init_std == 0.0, init_std
+            batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
+            if fw == "torch":
+                batch = policy._lazy_tensor_dict(batch)
+            policy.learn_on_batch(batch)
+
+            # Check the variable is updated.
+            post_std = get_value()
+            assert post_std != 0.0, post_std
             trainer.stop()
 
 

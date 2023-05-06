@@ -1,8 +1,17 @@
 import logging
-from typing import Mapping
+from typing import Any, Dict, Mapping
 
-from ray.rllib.algorithms.ppo.ppo_base_learner import PPOBaseLearner
+from ray.rllib.algorithms.ppo.ppo_learner import (
+    LEARNER_RESULTS_KL_KEY,
+    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+    LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
+    LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
+    PPOLearner,
+)
+from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -15,8 +24,8 @@ _, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class PPOTfLearner(PPOBaseLearner, TfLearner):
-    """Implements tf-specific PPO loss logic on top of PPOBaseLearner.
+class PPOTfLearner(PPOLearner, TfLearner):
+    """Implements tf-specific PPO loss logic on top of PPOLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()`.
     """
@@ -73,14 +82,14 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         # Compute a value function loss.
         if self.hps.use_critic:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
-            vf_loss = tf.math.squared_difference(
-                value_fn_out, batch[Postprocessing.VALUE_TARGETS]
-            )
+            vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, self.hps.vf_clip_param)
             mean_vf_loss = tf.reduce_mean(vf_loss_clipped)
+            mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
         # Ignore the value function.
         else:
             value_fn_out = tf.constant(0.0, dtype=surrogate_loss.dtype)
+            mean_vf_unclipped_loss = tf.constant(0.0, dtype=surrogate_loss.dtype)
             vf_loss_clipped = mean_vf_loss = tf.constant(
                 0.0, dtype=surrogate_loss.dtype
             )
@@ -88,21 +97,53 @@ class PPOTfLearner(PPOBaseLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.hps.entropy_coeff * curr_entropy
+            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
         if self.hps.kl_coeff > 0.0:
-            total_loss += self.hps.kl_coeff * mean_kl_loss
+            total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         return {
             self.TOTAL_LOSS_KEY: total_loss,
-            "mean_policy_loss": -tf.reduce_mean(surrogate_loss),
-            "mean_vf_loss": mean_vf_loss,
-            "vf_explained_var": explained_variance(
+            POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
+            VF_LOSS_KEY: mean_vf_loss,
+            LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
+            LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
                 batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
-            "mean_entropy": mean_entropy,
-            "mean_kl_loss": mean_kl_loss,
+            ENTROPY_KEY: mean_entropy,
+            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
         }
+
+    @override(PPOLearner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    ) -> Dict[str, Any]:
+        assert sampled_kl_values, "Sampled KL values are empty."
+
+        results = super().additional_update_per_module(
+            module_id,
+            sampled_kl_values=sampled_kl_values,
+            timestep=timestep,
+        )
+
+        # Update KL coefficient.
+        sampled_kl = sampled_kl_values[module_id]
+        curr_var = self.curr_kl_coeffs_per_module[module_id]
+        if sampled_kl > 2.0 * self.hps.kl_target:
+            # TODO (Kourosh) why not 2?
+            curr_var.assign(curr_var * 1.5)
+        elif sampled_kl < 0.5 * self.hps.kl_target:
+            curr_var.assign(curr_var * 0.5)
+        results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
+
+        # Update entropy coefficient.
+        value = self.hps.entropy_coeff
+        if self.hps.entropy_coeff_schedule is not None:
+            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
+            self.curr_entropy_coeffs_per_module[module_id].assign(value)
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
+
+        return results

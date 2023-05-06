@@ -67,7 +67,7 @@ def stop_process(process):
 # being unreachable). This appears to only be an issue when using the tmp_dir
 # fixture as the S3 dir path. We should fix this since "session" scope should
 # reduce a lot of the per-test overhead (2x faster execution for IO methods in
-# test_dataset.py).
+# test_datastream.py).
 @pytest.fixture(scope="function")
 def s3_server():
     host = "localhost"

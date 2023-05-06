@@ -169,8 +169,8 @@ class TestEnvRunnerV2(unittest.TestCase):
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "pol1": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "pol2": SingleAgentRLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )

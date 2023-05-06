@@ -8,7 +8,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -41,19 +41,19 @@ FILE_READING_RETRY = 8
 # compared to Parquet encoded representation. Parquet file statistics only record
 # encoded (i.e. uncompressed) data size information.
 #
-# To estimate real-time in-memory data size, Datasets will try to estimate the correct
-# inflation ratio from Parquet to Arrow, using this constant as the default value for
-# safety. See https://github.com/ray-project/ray/pull/26516 for more context.
+# To estimate real-time in-memory data size, Datastreams will try to estimate the
+# correct inflation ratio from Parquet to Arrow, using this constant as the default
+# value for safety. See https://github.com/ray-project/ray/pull/26516 for more context.
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 
 # The lower bound size to estimate Parquet encoding ratio.
 PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 2
 
-# The percentage of files (1% by default) to be sampled from the dataset to estimate
+# The percentage of files (1% by default) to be sampled from the datastream to estimate
 # Parquet encoding ratio.
 PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
 
-# The minimal and maximal number of file samples to take from the dataset to estimate
+# The minimal and maximal number of file samples to take from the datastream to estimate
 # Parquet encoding ratio.
 # This is to restrict `PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO` within the
 # proper boundary.
@@ -146,8 +146,8 @@ class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     The primary difference from ParquetBaseDatasource is that this uses
-    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
-    automatic Arrow dataset schema inference and row count collection at the
+    PyArrow's `ParquetDataset` abstraction for datastream reads, and thus offers
+    automatic Arrow datastream schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
 
     Examples:
@@ -202,7 +202,10 @@ class _ParquetDatasourceReader(Reader):
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
             pq_ds = pq.ParquetDataset(
-                paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
+                paths,
+                **dataset_kwargs,
+                filesystem=filesystem,
+                use_legacy_dataset=False,
             )
         except OSError as e:
             _handle_read_os_error(e, paths)
@@ -214,14 +217,14 @@ class _ParquetDatasourceReader(Reader):
             )
 
         if _block_udf is not None:
-            # Try to infer dataset schema by passing dummy table through UDF.
+            # Try to infer datastream schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
             try:
                 inferred_schema = _block_udf(dummy_table).schema
                 inferred_schema = inferred_schema.with_metadata(schema.metadata)
             except Exception:
                 logger.debug(
-                    "Failed to infer schema of dataset by passing dummy table "
+                    "Failed to infer schema of datastream by passing dummy table "
                     "through UDF due to the following exception:",
                     exc_info=True,
                 )
@@ -278,6 +281,11 @@ class _ParquetDatasourceReader(Reader):
                 pieces=pieces,
                 prefetched_metadata=metadata,
             )
+            # If there is a filter operation, reset the calculated row count,
+            # since the resulting row count is unknown.
+            if self._reader_args.get("filter") is not None:
+                meta.num_rows = None
+
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
             block_udf, reader_args, columns, schema = (
@@ -306,7 +314,7 @@ class _ParquetDatasourceReader(Reader):
 
         To avoid OOMs, it is safer to return an over-estimate than an underestimate.
         """
-        if not DatasetContext.get_current().decoding_size_estimation:
+        if not DataContext.get_current().decoding_size_estimation:
             return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         # Sample a few rows from Parquet files to estimate the encoding ratio.
@@ -371,7 +379,7 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     output_buffer = BlockOutputBuffer(
         block_udf=block_udf,
         target_max_block_size=ctx.target_max_block_size,
@@ -411,7 +419,6 @@ def _read_pieces(
 def _fetch_metadata_serialization_wrapper(
     pieces: _SerializedPiece,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-
     pieces: List[
         "pyarrow._dataset.ParquetFileFragment"
     ] = _deserialize_pieces_with_retry(pieces)

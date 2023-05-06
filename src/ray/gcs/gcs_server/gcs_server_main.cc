@@ -81,7 +81,8 @@ int main(int argc, char *argv[]) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
-                      RayConfig::instance().event_level());
+                      RayConfig::instance().event_level(),
+                      RayConfig::instance().emit_event_to_log_file());
   }
 
   ray::gcs::GcsServerConfig gcs_server_config;
@@ -106,7 +107,7 @@ int main(int argc, char *argv[]) {
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     main_service.stop();
-    ray::rpc::DrainAndResetServerCallExecutor();
+    ray::rpc::DrainServerCallExecutor();
     gcs_server.Stop();
     ray::stats::Shutdown();
   };

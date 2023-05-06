@@ -10,6 +10,7 @@ import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -39,6 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_GRAD_UPDATES_LIFETIME,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
@@ -98,7 +100,7 @@ class EagerTFPolicyV2(Policy):
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
         # TODO(jungong): clean up after all policies are migrated to new sub-class
-        # implementation.
+        #  implementation.
         self._loss = None
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
@@ -117,7 +119,10 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        self.exploration = self._create_exploration()
+        if self.config.get("_enable_rl_module_api", False):
+            self.exploration = None
+        else:
+            self.exploration = self._create_exploration()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
 
@@ -185,7 +190,7 @@ class EagerTFPolicyV2(Policy):
         # sampler will include those keys in the sample batches it returns. This means
         # that the correct sample batch keys will be available when using the learner
         # group API.
-        if self.config._enable_learner_api:
+        if self.config.get("_enable_rl_module_api", False):
             for k in model.input_specs_train():
                 train_batch[k]
             return None
@@ -428,7 +433,8 @@ class EagerTFPolicyV2(Policy):
 
     def maybe_initialize_optimizer_and_loss(self):
         optimizers = force_list(self.optimizer())
-        if getattr(self, "exploration", None):
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
         # The list of local (tf) optimizers (one per loss term).
@@ -470,9 +476,11 @@ class EagerTFPolicyV2(Policy):
         self._is_recurrent = state_batches != []
 
         # Call the exploration before_compute_actions hook.
-        self.exploration.before_compute_actions(
-            timestep=timestep, explore=explore, tf_sess=self.get_session()
-        )
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore, tf_sess=self.get_session()
+            )
 
         ret = self._compute_actions_helper(
             input_dict,
@@ -566,7 +574,9 @@ class EagerTFPolicyV2(Policy):
             )
 
         # Exploration hook before each forward pass.
-        self.exploration.before_compute_actions(explore=False)
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
+            self.exploration.before_compute_actions(explore=False)
 
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):
@@ -580,7 +590,6 @@ class EagerTFPolicyV2(Policy):
                 if in_training:
                     output = self.model.forward_train(input_batch)
                 else:
-                    self.model.eval()
                     output = self.model.forward_exploration(input_batch)
 
                 action_dist = output.get(SampleBatch.ACTION_DIST)
@@ -718,10 +727,18 @@ class EagerTFPolicyV2(Policy):
         state = super().get_state()
 
         state["global_timestep"] = state["global_timestep"].numpy()
-        if self._optimizer and len(self._optimizer.variables()) > 0:
-            state["_optimizer_variables"] = self._optimizer.variables()
+        # In the new Learner API stack, the optimizers live in the learner.
+        state["_optimizer_variables"] = []
+        if not self.config.get("_enable_learner_api", False):
+            if self._optimizer and len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = self._optimizer.variables()
+
         # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if self.exploration:
+            # This is not compatible with RLModules, which have a method
+            # `forward_exploration` to specify custom exploration behavior.
+            state["_exploration_state"] = self.exploration.get_state()
+
         return state
 
     @override(Policy)
@@ -824,77 +841,81 @@ class EagerTFPolicyV2(Policy):
         # Add default and custom fetches.
         extra_fetches = {}
 
-        # Use Exploration object.
-        with tf.variable_creator_scope(_disallow_var_creation):
-            if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("_enable_rl_module_api", False) is False:
+            scope = tf.variable_creator_scope(_disallow_var_creation)
+            scope.__enter__()
 
-                if explore:
-                    fwd_out = self.model.forward_exploration(input_dict)
-                else:
-                    fwd_out = self.model.forward_inference(input_dict)
+        if self.config.get("_enable_rl_module_api", False):
+            input_dict = NestedDict(input_dict)
+            input_dict[STATE_IN] = state_batches
+            input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
-                action_dist = fwd_out[SampleBatch.ACTION_DIST]
-                if explore:
-                    actions, logp = action_dist.sample(return_logp=True)
-                else:
-                    actions = action_dist.sample()
-                    logp = None
-                state_out = fwd_out.get("state_out", {})
-
-                # anything but action_dist and state_out is an extra fetch
-                for k, v in fwd_out.items():
-                    if k not in [SampleBatch.ACTION_DIST, "state_out"]:
-                        extra_fetches[k] = v
-                dist_inputs = None
-
-            elif is_overridden(self.action_sampler_fn):
-                dist_inputs = None
-                state_out = []
-                actions, logp, dist_inputs, state_out = self.action_sampler_fn(
-                    self.model,
-                    input_dict[SampleBatch.OBS],
-                    explore=explore,
-                    timestep=timestep,
-                    episodes=episodes,
-                )
+            if explore:
+                fwd_out = self.model.forward_exploration(input_dict)
             else:
-                if is_overridden(self.action_distribution_fn):
+                fwd_out = self.model.forward_inference(input_dict)
 
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
-                    (
-                        dist_inputs,
-                        self.dist_class,
-                        state_out,
-                    ) = self.action_distribution_fn(
-                        self.model,
-                        obs_batch=input_dict[SampleBatch.OBS],
-                        state_batches=state_batches,
-                        seq_lens=seq_lens,
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False,
-                    )
-                elif isinstance(self.model, tf.keras.Model):
-                    input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
-                    if state_batches and "state_in_0" not in input_dict:
-                        for i, s in enumerate(state_batches):
-                            input_dict[f"state_in_{i}"] = s
-                    self._lazy_tensor_dict(input_dict)
-                    dist_inputs, state_out, extra_fetches = self.model(input_dict)
-                else:
-                    dist_inputs, state_out = self.model(
-                        input_dict, state_batches, seq_lens
-                    )
+            action_dist = fwd_out[SampleBatch.ACTION_DIST]
+            if explore:
+                actions = action_dist.sample()
+                logp = action_dist.logp(actions)
+            else:
+                actions = action_dist.sample()
+                logp = None
+            state_out = fwd_out.get("state_out", {})
 
-                action_dist = self.dist_class(dist_inputs, self.model)
+            # anything but action_dist and state_out is an extra fetch
+            for k, v in fwd_out.items():
+                if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                    extra_fetches[k] = v
+            dist_inputs = None
 
-                # Get the exploration action from the forward results.
-                actions, logp = self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
+        elif is_overridden(self.action_sampler_fn):
+            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
+                self.model,
+                input_dict[SampleBatch.OBS],
+                explore=explore,
+                timestep=timestep,
+                episodes=episodes,
+            )
+        else:
+            if is_overridden(self.action_distribution_fn):
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                (
+                    dist_inputs,
+                    self.dist_class,
+                    state_out,
+                ) = self.action_distribution_fn(
+                    self.model,
+                    obs_batch=input_dict[SampleBatch.OBS],
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
                     explore=explore,
+                    timestep=timestep,
+                    is_training=False,
                 )
+            elif isinstance(self.model, tf.keras.Model):
+                input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                if state_batches and "state_in_0" not in input_dict:
+                    for i, s in enumerate(state_batches):
+                        input_dict[f"state_in_{i}"] = s
+                self._lazy_tensor_dict(input_dict)
+                dist_inputs, state_out, extra_fetches = self.model(input_dict)
+            else:
+                dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
+
+            action_dist = self.dist_class(dist_inputs, self.model)
+
+            # Get the exploration action from the forward results.
+            actions, logp = self.exploration.get_exploration_action(
+                action_distribution=action_dist,
+                timestep=timestep,
+                explore=explore,
+            )
+
+        if self.config.get("_enable_rl_module_api", False) is False:
+            scope.__exit__(None, None, None)
 
         # Action-logp and action-prob.
         if logp is not None:

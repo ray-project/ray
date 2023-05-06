@@ -41,6 +41,8 @@ _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
+# The namespace is a constant UUID to prevent conflicts, as defined in RFC-4122
+_CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181")
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +215,17 @@ class Checkpoint:
         self._override_preprocessor: Optional["Preprocessor"] = None
         self._override_preprocessor_set = False
 
-        self._uuid = uuid.uuid4()
+        # When using a cloud URI, we make sure that the uuid is constant.
+        # This ensures we do not download the data multiple times on one node.
+        # Note that this is not a caching mechanism - instead, this
+        # only ensures that if there are several processes downloading
+        # from the same URI, only one process does the actual work
+        # while the rest waits (FileLock). This also means data will not be duplicated.
+        self._uuid = (
+            uuid.uuid4()
+            if not self._uri
+            else uuid.uuid5(_CHECKPOINT_UUID_URI_NAMESPACE, self._uri)
+        )
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -245,6 +257,37 @@ class Checkpoint:
             )
         for attr, value in metadata.checkpoint_state.items():
             setattr(self, attr, value)
+
+    @property
+    def path(self) -> Optional[str]:
+        """Return path to checkpoint, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local path if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.path == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.path == None
+
+        Returns:
+            Checkpoint path if this checkpoint is reachable from the current node (e.g.
+            cloud storage or locally available directory).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path:
+            return self._local_path
+
+        return None
 
     @property
     def uri(self) -> Optional[str]:

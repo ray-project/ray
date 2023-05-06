@@ -558,7 +558,7 @@ class SampleBatch(dict):
         assert (
             sum(s.count for s in slices) == self.count
         ), f"Calling split_by_episode on {self} returns {slices}"
-        f"which should both have {self.count} timesteps!"
+        f"which should in total have {self.count} timesteps!"
         return slices
 
     def slice(
