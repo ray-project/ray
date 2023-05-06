@@ -439,7 +439,8 @@ def ray_get(
         "E.g., --filter 'key=value' or --filter 'key!=value'. "
         "You can specify multiple --filter options. In this case all predicates "
         "are concatenated as AND. For example, --filter key=value --filter key2=value "
-        "means (key==val) AND (key2==val2)"
+        "means (key==val) AND (key2==val2). "
+        "String filter values are case-insensitive."
     ),
     multiple=True,
 )
