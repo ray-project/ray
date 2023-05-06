@@ -15,6 +15,7 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -105,9 +106,13 @@ def _get_input_batch_from_obs(framework, obs):
     if framework == "torch":
         batch = {
             SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+            STATE_IN: None,
         }
     else:
-        batch = {SampleBatch.OBS: tf.convert_to_tensor([obs])}
+        batch = {
+            SampleBatch.OBS: tf.convert_to_tensor([obs]),
+            STATE_IN: None,
+        }
     return batch
 
 
@@ -132,9 +137,6 @@ class TestPPO(unittest.TestCase):
             fw, env_name, fwd_fn, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
-                continue
-            if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # TODO(Artur): Implement CNN in TF2.
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
             if env_name.startswith("ALE/"):
@@ -180,9 +182,6 @@ class TestPPO(unittest.TestCase):
             fw, env_name, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
-                continue
-            if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # TODO(Artur): Implement CNN in TF2.
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
             # TODO(Artur): Figure out why this is needed and fix it.
@@ -233,6 +232,7 @@ class TestPPO(unittest.TestCase):
                     SampleBatch.REWARDS: np.array(reward),
                     SampleBatch.TERMINATEDS: np.array(terminated),
                     SampleBatch.TRUNCATEDS: np.array(truncated),
+                    STATE_IN: None,
                 }
 
                 # TODO (Artur): Un-uncomment once Policy supports RNN

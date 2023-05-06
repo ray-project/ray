@@ -210,13 +210,17 @@ def batch(func: F) -> G:
 # "Decorator factory" use case (called with arguments).
 @overload
 def batch(
-    max_batch_size: Optional[int] = 10, batch_wait_timeout_s: Optional[float] = 0.0
+    max_batch_size: int = 10, batch_wait_timeout_s: float = 0.0
 ) -> Callable[[F], G]:
     pass
 
 
 @PublicAPI(stability="beta")
-def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
+def batch(
+    _func: Optional[Callable] = None,
+    max_batch_size: int = 10,
+    batch_wait_timeout_s: float = 0.0,
+):
     """Converts a function to asynchronously handle batches.
 
     The function can be a standalone function or a class method. In both
@@ -228,19 +232,33 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
     Example:
-        >>> from ray import serve
-        >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5) # doctest: +SKIP
-        ... async def handle_batch(batch: List[str]): # doctest: +SKIP
-        ...     return [s.lower() for s in batch] # doctest: +SKIP
-        >>> async def handle_single(s: str): # doctest: +SKIP
-        ...     # Returns s.lower().
-        ...     return await handle_batch(s) # doctest: +SKIP
+
+    .. code-block:: python
+
+            from ray import serve
+            from starlette.requests import Request
+
+            @serve.deployment
+            class BatchedDeployment:
+                @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
+                async def batch_handler(self, requests: List[Request]) -> List[str]:
+                    response_batch = []
+                    for r in requests:
+                        name = (await requests.json())["name"]
+                        response_batch.append(f"Hello {name}!")
+
+                    return response_batch
+
+                async def __call__(self, request: Request):
+                    return await self.batch_handler(request)
+
+            app = BatchedDeployment.bind()
 
     Arguments:
         max_batch_size: the maximum batch size that will be executed in
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
-            `max_batch_size` elements before running the underlying function.
+            `max_batch_size` elements before running the current batch.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
