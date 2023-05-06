@@ -561,7 +561,7 @@ def run(
     # 1.) Tuner.fit() usage
     # 2.) Trainer.fit() usage
     # 3.) Ray client usage (env variables are inherited by the Ray runtime env)
-    air_usage.tag_env_vars()
+    air_usage.tag_ray_air_env_vars()
 
     all_start = time.time()
 
