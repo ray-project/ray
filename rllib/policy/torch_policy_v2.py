@@ -186,7 +186,8 @@ class TorchPolicyV2(Policy):
         if not self.config.get("_enable_learner_api", False):
             self._optimizers = force_list(self.optimizer())
 
-            # Backward compatibility workaround so Policy will call self.loss() directly.
+            # Backward compatibility workaround so Policy will call self.loss()
+            # directly.
             # TODO (jungong): clean up after all policies are migrated to new sub-class
             #  implementation.
             self._loss = None

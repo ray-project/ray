@@ -1384,9 +1384,7 @@ class Policy(metaclass=ABCMeta):
                 the loss.
         """
 
-        if (
-            self.config.get("_disable_initialize_loss_from_dummy_batch", False)
-        ):
+        if self.config.get("_disable_initialize_loss_from_dummy_batch", False):
             return
         # Signal Policy that currently we do not like to eager/jit trace
         # any function calls. This is to be able to track, which columns
@@ -1501,7 +1499,10 @@ class Policy(metaclass=ABCMeta):
         self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
-        if not self.config.get("_enable_learner_api") and auto_remove_unneeded_view_reqs:
+        if (
+            not self.config.get("_enable_learner_api")
+            and auto_remove_unneeded_view_reqs
+        ):
             # Add those needed for postprocessing and training.
             all_accessed_keys = (
                 train_batch.accessed_keys
