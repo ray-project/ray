@@ -832,6 +832,25 @@
         cluster_compute: gptj_deepspeed_compute_gce.yaml
 
 
+- name: air_example_opt_deepspeed_batch_inference
+  group: AIR examples
+  working_dir: air_examples/opt_deepspeed_batch_inference
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: 30b_deepspeed_env.yaml
+    cluster_compute: 30b_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path opt_deepspeed_batch_inference.ipynb
+
+  # variations: TODO(jungong): add GCP variation.
+
+
 #####################################
 # Workspace templates release tests #
 #####################################
