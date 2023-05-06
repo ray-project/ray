@@ -161,6 +161,9 @@ class LogsManager:
                 resolving by other ids'. Default to "out".
         """
         if actor_id:
+            if get_actor_fn is None:
+                raise ValueError("get_actor_fn needs to be specified for actor_id")
+
             actor_data = get_actor_fn(actor_id)
             if actor_data is None:
                 raise ValueError(f"Actor ID {actor_id} not found.")
