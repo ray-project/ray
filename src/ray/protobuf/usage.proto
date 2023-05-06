@@ -133,5 +133,5 @@ enum TagKey {
 
   // Storage configuration for distributed AIR experiment
   // One of: {"local+no_sync", "local+sync", "s3", "gs", "nfs", "hdfs", "Custom"}
-  AIR_MULTINODE_CLUSTER_STORAGE = 506;
+  AIR_STORAGE_CONFIGURATION = 506;
 }

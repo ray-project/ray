@@ -1,7 +1,7 @@
-import os
 from typing import TYPE_CHECKING, Optional, Set, Union
 import urllib.parse
 
+from ray.air._internal.remote_storage import is_mounted
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
@@ -120,38 +120,27 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
 
 
-def tag_multinode_cluster_storage(
+def tag_ray_air_storage_configuration(
     local_path: str, remote_path: Optional[str], sync_config: "SyncConfig"
-) -> bool:
-    import ray
-
-    if len(ray.nodes()) <= 1:
-        return False
-
-    nfs = local_path and not remote_path and os.path.ismount(local_path)
-    local = local_path and not remote_path
-
-    if nfs:
-        record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "nfs")
-    elif local:
-        if sync_config.syncer is None:
-            record_extra_usage_tag(
-                TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "local+no_sync"
-            )
-        else:
-            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "local+sync")
-    else:
-        assert remote_path
-
+):
+    if remote_path:
         # HDFS or cloud storage
         scheme = urllib.parse.urlparse(remote_path).scheme
         if scheme == "hdfs":
-            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "hdfs")
+            storage_config_tag = "hdfs"
         elif scheme in {"s3", "s3a"}:
-            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "s3")
+            storage_config_tag = "s3"
         elif scheme in {"gs", "gcs"}:
-            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "gs")
+            storage_config_tag = "gs"
         else:
-            record_extra_usage_tag(TagKey.AIR_MULTINODE_CLUSTER_STORAGE, "Custom")
+            storage_config_tag = "custom_remote_storage"
+    elif is_mounted(local_path):
+        # NFS
+        storage_config_tag = "nfs"
+    else:
+        # Local
+        storage_config_tag = (
+            "local+no_sync" if sync_config.syncer is None else "local+sync"
+        )
 
-    return True
+    record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
