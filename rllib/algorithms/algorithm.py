@@ -210,12 +210,14 @@ class Algorithm(Trainable):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
-    _progress_metrics = [
-        "sampler_results/episode_reward_mean",
-        "evaluation/sampler_results/episode_reward_mean",
+    _progress_metrics = (
         "num_env_steps_sampled",
         "num_env_steps_trained",
-    ]
+        "episodes_total",
+        "sampler_results/episode_len_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
+    )
 
     @staticmethod
     def from_checkpoint(
@@ -721,10 +723,10 @@ class Algorithm(Trainable):
         self.learner_group = None
         if self.config._enable_learner_api:
             # TODO (Kourosh): This is an interim solution where policies and modules
-            # co-exist. In this world we have both policy_map and MARLModule that need
-            # to be consistent with one another. To make a consistent parity between
-            # the two we need to loop through the policy modules and create a simple
-            # MARLModule from the RLModule within each policy.
+            #  co-exist. In this world we have both policy_map and MARLModule that need
+            #  to be consistent with one another. To make a consistent parity between
+            #  the two we need to loop through the policy modules and create a simple
+            #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_spec = local_worker.marl_module_spec
             learner_group_config = self.config.get_learner_group_config(module_spec)

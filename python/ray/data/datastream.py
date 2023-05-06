@@ -436,7 +436,7 @@ class Datastream:
 
             Here ``fn`` returns the same batch type as the input, but your ``fn`` can
             also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`user-defined function output types <transform_datastreams_batch_output_types>`.
+            :ref:`Transforming Data <transforming_data>`.
 
             >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -512,9 +512,7 @@ class Datastream:
                 will be writable, which will require an extra copy to guarantee.
                 If ``fn`` mutates its input, this will need to be ``False`` in order to
                 avoid "assignment destination is read-only" or "buffer source array is
-                read-only" errors. Default is ``False``. See
-                :ref:`batch format docs <transform_datastreams_batch_formats>` for details
-                on which format conversion always require a copy.
+                read-only" errors. Default is ``False``.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -4379,6 +4377,8 @@ class Datastream:
         self._current_executor = None
 
     def __del__(self):
+        if sys.meta_path is None:
+            return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
 

@@ -1143,3 +1143,23 @@ def enable_syncer_test(request, monkeypatch):
     yield
     monkeypatch.delenv("RAY_use_ray_syncer")
     ray._raylet.Config.initialize("")
+
+
+@pytest.fixture(scope="function")
+def temp_file(request):
+    with tempfile.NamedTemporaryFile("r+b") as fp:
+        yield fp
+
+
+@pytest.fixture(scope="module")
+def random_ascii_file(request):
+    import random
+    import string
+
+    file_size = getattr(request, "param", 1 << 10)
+
+    with tempfile.NamedTemporaryFile(mode="r+b") as fp:
+        fp.write("".join(random.choices(string.ascii_letters, k=file_size)).encode())
+        fp.flush()
+
+        yield fp

@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(TfLearner, AppoLearner):
+class APPOTfLearner(AppoLearner, TfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
     @override(TfLearner)
@@ -26,8 +26,10 @@ class APPOTfLearner(TfLearner, AppoLearner):
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
+
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
+
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )
@@ -158,20 +160,17 @@ class APPOTfLearner(TfLearner, AppoLearner):
 
     @override(AppoLearner)
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
-    ):
-        if module_id in sampled_kls:
-            sampled_kl = sampled_kls[module_id]
-            kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
-            # Update the current KL value based on the recently measured value.
-            # Increase.
-            # TODO (Kourosh) why not 2?
-            if sampled_kl > 2.0 * self.hps.kl_target:
-                kl_coeff_var.assign(kl_coeff_var * 1.5)
-            # Decrease.
-            elif sampled_kl < 0.5 * self.hps.kl_target:
-                kl_coeff_var.assign(kl_coeff_var * 0.5)
+        self, module_id: ModuleID, sampled_kl: float
+    ) -> Dict[str, Any]:
+        # Update the current KL value based on the recently measured value.
+        # Increase.
+        kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-    @override(AppoLearner)
-    def _get_kl_variable(self, value: float) -> Any:
-        return tf.Variable(value, trainable=False, dtype=tf.float32)
+        if sampled_kl > 2.0 * self.hps.kl_target:
+            # TODO (Kourosh) why not *2.0?
+            kl_coeff_var.assign(kl_coeff_var * 1.5)
+        # Decrease.
+        elif sampled_kl < 0.5 * self.hps.kl_target:
+            kl_coeff_var.assign(kl_coeff_var * 0.5)
+
+        return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()}

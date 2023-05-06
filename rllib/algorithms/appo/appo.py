@@ -28,8 +28,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
-    NUM_ENV_STEPS_TRAINED,
-    NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
@@ -252,6 +250,9 @@ class APPOConfig(ImpalaConfig):
             kl_coeff=self.kl_coeff,
             clip_param=self.clip_param,
             tau=self.tau,
+            target_update_frequency_ts=(
+                self.train_batch_size * self.num_sgd_iter * self.target_update_frequency
+            ),
             **dataclasses.asdict(base_hps),
         )
 
@@ -300,44 +301,14 @@ class APPO(Impala):
                 training step.
         """
 
-        last_update = self._counters[LAST_TARGET_UPDATE_TS]
-
         if self.config._enable_learner_api:
-            # using steps trained here instead of sampled ... I'm not sure why the
-            # other implementation uses sampled.
-            # to be quite frank, im not sure if I understand how their target update
-            # freq would work. The difference in steps sampled/trained is pretty
-            # much always going to be larger than self.config.num_sgd_iter *
-            # self.config.minibatch_buffer_size unless the number of steps collected
-            # is really small. The thing is that the default rollout fragment length
-            # is 50, so the minibatch buffer size * num_sgd_iter is going to be
-            # have to be 50 to even meet the threshold of having delayed target
-            # updates.
-            # we should instead have the target / kl threshold update be based off
-            # of the train_batch_size * some target update frequency * num_sgd_iter.
-            cur_ts = self._counters[
-                NUM_ENV_STEPS_TRAINED
-                if self.config.count_steps_by == "env_steps"
-                else NUM_AGENT_STEPS_TRAINED
-            ]
-            target_update_steps_freq = (
-                self.config.train_batch_size
-                * self.config.num_sgd_iter
-                * self.config.target_update_frequency
-            )
-            if (cur_ts - last_update) >= target_update_steps_freq:
-                kls_to_update = {}
-                if self.config.use_kl_loss and train_results:
-                    for module_id, module_results in train_results.items():
-                        if module_id != ALL_MODULES:
-                            kls_to_update[module_id] = module_results[
-                                LEARNER_STATS_KEY
-                            ][LEARNER_RESULTS_KL_KEY]
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-                self.learner_group.additional_update(sampled_kls=kls_to_update)
-
+            if NUM_TARGET_UPDATES in train_results:
+                self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
+                self._counters[LAST_TARGET_UPDATE_TS] = train_results[
+                    LAST_TARGET_UPDATE_TS
+                ]
         else:
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
             cur_ts = self._counters[
                 NUM_AGENT_STEPS_SAMPLED
                 if self.config.count_steps_by == "agent_steps"
@@ -378,6 +349,17 @@ class APPO(Impala):
                     # Update KL on all trainable policies within the local (trainer)
                     # Worker.
                     self.workers.local_worker().foreach_policy_to_train(update)
+
+    @override(Impala)
+    def _get_additional_update_kwargs(self, train_results) -> dict:
+        return dict(
+            last_update=self._counters[LAST_TARGET_UPDATE_TS],
+            mean_kl_loss_per_module={
+                mid: r[LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
+                for mid, r in train_results.items()
+                if mid != ALL_MODULES
+            },
+        )
 
     @override(Impala)
     def training_step(self) -> ResultDict:

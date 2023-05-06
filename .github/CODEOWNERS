@@ -23,7 +23,7 @@
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
 # Autoscaler
-/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl
+/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl @ray-project/ray-core
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -76,8 +76,8 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani
-/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @maxpumperla @ray-project/ray-docs
+/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen
+/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @maxpumperla @ray-project/ray-docs
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark

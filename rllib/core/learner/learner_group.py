@@ -332,7 +332,7 @@ class LearnerGroup:
             return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for worker in self._workers]
+                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
             if reduce_fn is None:

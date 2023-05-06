@@ -4,13 +4,19 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.ppo.ppo_learner import (
+    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+)
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
+from ray.rllib.core.learner.learner import (
+    LEARNER_RESULTS_CURR_LR_KEY,
+)
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -47,36 +53,27 @@ def get_model_config(framework, lstm=False):
 
 
 class MyCallbacks(DefaultCallbacks):
-    @staticmethod
-    def _check_lr_torch(policy, policy_id):
-        for j, opt in enumerate(policy._optimizers):
-            for p in opt.param_groups:
-                assert p["lr"] == policy.cur_lr, "LR scheduling error!"
-
-    @staticmethod
-    def _check_lr_tf(policy, policy_id):
-        lr = policy.cur_lr
-        sess = policy.get_session()
-        if sess:
-            lr = sess.run(lr)
-            optim_lr = sess.run(policy._optimizer._lr)
-        else:
-            lr = lr.numpy()
-            optim_lr = policy._optimizer.lr.numpy()
-        assert lr == optim_lr, "LR scheduling error!"
-
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
-        # Learning rate should go to 0 after 1 iter.
-        check(stats["cur_lr"], 5e-5 if algorithm.iteration == 1 else 0.0)
+        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
-        check(stats["entropy_coeff"], 0.1 if algorithm.iteration == 1 else 0.05)
-
-        algorithm.workers.foreach_policy(
-            self._check_lr_torch
-            if algorithm.config.framework_str == "torch"
-            else self._check_lr_tf
+        check(
+            stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
+            0.05 if algorithm.iteration == 1 else 0.0,
         )
+
+        # Learning rate should decrease by 0.0001 per iteration.
+        check(
+            stats[LEARNER_RESULTS_CURR_LR_KEY],
+            0.0003 if algorithm.iteration == 1 else 0.0002,
+        )
+        # Compare reported curr lr vs the actual lr found in the optimizer object.
+        optim = algorithm.learner_group._learner._named_optimizers[DEFAULT_POLICY_ID]
+        actual_optimizer_lr = (
+            optim.param_groups[0]["lr"]
+            if algorithm.config.framework_str == "torch"
+            else optim.lr
+        )
+        check(stats[LEARNER_RESULTS_CURR_LR_KEY], actual_optimizer_lr)
 
 
 class TestPPO(unittest.TestCase):
@@ -96,26 +93,24 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .training(
                 num_sgd_iter=2,
-                # Setup lr schedule for testing.
-                lr_schedule=[[0, 5e-5], [128, 0.0]],
+                # Setup lr schedule for testing lr-scheduling correctness.
+                lr_schedule=[[0, 0.0004], [512, 0.0]],  # 512=4x128
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
-                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
+                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],  # 256=2x128
                 train_batch_size=128,
-                # TODO (Kourosh): Enable when the scheduler is supported in the new
-                # Learner API stack.
-                _enable_learner_api=False,
+                _enable_learner_api=True,
             )
             .rollouts(
                 num_rollout_workers=1,
                 # Test with compression.
-                compress_observations=True,
+                # compress_observations=True,
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
-        )  # For checking lr-schedule correctness.
+        )
 
         num_iterations = 2
 
@@ -131,10 +126,13 @@ class TestPPO(unittest.TestCase):
                     config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
-                    policy = algo.get_policy()
+                    optim = algo.learner_group._learner._named_optimizers[
+                        DEFAULT_POLICY_ID
+                    ]
                     entropy_coeff = algo.get_policy().entropy_coeff
-                    lr = policy.cur_lr
+                    lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
                     check(entropy_coeff, 0.1)
+                    # Check initial LR directly set in optimizer.
                     check(lr, config.lr)
 
                     for i in range(num_iterations):
@@ -164,7 +162,7 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        for fw in framework_iterator(
+        for _ in framework_iterator(
             config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
             # Default Agent should be setup with StochasticSampling.
@@ -217,8 +215,7 @@ class TestPPO(unittest.TestCase):
             .training(_enable_learner_api=True)
         )
 
-        # TODO(Artur): Enable this test for tf2 once we support CNNs
-        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             trainer = config.build()
             policy = trainer.get_policy()
 

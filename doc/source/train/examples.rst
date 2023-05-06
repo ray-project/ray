@@ -31,109 +31,98 @@ and use cases. You can filter these examples by the following categories:
 Distributed Training Examples using Ray Train
 ---------------------------------------------
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 1 2 3 3
+    :gutter: 1
+    :class-container: container pb-4
 
-    ---
-    :img-top: /images/pytorch_logo.png
+    .. grid-item-card::
+        :img-top: /images/pytorch_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: torch_fashion_mnist_ex
-        :type: ref
-        :text: PyTorch Fashion MNIST Training Example
-        :classes: btn-link btn-block stretched-link trainTorchFashionMnist
+        .. button-ref:: torch_fashion_mnist_ex
 
-    ---
-    :img-top: /images/hugging.png
+            PyTorch Fashion MNIST Training Example
 
-    +++
-    .. link-button:: train_transformers_example
-        :type: ref
-        :text: Transformers with PyTorch Training Example
-        :classes: btn-link btn-block stretched-link trainTransformers
+    .. grid-item-card::
+        :img-top: images/hugging.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tf_logo.png
+        .. button-ref:: train_transformers_example
 
-    +++
-    .. link-button:: tensorflow_mnist_example
-        :type: ref
-        :text: TensorFlow MNIST Training Example
-        :classes: btn-link btn-block stretched-link trainTensorflowMnist
+            Transformers with PyTorch Training Example
 
-    ---
-    :img-top: /images/horovod.png
+    .. grid-item-card::
+        :img-top: /images/tf_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: horovod_example
-        :type: ref
-        :text: End-to-end Horovod Training Example
-        :classes: btn-link btn-block stretched-link trainHorovod
-    
-    ---
-    :img-top: /images/pytorch_lightning_small.png
+        .. button-ref:: tensorflow_mnist_example
 
-    +++
-    .. link-button:: lightning_mnist_example
-        :type: ref
-        :text: End-to-end PyTorch Lightning Training Example
-        :classes: btn-link btn-block stretched-link trainLightning
+            TensorFlow MNIST Training Example
 
-    ---
-    :img-top: /images/pytorch_lightning_small.png
+    .. grid-item-card::
+        :img-top: /images/horovod.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: lightning_advanced_example
-        :type: ref
-        :text: Use LightningTrainer with Ray Data and Batch Predictor
-        :classes: btn-link btn-block stretched-link trainLightning
+        .. button-ref:: horovod_example
+
+            End-to-end Horovod Training Example
+
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: lightning_mnist_example
+
+            End-to-end PyTorch Lightning Training Example
+
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: lightning_advanced_example
+
+            Use LightningTrainer with Ray Data and Batch Predictor
     
 
 Ray Train Examples Using Loggers & Callbacks
 --------------------------------------------
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-    ---
-    :img-top: /images/mlflow.png
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    +++
-    .. link-button:: train_mlflow_example
-        :type: ref
-        :text: Logging Training Runs with MLflow
-        :classes: btn-link btn-block stretched-link trainMlflow
+    .. grid-item-card::
+        :img-top: /images/mlflow.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: train_mlflow_example
+
+            Logging Training Runs with MLflow
 
 
 Ray Train & Tune Integration Examples
 -------------------------------------
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: tune_train_tf_example
-        :type: ref
-        :text: End-to-end Example for Tuning a TensorFlow Model
-        :classes: btn-link btn-block stretched-link trainTuneTensorflow
+        .. button-ref:: tune_train_tf_example
 
-    ---
-    :img-top: /images/tune.png
+            End-to-end Example for Tuning a TensorFlow Model
 
-    +++
-    .. link-button:: tune_train_torch_example
-        :type: ref
-        :text: End-to-end Example for Tuning a PyTorch Model with PBT
-        :classes: btn-link btn-block stretched-link trainTunePyTorch
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_train_torch_example
+
+            End-to-end Example for Tuning a PyTorch Model with PBT
 
 ..
     TODO implement these examples!
@@ -152,16 +141,15 @@ Ray Train & Tune Integration Examples
 Ray Train Benchmarks
 --------------------
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    +++
-    .. link-button:: train_benchmark
-        :type: ref
-        :text: Benchmark example for the PyTorch data transfer auto pipeline
-        :classes: btn-link btn-block stretched-link trainBenchmark
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: train_benchmark
+
+            Benchmark example for the PyTorch data transfer auto pipeline

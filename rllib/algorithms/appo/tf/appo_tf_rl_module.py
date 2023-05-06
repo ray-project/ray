@@ -38,9 +38,9 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTfRLModule)
     def output_specs_train(self) -> List[str]:
         return [
-            SampleBatch.ACTION_DIST,
+            SampleBatch.ACTION_DIST_INPUTS,
             SampleBatch.VF_PREDS,
-            OLD_ACTION_DIST_KEY,
+            OLD_ACTION_DIST_LOGITS_KEY,
         ]
 
     @override(PPOTfRLModule)

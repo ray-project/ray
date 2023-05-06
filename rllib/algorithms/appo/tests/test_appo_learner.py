@@ -10,8 +10,7 @@ from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -69,18 +68,19 @@ class TestAPPOTfLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
+                _enable_learner_api=True,
             )
             .rl_module(
                 _enable_rl_module_api=True,
             )
         )
         # We have to set exploration_config here manually because setting it through
-        # config.exploration() only deepupdates it
+        # config.exploration() only deep-updates it
         config.exploration_config = {}
 
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             if fw == "tf2":
                 train_batch = SampleBatch(
@@ -90,7 +90,6 @@ class TestAPPOTfLearner(unittest.TestCase):
                 train_batch = SampleBatch(
                     tree.map_structure(lambda x: convert_to_torch_tensor(x), FAKE_BATCH)
                 )
-            policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             algo_config = config.copy(copy_frozen=False)
             algo_config.training(_enable_learner_api=True)
@@ -108,11 +107,10 @@ class TestAPPOTfLearner(unittest.TestCase):
             )
             learner_group_config.num_learner_workers = 0
             learner_group = learner_group_config.build()
-            learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(batches=[train_batch.as_multi_agent()])
-            learner_group_loss = results[ALL_MODULES]["total_loss"]
+            learner_group.set_weights(algo.get_weights())
+            learner_group.update(train_batch.as_multi_agent())
 
-            check(learner_group_loss, policy_loss)
+            algo.stop()
 
     def test_kl_coeff_changes(self):
         initial_kl_coeff = 0.01
@@ -120,6 +118,8 @@ class TestAPPOTfLearner(unittest.TestCase):
             appo.APPOConfig()
             .environment("CartPole-v1")
             .framework(eager_tracing=True)
+            # Asynchronous Algo, make sure we have some results after 1 iteration.
+            .reporting(min_time_s_per_iteration=10)
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=frag_length,
@@ -150,8 +150,8 @@ class TestAPPOTfLearner(unittest.TestCase):
                 if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_POLICY_ID):
                     break
             curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY
-            ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY
+            ]
             self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
 
 

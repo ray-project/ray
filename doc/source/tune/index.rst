@@ -95,87 +95,105 @@ And you can move your models from training to serving on the same infrastructure
 .. _`Ray Serve`: ../serve/index.html
 
 
-.. panels::
-    :container: text-center
-    :column: col-md-4 px-2 py-2
-    :card:
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    **Getting Started**
-    ^^^
+    .. grid-item-card::
 
-    In our getting started tutorial you will learn how to tune a PyTorch model
-    effectively with Tune.
+        **Getting Started**
+        ^^^
 
-    +++
-    .. link-button:: tune-tutorial
-        :type: ref
-        :text: Get Started with Tune
-        :classes: btn-outline-info btn-block
-    ---
+        In our getting started tutorial you will learn how to tune a PyTorch model
+        effectively with Tune.
 
-    **Key Concepts**
-    ^^^
+        +++
+        .. button-ref:: tune-tutorial
+            :color: primary
+            :outline:
+            :expand:
 
-    Understand the key concepts behind Ray Tune.
-    Learn about tune runs, search algorithms, schedulers and other features.
+            Get Started with Tune
 
-    +++
-    .. link-button:: tune-60-seconds
-        :type: ref
-        :text: Tune's Key Concepts
-        :classes: btn-outline-info btn-block
-    ---
+    .. grid-item-card::
 
-    **User Guides**
-    ^^^
+        **Key Concepts**
+        ^^^
 
-    Our guides teach you about key features of Tune,
-    such as distributed training or early stopping.
+        Understand the key concepts behind Ray Tune.
+        Learn about tune runs, search algorithms, schedulers and other features.
+
+        +++
+        .. button-ref:: tune-60-seconds
+            :color: primary
+            :outline:
+            :expand:
+
+            Tune's Key Concepts
+
+    .. grid-item-card::
+
+        **User Guides**
+        ^^^
+
+        Our guides teach you about key features of Tune,
+        such as distributed training or early stopping.
 
 
-    +++
-    .. link-button:: tune-guides
-        :type: ref
-        :text: Learn How To Use Tune
-        :classes: btn-outline-info btn-block
-    ---
+        +++
+        .. button-ref:: tune-guides
+            :color: primary
+            :outline:
+            :expand:
 
-    **Examples**
-    ^^^
+            Learn How To Use Tune
 
-    In our examples you can find practical tutorials for using frameworks such as
-    scikit-learn, Keras, TensorFlow, PyTorch, and mlflow, and state of the art search algorithm integrations.
+    .. grid-item-card::
 
-    +++
-    .. link-button:: tune-examples-ref
-        :type: ref
-        :text: Ray Tune Examples
-        :classes: btn-outline-info btn-block
-    ---
+        **Examples**
+        ^^^
 
-    **Ray Tune FAQ**
-    ^^^
+        In our examples you can find practical tutorials for using frameworks such as
+        scikit-learn, Keras, TensorFlow, PyTorch, and mlflow, and state of the art search algorithm integrations.
 
-    Find answers to commonly asked questions in our detailed FAQ.
+        +++
+        .. button-ref::  tune-examples-ref
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: tune-faq
-        :type: ref
-        :text: Ray Tune FAQ
-        :classes: btn-outline-info btn-block
-    ---
+            Ray Tune Examples
 
-    **Ray Tune API**
-    ^^^
+    .. grid-item-card::
 
-    Get more in-depth information about the Ray Tune API, including all about search spaces,
-    algorithms and training configurations.
+        **Ray Tune FAQ**
+        ^^^
 
-    +++
-    .. link-button:: tune-api-ref
-        :type: ref
-        :text: Read the API Reference
-        :classes: btn-outline-info btn-block
+        Find answers to commonly asked questions in our detailed FAQ.
+
+        +++
+        .. button-ref:: tune-faq
+            :color: primary
+            :outline:
+            :expand:
+
+            Ray Tune FAQ
+
+    .. grid-item-card::
+
+        **Ray Tune API**
+        ^^^
+
+        Get more in-depth information about the Ray Tune API, including all about search spaces,
+        algorithms and training configurations.
+
+        +++
+        .. button-ref:: tune-api-ref
+            :color: primary
+            :outline:
+            :expand:
+
+            Read the API Reference
 
 
 Why choose Tune?

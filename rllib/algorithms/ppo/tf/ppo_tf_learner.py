@@ -99,7 +99,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.hps.entropy_coeff * curr_entropy
+            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
@@ -117,10 +117,6 @@ class PPOTfLearner(PPOLearner, TfLearner):
             ),
             ENTROPY_KEY: mean_entropy,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-            LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: self.hps.entropy_coeff,
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                self.curr_kl_coeffs_per_module[module_id]
-            ),
         }
 
     @override(PPOLearner)
@@ -147,5 +143,32 @@ class PPOTfLearner(PPOLearner, TfLearner):
         return results
 
     @override(PPOLearner)
-    def _get_kl_variable(self, value: float) -> Any:
-        return tf.Variable(value, trainable=False, dtype=tf.float32)
+    def additional_update_per_module(
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    ) -> Dict[str, Any]:
+        assert sampled_kl_values, "Sampled KL values are empty."
+
+        results = super().additional_update_per_module(
+            module_id,
+            sampled_kl_values=sampled_kl_values,
+            timestep=timestep,
+        )
+
+        # Update KL coefficient.
+        sampled_kl = sampled_kl_values[module_id]
+        curr_var = self.curr_kl_coeffs_per_module[module_id]
+        if sampled_kl > 2.0 * self.hps.kl_target:
+            # TODO (Kourosh) why not 2?
+            curr_var.assign(curr_var * 1.5)
+        elif sampled_kl < 0.5 * self.hps.kl_target:
+            curr_var.assign(curr_var * 0.5)
+        results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
+
+        # Update entropy coefficient.
+        value = self.hps.entropy_coeff
+        if self.hps.entropy_coeff_schedule is not None:
+            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
+            self.curr_entropy_coeffs_per_module[module_id].assign(value)
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
+
+        return results
