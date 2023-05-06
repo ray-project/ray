@@ -1101,11 +1101,8 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        print(self.model)
-
-        extra_fetches = {}
+        extra_fetches = None
         if isinstance(self.model, RLModule):
-            print("is RLModule!")
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
             else:
@@ -1166,7 +1163,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if not extra_fetches:
+        if extra_fetches is None:
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )
