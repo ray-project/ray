@@ -892,10 +892,6 @@ async def test_api_manager_list_workers(state_api_manager):
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -977,10 +973,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert len(result.result) == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1089,10 +1081,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     assert result["end_time_ms"] is None
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1180,10 +1168,6 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1292,10 +1276,6 @@ async def test_api_manager_list_objects(state_api_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
