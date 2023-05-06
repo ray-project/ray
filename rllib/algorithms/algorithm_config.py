@@ -425,7 +425,7 @@ class AlgorithmConfig(_Config):
         # Separate configs for how to compile instaces of RL Modules used for
         # learning or sampling.
         self.torch_compile_learner_config = TorchCompileConfig()
-        self.torch_compile_policy_config = TorchCompileConfig()
+        self.torch_compile_worker_config = TorchCompileConfig()
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
