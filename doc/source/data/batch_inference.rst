@@ -681,7 +681,7 @@ tutorials and examples:
         :img-top:  /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: /data/examples/torch_detection
+        .. button-ref:: /ray-air/examples/torch_detection
 
             Fine-tuning an Object Detection Model and using it for Batch Inference
 
@@ -689,6 +689,14 @@ tutorials and examples:
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: /data/examples/torch_image_example
+        .. button-ref:: /ray-air/examples/torch_image_example
 
             Training an Image Classifier and using it for Batch Inference
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /ray-air/examples/stablediffusion_batch_prediction
+
+            Stable Diffusion Batch Prediction with Ray AIR

@@ -22,7 +22,6 @@ multi-agent-cartpole-alpha-star:
         num_sgd_iter: 1
         vf_loss_coeff: 0.005
         vtrace: true
-        vtrace_drop_last_ts: false
         model:
             fcnet_hiddens: [32]
             fcnet_activation: linear

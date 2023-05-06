@@ -1,50 +1,46 @@
 import logging
-from typing import Dict, List, Union
 
-from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import (
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
+    make_time_major,
+    vtrace_torch,
+)
+from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
     LearningRateSchedule,
     KLCoeffMixin,
-    GradStatsMixin,
     TargetNetworkMixin,
 )
-from ray.rllib.algorithms.impala.impala_tf_policy import (
-    VTraceClipGradients,
+from ray.rllib.algorithms.impala.impala_torch_policy import (
     VTraceOptimizer,
 )
-from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.algorithms.ppo.ppo_torch_policy import validate_config
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import (
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
     explained_variance,
+    global_norm,
 )
 
-
-from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
-from ray.rllib.utils.typing import TensorType
-
-tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
-class APPOTfPolicyWithRLModule(
-    VTraceClipGradients,
+# TODO: Remove once we have a RLModule capable sampler class that can replace
+#  `Policy.compute_actions_from_input_dict()`.
+class APPOTorchPolicyWithRLModule(
     VTraceOptimizer,
     LearningRateSchedule,
     KLCoeffMixin,
     EntropyCoeffSchedule,
     TargetNetworkMixin,
-    GradStatsMixin,
-    EagerTFPolicyV2,
+    TorchPolicyV2,
 ):
     def __init__(self, observation_space, action_space, config):
         validate_config(config)
-        EagerTFPolicyV2.enable_eager_execution_if_necessary()
         # Initialize MixIns before super().__init__ because base class will call
         # self.loss, which requires these MixIns to be initialized.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
@@ -53,30 +49,24 @@ class APPOTfPolicyWithRLModule(
         )
         # Although this is a no-op, we call __init__ here to make it clear
         # that base.__init__ will use the make_model() call.
-        VTraceClipGradients.__init__(self)
+        # VTraceClipGradients.__init__(self)
         VTraceOptimizer.__init__(self)
         self.framework = "tf2"
         KLCoeffMixin.__init__(self, config)
-        GradStatsMixin.__init__(self)
-        EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
+        # GradStatsMixin.__init__(self)
+        TorchPolicyV2.__init__(self, observation_space, action_space, config)
         # Construct the target model and make its weights the same as the model.
         self.target_model = self.make_rl_module()
-        self.target_model.set_weights(self.model.get_weights())
+        self.target_model.load_state_dict(self.model.state_dict())
 
         # Initiate TargetNetwork ops after loss initialization.
-        self.maybe_initialize_optimizer_and_loss()
+        self._initialize_loss_from_dummy_batch()
         TargetNetworkMixin.__init__(self)
 
-    @Deprecated(new="APPOTfLearner.compute_loss_per_module()", error=False)
-    @override(EagerTFPolicyV2)
-    def loss(
-        self,
-        model: Union[ModelV2, "tf.keras.Model"],
-        dist_class,
-        train_batch: SampleBatch,
-    ) -> Union[TensorType, List[TensorType]]:
-        train_batch[SampleBatch.ACTIONS]
+    @override(TorchPolicyV2)
+    def loss(self, model, dist_class, train_batch):
         train_batch[SampleBatch.ACTION_LOGP]
+        train_batch[SampleBatch.ACTIONS]
         train_batch[SampleBatch.REWARDS]
         train_batch[SampleBatch.TERMINATEDS]
 
@@ -134,19 +124,16 @@ class APPOTfPolicyWithRLModule(
         # should they be pre computed?
         discounts_time_major = (
             1.0
-            - tf.cast(
-                make_time_major(
-                    train_batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=rollout_frag_or_episode_len,
-                    recurrent_seq_len=seqs_len,
-                    drop_last=drop_last,
-                ),
-                dtype=tf.float32,
-            )
+            - make_time_major(
+                train_batch[SampleBatch.TERMINATEDS],
+                trajectory_len=rollout_frag_or_episode_len,
+                recurrent_seq_len=seqs_len,
+                drop_last=drop_last,
+            ).float()
         ) * self.config["gamma"]
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
-        vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
+        vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=old_target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
             discounts=discounts_time_major,
@@ -157,35 +144,32 @@ class APPOTfPolicyWithRLModule(
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
         )
 
-        is_ratio = tf.clip_by_value(
-            tf.math.exp(
+        is_ratio = torch.clip(
+            torch.exp(
                 behaviour_actions_logp_time_major - target_actions_logp_time_major
             ),
             0.0,
             2.0,
         )
-        logp_ratio = is_ratio * tf.math.exp(
+        logp_ratio = is_ratio * torch.exp(
             target_actions_logp_time_major - behaviour_actions_logp_time_major
         )
 
         clip_param = self.config["clip_param"]
-        surrogate_loss = tf.math.minimum(
+        surrogate_loss = torch.minimum(
             pg_advantages * logp_ratio,
-            (
-                pg_advantages
-                * tf.clip_by_value(logp_ratio, 1 - clip_param, 1 + clip_param)
-            ),
+            (pg_advantages * torch.clip(logp_ratio, 1 - clip_param, 1 + clip_param)),
         )
         action_kl = old_target_policy_dist.kl(target_policy_dist)
-        mean_kl_loss = tf.math.reduce_mean(action_kl)
-        mean_pi_loss = -tf.math.reduce_mean(surrogate_loss)
+        mean_kl_loss = torch.mean(action_kl)
+        mean_pi_loss = -torch.mean(surrogate_loss)
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
-        mean_vf_loss = 0.5 * tf.math.reduce_mean(delta**2)
+        mean_vf_loss = 0.5 * torch.mean(delta**2)
 
         # The entropy loss.
-        mean_entropy_loss = -tf.math.reduce_mean(target_policy_dist.entropy())
+        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
@@ -206,22 +190,24 @@ class APPOTfPolicyWithRLModule(
         }
         return total_loss
 
-    @override(EagerTFPolicyV2)
-    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    @override(TorchPolicyV2)
+    def stats_fn(self, train_batch: SampleBatch):
         return {
-            "cur_lr": tf.cast(self.cur_lr, tf.float64),
+            "cur_lr": convert_to_torch_tensor(self.cur_lr).type(torch.float64),
             "policy_loss": self.stats["policy_loss"],
             "entropy": self.stats["entropy_loss"],
-            "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
-            "var_gnorm": tf.linalg.global_norm(self.model.trainable_variables),
+            "entropy_coeff": convert_to_torch_tensor(self.entropy_coeff).type(
+                torch.float64
+            ),
+            "var_gnorm": global_norm(self.model.parameters()),
             "vf_loss": self.stats["vf_loss"],
             "vf_explained_var": explained_variance(
-                tf.reshape(self.stats["vtrace_adjusted_target_values"], [-1]),
-                tf.reshape(self.stats["values"], [-1]),
+                torch.reshape(self.stats["vtrace_adjusted_target_values"], [-1]),
+                torch.reshape(self.stats["values"], [-1]),
             ),
             "mean_kl": self.stats["mean_kl"],
         }
 
-    @override(EagerTFPolicyV2)
+    @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:
         return self.config["rollout_fragment_length"]

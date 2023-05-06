@@ -101,6 +101,9 @@ class LearnerGroup:
 
         self._is_module_trainable = _is_module_trainable
 
+        # How many timesteps had to be dropped due to a full input queue?
+        self._in_queue_ts_dropped = 0
+
         if self._is_local:
             self._learner = learner_class(**learner_spec.get_params_dict())
             self._learner.build()
@@ -133,14 +136,12 @@ class LearnerGroup:
             )
             self._in_queue = deque(maxlen=max_queue_len)
 
-    @property
-    def in_queue_size(self) -> int:
-        """Returns the number of batches currently in the in queue to be processed.
-
-        If the queue is reaching its max size, then this learner group likely needs
-        more workers to process incoming batches.
-        """
-        return len(self._in_queue)
+    def get_in_queue_stats(self) -> Mapping[str, Any]:
+        """Returns the current stats for the input queue for this learner group."""
+        return {
+            "learner_group_queue_size": len(self._in_queue),
+            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+        }
 
     @property
     def is_local(self) -> bool:
@@ -303,7 +304,7 @@ class LearnerGroup:
             return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for worker in self._workers]
+                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
             if reduce_fn is None:
