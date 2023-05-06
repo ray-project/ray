@@ -17,7 +17,7 @@ use wasm_on_ray::runtime;
 use wasm_on_ray::runtime::register_ray_hostcalls;
 use wasm_on_ray::util;
 
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
@@ -63,7 +63,7 @@ impl RayWaContextFactory {
             let mut rt = context.runtime.write().unwrap();
             rt.do_init()?;
 
-            let mut engine = context.engine.write().unwrap();
+            let engine = context.engine.write().unwrap();
             engine.init()?;
         }
 

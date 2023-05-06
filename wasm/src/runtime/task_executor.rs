@@ -11,16 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use crate::runtime::common_proto::{Address, TaskType};
-use crate::runtime::core_worker::RayObject;
 use crate::util::RayLog;
-use anyhow::Result;
 use libc::memcpy;
-use rmp::encode::write_i32;
-use std::collections::HashMap;
-use tracing::info;
+use rmp::decode::{read_i32, read_i64, read_marker, read_u32, read_u64};
+use rmp::Marker;
 
-use crate::engine::{TASK_RESULT_RECEIVER, TASK_SENDER};
+use crate::engine::{WasmValue, TASK_RESULT_RECEIVER, TASK_SENDER};
 
 #[repr(C)]
 pub struct Resource {
@@ -38,7 +34,12 @@ pub struct NamedRayObject {
 }
 
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct TaskExecutionInfo {
+    // module name
+    pub mod_fullname: *const u8,
+    pub mod_fullname_len: libc::size_t,
+
     // function name
     pub func_name: *const u8,
     pub func_name_len: libc::size_t,
@@ -55,14 +56,14 @@ pub struct TaskExecutionInfo {
 
 #[derive(Clone, Debug)]
 pub struct WasmTaskExecutionInfo {
+    pub module_name: String,
     pub func_name: String,
-    pub args_buf_list: Vec<Vec<u8>>,
+    pub args: Vec<WasmValue>,
 }
 
 pub struct TaskExecutor {}
 
 extern "C" {
-    #[no_mangle]
     static mut exec_task_func: fn(&mut TaskExecutionInfo) -> i32;
 } // extern "C"
 
@@ -74,6 +75,16 @@ impl TaskExecutor {
     }
 
     pub fn exec_task(task_execution_info: &mut TaskExecutionInfo) -> i32 {
+        // get module name & function name
+        let module_name: String = unsafe {
+            std::slice::from_raw_parts(
+                task_execution_info.mod_fullname,
+                task_execution_info.mod_fullname_len,
+            )
+            .iter()
+            .map(|&c| c as char)
+            .collect()
+        };
         let func_name: String = unsafe {
             std::slice::from_raw_parts(
                 task_execution_info.func_name,
@@ -83,6 +94,7 @@ impl TaskExecutor {
             .map(|&c| c as char)
             .collect()
         };
+
         let args_buf_list: Vec<&[u8]> = unsafe {
             std::slice::from_raw_parts(
                 task_execution_info.args_buf_list,
@@ -96,12 +108,48 @@ impl TaskExecutor {
         };
 
         // print all info
-        RayLog::info(&format!("execute task: {}", func_name));
+        RayLog::info(&format!("module_name: {}", module_name));
+        RayLog::info(&format!("func_name: {}", func_name));
         RayLog::info(&format!("args_buf_list: {:x?}", args_buf_list));
 
+        // convert args_buf_list to WasmValue
+        let mut args: Vec<WasmValue> = vec![];
+        for mut arg_buf in args_buf_list {
+            // read message pack data from buffer
+            let marker_data = Vec::from(&arg_buf[0..1]);
+            match read_marker(&mut marker_data.as_slice()) {
+                Ok(m) => match m {
+                    Marker::U32 => {
+                        args.push(WasmValue::F32(read_u32(&mut arg_buf).unwrap()));
+                        continue;
+                    }
+                    Marker::U64 => {
+                        args.push(WasmValue::F64(read_u64(&mut arg_buf).unwrap()));
+                        continue;
+                    }
+                    Marker::I32 => {
+                        args.push(WasmValue::I32(read_i32(&mut arg_buf).unwrap()));
+                        continue;
+                    }
+                    Marker::I64 => {
+                        args.push(WasmValue::I64(read_i64(&mut arg_buf).unwrap()));
+                        continue;
+                    }
+                    _ => {
+                        RayLog::error(&format!("unsupported marker: {:?}", m));
+                    }
+                },
+                Err(e) => {
+                    RayLog::error(&format!("read marker error: {:?}", e));
+                }
+            }
+            return -1;
+        }
+
         let wasm_task_info = WasmTaskExecutionInfo {
-            func_name: func_name.clone(),
-            args_buf_list: args_buf_list.iter().map(|&x| x.to_vec()).collect(),
+            module_name: module_name.to_string(),
+            func_name,
+            args,
         };
         match TASK_SENDER.lock() {
             Ok(sender) => {
@@ -127,8 +175,17 @@ impl TaskExecutor {
                 match receiver.as_ref() {
                     Some(r) => {
                         // copy data to buffer
-                        let mut data = r.recv().unwrap();
-                        buf.append(&mut data);
+                        let mut res = r.recv().unwrap();
+                        match res {
+                            Ok(mut data) => {
+                                buf.append(&mut data);
+                            }
+                            Err(e) => {
+                                RayLog::error(&format!("get task result error: {:?}", e));
+                                task_execution_info.return_obj_len = 0;
+                                return -1;
+                            }
+                        }
                     }
                     None => {
                         RayLog::error("task result receiver is none");
@@ -146,6 +203,7 @@ impl TaskExecutor {
                 buf.len(),
                 task_execution_info.return_obj_len
             ));
+            task_execution_info.return_obj_len = 0;
             return -1;
         }
         unsafe {

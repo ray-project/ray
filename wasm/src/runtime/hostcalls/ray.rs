@@ -16,10 +16,9 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::{sync::RwLock, vec};
 
-use crate::runtime::common_proto::TaskType;
-
 use crate::engine::WasmEngine;
 use crate::runtime::{Base, ObjectID, RemoteFunctionHolder};
+use crate::util::{SerDesFactory, SerDesType};
 use crate::{
     engine::{Hostcalls, WasmContext, WasmType, WasmValue},
     runtime::RayRuntime,
@@ -28,6 +27,10 @@ use anyhow::{anyhow, Result};
 use core::result::Result::Ok;
 use tracing::{debug, error, info};
 
+const RAY_BUF_MAGIC: u32 = 0xc0de_550a;
+const RAY_BUF_SIZE: usize = 32 * 6 / 8;
+
+// any modifications to the struct should update above related constants
 #[derive(Debug, Clone, Copy)]
 struct RayBufferHolder {
     pub magic: u32,
@@ -35,23 +38,37 @@ struct RayBufferHolder {
     pub ptr: u32,
     pub len: u32,
     pub cap: u32,
+    pub checksum: u32,
 }
 
 impl RayBufferHolder {
     pub fn new() -> Self {
-        Self {
+        let mut res = Self {
             magic: RAY_BUF_MAGIC,
             data_type: RayBufferDataType::Invalid as u32,
             ptr: 0,
             len: 0,
             cap: 0,
-        }
+            checksum: 0,
+        };
+        res.checksum = res.calc_checksum();
+        res
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.checksum == self.calc_checksum()
+    }
+
+    pub fn calc_checksum(&self) -> u32 {
+        let mut checksum = 0u32;
+        checksum ^= self.magic;
+        checksum ^= self.data_type;
+        checksum ^= self.ptr;
+        checksum ^= self.len;
+        checksum ^= self.cap;
+        checksum
     }
 }
-
-// define constants
-const RAY_BUF_MAGIC: u32 = 0xc0de_550a;
-const RAY_BUF_SIZE: usize = 32 * 5 / 8;
 
 enum RayBufferDataType {
     Invalid = 0x0,
@@ -83,12 +100,14 @@ fn ray_buffer_write_data(
                     data.len()
                 )));
             }
+            ray_buf.checksum = ray_buf.calc_checksum();
 
             // write back len and data_type
             v[4..8].copy_from_slice(&ray_buf.data_type.to_le_bytes());
             v[12..16].copy_from_slice(&ray_buf.len.to_le_bytes());
+            v[20..24].copy_from_slice(&ray_buf.checksum.to_le_bytes());
         }
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!(
                 "invalid mutable access to ray buffer data structure"
             ));
@@ -104,7 +123,7 @@ fn load_buffer(ctx: &mut dyn WasmContext, buf_ptr: u32, buf_len: u32) -> Result<
         Ok(v) => {
             buf.copy_from_slice(&v);
         }
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!("invalid access to ray buffer address"));
         }
     }
@@ -131,7 +150,7 @@ fn write_buffer(ctx: &mut dyn WasmContext, buf_ptr: u32, buf_cap: u32, data: &[u
             );
             v[0..data.len()].copy_from_slice(data);
         }
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!("invalid mutable access to ray buffer address"));
         }
     }
@@ -154,8 +173,9 @@ fn read_ray_buffer(ctx: &mut dyn WasmContext, ray_buf_ptr: u32) -> Result<RayBuf
             ray_buf.ptr = u32::from_le_bytes([v[8], v[9], v[10], v[11]]);
             ray_buf.len = u32::from_le_bytes([v[12], v[13], v[14], v[15]]);
             ray_buf.cap = u32::from_le_bytes([v[16], v[17], v[18], v[19]]);
+            ray_buf.checksum = u32::from_le_bytes([v[20], v[21], v[22], v[23]]);
         }
-        Err(e) => {
+        Err(_) => {
             let msg = format!(
                 "invalid ray buffer data structure region, ptr: {:x}",
                 ray_buf_ptr
@@ -163,6 +183,13 @@ fn read_ray_buffer(ctx: &mut dyn WasmContext, ray_buf_ptr: u32) -> Result<RayBuf
             error!("{}", msg);
             return Err(anyhow!(msg));
         }
+    }
+
+    // verify checksum
+    if !ray_buf.is_valid() {
+        let msg = format!("invalid ray buffer checksum, ptr: {:x}", ray_buf_ptr);
+        error!("{}", msg);
+        return Err(anyhow!(msg));
     }
 
     if ray_buf.len > ray_buf.cap {
@@ -176,7 +203,7 @@ fn read_ray_buffer(ctx: &mut dyn WasmContext, ray_buf_ptr: u32) -> Result<RayBuf
 
     match ctx.get_memory_region(ray_buf.ptr as usize, ray_buf.cap as usize) {
         Ok(_) => {}
-        Err(e) => {
+        Err(_) => {
             error!("invalid ray buffer region");
             return Err(anyhow!("invalid object id"));
         }
@@ -204,13 +231,18 @@ pub fn register_ray_hostcalls(
     hostcalls
         .add_hostcall(
             "get",
-            vec![WasmType::I32, WasmType::I32],
+            vec![WasmType::I32, WasmType::I32, WasmType::I32],
             vec![WasmType::I32],
             hc_get,
         )
         .unwrap();
     hostcalls
-        .add_hostcall("put", vec![], vec![], hc_put)
+        .add_hostcall(
+            "put",
+            vec![WasmType::I32, WasmType::I32, WasmType::I32],
+            vec![WasmType::I32],
+            hc_put,
+        )
         .unwrap();
     hostcalls
         .add_hostcall(
@@ -233,7 +265,7 @@ fn hc_test(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVa
 }
 
 fn hc_sleep(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
-    let sleep_time = match &params[0] {
+    match &params[0] {
         WasmValue::I32(v) => {
             sleep(std::time::Duration::from_secs(*v as u64));
         }
@@ -250,6 +282,11 @@ fn hc_shutdown(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<Wa
     Err(anyhow!("not implemented"))
 }
 
+/// get object from object store
+/// params[0]: object id buffer pointer
+/// params[1]: result buffer pointer
+/// params[2]: result buffer length pointer
+/// return 0 if success, -1 if failed
 fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("ray_get: {:x?}", params);
     let obj_id_ptr = match &params[0] {
@@ -259,15 +296,35 @@ fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
             return Ok(vec![WasmValue::I32(-1)]);
         }
     };
-    let result_ptr = match &params[1] {
+    let result_buf_ptr = match &params[1] {
         WasmValue::I32(v) => v.clone(),
         _ => {
             error!("invalid param");
             return Ok(vec![WasmValue::I32(-1)]);
         }
     };
+    let result_len_ptr = match &params[2] {
+        WasmValue::I32(v) => v.clone(),
+        _ => {
+            error!("invalid param");
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    };
+    let result_len = match ctx.get_memory_region(result_len_ptr as usize, 4) {
+        Ok(v) => {
+            debug!(
+                "ray_get: result_len_ptr: {:#08x} content: {:x?}",
+                result_len_ptr, v
+            );
+            u32::from_le_bytes([v[0], v[1], v[2], v[3]])
+        }
+        Err(e) => {
+            error!("cannot access memory region: {}", e);
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    };
 
-    let mut obj_buf = match read_ray_buffer(ctx, obj_id_ptr as u32) {
+    let obj_buf = match read_ray_buffer(ctx, obj_id_ptr as u32) {
         Ok(v) => {
             debug!(
                 "ray_get: obj_id_ptr: {:#08x} content: {:x?}, buffer {:x?}",
@@ -283,38 +340,32 @@ fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
         }
     };
 
-    let mut res_buf = match read_ray_buffer(ctx, result_ptr as u32) {
-        Ok(v) => {
-            debug!(
-                "ray_get: result_ptr: {:#08x} content: {:x?}, buffer {:x?}",
-                result_ptr,
-                v,
-                load_buffer(ctx, v.ptr, v.len)
-            );
-            v
-        }
-        Err(e) => {
-            error!("{}", e.to_string());
-            return Ok(vec![WasmValue::I32(-1)]);
-        }
-    };
-
+    let mut data = Vec::new();
     match load_buffer(ctx, obj_buf.ptr, obj_buf.len) {
         Ok(v) => {
             let obj_id = ObjectID::from_binary(&v.as_slice());
             match ctx.get_object(&obj_id) {
                 Ok(obj) => {
-                    res_buf.len = obj.len() as u32;
-                    let result = ray_buffer_write_data(
-                        ctx,
-                        result_ptr as u32,
-                        obj.as_slice(),
-                        RayBufferDataType::Data,
-                    );
-                    if result.is_err() {
-                        error!("write result buffer failed: {}", result.err().unwrap());
+                    let serdes = SerDesFactory::create(SerDesType::MsgPack);
+                    let deserialized_obj = match serdes.deserialize(obj.as_slice()) {
+                        Ok(v) => {
+                            debug!("ray_get: object: {:x?}", v);
+                            v
+                        }
+                        Err(e) => {
+                            error!("deserialize object failed: {}", e.to_string());
+                            return Ok(vec![WasmValue::I32(-1)]);
+                        }
+                    };
+                    if deserialized_obj.len() > result_len as usize {
+                        error!(
+                            "result buffer is not big enough, result_len: {}, obj_len: {}",
+                            result_len,
+                            deserialized_obj.len()
+                        );
                         return Ok(vec![WasmValue::I32(-1)]);
                     }
+                    data = Vec::from(deserialized_obj.as_slice());
                 }
                 Err(e) => {
                     error!("get object failed: {}", e.to_string());
@@ -322,24 +373,122 @@ fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
                 }
             }
         }
-        Err(e) => {
+        Err(_) => {
             error!("invalid object buffer region");
             return Ok(vec![WasmValue::I32(-1)]);
         }
     }
 
+    match ctx.get_memory_region_mut(result_buf_ptr as usize, data.len()) {
+        Ok(v) => {
+            debug!(
+                "ray_get: result_buf_ptr: {:#08x} content: {:x?}",
+                result_buf_ptr, v
+            );
+            v.copy_from_slice(&data);
+        }
+        Err(e) => {
+            error!("cannot access memory region: {}", e);
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    }
+
+    match ctx.get_memory_region_mut(result_len_ptr as usize, 4) {
+        Ok(v) => {
+            debug!(
+                "ray_get: result_len_ptr: {:#08x} content: {:x?}",
+                result_len_ptr, v
+            );
+            v.copy_from_slice(&(data.len() as u32).to_le_bytes());
+        }
+        Err(e) => {
+            error!("cannot access memory region: {}", e);
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    }
+
     info!(
-        "ray_get: result: {:x?}, buffer: {:x?}",
-        res_buf,
-        load_buffer(ctx, res_buf.ptr, res_buf.len)
+        "ray_get: write result {:x?} to buffer",
+        load_buffer(ctx, result_buf_ptr as u32, data.len() as u32)
     );
     return Ok(vec![WasmValue::I32(0)]);
 }
 
+/// call ray put to put data into object store
+/// params[0]: object id buffer pointer
+/// params[1]: data buffer pointer
+/// params[2]: data length
+/// return 0 if success, -1 if failed
 fn hc_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
-    Err(anyhow!("not implemented"))
+    info!("ray_put: {:x?}", params);
+    let ray_buf_ptr = match &params[0] {
+        WasmValue::I32(v) => v.clone(),
+        _ => return Err(anyhow!("invalid param")),
+    };
+    let ray_buf = match read_ray_buffer(ctx, ray_buf_ptr as u32) {
+        Ok(v) => {
+            debug!("call: ray_buf_ptr: {:#08x} content: {:x?}", ray_buf_ptr, v);
+            v
+        }
+        Err(_) => {
+            return Err(anyhow!("invalid object id"));
+        }
+    };
+
+    let data_ptr = match &params[1] {
+        WasmValue::I32(v) => v.clone(),
+        _ => return Err(anyhow!("invalid param")),
+    };
+    let data_len = match &params[2] {
+        WasmValue::I32(v) => v.clone(),
+        _ => return Err(anyhow!("invalid param")),
+    };
+
+    let data = match ctx.get_memory_region(data_ptr as usize, data_len as usize) {
+        Ok(v) => {
+            debug!("call: data_ptr: {:#08x} content: {:x?}", data_ptr, v);
+            v.to_vec()
+        }
+        Err(e) => {
+            error!("cannot access memory region: {}", e);
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    };
+    let serdes = SerDesFactory::create(SerDesType::MsgPack);
+    let serialized_data = match serdes.serialize(&data) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("serialize data failed: {}", e.to_string());
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    };
+    let obj_id = match ctx.put_object(&serialized_data.as_slice()) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("put object failed: {}", e.to_string());
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    };
+
+    let result = ray_buffer_write_data(
+        ctx,
+        ray_buf_ptr as u32,
+        obj_id.id.as_slice(),
+        RayBufferDataType::ObjectID,
+    );
+    if result.is_err() {
+        error!("write object id buffer failed: {}", result.err().unwrap());
+        return Ok(vec![WasmValue::I32(-1)]);
+    }
+    info!("ray_put: returns object_id {:x?}", obj_id);
+    Ok(vec![WasmValue::I32(0)])
 }
 
+/// call ray call to invoke remote function
+/// params[0]: object id buffer pointer for return value
+/// params[1]: function reference value
+/// params[2]: function arguments buffer pointer
+/// return 0 if success, -1 if failed
 fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("ray_call: {:x?}", params);
     let ray_buf_ptr = match &params[0] {
@@ -347,12 +496,12 @@ fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVa
         _ => return Err(anyhow!("invalid param")),
     };
 
-    let mut ray_buf = match read_ray_buffer(ctx, ray_buf_ptr as u32) {
+    let ray_buf = match read_ray_buffer(ctx, ray_buf_ptr as u32) {
         Ok(v) => {
             debug!("call: ray_buf_ptr: {:#08x} content: {:x?}", ray_buf_ptr, v);
             v
         }
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!("invalid object id"));
         }
     };
@@ -414,7 +563,7 @@ fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVa
         updated_obj_id.as_slice(),
         RayBufferDataType::ObjectID,
     ) {
-        Ok(v) => Ok(vec![WasmValue::I32(0)]),
+        Ok(_) => Ok(vec![WasmValue::I32(0)]),
         Err(e) => {
             error!("put: write data failed: {}", e);
             Ok(vec![WasmValue::I32(-1)])

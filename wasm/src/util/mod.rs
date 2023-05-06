@@ -18,6 +18,14 @@ use crate::runtime::core_worker::{
     RayLog_Debug, RayLog_Error, RayLog_Fatal, RayLog_Info, RayLog_Warn,
 };
 
+use anyhow::{anyhow, Result};
+use core::result::Result::Ok;
+
+use rmp::decode::{read_i32, read_i64, read_marker, read_u32, read_u64};
+use rmp::encode::write_bin;
+
+use rmp::Marker;
+
 pub struct RayLog;
 
 impl RayLog {
@@ -202,4 +210,133 @@ pub struct LauncherParameters {
     /// if not set, the default value is `_start`
     #[arg(short = 's', long, verbatim_doc_comment, default_value = "_start")]
     pub entry_point: String,
+}
+
+pub enum SerDesType {
+    MsgPack,
+    JSON,
+}
+
+pub trait SerDes {
+    fn serialize(&self, data: &[u8]) -> Result<Vec<u8>>;
+    fn deserialize(&self, data: &[u8]) -> Result<Vec<u8>>;
+}
+
+pub struct SerDesFactory {}
+
+impl SerDesFactory {
+    pub fn create(serdes_type: SerDesType) -> Box<dyn SerDes> {
+        match serdes_type {
+            SerDesType::MsgPack => Box::new(MsgPackSerDes {}),
+            SerDesType::JSON => unimplemented!(),
+        }
+    }
+}
+
+struct MsgPackSerDes {}
+
+impl SerDes for MsgPackSerDes {
+    fn serialize(&self, data: &[u8]) -> Result<Vec<u8>> {
+        self.serialize_msgpack(data)
+    }
+
+    fn deserialize(&self, data: &[u8]) -> Result<Vec<u8>> {
+        self.deserialize_msgpack(data)
+    }
+}
+
+impl MsgPackSerDes {
+    fn serialize_msgpack(&self, data: &[u8]) -> Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        match write_bin(&mut buf, data) {
+            Ok(_) => Ok(buf),
+            Err(e) => Err(anyhow!("serialize_msgpack failed: {:?}", e)),
+        }
+    }
+
+    fn deserialize_msgpack(&self, data: &[u8]) -> Result<Vec<u8>> {
+        let marker_data = Vec::from(&data[0..1]);
+        match read_marker(&mut marker_data.as_slice()) {
+            Ok(m) => match m {
+                Marker::FixPos(_) => unimplemented!(),
+                Marker::FixNeg(_) => unimplemented!(),
+                Marker::Null => unimplemented!(),
+                Marker::True => unimplemented!(),
+                Marker::False => unimplemented!(),
+                Marker::U8 => unimplemented!(),
+                Marker::U16 => unimplemented!(),
+                Marker::U32 => {
+                    let mut buf = data;
+                    let val = read_u32(&mut buf).unwrap();
+                    Ok(val.to_ne_bytes().to_vec())
+                }
+                Marker::U64 => {
+                    let mut buf = data;
+                    let val = read_u64(&mut buf).unwrap();
+                    Ok(val.to_ne_bytes().to_vec())
+                }
+                Marker::I8 => unimplemented!(),
+                Marker::I16 => unimplemented!(),
+                Marker::I32 => {
+                    let mut buf = data;
+                    let val = read_i32(&mut buf).unwrap();
+                    Ok(val.to_ne_bytes().to_vec())
+                }
+                Marker::I64 => {
+                    let mut buf = data;
+                    let val = read_i64(&mut buf).unwrap();
+                    Ok(val.to_ne_bytes().to_vec())
+                }
+                Marker::F32 => unimplemented!(),
+                Marker::F64 => unimplemented!(),
+                Marker::FixStr(_) => unimplemented!(),
+                Marker::Str8 => unimplemented!(),
+                Marker::Str16 => unimplemented!(),
+                Marker::Str32 => unimplemented!(),
+                Marker::Bin8 => {
+                    let buf = data;
+                    let count = buf[1] as usize;
+                    let mut val = vec![0u8; count as usize];
+                    val.clone_from_slice(&buf[2..(count + 2) as usize]);
+                    Ok(val)
+                }
+                Marker::Bin16 => {
+                    let buf = data;
+                    let count: usize = u16::from_ne_bytes(buf[1..3].try_into().unwrap())
+                        .try_into()
+                        .unwrap();
+                    let mut val = vec![0u8; count as usize];
+                    val.clone_from_slice(&buf[3..(count + 3) as usize]);
+                    Ok(val)
+                }
+                Marker::Bin32 => {
+                    let buf = data;
+                    let count: usize = u32::from_ne_bytes(buf[1..5].try_into().unwrap())
+                        .try_into()
+                        .unwrap();
+                    let mut val = vec![0u8; count as usize];
+                    val.clone_from_slice(&buf[5..(count + 5) as usize]);
+                    Ok(val)
+                }
+                Marker::FixArray(_) => unimplemented!(),
+                Marker::Array16 => unimplemented!(),
+                Marker::Array32 => unimplemented!(),
+                Marker::FixMap(_) => unimplemented!(),
+                Marker::Map16 => unimplemented!(),
+                Marker::Map32 => unimplemented!(),
+                Marker::FixExt1 => unimplemented!(),
+                Marker::FixExt2 => unimplemented!(),
+                Marker::FixExt4 => unimplemented!(),
+                Marker::FixExt8 => unimplemented!(),
+                Marker::FixExt16 => unimplemented!(),
+                Marker::Ext8 => unimplemented!(),
+                Marker::Ext16 => unimplemented!(),
+                Marker::Ext32 => unimplemented!(),
+                Marker::Reserved => unimplemented!(),
+            },
+            Err(e) => {
+                return Err(anyhow!("deserialize_msgpack failed: {:?}", e));
+            }
+        }
+    }
 }

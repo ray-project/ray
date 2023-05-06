@@ -20,6 +20,7 @@ use super::{
         CoreWorker_AddLocalReference, CoreWorker_Get, CoreWorker_GetMulti, CoreWorker_Put,
         CoreWorker_RemoveLocalReference, CoreWorker_WaitMulti,
     },
+    core_worker::CoreWorker_PutWithObjID,
     Base,
 };
 
@@ -29,7 +30,8 @@ pub enum ObjectStoreType {
 }
 
 pub trait ObjectStore {
-    fn put(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()>;
+    fn put(&mut self, data: &[u8]) -> Result<ObjectID>;
+    fn put_with_object_id(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()>;
     fn get(&self, object_id: &ObjectID, timeout_ms: i32) -> Result<Vec<u8>>;
     fn gets(&self, object_ids: &[ObjectID], timeout_ms: i32) -> Result<Vec<Vec<u8>>>;
     fn wait(
@@ -59,7 +61,11 @@ impl ObjectStoreFactory {
 pub struct LocalObjectStore {}
 
 impl ObjectStore for LocalObjectStore {
-    fn put(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()> {
+    fn put(&mut self, data: &[u8]) -> Result<ObjectID> {
+        unimplemented!()
+    }
+
+    fn put_with_object_id(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()> {
         unimplemented!()
     }
 
@@ -98,9 +104,29 @@ impl LocalObjectStore {
 pub struct NativeObjectStore {}
 
 impl ObjectStore for NativeObjectStore {
-    fn put(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()> {
+    fn put(&mut self, data: &[u8]) -> Result<ObjectID> {
+        let mut obj_id = ObjectID::new();
         unsafe {
+            let mut object_id_len = obj_id.id.len();
             let res = CoreWorker_Put(
+                data.as_ptr(),
+                data.len(),
+                obj_id.id.as_mut_ptr(),
+                &mut object_id_len,
+            );
+            if res != 0 {
+                return Err(anyhow!("put object failed"));
+            }
+            if object_id_len != obj_id.id.len() {
+                return Err(anyhow!("result obj id has different length"));
+            }
+        }
+        Ok(obj_id)
+    }
+
+    fn put_with_object_id(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()> {
+        unsafe {
+            let res = CoreWorker_PutWithObjID(
                 data.as_ptr(),
                 data.len(),
                 object_id.id.as_ptr(),
@@ -125,8 +151,8 @@ impl ObjectStore for NativeObjectStore {
                 &mut data_len,
                 timeout_ms,
             );
-            if res != 0 {
-                let msg = format!("obj store getting object failed: {:x?}", object_id.id);
+            if res != 0 || data_len == 0 || data_len > data.len() {
+                let msg = format!("obj store getting object failed: {:x?}", object_id);
                 return Err(anyhow!(msg));
             }
         }
@@ -137,18 +163,18 @@ impl ObjectStore for NativeObjectStore {
     fn gets(&self, object_ids: &[ObjectID], timeout_ms: i32) -> Result<Vec<Vec<u8>>> {
         unsafe {
             // allocate a temporary buffer of buffer pointers
-            let mut obj_ids_buf =
+            let obj_ids_buf =
                 libc::malloc(object_ids.len() * std::mem::size_of::<*mut u8>()) as *mut *const u8;
-            let mut obj_ids_buf_len =
+            let obj_ids_buf_len =
                 libc::malloc(object_ids.len() * std::mem::size_of::<usize>()) as *mut usize;
             for (i, obj_id) in object_ids.iter().enumerate() {
                 *obj_ids_buf.add(i) = obj_id.id.as_ptr();
                 *obj_ids_buf_len.add(i) = obj_id.size();
             }
             // allocate result buffers
-            let mut data_buf =
+            let data_buf =
                 libc::malloc(object_ids.len() * std::mem::size_of::<*mut u8>()) as *mut *mut u8;
-            let mut data_buf_len =
+            let data_buf_len =
                 libc::malloc(object_ids.len() * std::mem::size_of::<usize>()) as *mut usize;
             for i in 0..object_ids.len() {
                 // allocate buffer for each entry inside buffer
@@ -197,9 +223,9 @@ impl ObjectStore for NativeObjectStore {
     ) -> Result<Vec<bool>> {
         unsafe {
             // allocate a temporary buffer of buffer pointers
-            let mut obj_ids_buf =
+            let obj_ids_buf =
                 libc::malloc(object_ids.len() * std::mem::size_of::<*mut u8>()) as *mut *const u8;
-            let mut obj_ids_buf_len =
+            let obj_ids_buf_len =
                 libc::malloc(object_ids.len() * std::mem::size_of::<usize>()) as *mut usize;
             for (i, obj_id) in object_ids.iter().enumerate() {
                 *obj_ids_buf.add(i) = obj_id.id.as_ptr();

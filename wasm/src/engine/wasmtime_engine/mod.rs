@@ -12,35 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engine::{
+    Hostcalls, WasmEngine, WasmFunc, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
+};
 use crate::engine::{TASK_RECEIVER, TASK_RESULT_SENDER};
-use crate::runtime::common_proto::TaskType;
-use crate::runtime::{CallOptions, ObjectID};
-use crate::{
-    engine::{
-        Hostcalls, WasmEngine, WasmFunc, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
-    },
-    runtime::{InvocationSpec, RayRuntime, RemoteFunctionHolder},
-};
 use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 use std::time::Duration;
-use std::{
-    collections::HashMap,
-    fmt::format,
-    sync::{Arc, RwLock},
-};
-use tokio::sync::watch::error;
-use tracing::{debug, error, info};
-use wasmtime::{
-    AsContextMut, Caller, Engine, FuncType, Instance, Linker, Module, Store, Val, ValType,
-};
+use tracing::debug;
+use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, ValRaw, ValType};
 
 use crate::util::RayLog;
-use rmp::encode::write_i32;
 
 mod data;
 use data::*;
-
-use super::WasmContext;
+mod context;
+use context::*;
 
 pub struct WasmtimeEngine {
     engine: Engine,
@@ -66,14 +53,14 @@ impl WasmEngine for WasmtimeEngine {
         Ok(())
     }
 
-    fn compile(&mut self, name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>> {
-        let module = WasmtimeModule::new(&self.engine, wasm_bytes);
-        self.modules.insert(name.to_string(), module);
-        Ok(Box::new(&self.modules[name]))
+    fn compile(&mut self, module_name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>> {
+        let module = WasmtimeModule::new(&self.engine, module_name, wasm_bytes);
+        self.modules.insert(module_name.to_string(), module);
+        Ok(Box::new(&self.modules[module_name]))
     }
 
     fn create_sandbox(&mut self, name: &str) -> Result<Box<&dyn WasmSandbox>> {
-        let sandbox = WasmtimeSandbox::new(&self.engine);
+        let sandbox = WasmtimeSandbox::new(&self.engine, name);
         self.sandboxes.insert(name.to_string(), sandbox);
         Ok(Box::new(&self.sandboxes[name]))
     }
@@ -85,15 +72,28 @@ impl WasmEngine for WasmtimeEngine {
         instance_name: &str,
     ) -> Result<Box<&dyn WasmInstance>> {
         // convert sandbox to wasmtime store
-        let sandbox = &mut self.sandboxes.get_mut(sandbox_name).unwrap();
-        let module = &mut self.modules.get_mut(module_name).unwrap();
-        let instance = self
-            .linker
-            .instantiate(&mut sandbox.store, &module.module)
-            .unwrap();
-        sandbox
-            .instances
-            .insert(instance_name.to_string(), WasmtimeInstance { instance });
+        let sandbox = match self.sandboxes.get_mut(sandbox_name) {
+            Some(s) => s,
+            None => {
+                return Err(anyhow!("Failed to get sandbox: {}", sandbox_name));
+            }
+        };
+        let module = match self.modules.get_mut(module_name) {
+            Some(m) => m,
+            None => {
+                return Err(anyhow!("Failed to get module: {}", module_name));
+            }
+        };
+        let instance = match self.linker.instantiate(&mut sandbox.store, &module.module) {
+            Ok(instance) => instance,
+            Err(e) => {
+                return Err(anyhow!("Failed to instantiate module: {}", e));
+            }
+        };
+        sandbox.instances.insert(
+            instance_name.to_string(),
+            WasmtimeInstance::new(instance_name, module_name, instance),
+        );
         Ok(Box::new(
             &self.sandboxes[sandbox_name].instances[instance_name],
         ))
@@ -106,42 +106,166 @@ impl WasmEngine for WasmtimeEngine {
         func_name: &str,
         args: Vec<WasmValue>,
     ) -> Result<Vec<WasmValue>> {
-        let func;
-        {
-            let sandbox = self.sandboxes.get_mut(sandbox_name).unwrap();
-            let store = &mut sandbox.store;
-            let instance = sandbox.instances.get(instance_name).unwrap();
-            func = instance.instance.get_func(store, func_name).unwrap();
-        }
+        let sandbox = match self.sandboxes.get_mut(sandbox_name) {
+            Some(s) => s,
+            None => {
+                RayLog::error(format!("Failed to get sandbox: {}", sandbox_name).as_str());
+                return Err(anyhow!("Failed to get sandbox: {}", sandbox_name));
+            }
+        };
+        let mut store = &mut sandbox.store;
+        // execute function
+        let args = args
+            .iter()
+            .map(|arg| to_wasmtime_raw_value(arg))
+            .collect::<Vec<ValRaw>>();
+        let mut results: Vec<ValRaw>;
 
-        {
-            let sandbox = self.sandboxes.get_mut(sandbox_name).unwrap();
-            let store = &mut sandbox.store;
-            // execute function
-            let args = args
-                .iter()
-                .map(|arg| to_wasmtime_value(arg))
-                .collect::<Vec<Val>>();
-            let mut results = vec![Val::I32(0); func.ty(&store).results().len()];
+        let instance = match sandbox.instances.get(instance_name) {
+            Some(i) => i,
+            None => {
+                return Err(anyhow!("Failed to get instance: {}", instance_name));
+            }
+        };
+        match func_name.parse::<u32>() {
+            Ok(n) => {
+                // get indirect function table and get function by index
+                let func_tbl = match instance
+                    .instance
+                    .get_export(&mut store, "__indirect_function_table")
+                {
+                    Some(f) => match f.into_table() {
+                        Some(t) => t,
+                        None => {
+                            RayLog::error("Failed to get indirect function table");
+                            return Err(anyhow!("Failed to get indirect function table"));
+                        }
+                    },
+                    None => {
+                        RayLog::error("Failed to get indirect function table");
+                        return Err(anyhow!("Failed to get indirect function table"));
+                    }
+                };
+                match func_tbl.get(&mut store, n) {
+                    Some(f) => {
+                        let func = match f.unwrap_funcref() {
+                            Some(f) => f,
+                            None => {
+                                RayLog::error("Failed to get function");
+                                return Err(anyhow!("Failed to get function"));
+                            }
+                        };
+                        let mut params_and_returns: Vec<ValRaw> = Vec::new();
+                        // iterate all args and push them to params_and_returns
+                        for arg in args.iter() {
+                            params_and_returns.push(arg.clone());
+                        }
+                        // get the number of return values
+                        let return_types = func
+                            .ty(&store)
+                            .results()
+                            .map(|r| r.clone())
+                            .collect::<Vec<ValType>>();
+                        if return_types.len() > args.len() {
+                            // push dummy values to params_and_returns
+                            for _ in 0..(return_types.len() - args.len()) {
+                                params_and_returns.push(ValRaw::i32(0));
+                            }
+                        }
 
-            match func.call(store, &args.as_slice(), &mut results) {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("Failed to execute function: {}, error: {:?}", func_name, e);
+                        results = vec![ValRaw::i32(0); func.ty(&store).results().len()];
+                        if let Err(e) =
+                            unsafe { func.call_unchecked(store, params_and_returns.as_mut_ptr()) }
+                        {
+                            RayLog::error(
+                                format!(
+                                    "Failed to execute function: {}, error: {:?}",
+                                    func_name, e
+                                )
+                                .as_str(),
+                            );
+                            return Err(anyhow!(
+                                "Failed to execute function: {}, error: {:?}",
+                                func_name,
+                                e
+                            ));
+                        }
+                        // add results to args
+                        for i in 0..return_types.len() {
+                            results[i] = params_and_returns[i].clone();
+                        }
+
+                        let mut returns = Vec::new();
+                        for i in 0..results.len() {
+                            returns.push(from_wasmtime_raw_value(
+                                &from_wasmtime_type(&return_types[i]),
+                                &results[i].clone(),
+                            ));
+                        }
+                        return Ok(returns);
+                    }
+                    None => {
+                        RayLog::error(format!("Failed to get function: {}", func_name).as_str());
+                        return Err(anyhow!("Failed to get function: {}", func_name));
+                    }
+                }
+            }
+            Err(_) => {
+                // this is a normal function
+                let func = instance
+                    .instance
+                    .get_export(&mut store, func_name)
+                    .unwrap()
+                    .into_func()
+                    .unwrap();
+
+                let mut params_and_returns: Vec<ValRaw> = Vec::new();
+                // iterate all args and push them to params_and_returns
+                for arg in args.iter() {
+                    params_and_returns.push(arg.clone());
+                }
+                // get the number of return values
+                let return_types = func
+                    .ty(&store)
+                    .results()
+                    .map(|r| r.clone())
+                    .collect::<Vec<ValType>>();
+                if return_types.len() > args.len() {
+                    // push dummy values to params_and_returns
+                    for _ in 0..(return_types.len() - args.len()) {
+                        params_and_returns.push(ValRaw::i32(0));
+                    }
+                }
+
+                results = vec![ValRaw::i32(0); func.ty(&store).results().len()];
+                if let Err(e) =
+                    unsafe { func.call_unchecked(store, params_and_returns.as_mut_ptr()) }
+                {
+                    RayLog::error(
+                        format!("Failed to execute function: {}, error: {:?}", func_name, e)
+                            .as_str(),
+                    );
                     return Err(anyhow!(
                         "Failed to execute function: {}, error: {:?}",
                         func_name,
                         e
                     ));
                 }
-            }
+                // add results to args
+                for i in 0..return_types.len() {
+                    results[i] = params_and_returns[i].clone();
+                }
 
-            let mut returns = Vec::new();
-            for r in results.iter() {
-                returns.push(from_wasmtime_value(&WasmType::I32, r));
+                let mut returns = Vec::new();
+                for i in 0..results.len() {
+                    returns.push(from_wasmtime_raw_value(
+                        &from_wasmtime_type(&return_types[i]),
+                        &results[i].clone(),
+                    ));
+                }
+                return Ok(returns);
             }
-            Ok(returns)
-        }
+        };
     }
 
     fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>> {
@@ -237,20 +361,50 @@ impl WasmEngine for WasmtimeEngine {
     }
 
     fn task_loop_once(&mut self) -> Result<()> {
-        let mut buf: Vec<u8> = vec![];
+        let mut result_buf: Vec<u8> = vec![];
+
         // receive task from channel with a timeout
-        let receiver = TASK_RECEIVER.lock().ok().unwrap();
-        match receiver.as_ref() {
+        match TASK_RECEIVER.lock().ok().unwrap().as_ref() {
             Some(rx) => match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(task) => {
                     RayLog::info(
                         format!("task_loop_once: executing wasm task: {:?}", task).as_str(),
                     );
+                    let func_name = task.func_name.as_str();
+                    let args = task.args;
 
-                    // TODO: run task
-                    write_i32(&mut buf, 0x12345678).unwrap();
+                    // TODO: use ray get to get binary and compile it
+
+                    match self.execute("sandbox", "instance", func_name, args) {
+                        Ok(results) => {
+                            RayLog::info(
+                                format!("task_loop_once: wasm task result: {:?}", results).as_str(),
+                            );
+
+                            if results.len() != 1 {
+                                RayLog::error("task_loop_once: invalid length of result");
+                            } else {
+                                match results[0].as_msgpack_vec() {
+                                    Ok(v) => {
+                                        result_buf = v;
+                                    }
+                                    Err(e) => {
+                                        RayLog::error(
+                                            format!("task_loop_once: wasm task error: {:?}", e)
+                                                .as_str(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            RayLog::error(
+                                format!("task_loop_once: wasm task error: {:?}", e).as_str(),
+                            );
+                        }
+                    }
                 }
-                Err(e) => {
+                Err(_) => {
                     return Ok(()); // timeout
                 }
             },
@@ -261,10 +415,17 @@ impl WasmEngine for WasmtimeEngine {
         }
 
         // we got result here
-        let sender = TASK_RESULT_SENDER.lock().ok().unwrap();
-        match sender.as_ref() {
+        match TASK_RESULT_SENDER.lock().ok().unwrap().as_ref() {
             Some(tx) => {
-                tx.send(buf).unwrap();
+                if result_buf.len() != 0 {
+                    RayLog::info(
+                        format!("task_loop_once: sending wasm task result: {:?}", result_buf)
+                            .as_str(),
+                    );
+                    tx.send(Ok(result_buf)).unwrap();
+                } else {
+                    tx.send(Err(anyhow!("Invalid result"))).unwrap();
+                }
             }
             None => {
                 RayLog::error("task_loop_once: channel not initialized");
@@ -276,13 +437,17 @@ impl WasmEngine for WasmtimeEngine {
 }
 
 struct WasmtimeModule {
+    name: String,
     module: Module,
+    bytes: Vec<u8>,
 }
 
 impl WasmtimeModule {
-    pub fn new(engine: &Engine, bytes: &[u8]) -> Self {
+    pub fn new(engine: &Engine, module_name: &str, bytes: &[u8]) -> Self {
         WasmtimeModule {
+            name: module_name.to_string(),
             module: Module::from_binary(engine, bytes).unwrap(),
+            bytes: bytes.to_vec(),
         }
     }
 }
@@ -290,7 +455,9 @@ impl WasmtimeModule {
 impl WasmModule for WasmtimeModule {}
 
 #[derive(Clone)]
-struct WasmtimeStoreData {}
+pub struct WasmtimeStoreData {
+    sandbox_name: String,
+}
 
 struct WasmtimeSandbox {
     store: Store<WasmtimeStoreData>,
@@ -298,8 +465,13 @@ struct WasmtimeSandbox {
 }
 
 impl WasmtimeSandbox {
-    fn new(engine: &Engine) -> Self {
-        let store = Store::new(engine, WasmtimeStoreData {});
+    fn new(engine: &Engine, name: &str) -> Self {
+        let store = Store::new(
+            engine,
+            WasmtimeStoreData {
+                sandbox_name: name.to_string(),
+            },
+        );
         WasmtimeSandbox {
             store,
             instances: HashMap::new(),
@@ -311,118 +483,19 @@ impl WasmSandbox for WasmtimeSandbox {}
 
 #[derive(Clone)]
 struct WasmtimeInstance {
+    name: String,
+    module_name: String,
     instance: Instance,
 }
 
 impl WasmtimeInstance {
-    fn new(sandbox: &mut WasmtimeSandbox, module: &mut WasmtimeModule) -> Self {
-        match Instance::new(&mut sandbox.store, &module.module, &[]) {
-            Ok(instance) => {
-                return WasmtimeInstance { instance };
-            }
-            Err(e) => {
-                panic!("failed to instantiate module: {}", e);
-            }
+    fn new(name: &str, module_name: &str, instance: Instance) -> Self {
+        WasmtimeInstance {
+            name: name.to_string(),
+            module_name: module_name.to_string(),
+            instance,
         }
     }
 }
 
 impl WasmInstance for WasmtimeInstance {}
-
-pub struct WasmtimeContext<'a> {
-    caller: &'a mut Caller<'a, WasmtimeStoreData>,
-    runtime: &'a Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
-}
-
-impl WasmContext for WasmtimeContext<'_> {
-    fn get_memory_region(&mut self, off: usize, len: usize) -> Result<&[u8]> {
-        let memory = self
-            .caller
-            .get_export("memory")
-            .unwrap()
-            .into_memory()
-            .unwrap();
-        // check memory size
-        if memory.data_size(self.caller.as_context_mut()) < off + len {
-            return Err(anyhow!("Invalid memory access"));
-        }
-        let data = memory.data(self.caller.as_context_mut());
-        Ok(&data[off..off + len])
-    }
-
-    fn get_memory_region_mut(&mut self, off: usize, len: usize) -> Result<&mut [u8]> {
-        let memory = self
-            .caller
-            .get_export("memory")
-            .unwrap()
-            .into_memory()
-            .unwrap();
-        // check memory size
-        if memory.data_size(self.caller.as_context_mut()) < off + len {
-            return Err(anyhow!("Invalid memory access"));
-        }
-        let data = memory.data_mut(self.caller.as_context_mut());
-        Ok(&mut data[off..off + len])
-    }
-
-    fn get_func_ref(&mut self, func_idx: u32) -> Result<WasmFunc> {
-        let func_tbl = self
-            .caller
-            .get_export("__indirect_function_table")
-            .unwrap()
-            .into_table()
-            .unwrap();
-        let binding = func_tbl
-            .get(self.caller.as_context_mut(), func_idx)
-            .unwrap();
-        let func = binding.unwrap_funcref().unwrap();
-        let params: Vec<WasmType> = func
-            .ty(self.caller.as_context_mut())
-            .params()
-            .map(|p| from_wasmtime_type(&p))
-            .collect();
-        let results: Vec<WasmType> = func
-            .ty(self.caller.as_context_mut())
-            .results()
-            .map(|p| from_wasmtime_type(&p))
-            .collect();
-        Ok(WasmFunc {
-            name: format!("{}", func_idx), // TODO: we need to get the real name
-            module: "n/a".to_string(),
-            params,
-            results,
-        })
-    }
-
-    fn invoke(
-        &mut self,
-        remote_func_holder: &RemoteFunctionHolder,
-        args: &[WasmValue],
-    ) -> Result<Vec<ObjectID>> {
-        let call_opt = CallOptions::new();
-        let invoke_spec =
-            InvocationSpec::new(TaskType::NormalTask, remote_func_holder.clone(), args, None);
-        let result = self.runtime.read().unwrap().call(&invoke_spec, &call_opt);
-        match result {
-            Ok(result) => {
-                if result.len() != 1 {
-                    return Err(anyhow!("Invalid result length"));
-                }
-                Ok(result)
-            }
-            Err(e) => Err(anyhow!("Failed to invoke remote function: {}", e)),
-        }
-    }
-
-    fn get_object(&mut self, object_id: &ObjectID) -> Result<Vec<u8>> {
-        debug!("get_object: {:x?}", object_id);
-        let object = match self.runtime.read().unwrap().get(object_id) {
-            Ok(object) => object,
-            Err(e) => {
-                error!("Failed to get object: {}", e);
-                return Err(anyhow!("Failed to get object: {}", e));
-            }
-        };
-        Ok(object)
-    }
-}

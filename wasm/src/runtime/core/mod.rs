@@ -14,6 +14,3 @@
 
 pub mod core_worker;
 pub mod global_state_accessor;
-
-use crate::runtime::core::core_worker::*;
-use crate::runtime::core::global_state_accessor::*;

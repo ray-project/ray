@@ -17,20 +17,17 @@ use crate::{
     runtime::{
         common_proto::{Language, TaskArg as TaskArgProto, TaskType},
         core::core_worker::{
-            CoreWorker_SubmitActorTask, CoreWorker_SubmitTask, RayFunction_BuildWasm,
-            RayFunction_Create, RayFunction_Destroy, TaskArg_Vec_Create, TaskArg_Vec_Destroy,
-            TaskArg_Vec_PushByValue, TaskOptions_AddResource, TaskOptions_Create,
-            TaskOptions_Destroy, TaskOptions_SetName, TaskOptions_SetSerializedRuntimeEnvInfo,
+            CoreWorker_SubmitActorTask, CoreWorker_SubmitTask, TaskArg_Vec_Create,
+            TaskArg_Vec_Destroy, TaskArg_Vec_PushByValue, TaskOptions_AddResource,
+            TaskOptions_Create, TaskOptions_Destroy, TaskOptions_SetName,
+            TaskOptions_SetSerializedRuntimeEnvInfo,
         },
         id::{ActorID, ObjectID},
     },
 };
 use core::panic;
-use std::any::Any;
 use std::collections::HashMap;
-use tracing::{debug, error, info};
-
-use rmp::encode::{write_i32, write_i64, write_u32, write_u64};
+use tracing::info;
 
 use super::core::core_worker::{CoreWorker_GetActor, RayFunction};
 
@@ -163,7 +160,7 @@ impl RemoteFunctionHolder {
         Self {
             module_name: func.module,
             function_name: func.name,
-            class_name: "n/a".to_string(),
+            class_name: "".to_string(),
             lang_type: Language::Wasm,
         }
     }
@@ -237,11 +234,11 @@ impl TaskSubmitter for NativeTaskSubmitter {
     fn submit_task(&self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID {
         unsafe {
             let mut obj_id: ObjectID = ObjectID::new();
-            let mut obj_id_ptr = obj_id.id.as_mut_ptr();
+            let obj_id_ptr = obj_id.id.as_mut_ptr();
             let mut obj_id_len: usize;
             obj_id_len = obj_id.id.len();
 
-            let mut task_options = TaskOptions_Create();
+            let task_options = TaskOptions_Create();
             if task_options.is_null() {
                 panic!("Failed to create task options");
             }
@@ -270,36 +267,11 @@ impl TaskSubmitter for NativeTaskSubmitter {
                 )
                 .unwrap();
 
-            let mut task_args = TaskArg_Vec_Create();
-            let arg_len = invocation.args.len();
-            let mut bufs: Vec<Vec<_>> = Vec::with_capacity(arg_len);
-            for arg in invocation.args.iter() {
-                let mut tmpbuf = vec![];
-                match arg {
-                    crate::engine::WasmValue::I32(v) => {
-                        write_i32(&mut tmpbuf, *v).unwrap();
-                    }
-                    crate::engine::WasmValue::I64(v) => {
-                        write_i64(&mut tmpbuf, *v).unwrap();
-                    }
-                    crate::engine::WasmValue::F32(v) => {
-                        write_u32(&mut tmpbuf, *v).unwrap();
-                    }
-                    crate::engine::WasmValue::F64(v) => {
-                        write_u64(&mut tmpbuf, *v).unwrap();
-                    }
-                    crate::engine::WasmValue::V128(_) => {
-                        unimplemented!("V128 is not supported yet");
-                    }
-                    crate::engine::WasmValue::FuncRef(_) => {
-                        unimplemented!("FuncRef is not supported yet");
-                    }
-                    crate::engine::WasmValue::ExternRef(_) => {
-                        unimplemented!("ExternRef is not supported yet");
-                    }
-                }
-                bufs.push(tmpbuf);
-            }
+            let task_args = TaskArg_Vec_Create();
+            let mut bufs: Vec<Vec<_>> = Vec::with_capacity(invocation.args.len());
+            invocation.args.iter().for_each(|arg| {
+                bufs.push(arg.as_msgpack_vec().unwrap());
+            });
             // print the buffer
             info!("bufs: {:x?}", bufs);
             for buf in bufs.iter() {
@@ -372,7 +344,7 @@ impl TaskSubmitter for NativeTaskSubmitter {
     fn get_actor(&mut self, actor_name: &String, ray_namespace: &String) -> ActorID {
         unsafe {
             let mut actor_id = ActorID::new();
-            let mut actor_id_ptr = actor_id.id.as_mut_ptr();
+            let actor_id_ptr = actor_id.id.as_mut_ptr();
             let mut actor_id_len = actor_id.id.len();
 
             let actor_name_ptr = actor_name.as_ptr();

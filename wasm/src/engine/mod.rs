@@ -15,16 +15,18 @@
 mod wasmedge_engine;
 mod wasmtime_engine;
 
-use std::any::Any;
 use std::sync::Arc;
 use std::sync::{Mutex, RwLock};
 
 use crate::engine::wasmtime_engine::WasmtimeEngine;
-use crate::runtime::{InvocationSpec, ObjectID, RemoteFunctionHolder, WasmTaskExecutionInfo};
+use crate::runtime::{ObjectID, RemoteFunctionHolder, WasmTaskExecutionInfo};
 use crate::{engine::wasmedge_engine::WasmEdgeEngine, runtime::RayRuntime};
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, Result};
+use core::result::Result::Ok;
 use lazy_static::lazy_static;
+use rmp::decode::{read_i32, read_i64, read_u32, read_u64};
+use rmp::encode::{write_i32, write_i64, write_u32, write_u64};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 // a channel for sending task to wasm engine
@@ -32,8 +34,8 @@ pub type TaskSender = Sender<WasmTaskExecutionInfo>;
 pub type TaskReceiver = Receiver<WasmTaskExecutionInfo>;
 
 // a channel for receiving task result from wasm engine
-pub type TaskResultSender = Sender<Vec<u8>>;
-pub type TaskResultReceiver = Receiver<Vec<u8>>;
+pub type TaskResultSender = Sender<Result<Vec<u8>>>;
+pub type TaskResultReceiver = Receiver<Result<Vec<u8>>>;
 
 // static channel variable for sending task to wasm engine
 lazy_static! {
@@ -124,6 +126,64 @@ pub enum WasmValue {
     ExternRef(usize),
 }
 
+impl WasmValue {
+    pub fn as_msgpack_vec(&self) -> Result<Vec<u8>> {
+        match self {
+            WasmValue::I32(v) => {
+                let mut buf = Vec::new();
+                write_i32(&mut buf, *v).unwrap();
+                Ok(buf)
+            }
+            WasmValue::I64(v) => {
+                let mut buf = Vec::new();
+                write_i64(&mut buf, *v).unwrap();
+                Ok(buf)
+            }
+            WasmValue::F32(v) => {
+                let mut buf = Vec::new();
+                write_u32(&mut buf, *v).unwrap();
+                Ok(buf)
+            }
+            WasmValue::F64(v) => {
+                let mut buf = Vec::new();
+                write_u64(&mut buf, *v).unwrap();
+                Ok(buf)
+            }
+            _ => {
+                return Err(anyhow!("unsupported argument type"));
+            }
+        }
+    }
+
+    pub fn from_msgpack_vec(ty: &WasmType, data: &[u8]) -> Result<WasmValue> {
+        match ty {
+            WasmType::I32 => {
+                let mut buf = data;
+                let val = read_i32(&mut buf).unwrap();
+                Ok(WasmValue::I32(val))
+            }
+            WasmType::I64 => {
+                let mut buf = data;
+                let val = read_i64(&mut buf).unwrap();
+                Ok(WasmValue::I64(val))
+            }
+            WasmType::F32 => {
+                let mut buf = data;
+                let val = read_u32(&mut buf).unwrap();
+                Ok(WasmValue::F32(val))
+            }
+            WasmType::F64 => {
+                let mut buf = data;
+                let val = read_u64(&mut buf).unwrap();
+                Ok(WasmValue::F64(val))
+            }
+            _ => {
+                return Err(anyhow!("unsupported argument type"));
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WasmType {
     I32,
@@ -152,13 +212,30 @@ pub struct Hostcall {
 
 #[derive(Debug, Clone)]
 pub struct WasmFunc {
-    pub name: String,
+    pub sandbox: String,
     pub module: String,
+    pub name: String,
     pub params: Vec<WasmType>,
     pub results: Vec<WasmType>,
 }
 
 impl WasmFunc {
+    pub fn new(
+        sandbox: &str,
+        module: &str,
+        name: &str,
+        params: Vec<WasmType>,
+        results: Vec<WasmType>,
+    ) -> Self {
+        WasmFunc {
+            sandbox: sandbox.to_string(),
+            name: name.to_string(),
+            module: module.to_string(),
+            params,
+            results,
+        }
+    }
+
     /// Get the size of the data needed by all the parameters
     pub fn params_data_size(&self) -> Result<usize> {
         let mut total_size = 0;
@@ -286,4 +363,5 @@ pub trait WasmContext {
         args: &[WasmValue],
     ) -> Result<Vec<ObjectID>>;
     fn get_object(&mut self, object_id: &ObjectID) -> Result<Vec<u8>>;
+    fn put_object(&mut self, data: &[u8]) -> Result<ObjectID>;
 }

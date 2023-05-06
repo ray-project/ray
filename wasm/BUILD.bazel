@@ -134,6 +134,7 @@ rust_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":ray_wasm_lib",
+        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:anyhow",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
@@ -158,6 +159,7 @@ rust_binary(
     deps = [
         #":ray_wasm_lib.dylib",
         ":ray_wasm_lib",
+        "@wasm_crate_index//:sha256",
         "@com_google_absl//absl/time",
         "@wasm_crate_index//:anyhow",
         "@wasm_crate_index//:clap",

@@ -13,30 +13,23 @@
 // limitations under the License.
 use crate::config::ConfigInternal;
 use crate::config::RunMode;
-use crate::engine::WasmEngine;
 use crate::runtime::common_proto::WorkerType;
 use crate::runtime::ClusterHelper;
 use crate::runtime::InvocationSpec;
 use crate::runtime::ObjectStore;
 use crate::runtime::TaskExecutor;
 use crate::util::get_node_ip_address;
-use std::task::Context;
+use crate::util::RayLog;
 use tokio::task;
-use tracing_subscriber::fmt::format;
 
 use anyhow::{anyhow, Result};
-use libc::c_void;
 use tracing::{debug, error, info};
-
-use crate::engine::Hostcalls;
 
 use super::core::global_state_accessor::GlobalStateAccessor;
 use super::CallOptions;
 use super::ObjectID;
 use super::ObjectStoreFactory;
 use super::ObjectStoreType;
-use super::RemoteFunctionHolder;
-use super::TaskArg;
 use super::TaskSubmitter;
 use super::TaskSubmitterFactory;
 
@@ -47,10 +40,13 @@ pub trait RayRuntime {
     fn is_running(&self) -> bool;
 
     // object get/put related
-    fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()>;
-    fn put(&self, data: Vec<u8>) -> Result<ObjectID>;
+    fn put_with_id(&mut self, data: Vec<u8>, obj_id: ObjectID) -> Result<()>;
+    fn put(&mut self, data: Vec<u8>) -> Result<ObjectID>;
     fn get(&self, obj_id: &ObjectID) -> Result<Vec<u8>>;
     fn gets(&self, obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>>;
+
+    // execution type related
+    fn exec_type(&self) -> WorkerType;
 
     // task submit related
     fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>>;
@@ -104,10 +100,6 @@ impl RayRuntimeClusterMode {
             task_loop_handle: None,
         }
     }
-
-    pub fn load_binary_from_paths(&self, paths: Vec<String>) {
-        info!("load_binary_from_paths: {:?}", paths);
-    }
 }
 
 impl RayRuntime for RayRuntimeClusterMode {
@@ -118,12 +110,13 @@ impl RayRuntime for RayRuntimeClusterMode {
 
         // check worker type from config internal
         match self.internal_cfg.worker_type {
-            WorkerType::Worker => {}
-            _ => {
+            WorkerType::Worker => {
                 let code_search_path = self.internal_cfg.code_search_path.clone();
                 info!("code_search_path: {:?}", code_search_path);
-                self.load_binary_from_paths(code_search_path);
+                RayLog::info(format!("code_search_path: {:?}", code_search_path).as_str());
+                ClusterHelper::search_wasm(code_search_path);
             }
+            _ => {}
         };
 
         Ok(())
@@ -153,12 +146,27 @@ impl RayRuntime for RayRuntimeClusterMode {
         false
     }
 
-    fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
-        unimplemented!()
+    fn put_with_id(&mut self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
+        match self
+            .object_store
+            .put_with_object_id(data.as_slice(), &obj_id)
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                error!("runtime putting object failed: {:?}", e);
+                Err(anyhow!("runtime putting object failed: {:?}", e))
+            }
+        }
     }
 
-    fn put(&self, data: Vec<u8>) -> Result<ObjectID> {
-        unimplemented!()
+    fn put(&mut self, data: Vec<u8>) -> Result<ObjectID> {
+        match self.object_store.put(data.as_slice()) {
+            Ok(obj_id) => Ok(obj_id),
+            Err(e) => {
+                error!("runtime putting object failed: {:?}", e);
+                Err(anyhow!("runtime putting object failed: {:?}", e))
+            }
+        }
     }
 
     fn get(&self, obj_id: &ObjectID) -> Result<Vec<u8>> {
@@ -187,6 +195,10 @@ impl RayRuntime for RayRuntimeClusterMode {
         let obj_id = self.task_submitter.submit_task(invoke_spec, task_options);
         Ok(vec![obj_id])
     }
+
+    fn exec_type(&self) -> WorkerType {
+        self.internal_cfg.worker_type
+    }
 }
 
 pub struct RayRuntimeSingleProcessMode {
@@ -197,22 +209,18 @@ impl RayRuntimeSingleProcessMode {
     pub fn new(internal_cfg: ConfigInternal) -> Self {
         Self { internal_cfg }
     }
-
-    pub fn load_binary_from_paths(&self, paths: Vec<String>) {
-        info!("load_binary_from_paths: {:?}", paths);
-    }
 }
 
 impl RayRuntime for RayRuntimeSingleProcessMode {
     fn do_init(&mut self) -> Result<()> {
         // check worker type from config internal
         match self.internal_cfg.worker_type {
-            WorkerType::Worker => {}
-            _ => {
+            WorkerType::Worker => {
                 let code_search_path = self.internal_cfg.code_search_path.clone();
                 info!("code_search_path: {:?}", code_search_path);
-                self.load_binary_from_paths(code_search_path);
+                ClusterHelper::search_wasm(code_search_path);
             }
+            _ => {}
         };
         Ok(())
     }
@@ -235,11 +243,11 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         unimplemented!()
     }
 
-    fn put_with_id(&self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
+    fn put_with_id(&mut self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
         unimplemented!()
     }
 
-    fn put(&self, data: Vec<u8>) -> Result<ObjectID> {
+    fn put(&mut self, data: Vec<u8>) -> Result<ObjectID> {
         unimplemented!()
     }
 
@@ -261,5 +269,9 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         task_options: &CallOptions,
     ) -> Result<Vec<ObjectID>> {
         todo!()
+    }
+
+    fn exec_type(&self) -> WorkerType {
+        self.internal_cfg.worker_type
     }
 }

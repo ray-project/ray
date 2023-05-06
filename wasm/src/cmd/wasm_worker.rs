@@ -13,14 +13,18 @@
 // limitations under the License.
 use wasm_on_ray::config;
 use wasm_on_ray::engine::{WasmEngine, WasmEngineFactory, WasmEngineType};
-use wasm_on_ray::runtime::{register_ray_hostcalls, RayConfig, RayRuntime, RayRuntimeFactory};
-use wasm_on_ray::util;
+use wasm_on_ray::runtime::common_proto::WorkerType;
+use wasm_on_ray::runtime::{
+    register_ray_hostcalls, ClusterHelper, RayConfig, RayRuntime, RayRuntimeFactory,
+};
+use wasm_on_ray::util::{self, RayLog};
 
 use std::sync::{Arc, RwLock};
 use tracing::error;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use sha256::digest;
 use tracing_subscriber;
 
 struct WorkerContext {
@@ -82,6 +86,70 @@ async fn run_task_loop(ctx: &mut WorkerContext) -> Result<()> {
     Ok(())
 }
 
+fn init_wasm_module(
+    runtime: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
+    engine: &Arc<RwLock<Box<dyn WasmEngine + Send + Sync>>>,
+) -> Result<()> {
+    let mut rt = runtime.write().unwrap();
+    let mut engine = engine.write().unwrap();
+    if rt.exec_type() == WorkerType::Worker {
+        let modules = ClusterHelper::wasm_modules();
+        // TODO: process cases of more than one wasm modules
+        match modules.len() {
+            0 => {
+                RayLog::error(
+                    "worker mode need at least one wasm module"
+                        .to_string()
+                        .as_str(),
+                );
+                return Err(anyhow!("worker mode need at least one wasm module"));
+            }
+            1 => {
+                let wasm_file = std::path::Path::new(modules[0].as_str());
+                let wasm_bytes = match std::fs::read(wasm_file) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        RayLog::error(format!("read wasm file failed: {:?}", e).as_str());
+                        return Err(anyhow!("read wasm file failed: {:?}", e));
+                    }
+                };
+                // calculate the sha256 hash of wasm bytes
+                let wasm_bytes_hash = digest(wasm_bytes.as_slice());
+                match engine.compile("module", &wasm_bytes) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        RayLog::error(format!("compile wasm module failed: {:?}", e).as_str());
+                        return Err(anyhow!("compile wasm module failed: {:?}", e));
+                    }
+                };
+                match engine.create_sandbox("sandbox") {
+                    Ok(_) => {}
+                    Err(e) => {
+                        RayLog::error(format!("create wasm sandbox failed: {:?}", e).as_str());
+                        return Err(anyhow!("create wasm sandbox failed: {:?}", e));
+                    }
+                };
+                match engine.instantiate("sandbox", "module", "instance") {
+                    Ok(_) => {}
+                    Err(e) => {
+                        RayLog::error(format!("instantiate wasm module failed: {:?}", e).as_str());
+                        return Err(anyhow!("instantiate wasm module failed: {:?}", e));
+                    }
+                };
+            }
+            _ => {
+                RayLog::error(
+                    "worker mode only support one wasm module"
+                        .to_string()
+                        .as_str(),
+                );
+                return Err(anyhow!("worker mode only support one wasm module"));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
@@ -98,15 +166,18 @@ async fn main() -> Result<()> {
     cfg.is_worker = true;
 
     let rt = init_runtime(&cfg, &args).await.unwrap();
-    let engine = init_engine(&args).await.unwrap();
+    let mut engine = init_engine(&args).await.unwrap();
 
     let mut ctx = WorkerContext {
         runtime: Arc::new(RwLock::new(rt)),
         engine: Arc::new(RwLock::new(engine)),
     };
 
+    RayLog::info("register ray hostcalls");
     // setup hostcalls
     register_ray_hostcalls(&ctx.runtime, &ctx.engine).unwrap();
+
+    init_wasm_module(&ctx.runtime, &ctx.engine).unwrap();
 
     run_task_loop(&mut ctx).await.unwrap();
 

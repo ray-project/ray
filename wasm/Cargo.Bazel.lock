@@ -1,5 +1,5 @@
 {
-  "checksum": "650498b53f9a94658fd892f9aede42d2d8a4e2103b733b13d5a3ddc3adfad0da",
+  "checksum": "1050231e024ac681be72dea166ac2a124e1ba02ce85e6e38f6d5beda1cf54c6d",
   "crates": {
     "addr2line 0.19.0": {
       "name": "addr2line",
@@ -2818,6 +2818,41 @@
         ],
         "edition": "2021",
         "version": "0.3.1"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
+    "hex 0.4.3": {
+      "name": "hex",
+      "version": "0.4.3",
+      "repository": {
+        "Http": {
+          "url": "https://crates.io/api/v1/crates/hex/0.4.3/download",
+          "sha256": "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "hex",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "hex",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": [
+          "alloc",
+          "default",
+          "std"
+        ],
+        "edition": "2018",
+        "version": "0.4.3"
       },
       "license": "MIT OR Apache-2.0"
     },
@@ -6365,6 +6400,49 @@
       },
       "license": "MIT OR Apache-2.0"
     },
+    "sha256 1.1.3": {
+      "name": "sha256",
+      "version": "1.1.3",
+      "repository": {
+        "Http": {
+          "url": "https://crates.io/api/v1/crates/sha256/1.1.3/download",
+          "sha256": "5f9f8b5de2bac3a4ae28e9b611072a8e326d9b26c8189c0972d4c321fa684f1f"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "sha256",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "sha256",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "hex 0.4.3",
+              "target": "hex"
+            },
+            {
+              "id": "sha2 0.10.6",
+              "target": "sha2"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2018",
+        "version": "1.1.3"
+      },
+      "license": "MIT AND Apache-2.0"
+    },
     "sharded-slab 0.1.4": {
       "name": "sharded-slab",
       "version": "0.1.4",
@@ -8282,6 +8360,10 @@
             {
               "id": "serde_json 1.0.94",
               "target": "serde_json"
+            },
+            {
+              "id": "sha256 1.1.3",
+              "target": "sha256"
             },
             {
               "id": "tokio 1.26.0",

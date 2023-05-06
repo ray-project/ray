@@ -14,10 +14,10 @@
 
 use anyhow::{anyhow, Result};
 use core::panic;
-use libc::c_void;
 use prost::Message;
 use std::ffi::CStr;
 use std::process::Command;
+use std::sync::Mutex;
 use tracing::{debug, error, info};
 
 use crate::config::ConfigInternal;
@@ -26,6 +26,12 @@ use crate::runtime::core::core_worker::*;
 use crate::runtime::core::global_state_accessor::*;
 use crate::runtime::RuntimeEnv;
 use crate::util::get_node_ip_address;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    // search paths for wasm modules
+    static ref WASM_MODULES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+}
 
 pub struct ClusterHelper {}
 
@@ -328,5 +334,38 @@ impl ClusterHelper {
             ));
         }
         Ok(())
+    }
+
+    pub fn search_wasm(paths: Vec<String>) {
+        // iterate paths and find all wasm modules with .wasm extension
+        for path in paths {
+            let path = std::path::Path::new(path.as_str());
+            if path.is_dir() {
+                for entry in std::fs::read_dir(path).unwrap() {
+                    let entry = entry.unwrap();
+                    let path = entry.path();
+                    if path.is_file() {
+                        let file_name = path.file_name().unwrap().to_str().unwrap();
+                        if file_name.ends_with(".wasm") {
+                            let path = path.to_str().unwrap().to_string();
+                            let mut modules = WASM_MODULES.lock().unwrap();
+                            modules.push(path);
+                        }
+                    }
+                }
+            } else if path.is_file() {
+                let file_name = path.file_name().unwrap().to_str().unwrap();
+                if file_name.ends_with(".wasm") {
+                    let path = path.to_str().unwrap().to_string();
+                    let mut modules = WASM_MODULES.lock().unwrap();
+                    modules.push(path);
+                }
+            }
+        }
+    }
+
+    pub fn wasm_modules() -> Vec<String> {
+        let modules = WASM_MODULES.lock().unwrap();
+        modules.clone()
     }
 }

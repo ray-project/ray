@@ -15,7 +15,7 @@
 // declare extern c global state accessor functions
 
 use libc::c_void;
-use tracing::{debug, info};
+use tracing::debug;
 
 pub struct GlobalStateAccessor {
     pub raw: *mut c_void,
@@ -41,7 +41,7 @@ impl GlobalStateAccessor {
         );
         unsafe {
             GcsClientOptions_Update(gcs_address.as_ptr(), gcs_address.len());
-            let mut gcs = GlobalStateAccessor_Create();
+            let gcs = GlobalStateAccessor_Create();
             return GlobalStateAccessor { raw: gcs };
         };
     }

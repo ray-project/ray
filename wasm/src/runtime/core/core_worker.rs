@@ -62,6 +62,12 @@ extern "C" {
     pub fn CoreWorker_Put(
         buf: *const u8,
         len: usize,
+        object_id: *mut u8,
+        object_id_len: *mut usize,
+    ) -> i32;
+    pub fn CoreWorker_PutWithObjID(
+        buf: *const u8,
+        len: usize,
         object_id: *const u8,
         object_id_len: usize,
     ) -> i32;

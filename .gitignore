@@ -236,6 +236,7 @@ tag-mapping.json
 wasm/target/
 *.wasm
 wasm/**/*.objdump
+wasm/example/**/wasi-sdk*
 
 # IntelliJ files
 .ijwb/.bazelproject

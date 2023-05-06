@@ -46,6 +46,10 @@ typedef struct NamedRayObject {
 } NamedRayObject;
 
 struct TaskExecutionInfo {
+  // module name
+  const uint8_t *mod_fullname;
+  size_t mod_fullname_len;
+
   // function name
   const uint8_t *func_name;
   size_t func_name_len;
@@ -95,6 +99,18 @@ inline std::vector<ObjectID> ObjectIDVectorFromBuffer(uint8_t **object_ids_buf,
     object_ids.push_back(object_id);
   }
   return object_ids;
+}
+
+inline int16_t ObjectIDToBuffer(ObjectID &object_id,
+                                uint8_t *object_id_buf,
+                                size_t *object_id_len) {
+  auto binary = object_id.Binary();
+  if (binary.length() > *object_id_len) {
+    return -1;
+  }
+  *object_id_len = binary.length();
+  memcpy(object_id_buf, binary.c_str(), *object_id_len);
+  return 0;
 }
 
 inline int DeserializeMsgPack(uint8_t *msgbuf,
@@ -161,16 +177,14 @@ Status ExecuteTask(
   RAY_CHECK(function_descriptor->Type() ==
             ray::FunctionDescriptorType::kWasmFunctionDescriptor);
   auto typed_descriptor = function_descriptor->As<ray::WasmFunctionDescriptor>();
-  std::string func_name = typed_descriptor->FunctionName();
   std::string mod_name = typed_descriptor->ModuleName();
   std::string cls_name = typed_descriptor->ClassName();
+  std::string func_name = typed_descriptor->FunctionName();
   *is_retryable_error = false;
 
-  // RAY_LOG(INFO) << "Function name: " << func_name;
-  // RAY_LOG(INFO) << "Module name: " << mod_name;
-  // RAY_LOG(INFO) << "Class name: " << cls_name;
-
-  // set function name
+  // set module name & function name
+  task_execution_info.mod_fullname = (const unsigned char *)mod_name.c_str();
+  task_execution_info.mod_fullname_len = mod_name.size();
   task_execution_info.func_name = (const unsigned char *)func_name.c_str();
   task_execution_info.func_name_len = func_name.size();
 
@@ -191,7 +205,6 @@ Status ExecuteTask(
         meta_str = std::string((const char *)arg->GetMetadata()->Data(),
                                arg->GetMetadata()->Size());
       }
-      // RAY_LOG(INFO) << "Arg " << i << " meta: " << meta_str;
 
       const char *arg_data = nullptr;
       size_t arg_data_size = 0;
@@ -207,7 +220,6 @@ Status ExecuteTask(
         strcat(buf, tmp);
       }
       buf[sizeof(buf) - 1] = '\0';
-      // RAY_LOG(INFO) << "Arg " << i << " data: " << buf;
 
       // allocate memory for args_buf_list[i]
       task_execution_info.args_buf_list[i] = (uint8_t *)malloc(arg_data_size);
@@ -227,7 +239,7 @@ Status ExecuteTask(
     if (val == 0) {
       res = ray::Status::OK();
     } else {
-      res = ray::Status::Invalid("exec_task_func failed");
+      res = ray::Status::CreationTaskError("exec_task_func failed");
     }
   } else {
     RAY_LOG(ERROR) << "Unknown task type: " << task_type;
@@ -269,8 +281,6 @@ Status ExecuteTask(
 
   {
     // clean up
-    // TODO: free args_buf_list
-
     for (size_t i = 0; i < task_execution_info.args_buf_list_len; i++) {
       delete[] task_execution_info.args_buf_list[i];
     }
@@ -434,11 +444,34 @@ void CoreWorkerProcessOptions_UpdateGcsClientOptions(const uint8_t *gcs_address,
 
 // ---------------------- core worker functions ----------------------
 
-// core worker put object function
+// core worker put data function
 int CoreWorker_Put(uint8_t *data,
                    size_t len,
                    uint8_t *object_id_buf,
-                   size_t object_id_len) {
+                   size_t *object_id_len) {
+  ObjectID object_id;
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  std::shared_ptr<LocalMemoryBuffer> data_buffer =
+      std::make_shared<LocalMemoryBuffer>(data, len, /*copy_data=*/true);
+  auto status = core_worker.Put(
+      ::ray::RayObject(data_buffer, nullptr, std::vector<rpc::ObjectReference>()),
+      {},
+      &object_id);
+  if (!status.ok()) {
+    std::cerr << "CoreWorker_Put failed: " << status.ToString() << std::endl;
+    return -1;
+  }
+  if (ObjectIDToBuffer(object_id, object_id_buf, object_id_len) != 0) {
+    return -1;
+  }
+  return 0;
+}
+
+// core worker function for put data with a known object id
+int CoreWorker_PutWithObjID(uint8_t *data,
+                            size_t len,
+                            uint8_t *object_id_buf,
+                            size_t object_id_len) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   auto object_id = ObjectIDFromBuffer(object_id_buf, object_id_len);
@@ -490,7 +523,34 @@ int CoreWorker_GetMulti(uint8_t **object_ids_buf,
     std::string meta_str = "";
     if (meta != nullptr) {
       meta_str = std::string((const char *)meta->Data(), meta->Size());
-      // TODO: raise exception and check meta_str
+      // parse meta_str to int
+      if (meta_str != "") {
+        switch (std::stoi(meta_str)) {
+        case ray::rpc::ErrorType::WORKER_DIED:
+          RAY_LOG(ERROR) << "Worker died";
+          return -1;
+        case ray::rpc::ErrorType::ACTOR_DIED:
+          RAY_LOG(ERROR) << "Actor died";
+          return -1;
+        case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE:
+          RAY_LOG(ERROR) << "Object unreconstructable";
+          return -1;
+        case ray::rpc::ErrorType::OBJECT_LOST:
+          RAY_LOG(ERROR) << "Object lost";
+          return -1;
+        case ray::rpc::ErrorType::OWNER_DIED:
+          RAY_LOG(ERROR) << "Owner died";
+          return -1;
+        case ray::rpc::ErrorType::OBJECT_DELETED:
+          RAY_LOG(ERROR) << "Object deleted";
+          return -1;
+        case ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
+          RAY_LOG(ERROR) << "Task execution exception";
+          return -1;
+        default:
+          break;
+        }
+      }
     }
 
     const char *tmp_data = nullptr;
@@ -498,6 +558,10 @@ int CoreWorker_GetMulti(uint8_t **object_ids_buf,
     if (data_buffer) {
       tmp_data = reinterpret_cast<const char *>(data_buffer->Data());
       tmp_data_len = data_buffer->Size();
+      if (tmp_data_len == 0) {
+        RAY_LOG(ERROR) << "tmp_data_len is 0";
+        return -1;
+      }
     }
     if (meta_str == "RAW") {
       int res;
