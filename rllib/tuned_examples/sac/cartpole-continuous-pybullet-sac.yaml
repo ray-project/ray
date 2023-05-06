@@ -2,7 +2,7 @@ cartpole-sac:
     env: CartPoleContinuousBulletEnv-v0
     run: SAC
     stop:
-        episode_reward_mean: 40
+        sampler_results/episode_reward_mean: 40
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

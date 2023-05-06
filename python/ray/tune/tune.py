@@ -4,7 +4,6 @@ import copy
 import datetime
 import logging
 import os
-from pathlib import Path
 import signal
 import sys
 import threading
@@ -38,6 +37,7 @@ from ray.tune.experimental.output import (
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
+from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -910,7 +910,7 @@ def run(
         trial_checkpoint_config=experiments[0].checkpoint_config,
     )
 
-    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "0"))):
+    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
         trial_runner_cls = TuneController
         runner_kwargs.pop("trial_executor")
         runner_kwargs["reuse_actors"] = reuse_actors
@@ -958,10 +958,24 @@ def run(
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
+        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+            tensorboard_path = runner._local_experiment_path
+        else:
+            tensorboard_path = None
+
         if air_progress_reporter and isinstance(
             air_progress_reporter, TuneRichReporter
         ):
             stack.enter_context(air_progress_reporter.with_live())
+        elif air_progress_reporter:
+            air_progress_reporter.experiment_started(
+                experiment_name=runner._experiment_dir_name,
+                experiment_path=runner.experiment_path,
+                searcher_str=search_alg.__class__.__name__,
+                scheduler_str=scheduler.__class__.__name__,
+                total_num_samples=search_alg.total_samples,
+                tensorboard_path=tensorboard_path,
+            )
 
         try:
             while (
@@ -1015,7 +1029,7 @@ def run(
 
     if experiment_interrupted_event.is_set():
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
-            path=Path(experiment_checkpoint).parent,
+            path=runner.experiment_path,
         )
         logger.warning(
             "Experiment has been interrupted, but the most recent state was saved.\n"
