@@ -246,7 +246,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="failures",
         targets=[
             Target(
-                expr='ray_memory_manager_worker_eviction_total{{{global_filters}}}',
+                expr="ray_memory_manager_worker_eviction_total{{{global_filters}}}",
                 legend="OOM Killed: {{Name}}",
             ),
         ],
