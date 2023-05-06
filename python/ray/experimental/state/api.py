@@ -766,7 +766,8 @@ def list_actors(
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
-            the filter value. E.g., `("id", "=", "abcd")`
+            the filter value. E.g., `("id", "=", "abcd")`.
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ActorState`)
@@ -814,6 +815,7 @@ def list_placement_groups(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("state", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `PlacementGroupState`)
@@ -858,6 +860,7 @@ def list_nodes(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_name", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `NodeState`)
@@ -902,6 +905,7 @@ def list_jobs(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("status", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `JobState`)
@@ -946,6 +950,7 @@ def list_workers(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `WorkerState`)
@@ -990,6 +995,7 @@ def list_tasks(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `WorkerState`)
@@ -1034,6 +1040,7 @@ def list_objects(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("ip", "=", "0.0.0.0")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ObjectState`)
@@ -1078,6 +1085,7 @@ def list_runtime_envs(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_id", "=", "abcdef")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `RuntimeEnvState`)
