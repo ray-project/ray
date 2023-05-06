@@ -74,7 +74,8 @@ class APPOTorchPolicy(
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
             VTraceOptimizer.__init__(self)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
         TorchPolicyV2.__init__(
             self,
@@ -84,18 +85,18 @@ class APPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        if old_stack:
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
-            ValueNetworkMixin.__init__(self, config)
-            KLCoeffMixin.__init__(self, config)
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
+        ValueNetworkMixin.__init__(self, config)
+        KLCoeffMixin.__init__(self, config)
 
+        if old_stack:
             # TODO: Don't require users to call this manually.
             self._initialize_loss_from_dummy_batch()
 
-            # Initiate TargetNetwork ops after loss initialization.
-            TargetNetworkMixin.__init__(self)
+        # Initiate TargetNetwork ops after loss initialization.
+        TargetNetworkMixin.__init__(self)
 
     @override(TorchPolicyV2)
     def init_view_requirements(self):

@@ -1358,6 +1358,10 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.T: ViewRequirement(),
+            SampleBatch.VF_PREDS: ViewRequirement(),
+            SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(),
+            SampleBatch.ACTION_LOGP: ViewRequirement(),
+            SampleBatch.ACTION_PROB: ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(

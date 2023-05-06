@@ -44,8 +44,6 @@ class PPOTorchPolicy(
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
-        # TODO: Move into Policy API, if needed at all here. Why not move this into
-        #  `PPOConfig`?.
         validate_config(config)
 
         TorchPolicyV2.__init__(
@@ -56,15 +54,14 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        if not self.config.get("_enable_learner_api", False):
-            ValueNetworkMixin.__init__(self, config)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
-            KLCoeffMixin.__init__(self, config)
+        ValueNetworkMixin.__init__(self, config)
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
+        KLCoeffMixin.__init__(self, config)
 
-            # TODO: Don't require users to call this manually.
+        if not self.config.get("_enable_learner_api", False):
             self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicyV2)

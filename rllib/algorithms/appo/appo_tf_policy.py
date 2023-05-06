@@ -99,23 +99,24 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 existing_model=existing_model,
             )
 
+            # TF LearningRateSchedule depends on self.framework, so initialize
+            # after base.__init__() is called.
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
+            ValueNetworkMixin.__init__(self, config)
+            KLCoeffMixin.__init__(self, config)
+
             if old_stack:
-                # TF LearningRateSchedule depends on self.framework, so initialize
-                # after base.__init__() is called.
-                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-                EntropyCoeffSchedule.__init__(
-                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-                )
-                ValueNetworkMixin.__init__(self, config)
-                KLCoeffMixin.__init__(self, config)
                 GradStatsMixin.__init__(self)
 
                 # Note: this is a bit ugly, but loss and optimizer initialization must
                 # happen after all the MixIns are initialized.
                 self.maybe_initialize_optimizer_and_loss()
 
-                # Initiate TargetNetwork ops after loss initialization.
-                TargetNetworkMixin.__init__(self)
+            # Initiate TargetNetwork ops after loss initialization.
+            TargetNetworkMixin.__init__(self)
 
         @override(base)
         def make_model(self) -> ModelV2:

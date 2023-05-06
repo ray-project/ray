@@ -87,15 +87,15 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
-            if not self.config.get("_enable_learner_api", False):
-                # Initialize MixIns.
-                ValueNetworkMixin.__init__(self, config)
-                KLCoeffMixin.__init__(self, config)
-                EntropyCoeffSchedule.__init__(
-                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-                )
-                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            # Initialize MixIns.
+            ValueNetworkMixin.__init__(self, config)
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            KLCoeffMixin.__init__(self, config)
 
+            if not self.config.get("_enable_learner_api", False):
                 # Note: this is a bit ugly, but loss and optimizer initialization must
                 # happen after all the MixIns are initialized.
                 self.maybe_initialize_optimizer_and_loss()
