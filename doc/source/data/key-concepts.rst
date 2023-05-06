@@ -11,11 +11,12 @@ Datastream
 ----------
 
 A :term:`Datastream <Datastream (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
-Each block holds a set of items in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_,
-`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_, or Python list.
+Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
+`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
 Having multiple blocks in a datastream allows for parallel transformation and ingest.
 
-For ML use cases, Datastream also natively supports mixing :ref:`Tensors <data_tensor_support>` and tabular data.
+For ML use cases, Datastream natively supports mixing tensors with tabular data. To
+learn more, read :ref:`Working with tensor data <working_with_tensors>`.
 
 The following figure visualizes a datastream with three blocks, each holding 1000 rows. Note that certain blocks
 may not be computed yet. Normally, callers iterate over datastream blocks in a streaming fashion, so that not all
@@ -39,7 +40,7 @@ Datastream uses Ray tasks to read data from remote storage in parallel. Each rea
 
 You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying datastream.
 
-For an in-depth guide on creating datastreams, read :ref:`Loading Data <creating_datastreams>`.
+For an in-depth guide on creating datastreams, read :ref:`Loading Data <loading_data>`.
 
 Transforming Data
 =================
@@ -56,7 +57,7 @@ pool of Ray actors. This allows you to cache expensive state initialization
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For an in-depth guide on transforming datastreams, read :ref:`Transforming Data <transforming_datastreams>`.
+For an in-depth guide on transforming datastreams, read :ref:`Transforming Data <transforming_data>`.
 
 Shuffling Data
 ==============
@@ -100,7 +101,7 @@ Fault tolerance
 
 Datastream performs *lineage reconstruction* to recover data. If an application error or
 system failure occurs, Datastream recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-will restart the actor used for computing the block prior to re-executing the task. 
+restarts the actor used for computing the block prior to re-executing the task.
 
 Fault tolerance is not supported if the original worker process that created the Datastream dies.
 This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Datastream.
