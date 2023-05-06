@@ -61,8 +61,7 @@ class PPOTorchPolicy(
         )
         KLCoeffMixin.__init__(self, config)
 
-        if not self.config.get("_enable_learner_api", False):
-            self._initialize_loss_from_dummy_batch()
+        self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicyV2)
     def loss(

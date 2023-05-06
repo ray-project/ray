@@ -111,9 +111,9 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             if old_stack:
                 GradStatsMixin.__init__(self)
 
-                # Note: this is a bit ugly, but loss and optimizer initialization must
-                # happen after all the MixIns are initialized.
-                self.maybe_initialize_optimizer_and_loss()
+            # Note: this is a bit ugly, but loss and optimizer initialization must
+            # happen after all the MixIns are initialized.
+            self.maybe_initialize_optimizer_and_loss()
 
             # Initiate TargetNetwork ops after loss initialization.
             TargetNetworkMixin.__init__(self)

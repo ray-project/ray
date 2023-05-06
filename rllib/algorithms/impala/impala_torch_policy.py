@@ -218,8 +218,7 @@ class ImpalaTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        if not self.config.get("_enable_learner_api"):
-            self._initialize_loss_from_dummy_batch()
+        self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicyV2)
     def loss(

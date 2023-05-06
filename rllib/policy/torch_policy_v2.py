@@ -208,11 +208,10 @@ class TorchPolicyV2(Policy):
             num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
             self._loaded_batches = [[] for _ in range(num_buffers)]
 
-            # If set, means we are using distributed allreduce during learning.
-            self.distributed_world_size = None
+        # If set, means we are using distributed allreduce during learning.
+        self.distributed_world_size = None
 
-            self.batch_divisibility_req = self.get_batch_divisibility_req()
-
+        self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
 
         # If model is an RLModule it won't have tower_stats instead there will be a

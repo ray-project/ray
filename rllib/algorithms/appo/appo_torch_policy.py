@@ -91,9 +91,7 @@ class APPOTorchPolicy(
         ValueNetworkMixin.__init__(self, config)
         KLCoeffMixin.__init__(self, config)
 
-        if old_stack:
-            # TODO: Don't require users to call this manually.
-            self._initialize_loss_from_dummy_batch()
+        self._initialize_loss_from_dummy_batch()
 
         # Initiate TargetNetwork ops after loss initialization.
         TargetNetworkMixin.__init__(self)

@@ -306,9 +306,9 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                     self, config["entropy_coeff"], config["entropy_coeff_schedule"]
                 )
 
-                # Note: this is a bit ugly, but loss and optimizer initialization must
-                # happen after all the MixIns are initialized.
-                self.maybe_initialize_optimizer_and_loss()
+            # Note: this is a bit ugly, but loss and optimizer initialization must
+            # happen after all the MixIns are initialized.
+            self.maybe_initialize_optimizer_and_loss()
 
         @override(base)
         def loss(
