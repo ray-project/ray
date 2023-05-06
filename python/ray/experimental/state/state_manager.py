@@ -31,7 +31,6 @@ from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
     GetObjectsInfoRequest,
     GetTasksInfoReply,
-    GetTasksInfoRequest,
 )
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
@@ -356,18 +355,16 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_task_info(
-        self, node_id: str, timeout: int = None, limit: int = None
+        self, task_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetTasksInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        stub = self._raylet_stubs.get(node_id)
-        if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
+        req_filters = GetTaskEventsRequest.Filters()
+        req_filters.task_ids.append(TaskID(hex_to_binary(task_id)).binary())
 
-        reply = await stub.GetTasksInfo(
-            GetTasksInfoRequest(limit=limit), timeout=timeout
-        )
+        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
+        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors
@@ -424,6 +421,8 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
+        task_id: Optional[str] = None,
+        attempt_number: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
@@ -434,6 +433,8 @@ class StateDataSourceClient:
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
+                task_id=task_id,
+                attempt_number=attempt_number,
             ),
             timeout=timeout,
         )
