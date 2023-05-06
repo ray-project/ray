@@ -233,7 +233,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             .rollouts(rollout_fragment_length=200, num_rollout_workers=0)
         )
         config.validate()
-        enable_rl_module_api = config._enable_rl_module_api
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=ppo.PPOTorchPolicy,

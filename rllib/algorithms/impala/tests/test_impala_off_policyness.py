@@ -1,4 +1,3 @@
-import itertools
 import unittest
 
 import ray
@@ -6,7 +5,6 @@ import ray.rllib.algorithms.impala as impala
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
-    check_off_policyness,
     framework_iterator,
 )
 
@@ -34,8 +32,6 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
         num_iterations = 3
         num_aggregation_workers_options = [0, 1]
 
-        default_exploration_config = config.exploration_config.copy()
-
         for num_aggregation_workers in num_aggregation_workers_options:
             for _ in framework_iterator(
                 config, frameworks=("tf2", "torch"), with_eager_tracing=True
@@ -48,7 +44,7 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
                 print("aggregation-workers={}".format(config.num_aggregation_workers))
                 algo = config.build()
                 for i in range(num_iterations):
-                    results = algo.train()
+                    algo.train()
                     # TODO (Avnish): Add off-policiness check when the metrics are
                     #  added back to the IMPALA Learner.
                     # off_policy_ness = check_off_policyness(results, upper_limit=2.0)
