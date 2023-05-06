@@ -210,8 +210,6 @@ class StateSchema(ABC):
     @classmethod
     def humanify(cls, state: dict) -> dict:
         """Convert the given state object into something human readable."""
-        if not cls.is_valid_state(state):
-            return state  # return the original state
         for f in fields(cls):
             if f.metadata.get("format_fn") is not None and state[f.name] is not None:
                 state[f.name] = f.metadata["format_fn"](state[f.name])
