@@ -564,17 +564,25 @@ class WorkerState(StateSchema):
     #: -> worker_launched_time_ms (process started).
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
-    worker_launch_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    worker_launch_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+    )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
-    worker_launched_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    worker_launched_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+    )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
-    start_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    start_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+    )
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
     #: 0 if the value doesn't exist.
-    end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    end_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+    )
 
 
 @dataclass(init=True)
@@ -679,7 +687,9 @@ class ObjectState(StateSchema):
     #: The id of the object.
     object_id: str = state_column(filterable=True)
     #: The size of the object in mb.
-    object_size: int = state_column(filterable=True)
+    object_size: int = state_column(
+        filterable=True, metadata={"format_fn": Humanify.memory}
+    )
     #: The status of the task that creates the object.
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
@@ -738,7 +748,9 @@ class RuntimeEnvState(StateSchema):
     success: bool = state_column(filterable=True)
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
-    creation_time_ms: Optional[float] = state_column(filterable=False)
+    creation_time_ms: Optional[float] = state_column(
+        filterable=False, metadata={"format_fn": Humanify.timestamp}
+    )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
     #: The number of actors and tasks that use this runtime environment.
