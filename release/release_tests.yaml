@@ -845,11 +845,17 @@
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
   run:
-    timeout: 4200
+    timeout: 3600
     script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
   
   variations:
     - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: dolly_v2_fsdp_env.yaml
+        cluster_compute: dolly_v2_fsdp_compute_gce.yaml
 
 #####################################
 # Workspace templates release tests #
