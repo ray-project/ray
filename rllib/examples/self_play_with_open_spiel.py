@@ -296,7 +296,7 @@ if __name__ == "__main__":
                 ),
                 checkpoint_config=air.CheckpointConfig(
                     checkpoint_at_end=create_checkpoints,
-                    checkpoint_frequency=10 if create_checkpoints else None,
+                    checkpoint_frequency=10 if create_checkpoints else 0,
                 ),
             ),
         ).fit()
