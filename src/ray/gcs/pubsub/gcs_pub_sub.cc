@@ -327,9 +327,10 @@ Status PythonGcsSubscriber::Subscribe() {
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
   // TODO: Fill this out
-  request.set_sender_id("XXXXX");
+  // request.set_sender_id("XXXXX");
   auto *cmd = request.add_commands();
   cmd->set_channel_type(channel_type_);
+  cmd->mutable_subscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);

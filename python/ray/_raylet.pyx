@@ -1833,7 +1833,12 @@ cdef class GcsErrorSubscriber:
             c_string key_id
         check_status(self.inner.get().PollError(&key_id, &error_data))
 
-        return (bytes(key_id), {"error_message": error_data.error_message()})
+        return (bytes(key_id), {"error_message": error_data.error_message().decode()})
+
+    def close(self):
+        # TODO: Implement
+        pass
+
 
 cdef class CoreWorker:
 

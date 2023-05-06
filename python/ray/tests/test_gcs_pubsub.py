@@ -29,10 +29,10 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
 
     (key_id1, err1) = subscriber.poll()
     assert key_id1 == b"aaa_id"
-    assert err1.error_message == "test error message 1"
+    assert err1["error_message"] == "test error message 1"
     (key_id2, err2) = subscriber.poll()
     assert key_id2 == b"bbb_id"
-    assert err2.error_message == "test error message 2"
+    assert err2["error_message"] == "test error message 2"
 
     subscriber.close()
 
