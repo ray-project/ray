@@ -77,6 +77,42 @@ SupportedFilterType = Union[str, bool, int, float]
 PredicateType = str  # Literal["=", "!="]
 
 
+class Humanify:
+    """A class containing default methods to convert units into a human readable string."""
+
+    def timestamp(x: float):
+        """Converts miliseconds to a datetime object."""
+        return str(datetime.datetime.fromtimestamp(x / 1000))
+
+    def memory(x: int):
+        """Converts raw bytes to a human readable memory size."""
+        if x >= 2**30:
+            return str(x / (2**30)) + " GiB"
+        elif x >= 2**20:
+            return str(x / (2**20)) + " MiB"
+        elif x >= 2**10:
+            return str(x / (2**10)) + " KiB"
+        return str(x) + " B"
+
+    def duration(x: int):
+        """Converts miliseconds to a human readable duration."""
+        return str(datetime.timedelta(milliseconds=x))
+
+    def events(events: List[dict]):
+        """Converts a list of task events into a human readable format."""
+        for event in events:
+            if "created_ms" in event:
+                event["created_ms"] = Humanify.timestamp(event["created_ms"])
+        return events
+
+    def node_resources(resources: dict):
+        """Converts a node's resources into a human readable format."""
+        for resource in resources:
+            if "memory" in resource:
+                resources[resource] = Humanify.memory(resources[resource])
+        return resources
+
+
 @dataclass(init=True)
 class ListApiOptions:
     # Maximum number of entries to return
@@ -457,13 +493,19 @@ class NodeState(StateSchema):
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
-    resources_total: dict = state_column(filterable=False)
+    resources_total: dict = state_column(
+        filterable=False, metadata={"format_fn": Humanify.node_resources}
+    )
     #: The time when the node (raylet) starts.
-    start_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    start_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+    )
     #: The time when the node exits. The timestamp could be delayed
     #: if the node is dead unexpectedly (could be delayed
     # up to 30 seconds).
-    end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    end_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+    )
 
 
 @dataclass(init=True)
@@ -543,35 +585,6 @@ class ClusterEventState(StateSchema):
     message: str = state_column(filterable=False)
     event_id: str = state_column(filterable=True)
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
-
-
-class Humanify:
-    """A class containing default methods to convert units into a human readable string."""
-
-    def timestamp(x: float):
-        """Converts miliseconds to a datetime object."""
-        return str(datetime.datetime.fromtimestamp(x / 1000))
-
-    def memory(x: int):
-        """Converts raw bytes to a human readable memory size."""
-        if x >= 2**30:
-            return str(x / (2**30)) + " GiB"
-        elif x >= 2**20:
-            return str(x / (2**20)) + " MiB"
-        elif x >= 2**10:
-            return str(x / (2**10)) + " KiB"
-        return str(x) + " B"
-
-    def duration(x: int):
-        """Converts miliseconds to a human readable duration."""
-        return str(datetime.timedelta(milliseconds=x))
-
-    def events(events: List[dict]):
-        """Converts a list of task events into a human readable format."""
-        for event in events:
-            if "created_ms" in event:
-                event["created_ms"] = Humanify.timestamp(event["created_ms"])
-        return events
 
 
 @dataclass(init=True)
