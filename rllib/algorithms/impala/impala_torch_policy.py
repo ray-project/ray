@@ -201,7 +201,7 @@ class ImpalaTorchPolicy(
             ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
         )
 
-        if not self.config.get("_enable_learner_api"):
+        if not config.get("_enable_learner_api"):
             VTraceOptimizer.__init__(self)
             # Need to initialize learning rate variable before calling
             # TorchPolicyV2.__init__.
