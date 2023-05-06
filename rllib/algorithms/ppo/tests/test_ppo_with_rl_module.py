@@ -130,9 +130,9 @@ class TestPPO(unittest.TestCase):
                     optim = algo.learner_group._learner._named_optimizers[
                         DEFAULT_POLICY_ID
                     ]
-                    entropy_coeff = (
-                        learner.curr_entropy_coeffs_per_module[DEFAULT_POLICY_ID]
-                    )
+                    entropy_coeff = learner.curr_entropy_coeffs_per_module[
+                        DEFAULT_POLICY_ID
+                    ]
                     lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
                     check(entropy_coeff, 0.1)
                     # Check initial LR directly set in optimizer.
