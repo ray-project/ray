@@ -865,7 +865,7 @@ class EagerTFPolicyV2(Policy):
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
-                action_dist.to_deterministic()
+                action_dist = action_dist.to_deterministic()
                 actions = action_dist.sample()
                 logp = None
 
