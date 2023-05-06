@@ -7,9 +7,6 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
-    PPOTorchPolicyWithRLModule,
-)
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -239,9 +236,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         enable_rl_module_api = config._enable_rl_module_api
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=PPOTorchPolicyWithRLModule
-            if enable_rl_module_api
-            else ppo.PPOTorchPolicy,
+            default_policy_class=ppo.PPOTorchPolicy,
             config=config,
         )
         # Add the next action (a') and 2nd next action (a'') to the view
