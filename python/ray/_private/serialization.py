@@ -9,6 +9,7 @@ import ray.cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.gcs_utils import ErrorType
 from ray._raylet import (
+    ArrowSerializedObject,
     MessagePackSerializedObject,
     MessagePackSerializer,
     ObjectRefGenerator,
@@ -271,6 +272,11 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
+            elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
+                import pyarrow as pa
+
+                reader = pa.BufferReader(data)
+                return pa.ipc.open_stream(reader).read_all()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return _actor_handle_deserializer(obj)
@@ -462,5 +468,14 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
-        else:
-            return self._serialize_to_msgpack(value)
+        try:
+            # Check whether arrow is installed. If so, use Arrow IPC format
+            # to serialize this object, then it can also be read by Java.
+            import pyarrow as pa
+
+            if isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch):
+                return ArrowSerializedObject(value)
+        except ImportError:
+            pass
+
+        return self._serialize_to_msgpack(value)
