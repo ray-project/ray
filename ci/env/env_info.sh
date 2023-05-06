@@ -8,6 +8,10 @@ echo "Installed pip packages:"
 python -m pip freeze 2>/dev/null || echo 'Pip not installed'
 echo "----------------------------"
 
+if [ -n "${BUILDKITE-}" ] && [ -d "/artifact-mount" ]; then
+  python -m pip freeze > /artifact-mount/pip_freeze.txt
+fi
+
 echo "GPU information"
 echo "----------------------------"
 GPUCMD="nvidia-smi"
@@ -17,5 +21,9 @@ then
 else
     eval "${GPUCMD}"
     python -c "import torch; print('Torch cuda available:', torch.cuda.is_available())"
+
+    if [ -n "${BUILDKITE-}" ] && [ -d "/artifact-mount" ]; then
+      eval "${GPUCMD}" > /artifact-mount/nvidia_smi.txt
+    fi
 fi
 echo "----------------------------"

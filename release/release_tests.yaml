@@ -43,7 +43,7 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job, sdk_command].
+#    # Type of test. Can be [anyscale_job]
 #    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
 #    # run the actual release test.
 #    type: anyscale_job
@@ -701,6 +701,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -727,6 +728,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -753,6 +755,7 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core
@@ -829,19 +832,38 @@
         cluster_compute: gptj_deepspeed_compute_gce.yaml
 
 
+- name: air_example_opt_deepspeed_batch_inference
+  group: AIR examples
+  working_dir: air_examples/opt_deepspeed_batch_inference
+
+  python: "3.9"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: 30b_deepspeed_env.yaml
+    cluster_compute: 30b_deepspeed_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path opt_deepspeed_batch_inference.ipynb
+
+  # variations: TODO(jungong): add GCP variation.
+
+
 #####################################
 # Workspace templates release tests #
 #####################################
 
 - name: workspace_template_batch_inference
   group: Workspace templates
-  working_dir: workspace_templates/tests
+  working_dir: workspace_templates/tests/01_batch_inference
   python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../../configs/release_test_cluster_env.yaml
+    cluster_compute: ../../configs/compute/gpu/aws_release_test.yaml
 
   run:
     timeout: 600
@@ -853,23 +875,23 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
 
 
 - name: workspace_template_many_model_training
   group: Workspace templates
-  working_dir: workspace_templates/tests
+  working_dir: workspace_templates/tests/02_many_model_training
   python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/cpu/aws_release_test.yaml
+    cluster_env: ../../configs/release_test_cluster_env.yaml
+    cluster_compute: ../../configs/compute/cpu/aws_release_test.yaml
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
+    script: pip install -U -r requirements.txt && jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -877,23 +899,23 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/cpu/gce_release_test.yaml
 
 
 - name: workspace_template_serving_stable_diffusion
   group: Workspace templates
-  working_dir: workspace_templates/tests
+  working_dir: workspace_templates/tests/03_serving_stable_diffusion
   python: "3.9"
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../../configs/release_test_cluster_env.yaml
+    cluster_compute: ../../configs/compute/gpu/aws_release_test.yaml
 
   run:
-    timeout: 900
-    script: jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+    timeout: 600
+    script: pip install -U -r requirements.txt && jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -901,8 +923,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../../configs/release_test_cluster_env.yaml
+          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
 
 
 #######################
@@ -4277,7 +4299,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
+        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # Revert to the comment below once ^ closed.
+        # cluster_env: app_config.yaml
+        cluster_env: debug_app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
@@ -4796,7 +4821,9 @@
 - name: tune_air_oom
   group: core-daily-test
   working_dir: air_tests
+
   stable: false
+  jailed: true
 
   frequency: nightly
   team: core

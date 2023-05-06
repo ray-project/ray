@@ -7,6 +7,7 @@ from typing import (
     Callable,
     Container,
     Dict,
+    List,
     Mapping,
     Optional,
     Tuple,
@@ -315,6 +316,7 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
+        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
@@ -865,27 +867,6 @@ class AlgorithmConfig(_Config):
             # (to be used in unittesting)
             self.rl_module(_enable_rl_module_api=True)
             self.enable_connectors = True
-
-        # Explore parameter cannot be False with RLModule API enabled.
-        # The reason is that `explore` is not just a parameter that will get passed
-        # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
-        # forward_exploration() will get called during sampling. If user needs to
-        # really disable the stochasticity during this phase, they need to override the
-        # RLModule.forward_exploration() method or setup model parameters such that it
-        # will disable the stochasticity of this method (e.g. by setting the std to 0
-        # or setting temperature to 0 for the Categorical distribution).
-        if self._enable_rl_module_api and not self.explore:
-            raise ValueError(
-                "When RLModule API is enabled, explore parameter cannot be False. "
-                "Please set explore=None or disable RLModule API via "
-                "`config.rl_module(_enable_rl_module_api=False)`."
-                "If you want to disable the stochasticity during the exploration "
-                "phase, you can customize your RLModule and override the RLModule."
-                "forward_exploration() method "
-                "or setup model parameters such that it will disable the "
-                "stochasticity of this method (e.g. by setting the std to 0 or "
-                "setting temperature to 0 for the Categorical distribution)."
-            )
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1588,6 +1569,7 @@ class AlgorithmConfig(_Config):
         *,
         gamma: Optional[float] = NotProvided,
         lr: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
@@ -1602,6 +1584,10 @@ class AlgorithmConfig(_Config):
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
             lr: The default learning rate.
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
             grad_clip: The value to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more
@@ -1653,6 +1639,8 @@ class AlgorithmConfig(_Config):
             self.gamma = gamma
         if lr is not NotProvided:
             self.lr = lr
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
@@ -3129,6 +3117,9 @@ class AlgorithmConfig(_Config):
             .learner(
                 learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
+                # TODO (Sven): Shouldn't optimizer config be part of learner HPs?
+                #  E.g. if we have a lr schedule, this will have to be managed by
+                #  the learner, NOT the optimizer directly.
                 optimizer_config={
                     "lr": self.lr,
                     "grad_clip": self.grad_clip,
@@ -3159,7 +3150,7 @@ class AlgorithmConfig(_Config):
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
         """
-        return LearnerHyperparameters()
+        return LearnerHyperparameters(lr_schedule=self.lr_schedule)
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
