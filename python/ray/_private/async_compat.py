@@ -22,7 +22,7 @@ def get_new_event_loop():
 def sync_to_async(func):
     """Convert a blocking function to async function"""
 
-    if inspect.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
         return func
 
     async def wrapper(*args, **kwargs):

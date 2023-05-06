@@ -208,27 +208,63 @@ class StreamingObjectRefGeneratorV2:
         core_worker = ray._private.worker.global_worker.core_worker
         obj = self._handle_next()
         while obj.is_nil():
-            if not self._generator_task_exception:
+            if self._generator_task_exception:
+                # The generator task has failed. We raise StopIteration
+                # to conform the next interface in Python.
+                raise StopIteration
+            else:
+                # Otherwise, check the task status.
                 r, _ = ray.wait([self._generator_ref], timeout=0)
                 if len(r) > 0:
                     try:
                         ray.get(r)
                     except Exception as e:
+                        # If it has failed, return the generator task ref
+                        # so that the ref will raise an exception.
                         self._generator_task_exception = e
                         return self._generator_ref
-            else:
-                raise StopIteration
-            time.sleep(0.01)
+
+            time.sleep(0.001)
             obj = self._handle_next()
         return obj
 
-    def _handle_next(self):
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        core_worker = ray._private.worker.global_worker.core_worker
+        obj = self._handle_next(is_async_generator=True)
+
+        while obj.is_nil():
+            if self._generator_task_exception:
+                raise StopAsyncIteration
+            else:
+                r, _ = ray.wait([self._generator_ref], timeout=0)
+                if len(r) > 0:
+                    try:
+                        print(r)
+                        if isinstance(r, list):
+                            assert len(r) == 1
+                            r = r[0]
+                        await r
+                    except Exception as e:
+                        self._generator_task_exception = e
+                        return self._generator_ref
+            await asyncio.sleep(0.001)
+            obj = self._handle_next(is_async_generator=True)
+
+        return obj
+
+    def _handle_next(self, is_async_generator=False):
         try:
             core_worker = ray._private.worker.global_worker.core_worker
             obj = core_worker.generator_get_next(self._generator_ref)
             return obj
         except RayKeyError:
-            raise StopIteration
+            if is_async_generator:
+                raise StopAsyncIteration
+            else:
+                raise StopIteration
     
     def __del__(self):
         worker = ray._private.worker.global_worker
@@ -701,7 +737,8 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         function_descriptor,
         title,
         const CAddress &caller_address,
-        actor):
+        actor,
+        name_of_concurrency_group_to_execute):
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -709,7 +746,15 @@ cdef execute_dynamic_generator_and_store_task_outputs(
     i = 0
     while True:
         try:
-            output = next(generator)
+            if inspect.isgenerator(generator):
+                output = next(generator)
+            elif inspect.isasyncgen(generator):
+                output = core_worker.run_async_func_or_coro_in_event_loop(
+                    generator.__anext__(),
+                    function_descriptor,
+                    name_of_concurrency_group_to_execute)
+            else:
+                assert False
             # Run the generator and report the intermediate result.
             core_worker.store_task_outputs(
                 worker, [output],
@@ -723,6 +768,11 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 dynamic_returns[0].front(), generator_id, caller_address, i, False)
             dynamic_returns[0].pop_back()
             i += 1
+        except AsyncioActorExit:
+            # Make the task handle this exception.
+            raise
+        except StopAsyncIteration:
+            break
         except StopIteration:
             break
         except Exception as e:
@@ -797,9 +847,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         caller_address,
         i,
         True)
-    print("SANG-TODO c")
     dynamic_returns[0].clear()
-    print("SANG-TODO d")
 
 
 cdef void execute_task(
@@ -875,12 +923,14 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
+                def predicate(o):
+                    return inspect.iscoroutinefunction(o) or inspect.isasyncgenfunction(o)
                 if len(inspect.getmembers(
                         actor.__class__,
-                        predicate=inspect.iscoroutinefunction)) == 0:
+                        predicate=predicate)) == 0:
                     error_message = (
-                        "Failed to create actor. The failure reason "
-                        "is that you set the async flag, but the actor does not "
+                        "Failed to create actor. You set the async flag, "
+                        "but the actor does not "
                         "have any coroutine functions.")
                     raise RayActorError(
                         ActorDiedErrorContext(
@@ -898,7 +948,7 @@ cdef void execute_task(
                 # transport with max_concurrency flag.
                 increase_recursion_limit()
 
-                if inspect.iscoroutinefunction(function.method):
+                if inspect.iscoroutinefunction(function.method) or inspect.isasyncgenfunction(function.method):
                     async_function = function
                 else:
                     # Just execute the method if it's ray internal method.
@@ -906,10 +956,15 @@ cdef void execute_task(
                         return function(actor, *arguments, **kwarguments)
                     async_function = sync_to_async(function)
 
-                return core_worker.run_async_func_in_event_loop(
-                    async_function, function_descriptor,
-                    name_of_concurrency_group_to_execute, actor,
-                    *arguments, **kwarguments)
+                if inspect.isasyncgenfunction(function.method):
+                    # The coroutine will be handled separately by
+                    # execute_dynamic_generator_and_store_task_outputs
+                    return async_function(actor, *arguments, **kwarguments)
+                else:
+                    return core_worker.run_async_func_or_coro_in_event_loop(
+                        async_function, function_descriptor,
+                        name_of_concurrency_group_to_execute, actor,
+                        *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -930,7 +985,7 @@ cdef void execute_task(
                             return (ray._private.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
-                        args = core_worker.run_async_func_in_event_loop(
+                        args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
                     else:
@@ -976,7 +1031,7 @@ cdef void execute_task(
                             # This function is a dynamic generator.
                             assert returns[0].size() == 1
                             # This should be checked at the caller.
-                            if not inspect.isgenerator(outputs):
+                            if not inspect.isgenerator(outputs) and not inspect.isasyncgen(outputs):
                                 raise ValueError(
                                         "Functions with "
                                         "@ray.remote(num_returns=\"dynamic\" must return a "
@@ -994,7 +1049,8 @@ cdef void execute_task(
                                     function_descriptor,
                                     title,
                                     caller_address,
-                                    actor)
+                                    actor,
+                                    name_of_concurrency_group_to_execute)
                             # The regular output is not used for generator.
                             outputs = None
                         next_breakpoint = (
@@ -2897,7 +2953,6 @@ cdef class CoreWorker:
     cdef initialize_eventloops_for_actor_concurrency_group(
             self,
             const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups):
-
         cdef:
             CConcurrencyGroup c_concurrency_group
             c_vector[CFunctionDescriptor] c_function_descriptors
@@ -2957,14 +3012,22 @@ cdef class CoreWorker:
 
         return self.eventloop_for_default_cg, self.thread_for_default_cg
 
-    def run_async_func_in_event_loop(
-          self, func, function_descriptor, specified_cgname, *args, **kwargs):
+    def run_async_func_or_coro_in_event_loop(
+          self, func_or_coro, function_descriptor, specified_cgname, *args, **kwargs):
+        """Run the async function or coroutine to the event loop.
 
+        The event loop is running in a separate thread.
+        """
         cdef:
             CFiberEvent event
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
-        coroutine = func(*args, **kwargs)
+
+        if inspect.isawaitable(func_or_coro):
+            coroutine = func_or_coro
+        else:
+            coroutine = func_or_coro(*args, **kwargs)
+
         future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
