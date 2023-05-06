@@ -2727,7 +2727,7 @@ py_test(
      args = ["TestSupportedSpacesPPO"]
  )
 
-pytest(
+py_test(
     name="tests/test_supported_spaces_dqn",
     main="tests/test_supported_spaces.py",
     tags=["team:rllib", "tests_dir"],
