@@ -24,11 +24,11 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
     Duration delay_duration) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);
   if constexpr (std::is_integral_v<Duration>) {
-      auto delay = boost::posix_time::microseconds(delay_duration);
+    auto delay = boost::posix_time::milliseconds(delay_duration);
     timer->expires_from_now(delay);
   } else {
-    auto delay = boost::posix_time::microseconds(
-        std::chrono::duration_cast<std::chrono::microseconds>(delay_duration).count());
+    auto delay = boost::posix_time::milliseconds(
+        std::chrono::duration_cast<std::chrono::milliseconds>(delay_duration).count());
     timer->expires_from_now(delay);
   }
 
