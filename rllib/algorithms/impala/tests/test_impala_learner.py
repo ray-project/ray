@@ -84,9 +84,9 @@ class TestImpalaLearner(unittest.TestCase):
             policy = algo.get_policy()
 
             if fw == "tf2":
-                train_batch = SampleBatch(tree.map_structure(
-                    lambda x: tf.convert_to_tensor(x), FAKE_BATCH
-                ))
+                train_batch = SampleBatch(
+                    tree.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
+                )
             elif fw == "torch":
                 train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
 
