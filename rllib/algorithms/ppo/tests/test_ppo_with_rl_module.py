@@ -159,6 +159,7 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
         )
         obs = np.array(0)
 
