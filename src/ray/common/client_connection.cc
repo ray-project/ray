@@ -184,20 +184,39 @@ void ServerConnection::ReadBufferAsync(
   }
 }
 void ServerConnection::AsyncWaitTerminated(std::function<void()> callback) {
-  RAY_CHECK(!terminating_) << "The connection is terminating";
-  terminating_ = true;
-  static char buffer[1024];
-  auto read_cb = [this, cb = std::move(callback)](boost::system::error_code ec,
-                                                  std::size_t /* length */) mutable {
-    if (ec) {
-      cb();
-    } else {
-      terminating_ = false;
-      AsyncWaitTerminated(std::move(cb));
-    }
-  };
-  socket_.async_read_some(boost::asio::mutable_buffer(buffer, sizeof(buffer)),
-                          std::move(read_cb));
+  // Different platforms have different behavior for sockets in asio
+  // Wait for error and read until the end.
+  if (status_ == ConnectionStatus::RUNNING) {
+    socket_.async_wait(local_stream_socket::wait_type::wait_error,
+                       [this, callback](auto) {
+                         if (status_ != ConnectionStatus::TERMINATED) {
+                           callback();
+                           // Close the connection so it'll cancel all other operations
+                           Close();
+                         }
+                       });
+    status_ = ConnectionStatus::TERMINATING;
+  }
+
+  if (status_ == ConnectionStatus::TERMINATING) {
+    // This is only used for buffer. Never read. So race condition is
+    // not an issue here.
+    static char buffer[1024];
+    auto read_cb = [this, cb = callback](boost::system::error_code ec,
+                                         std::size_t /* length */) mutable {
+      if (ec) {
+        if (status_ != ConnectionStatus::TERMINATED) {
+          cb();
+          // Close the connection so it'll cancel all other operations
+          Close();
+        }
+      } else {
+        AsyncWaitTerminated(std::move(cb));
+      }
+    };
+    socket_.async_read_some(boost::asio::mutable_buffer(buffer, sizeof(buffer)),
+                            std::move(read_cb));
+  }
 }
 
 ray::Status ServerConnection::WriteMessage(int64_t type,

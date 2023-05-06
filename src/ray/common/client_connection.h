@@ -111,6 +111,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   void Close() {
     boost::system::error_code ec;
     socket_.close(ec);
+    status_ = ConnectionStatus::TERMINATED;
   }
 
   /// Get the native handle of the socket.
@@ -139,9 +140,11 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
     std::vector<uint8_t> write_message;
     std::function<void(const ray::Status &)> handler;
   };
-  
+
+  enum struct ConnectionStatus { RUNNING = 0, TERMINATING, TERMINATED };
+
   /// Whether the connection is terminating.
-  bool terminating_ = false;
+  ConnectionStatus status_ = ConnectionStatus::RUNNING;
 
   /// The socket connection to the server.
   local_stream_socket socket_;
@@ -155,7 +158,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// Whether we are in the middle of an async write.
   bool async_write_in_flight_;
 
-    /// Whether we've met a broken-pipe error during writing.
+  /// Whether we've met a broken-pipe error during writing.
   bool async_write_broken_pipe_;
 
   /// Count of async messages sent total.
