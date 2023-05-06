@@ -252,15 +252,6 @@ class StateSchema(ABC):
         return state
 
     @classmethod
-    def is_valid_state(cls, state: dict) -> bool:
-        """Checks to make sure state has all keys in the current schema class."""
-        cols = cls.list_columns(detail=True)
-        for col in cols:
-            if col not in state:
-                return False
-        return True
-
-    @classmethod
     def list_columns(cls, detail: bool = True) -> List[str]:
         """Return a list of columns."""
         cols = []
