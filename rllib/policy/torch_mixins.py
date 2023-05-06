@@ -17,7 +17,7 @@ class LearningRateSchedule:
         self._lr_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
-        if lr_schedule is None or self.config.get("_enable_learner_api", False):
+        if lr_schedule is None:
             self.cur_lr = lr
         else:
             self._lr_schedule = PiecewiseSchedule(
@@ -28,7 +28,7 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule:
+        if self._lr_schedule and not self.config.get("_enable_learner_api", False):
             self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
             for opt in self._optimizers:
                 for p in opt.param_groups:

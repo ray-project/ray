@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class PPOTfLearner(PPOLearner, TfLearner):
-    """Implements curr_entropy_coeffs_per_moduletf-specific PPO loss logic on top of PPOLearner.
+    """Implements tf-specific PPO loss logic on top of PPOLearner.
 
     This class implements the ppo loss under `_compute_loss_per_module()`.
     """
