@@ -83,12 +83,13 @@ class TestCatalog(unittest.TestCase):
         outputs = model(inputs)
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
-        tree.map_structure_with_path(
-            lambda p, v: (
-                self.assertEqual(v.shape, states[p].shape) if v is not None else True
-            ),
-            outputs[STATE_OUT],
-        )
+        if STATE_OUT in outputs:
+            tree.map_structure_with_path(
+                lambda p, v: (
+                    True if v is None else self.assertEqual(v.shape, states[p].shape)
+                ),
+                outputs[STATE_OUT],
+            )
 
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""

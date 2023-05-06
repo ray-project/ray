@@ -287,6 +287,8 @@ install_npm_project() {
 build_dashboard_front_end() {
   if [ "${OSTYPE}" = msys ]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
+  elif [ "${NO_DASHBOARD-}" = "1" ]; then
+    echo "Skipping dashboard build"
   else
     (
       cd ray/dashboard/client
@@ -457,6 +459,7 @@ build_wheels() {
         -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
+        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
       )
 
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
