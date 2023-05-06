@@ -310,3 +310,7 @@ Grafana dashboards are not embedded in the Ray dashboard
 If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
 That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
 Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
+
+Certificate Authority (CA error)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You may see CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
