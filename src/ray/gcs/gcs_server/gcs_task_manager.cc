@@ -313,17 +313,16 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
 
-  // Select candidate events by indexing if possible.
+  // Select candidate events by indexing.
   std::vector<rpc::TaskEvents> task_events;
-  const auto &filters = request.filters();
-  if (filters.task_ids_size() > 0) {
+  if (request.has_task_ids()) {
     absl::flat_hash_set<TaskID> task_ids;
-    for (const auto &task_id_str : filters.task_ids()) {
+    for (const auto &task_id_str : request.task_ids().vals()) {
       task_ids.insert(TaskID::FromBinary(task_id_str));
     }
     task_events = task_event_storage_->GetTaskEvents(task_ids);
-  } else if (filters.has_job_id()) {
-    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(filters.job_id()));
+  } else if (request.has_job_id()) {
+    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(request.job_id()));
   } else {
     task_events = task_event_storage_->GetTaskEvents();
   }
@@ -335,34 +334,15 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   int32_t num_profile_event_limit = 0;
   int32_t num_status_event_limit = 0;
 
-  // A lambda filter fn, where it returns true for task events to be included in the
-  // result. Task ids and job ids are already filtered by the storage with indexing above.
-  auto filter_fn = [&filters](const rpc::TaskEvents &task_event) {
-    if (!task_event.has_task_info()) {
-      // Skip task events w/o task info.
-      return false;
-    }
-    if (filters.exclude_driver() &&
-        task_event.task_info().type() == rpc::TaskType::DRIVER_TASK) {
-      return false;
-    }
-
-    if (filters.has_actor_id() && task_event.task_info().has_actor_id() &&
-        ActorID::FromBinary(task_event.task_info().actor_id()) !=
-            ActorID::FromBinary(filters.actor_id())) {
-      return false;
-    }
-
-    if (filters.has_name() && task_event.task_info().name() != filters.name()) {
-      return false;
-    }
-
-    return true;
-  };
-
   for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
     auto &task_event = *itr;
-    if (!filter_fn(task_event)) {
+    if (!task_event.has_task_info()) {
+      // Skip task events w/o task info.
+      continue;
+    }
+
+    if (request.exclude_driver() &&
+        task_event.task_info().type() == rpc::TaskType::DRIVER_TASK) {
       continue;
     }
 

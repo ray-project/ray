@@ -78,12 +78,22 @@ class APPOTorchPolicyWithRLModule(
 
         target_policy_fwd_out = model.forward_train(train_batch)
         values = target_policy_fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = target_policy_fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_cls = model.get_action_dist_cls()
+        target_policy_dist = action_dist_cls.from_logits(
+            target_policy_fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
 
         old_target_policy_fwd_out = self.target_model.forward_train(train_batch)
-        old_target_policy_dist = old_target_policy_fwd_out[SampleBatch.ACTION_DIST]
+        old_target_policy_dist = action_dist_cls.from_logits(
+            old_target_policy_fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
 
-        behaviour_actions_logp = train_batch[SampleBatch.ACTION_LOGP]
+        behaviour_policy_dist = action_dist_cls.from_logits(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        behaviour_actions_logp = behaviour_policy_dist.logp(
+            train_batch[SampleBatch.ACTIONS]
+        )
         target_actions_logp = target_policy_dist.logp(train_batch[SampleBatch.ACTIONS])
         old_target_actions_logp = old_target_policy_dist.logp(
             train_batch[SampleBatch.ACTIONS]
