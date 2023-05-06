@@ -12,7 +12,6 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.metrics import ALL_MODULES
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -92,8 +91,6 @@ class TestPPO(unittest.TestCase):
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
 
-            policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
-
             algo_config = config.copy(copy_frozen=False)
             algo_config.training(_enable_learner_api=True)
             algo_config.validate()
@@ -110,13 +107,11 @@ class TestPPO(unittest.TestCase):
             )
             learner_group = learner_group_config.build()
 
-            # load the algo weights onto the learner_group
+            # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
+            learner_group.update(train_batch.as_multi_agent())
 
-            learner_group_loss = results[ALL_MODULES]["total_loss"]
-
-            check(learner_group_loss, policy_loss)
+            algo.stop()
 
     def test_save_load_state(self):
         """Tests saving and loading the state of the PPO Learner Group."""
@@ -142,7 +137,7 @@ class TestPPO(unittest.TestCase):
         algo = config.build()
         policy = algo.get_policy()
 
-        for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
+        for _ in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()

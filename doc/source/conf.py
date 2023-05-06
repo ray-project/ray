@@ -432,3 +432,8 @@ redoc = [
 ]
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+
+autosummary_filename_map = {
+    "ray.serve.deployment": "ray.serve.deployment_decorator",
+    "ray.serve.Deployment": "ray.serve.Deployment",
+}
