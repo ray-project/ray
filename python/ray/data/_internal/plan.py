@@ -22,15 +22,16 @@ from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    UDF,
+    UserDefinedFunction,
     ActorPoolStrategy,
+    TaskPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
     get_compute,
     is_task_compute,
 )
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.datastream_logger import DatastreamLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatastreamStats, DatastreamStatsSummary
@@ -412,10 +413,10 @@ class ExecutionPlan:
             fetch_if_missing: Whether to execute the blocks to fetch the schema.
         """
 
-        # Only trigger the execution of first block in case it's a lazy block list.
-        # Don't trigger full execution for a schema read.
+        # Ensure the first block has schema information available in the metadata.
+        # Otherwise, this will trigger computation on the first block
+        # for a schema read.
         if isinstance(blocks, LazyBlockList):
-            blocks.compute_first_block()
             blocks.ensure_metadata_for_first_block()
 
         metadata = blocks.get_metadata(fetch_if_missing=False)
@@ -874,7 +875,7 @@ class OneToOneStage(Stage):
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -882,7 +883,7 @@ class OneToOneStage(Stage):
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
-        self.compute = compute or "tasks"
+        self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
         self.target_block_size = target_block_size
         self.fn = fn
@@ -962,7 +963,7 @@ class OneToOneStage(Stage):
         def block_fn(
             blocks: Iterable[Block],
             ctx: TaskContext,
-            fn: UDF,
+            fn: UserDefinedFunction,
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
@@ -1192,7 +1193,7 @@ def _rewrite_read_stage(
     stage = OneToOneStage(
         name,
         block_fn,
-        "tasks",
+        TaskPoolStrategy(),
         remote_args,
     )
     stats = DatastreamStats(stages={}, parent=None)

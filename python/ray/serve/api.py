@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -13,7 +13,7 @@ from ray import cloudpickle
 from ray.dag import DAGNode
 from ray.util.annotations import Deprecated, PublicAPI
 
-from ray.serve.application import Application
+from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
@@ -28,14 +28,13 @@ from ray.serve.context import (
     get_internal_replica_context,
     _set_global_client,
 )
-from ray.serve.deployment import Deployment
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, Deployment
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import RayServeSyncHandle
 from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
@@ -61,7 +60,7 @@ def start(
     dedicated_cpu: bool = False,
     **kwargs,
 ) -> ServeControllerClient:
-    """Initialize a serve instance.
+    """Start Serve on the cluster.
 
     By default, the instance will be scoped to the lifetime of the returned
     Client object (or when the script exits). If detached is set to True, the
@@ -73,7 +72,7 @@ def start(
         detached: Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
-        http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
+        http_options: Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
@@ -109,10 +108,9 @@ def start(
 
 @PublicAPI(stability="stable")
 def shutdown() -> None:
-    """Completely shut down the connected Serve instance.
+    """Completely shut down Serve on the cluster.
 
-    Shuts down all processes and deletes all state associated with the
-    instance.
+    Deletes all applications and shuts down Serve system actors.
     """
 
     try:
@@ -130,21 +128,28 @@ def shutdown() -> None:
 
 @PublicAPI(stability="beta")
 def get_replica_context() -> ReplicaContext:
-    """If called from a deployment, returns the deployment and replica tag.
+    """Returns the deployment and replica tag from within a replica at runtime.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    deployment at runtime.  Replica tags are of the form
-    `<deployment_name>#<random letters>`.
+    deployment.
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
 
     Example:
-        >>> from ray import serve
-        >>> # deployment_name
-        >>> serve.get_replica_context().deployment # doctest: +SKIP
-        >>> # deployment_name#krcwoa
-        >>> serve.get_replica_context().replica_tag # doctest: +SKIP
+
+        .. code-block:: python
+
+            from ray import serve
+            @serve.deployment
+            class MyDeployment:
+                def __init__(self):
+                    # Prints "MyDeployment"
+                    print(serve.get_replica_context().deployment)
+
+                    # Prints "MyDeployment#<replica_tag>"
+                    print(serve.get_replica_context().replica_tag)
+
     """
     internal_replica_context = get_internal_replica_context()
     if internal_replica_context is None:
@@ -157,24 +162,30 @@ def get_replica_context() -> ReplicaContext:
 
 
 @PublicAPI(stability="beta")
-def ingress(app: Union["FastAPI", "APIRouter", Callable]):
-    """Mark an ASGI application ingress for Serve.
-
-    Args:
-        app (FastAPI,APIRouter,Starlette,etc): the app or router object serve
-            as ingress for this deployment. It can be any ASGI compatible
-            object.
+def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
+    """Wrap a deployment class with a FastAPI application for HTTP request parsing.
 
     Example:
-        >>> from fastapi import FastAPI
-        >>> from ray import serve
-        >>> app = FastAPI() # doctest: +SKIP
-        >>> app = FastAPI() # doctest: +SKIP
-        >>> @serve.deployment # doctest: +SKIP
-        ... @serve.ingress(app) # doctest: +SKIP
-        ... class App: # doctest: +SKIP
-        ...     pass # doctest: +SKIP
-        >>> App.deploy() # doctest: +SKIP
+
+        .. code-block:: python
+
+            from ray import serve
+            from fastapi import FastAPI
+
+            app = FastAPI()
+
+            @serve.deployment
+            @serve.ingress(app)
+            class MyFastAPIDeployment:
+                @app.get("/hi")
+                def say_hi(self) -> str:
+                    return "Hello world!"
+
+            app = MyFastAPIDeployment.bind()
+
+    Args:
+        app: the FastAPI app or router object to wrap this class with.
+            Can be any ASGI-compatible callable.
     """
 
     def decorator(cls):
@@ -252,32 +263,6 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     return decorator
 
 
-@overload
-def deployment(func_or_class: Callable) -> Deployment:
-    pass
-
-
-@overload
-def deployment(
-    name: Default[str] = DEFAULT.VALUE,
-    version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[int] = DEFAULT.VALUE,
-    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
-    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    user_config: Default[Any] = DEFAULT.VALUE,
-    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
-    autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
-    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
-    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
-    health_check_period_s: Default[float] = DEFAULT.VALUE,
-    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
-) -> Callable[[Callable], Deployment]:
-    pass
-
-
 @PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -297,62 +282,56 @@ def deployment(
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
     is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
-    """Define a Serve deployment.
-
-    Args:
-        name (Default[str]): Globally-unique name identifying this
-            deployment. If not provided, the name of the class or function will
-            be used.
-        version [DEPRECATED] (Default[str]): Version of the deployment.
-            This is used to indicate a code change for the deployment; when it
-            is re-deployed with a version change, a rolling update of the
-            replicas will be performed. If not provided, every deployment will
-            be treated as a new version.
-        num_replicas (Default[Optional[int]]): The number of processes to start up that
-            will handle requests to this deployment. Defaults to 1.
-        init_args (Default[Tuple[Any]]): Positional args to be passed to the
-            class constructor when starting up deployment replicas. These can
-            also be passed when you call `.deploy()` on the returned Deployment.
-        init_kwargs (Default[Dict[Any, Any]]): Keyword args to be passed to the
-            class constructor when starting up deployment replicas. These can
-            also be passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Default[Union[str, None]]): Requests to paths under this
-            HTTP path prefix will be routed to this deployment. Defaults to
-            '/{name}'. When set to 'None', no HTTP endpoint will be created.
-            Routing is done based on longest-prefix match, so if you have
-            deployment A with a prefix of '/a' and deployment B with a prefix
-            of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
-            to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
-            a '/' unless they're the root (just '/'), which acts as a
-            catch-all.
-        ray_actor_options (Default[Dict]): Options to be passed to the Ray
-            actor constructor such as resource requirements. Valid options are
-            `accelerator_type`, `memory`, `num_cpus`, `num_gpus`,
-            `object_store_memory`, `resources`, and `runtime_env`.
-        user_config (Default[Optional[Any]]): Config to pass to the
-            reconfigure method of the deployment. This can be updated
-            dynamically without changing the version of the deployment and
-            restarting its replicas. The user_config must be json-serializable
-            to keep track of updates, so it must only contain json-serializable
-            types, or json-serializable types nested in lists and dictionaries.
-        max_concurrent_queries (Default[int]): The maximum number of queries
-            that will be sent to a replica of this deployment without receiving
-            a response. Defaults to 100.
-        is_driver_deployment (Optional[bool]): [Experiment] when set it as True, serve
-            will deploy exact one deployment to every node.
+    """Decorator that converts a Python class to a `Deployment`.
 
     Example:
-    >>> from ray import serve
-    >>> @serve.deployment(name="deployment1") # doctest: +SKIP
-    ... class MyDeployment: # doctest: +SKIP
-    ...     pass # doctest: +SKIP
 
-    >>> MyDeployment.bind(*init_args) # doctest: +SKIP
-    >>> MyDeployment.options( # doctest: +SKIP
-    ...     num_replicas=2, init_args=init_args).bind()
+    .. code-block:: python
+
+        from ray import serve
+
+        @serve.deployment(num_replicas=2)
+        class MyDeployment:
+            pass
+
+        app = MyDeployment.bind()
+
+    Args:
+        name: Name uniquely identifying this deployment within the application.
+            If not provided, the name of the class or function is used.
+        num_replicas: The number of replicas to run that handle requests to
+            this deployment. Defaults to 1.
+        autoscaling_config: Parameters to configure autoscaling behavior. If this
+            is set, `num_replicas` cannot be set.
+        init_args: [DEPRECATED] These should be passed to `.bind()` instead.
+        init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
+        route_prefix: Requests to paths under this HTTP path prefix are routed
+            to this deployment. Defaults to '/{name}'. This can only be set for the
+            ingress (top-level) deployment of an application.
+        ray_actor_options: Options to be passed to the Ray actor decorator, such as
+            resource requirements. Valid options are `accelerator_type`, `memory`,
+            `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
+            and `runtime_env`.
+        user_config: Config to pass to the reconfigure method of the deployment. This
+            can be updated dynamically without restarting the replicas of the
+            deployment. The user_config must be fully JSON-serializable.
+        max_concurrent_queries: The maximum number of queries that are sent to a
+            replica of this deployment without receiving a response. Defaults to 100.
+        health_check_period_s: How often the health check is called on the replica.
+            Defaults to 10s. The health check is by default a no-op actor call to the
+            replica, but you can define your own as a "check_health" method that raises
+            an exception when unhealthy.
+        health_check_timeout_s: How long to wait for a health check method to return
+            before considering it failed. Defaults to 30s.
+        graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
+            no more work to be done before shutting down.
+        graceful_shutdown_timeout_s: Duration that a replica can be gracefully shutting
+            down before being forcefully killed.
+        is_driver_deployment: [EXPERIMENTAL] when set, exactly one replica of this
+            deployment runs on every node (like a daemon set).
 
     Returns:
-        Deployment
+        `Deployment`
     """
 
     # NOTE: The user_configured_option_names should be the first thing that's
@@ -458,24 +437,25 @@ def list_deployments() -> Dict[str, Deployment]:
 
 @PublicAPI(stability="beta")
 def run(
-    target: Union[ClassNode, FunctionNode],
+    target: Application,
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeHandle]:
-    """Run a Serve application and return a ServeHandle to the ingress.
+) -> Optional[RayServeSyncHandle]:
+    """Run an application and return a handle to its ingress deployment.
 
-    Either a ClassNode, FunctionNode, or a pre-built application
-    can be passed in. If a node is passed in, all of the deployments it depends
-    on will be deployed. If there is an ingress, its handle will be returned.
+    The application is returned by `Deployment.bind()`. Example:
+
+    .. code-block:: python
+
+        handle = serve.run(MyDeployment.bind())
+        ray.get(handle.remote())
 
     Args:
-        target (Union[ClassNode, FunctionNode, Application]):
-            A user-built Serve Application or a ClassNode that acts as the
-            root node of DAG. By default ClassNode is the Driver
-            deployment unless user provides a customized one.
+        target:
+            A Serve application returned by `Deployment.bind()`.
         host: Host for HTTP servers to listen on. Defaults to
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
@@ -487,8 +467,7 @@ def run(
             nor in the ingress deployment, the route prefix will default to '/'.
 
     Returns:
-        RayServeHandle: A regular ray serve handle that can be called by user
-            to execute the serve DAG.
+        RayServeSyncHandle: A handle that can be used to call the application.
     """
     client = _private_api.serve_start(
         detached=True,
@@ -499,35 +478,20 @@ def run(
     record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
+        deployments = pipeline_build(target._get_internal_dag_node(), name)
+        ingress = get_and_validate_ingress_deployment(deployments)
+    elif isinstance(target, BuiltApplication):
         deployments = list(target.deployments.values())
         ingress = target.ingress
-    # Each DAG should always provide a valid Driver ClassNode
-    elif isinstance(target, ClassNode):
-        deployments = pipeline_build(target, name)
-        ingress = get_and_validate_ingress_deployment(deployments)
-    # Special case where user is doing single function serve.run(func.bind())
-    elif isinstance(target, FunctionNode):
-        deployments = pipeline_build(target, name)
-        ingress = get_and_validate_ingress_deployment(deployments)
-        if len(deployments) != 1:
-            raise ValueError(
-                "We only support single function node in serve.run, ex: "
-                "serve.run(func.bind()). For more than one nodes in your DAG, "
-                "Please provide a driver class and bind it as entrypoint to "
-                "your Serve DAG."
-            )
-    elif isinstance(target, DAGNode):
-        raise ValueError(
-            "Invalid DAGNode type as entry to serve.run(), "
-            f"type: {type(target)}, accepted: ClassNode, "
-            "FunctionNode please provide a driver class and bind it "
-            "as entrypoint to your Serve DAG."
-        )
     else:
-        raise TypeError(
-            "Expected a ClassNode, FunctionNode, or Application as target. "
-            f"Got unexpected type {type(target)} instead."
+        msg = (
+            "`serve.run` expects an `Application` returned by `Deployment.bind()` "
+            "or a static `BuiltApplication` returned by `serve.build`."
         )
+        if isinstance(target, DAGNode):
+            msg += " If you are using the DAG API, you must bind the DAG node to a "
+            "deployment like: `app = Deployment.bind(my_dag_output)`. "
+        raise TypeError(msg)
 
     # when name provided, keep all existing applications
     # otherwise, delete all of them.
@@ -567,30 +531,25 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(
-    target: Union[ClassNode, FunctionNode], name: str = SERVE_DEFAULT_APP_NAME
-) -> Application:
-    """Builds a Serve application into a static application.
+def build(target: Application, name: str = None) -> BuiltApplication:
+    """Builds a Serve application into a static, built application.
 
-    Takes in a ClassNode or FunctionNode and converts it to a
-    Serve application consisting of one or more deployments. This is intended
-    to be used for production scenarios and deployed via the Serve REST API or
-    CLI, so there are some restrictions placed on the deployments:
-    1) All of the deployments must be importable. That is, they cannot be
+    Resolves the provided Application object into a list of deployments.
+    This can be converted to a Serve config file that can be deployed via
+    the Serve REST API or CLI.
+
+    All of the deployments must be importable. That is, they cannot be
     defined in __main__ or inline defined. The deployments will be
-    imported in production using the same import path they were here.
-    2) All arguments bound to the deployment must be JSON-serializable.
-
-    The returned Application object can be exported to a dictionary or YAML
-    config.
+    imported in the config file using the same import path they were here.
 
     Args:
-        target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
-            that acts as the top level node of the DAG.
-        name: The name of the Serve application.
+        target: The Serve application to run consisting of one or more
+            deployments.
+        name: The name of the Serve application. When name is not provided, the
+        deployment name won't be updated. (SINGLE_APP use case.)
 
     Returns:
-        The static built Serve application
+        The static built Serve application.
     """
     if in_interactive_shell():
         raise RuntimeError(
@@ -601,17 +560,14 @@ def build(
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return Application(pipeline_build(target, name))
+    return BuiltApplication(pipeline_build(target._get_internal_dag_node(), name))
 
 
 @PublicAPI(stability="alpha")
 def delete(name: str, _blocking: bool = True):
-    """Delete an app by its name
+    """Delete an application by its name.
 
     Deletes the app with all corresponding deployments.
-
-    Args:
-        name: the name of app to delete.
     """
     client = get_global_client()
     client.delete_apps([name], blocking=_blocking)

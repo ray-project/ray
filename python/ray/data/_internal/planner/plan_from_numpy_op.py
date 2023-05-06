@@ -22,7 +22,8 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
 
         ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
-        res = [ndarray_to_block_remote.remote(arr_ref) for arr_ref in op._ndarrays]
+        ctx = ray.data.DataContext.get_current()
+        res = [ndarray_to_block_remote.remote(arr_ref, ctx) for arr_ref in op._ndarrays]
         blocks, metadata = map(list, zip(*res))
         metadata = ray.get(metadata)
         ref_bundles: List[RefBundle] = [

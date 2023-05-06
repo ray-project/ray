@@ -52,7 +52,7 @@ const useFetchStateApiProgressByTaskName = (
         const summary = formatSummaryToTaskProgress(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.total };
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);
@@ -82,7 +82,7 @@ export const useJobProgress = (
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
-  const { data } = useFetchStateApiProgressByTaskName(
+  const { data, isLoading } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
@@ -104,6 +104,7 @@ export const useJobProgress = (
   return {
     progress: summed,
     totalTasks: data?.totalTasks,
+    isLoading,
     msg,
     error,
     driverExists,
@@ -128,7 +129,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     setRefresh(event.target.checked);
   };
 
-  const { data } = useFetchStateApiProgressByTaskName(
+  const { data, isLoading } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
@@ -167,6 +168,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     page: { pageNo: page, pageSize: 10 },
     total: formattedTasks.length,
     totalTasks: data?.totalTasks,
+    isLoading,
     setPage,
     msg,
     error,
@@ -252,7 +254,7 @@ export const useJobProgressByLineage = (
   const [isRefreshing, setRefresh] = useState(true);
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
 
-  const { data } = useSWR(
+  const { data, isLoading } = useSWR(
     jobId ? ["useJobProgressByLineageAndName", jobId] : null,
     async ([_, jobId]) => {
       const rsp = await getStateApiJobProgressByLineage(jobId);
@@ -263,7 +265,7 @@ export const useJobProgressByLineage = (
         const summary = formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.total };
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);
@@ -280,6 +282,7 @@ export const useJobProgressByLineage = (
     progressGroups: data?.summary?.progressGroups,
     total: data?.summary?.total,
     totalTasks: data?.totalTasks,
+    isLoading,
     msg,
     error,
     latestFetchTimestamp,

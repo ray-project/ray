@@ -37,12 +37,12 @@ const useStyle = makeStyles((theme) => ({
 const ActorDetailPage = () => {
   const classes = useStyle();
   const { ipLogMap } = useContext(GlobalContext);
-  const { params, actorDetail, msg } = useActorDetail();
+  const { params, actorDetail, msg, isLoading } = useActorDetail();
 
   if (!actorDetail) {
     return (
       <div className={classes.root}>
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />

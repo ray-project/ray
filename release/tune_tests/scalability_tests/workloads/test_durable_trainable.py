@@ -36,15 +36,18 @@ def main(bucket):
                 os.environ[var] = str(y)
     else:
         print("No AWS secrets file found. Loading from boto.")
-        from boto3 import Session
+        try:
+            from boto3 import Session
 
-        session = Session()
-        credentials = session.get_credentials()
-        current_credentials = credentials.get_frozen_credentials()
+            session = Session()
+            credentials = session.get_credentials()
+            current_credentials = credentials.get_frozen_credentials()
 
-        os.environ["AWS_ACCESS_KEY_ID"] = current_credentials.access_key
-        os.environ["AWS_SECRET_ACCESS_KEY"] = current_credentials.secret_key
-        os.environ["AWS_SESSION_TOKEN"] = current_credentials.token
+            os.environ["AWS_ACCESS_KEY_ID"] = current_credentials.access_key
+            os.environ["AWS_SECRET_ACCESS_KEY"] = current_credentials.secret_key
+            os.environ["AWS_SESSION_TOKEN"] = current_credentials.token
+        except Exception:
+            print("Cannot setup AWS credentials (is this running on GCE?)")
 
     if all(
         os.getenv(k, "")
@@ -76,7 +79,7 @@ def main(bucket):
         checkpoint_size_b=int(10 * 1000**2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
-        storage_path=f"s3://{bucket}/durable/",
+        storage_path=bucket,
     )
 
 
