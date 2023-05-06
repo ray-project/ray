@@ -56,9 +56,7 @@ class TestPreprocessors(unittest.TestCase):
             .framework("tf2")
         )
 
-        # TODO (Artur): No need to manually enable RLModules here since we have not
-        #  fully migrated. Clear this up after migration.
-        config.rl_module(_enable_rl_module_api=True)
+        config.rl_module(_enable_rl_module_api=True).training(_enable_learner_api=True)
 
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
