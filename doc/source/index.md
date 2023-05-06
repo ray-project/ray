@@ -75,7 +75,7 @@
         <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
         <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p></a>
   </div>
-  <a class="no-underline" href="https://colab.research.google.com/github/maxpumperla/learning_ray/blob/main/notebooks/ch_02_ray_core.ipynb"  target="_blank" 
+  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
         ><div class="info-box">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/code.png" width="44px" height="44px" />
