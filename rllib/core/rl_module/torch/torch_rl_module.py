@@ -60,9 +60,7 @@ class TorchCompileConfig:
     torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "inductor"
     kwargs: dict = field(default_factory=lambda: dict())
 
-    def maybe_compile_forward_methods(
-        self, rl_module: "TorchRLModule"
-    ) -> "TorchRLModule":
+    def compile(self, rl_module: "TorchRLModule") -> "TorchRLModule":
         """Compiles the forward methods of the given RLModule according to this config.
 
         Args:

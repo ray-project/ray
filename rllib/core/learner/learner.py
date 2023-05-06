@@ -1,10 +1,9 @@
 import abc
-from collections import defaultdict
-from dataclasses import dataclass, field
 import json
 import logging
-import numpy as np
 import pathlib
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import (
     Any,
     Callable,
@@ -20,35 +19,38 @@ from typing import (
     Union,
 )
 
+import numpy as np
+
 import ray
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorType, ResultDict
-from ray.rllib.utils.minibatch_utils import (
-    MiniBatchDummyIterator,
-    MiniBatchCyclicIterator,
-)
-from ray.rllib.utils.serialization import serialize_type
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchDummyIterator,
+    MiniBatchCyclicIterator,
+)
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
+from ray.rllib.utils.serialization import serialize_type
+from ray.rllib.utils.typing import TensorType, ResultDict
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -88,6 +90,23 @@ class FrameworkHyperparameters:
 
     eager_tracing: bool = False
     torch_compile_config: Optional[TorchCompileConfig] = TorchCompileConfig()
+
+    def prepare_rl_module(self, rl_module: RLModule) -> RLModule:
+        """Prepares the RL module for training.
+
+        This method is called right after the RL module is created and before it is
+        used for training. This can be used as a callback to prepare the RL module
+        for training, e.g. by torch_compiling some of its forwad methods.
+
+        Args:
+            rl_module: The RL module to prepare.
+
+        Returns:
+            The prepared RL module.
+        """
+        if isinstance(rl_module, TorchRLModule):
+            self.torch_compile_config.compile(rl_module)
+        return rl_module
 
 
 @dataclass
@@ -147,7 +166,7 @@ class Learner:
             ray.rllib.core.learner.learner.LearnerHyperparameters for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
-            creation. For example eager_tracing in TF or compile in Torch.
+            creation. For example `eager_tracing` in TF or `torch.compile()` in Torch.
             Refer to ray.rllib.core.learner.learner.FrameworkHyperparameters for
             more info.
 
@@ -646,6 +665,12 @@ class Learner:
             self.curr_lr_per_module = defaultdict(lambda: self._optimizer_config["lr"])
 
         self._module = self._make_module()
+
+        # This is a callback to allow for configuration specific preparation of the
+        # RL Module for training. For example, this can be used to `torch.compile()`
+        # the `RLModule._forward_training()` method.
+        self._framework_hyperparameters.prepare_rl_module(self._module)
+
         for param_seq, optimizer in self.configure_optimizers():
             self._optimizer_parameters[optimizer] = []
             for param in param_seq:

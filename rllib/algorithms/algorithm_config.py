@@ -3174,7 +3174,10 @@ class AlgorithmConfig(_Config):
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
-            .framework(eager_tracing=self.eager_tracing)
+            .framework(
+                eager_tracing=self.eager_tracing,
+                torch_compile_learner_config=self.torch_compile_learner_config,
+            )
         )
 
         return config
