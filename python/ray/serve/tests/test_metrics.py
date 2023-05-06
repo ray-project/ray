@@ -11,9 +11,16 @@ from ray.serve._private.utils import block_until_http_ready
 import ray.experimental.state.api as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
+<<<<<<< HEAD
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
+=======
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_REQUEST_MODEL_ID,
+)
+>>>>>>> b5f9439220 (update)
 
 
 @pytest.fixture

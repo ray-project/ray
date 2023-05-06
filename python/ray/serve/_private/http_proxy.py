@@ -431,7 +431,10 @@ class HTTPProxy:
                 model_id = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(
-                route_path, get_random_letters(10), model_id=model_id
+                route_path,
+                get_random_letters(10),
+                model_id=model_id,
+                app_name=app_name,
             )
         )
 

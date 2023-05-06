@@ -5,7 +5,6 @@ from ray.serve import metrics
 import time
 import logging
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     PUSH_MODEL_IDS_INTERVAL_S,
 )
@@ -26,21 +25,24 @@ class _ModelMultiplexWrapper:
         self._func = sync_to_async(model_load_func)
         self.self_args = self_args
         self.num_models_per_replica = num_models_per_replica
-        self.model_load_latency_s = metrics.Histogram(
+        self.model_load_latency_s = metrics.Gauge(
             "serve_model_load_latency_s",
             description="The time it takes to load a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("model_id",),
         )
-        self.model_unload_latency_s = metrics.Histogram(
+        self.model_unload_latency_s = metrics.Gauge(
             "serve_model_unload_latency_s",
             description="The time it takes to unload a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("model_id",),
         )
         self.num_models = metrics.Gauge(
             "serve_num_models",
             description="The number of models loaded on the current replica.",
+        )
+
+        self.models_load_counter = metrics.Counter(
+            "serve_models_load_counter",
+            description="The counter for models loaded on the current replica.",
         )
 
         context = get_internal_replica_context()
@@ -70,6 +72,10 @@ class _ModelMultiplexWrapper:
                 )
             )
 
+        # Raise an error if the model_id is empty string.
+        if not model_id:
+            raise ValueError("The model ID cannot be empty string.")
+
         self.num_models.set(len(self.models))
 
         if model_id in self.models:
@@ -77,6 +83,7 @@ class _ModelMultiplexWrapper:
             model = self.models.pop(model_id)
             self.models[model_id] = model
         else:
+            self.models_load_counter.inc()
             # If the number of models per replica is specified, check if the number of
             # models on the current replica has reached the limit.
             if self.num_models_per_replica > 0:
@@ -84,7 +91,7 @@ class _ModelMultiplexWrapper:
                     # Unload the least recently used model.
                     unload_start_time = time.time()
                     await self.unload_model()
-                    self.model_unload_latency_s.observe(
+                    self.model_unload_latency_s.set(
                         time.time() - unload_start_time, tags={"model_id": model_id}
                     )
             # Load the model.
@@ -96,7 +103,7 @@ class _ModelMultiplexWrapper:
                 self.models[model_id] = await self._func(
                     self.self_args, model_id, *args, **kwargs
                 )
-            self.model_load_latency_s.observe(
+            self.model_load_latency_s.set(
                 time.time() - load_start_time, tags={"model_id": model_id}
             )
             self._should_push_model_ids = True
@@ -112,14 +119,13 @@ class _ModelMultiplexWrapper:
         if hasattr(model, "__del__"):
             await sync_to_async(self.callable.__del__)()
             setattr(model, "__del__", lambda _: None)
-        del self.models[tag]
 
     def get_model_ids(self) -> List[str]:
         """Get the list of model IDs."""
         return self.models.keys()
 
     async def _push_model_ids(self):
-        """Push the model IDs to the global client."""
+        """Push the model IDs to the controller."""
         while True:
             try:
                 if self._should_push_model_ids:

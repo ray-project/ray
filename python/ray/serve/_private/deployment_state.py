@@ -1855,7 +1855,6 @@ class DeploymentState:
             if replica.replica_tag == replica_name:
                 replica.record_model_ids(model_ids)
                 self._is_model_ids_updated = True
-                logger.info(f"Replia {replica_name} updated!")
                 break
         logger.debug(f"Replia {replica_name} not found in deployment {self._name}")
 

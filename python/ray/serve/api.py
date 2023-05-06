@@ -593,14 +593,15 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
                 "@serve.multiplex can only be used to decorate functions or methods."
             )
 
-    signature = inspect.signature(func)
-    if len(signature.parameters) == 0:
-        raise ValueError(
-            "@serve.multiplex can only be used to decorate functions or methods "
-            "with at least one 'model_id: str' argument."
-        )
-
     def _multiplex_decorator(func):
+
+        signature = inspect.signature(func)
+        if len(signature.parameters) == 0:
+            raise ValueError(
+                "@serve.multiplex can only be used to decorate functions or methods "
+                "with at least one 'model_id: str' argument."
+            )
+
         @wraps(func)
         async def _multiplex_wrapper(*args, **kwargs):
             self = _extract_self_if_method_call(args, func)
