@@ -167,14 +167,14 @@ class TestPPO(unittest.TestCase):
             config, frameworks=("torch", "tf2"), with_eager_tracing=True
         ):
             # Default Agent should be setup with StochasticSampling.
-            trainer = config.build()
+            algo = config.build()
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_single_action(
+            a_ = algo.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
             )
 
             for _ in range(50):
-                a = trainer.compute_single_action(
+                a = algo.compute_single_action(
                     obs,
                     explore=False,
                     prev_action=np.array(2),
@@ -186,12 +186,12 @@ class TestPPO(unittest.TestCase):
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_single_action(
+                    algo.compute_single_action(
                         obs, prev_action=np.array(2), prev_reward=np.array(1.0)
                     )
                 )
             check(np.mean(actions), 1.5, atol=0.2)
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_free_log_std_with_rl_modules(self):
         """Tests the free log std option works."""
@@ -217,8 +217,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             # Check the free log std var is created.
             if fw == "torch":
@@ -245,14 +245,13 @@ class TestPPO(unittest.TestCase):
             init_std = get_value()
             assert init_std == 0.0, init_std
             batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
-            if fw == "torch":
-                batch = policy._lazy_tensor_dict(batch)
-            policy.learn_on_batch(batch)
+            batch = policy._lazy_tensor_dict(batch)
+            algo.learner_group.update(batch)
 
             # Check the variable is updated.
             post_std = get_value()
             assert post_std != 0.0, post_std
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":
