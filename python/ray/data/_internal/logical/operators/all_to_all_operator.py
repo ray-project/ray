@@ -52,12 +52,13 @@ class RandomShuffle(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
+        name: str = "RandomShuffle",
         seed: Optional[int] = None,
         num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "RandomShuffle",
+            name,
             input_op,
             num_outputs=num_outputs,
             ray_remote_args=ray_remote_args,

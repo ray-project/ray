@@ -30,12 +30,22 @@ Generating Synthetic Data
     .. tab-item:: Tensor Range
 
       Create a datastream from a range of integers, packing this integer range into
-      tensors of the provided shape.
+      ndarrays of the provided shape.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __gen_synth_tensor_range_begin__
-        :end-before: __gen_synth_tensor_range_end__
+      .. doctest::
+
+        >>> import ray
+        >>> ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
+        >>> ds.schema()
+        Schema({'data': numpy.ndarray(shape=(64, 64), dtype=int64)})
+        >>> ds.show(1)
+        {'data': array([[0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0],
+               ...,
+               [0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0],
+               [0, 0, 0, ..., 0, 0, 0]])}
 
 .. _datastream_reading_from_storage:
 
@@ -105,10 +115,10 @@ Common File Formats
 
     .. tab-item:: NumPy
 
-      Read NumPy files and directories. The NumPy data will be represented via the Ray Data
-      :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
-      Refer to the :ref:`tensor data guide <data_tensor_support>` for more information on working
-      with tensors.
+      Read NumPy files and directories.
+
+      This function represents NumPy data as ndarrays. To learn more, read
+      :ref:`Working with tensor data <working_with_tensors>`.
 
       .. literalinclude:: ./doc_code/loading_data.py
         :language: python
@@ -132,9 +142,8 @@ Common File Formats
 
       Call :func:`~ray.data.read_images` to read images.
 
-      This function represents image data using the Ray Data
-      :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
-      For more information on working with tensors, refer to the :ref:`tensor data guide <data_tensor_support>`.
+      This function represents images as ndarrays. To learn more, read
+      :ref:`Working with tensor data <working_with_tensors>`.
 
       .. literalinclude:: ./doc_code/loading_data.py
         :language: python
@@ -588,7 +597,7 @@ the collection. The execution results are then used to create a Datastream.
 Reading From SQL Databases
 --------------------------
 
-Call :func:`~ray.data.read_sql` to read data from a database that provides a 
+Call :func:`~ray.data.read_sql` to read data from a database that provides a
 `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
 
 .. tab-set::

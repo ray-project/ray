@@ -111,22 +111,27 @@ def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
     delta: datetime.timedelta = current_time_dt - start_time_dt
 
     rest = delta.total_seconds()
-    days = rest // (60 * 60 * 24)
+    days = int(rest // (60 * 60 * 24))
 
     rest -= days * (60 * 60 * 24)
-    hours = rest // (60 * 60)
+    hours = int(rest // (60 * 60))
 
     rest -= hours * (60 * 60)
-    minutes = rest // 60
+    minutes = int(rest // 60)
 
-    seconds = rest - minutes * 60
+    seconds = int(rest - minutes * 60)
 
+    running_for_str = ""
     if days > 0:
-        running_for_str = f"{days:.0f} days, "
-    else:
-        running_for_str = ""
+        running_for_str += f"{days:d}d "
 
-    running_for_str += f"{hours:02.0f}:{minutes:02.0f}:{seconds:05.2f}"
+    if hours > 0 or running_for_str:
+        running_for_str += f"{hours:d}hr "
+
+    if minutes > 0 or running_for_str:
+        running_for_str += f"{minutes:d}min "
+
+    running_for_str += f"{seconds:d}s"
 
     return f"{current_time_dt:%Y-%m-%d %H:%M:%S}", running_for_str
 
@@ -487,8 +492,12 @@ class ProgressReporter:
 
     @property
     def _time_heartbeat_str(self):
-        current_time_str, running_for_str = _get_time_str(self._start_time, time.time())
-        return f"Current time: {current_time_str} " f"(running for {running_for_str})"
+        current_time_str, running_time_str = _get_time_str(
+            self._start_time, time.time()
+        )
+        return (
+            f"Current time: {current_time_str}. Total running time: " + running_time_str
+        )
 
     def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
@@ -834,11 +843,11 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"finished iteration {result[TRAINING_ITERATION]} "
-            f"at {curr_time} (running for {running_time})."
+            f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
 
@@ -847,14 +856,14 @@ class AirResultProgressCallback(Callback):
     ):
         if self._verbosity < self._start_end_verbosity:
             return
-        curr_time, running_time = _get_time_str(self._start_time, time.time())
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         finished_iter = 0
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"completed training after {finished_iter} iterations "
-            f"at {curr_time} (running for {running_time})."
+            f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
 
