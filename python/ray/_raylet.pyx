@@ -15,6 +15,7 @@ import msgpack
 import io
 import os
 import pickle
+import random
 import setproctitle
 import signal
 import sys
@@ -1817,8 +1818,10 @@ cdef class GcsErrorSubscriber:
         shared_ptr[CPythonGcsSubscriber] inner
 
     def __cinit__(self, address):
-        # TODO: subscriber_id
-        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, b""))
+        # _subscriber_id needs to match the binary format of a random
+        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
+        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, subscriber_id))
         check_status(self.inner.get().Connect())
 
     def subscribe(self):
@@ -1830,7 +1833,7 @@ cdef class GcsErrorSubscriber:
             c_string key_id
         check_status(self.inner.get().PollError(&key_id, &error_data))
 
-        return (bytes(key_id), {})
+        return (bytes(key_id), {"error_message": error_data.error_message()})
 
 cdef class CoreWorker:
 
