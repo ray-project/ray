@@ -1824,6 +1824,13 @@ cdef class GcsErrorSubscriber:
     def subscribe(self):
         check_status(self.inner.get().Subscribe())
 
+    def poll(self):
+        cdef:
+            CErrorTableData error_data
+            c_string key_id
+        check_status(self.inner.get().PollError(&key_id, &error_data))
+
+        return (bytes(key_id), {})
 
 cdef class CoreWorker:
 

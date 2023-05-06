@@ -203,6 +203,9 @@ class RAY_EXPORT PythonGcsSubscriber {
   int gcs_port_;
   rpc::ChannelType channel_type_;
   std::string subscriber_id_;
+  std::string publisher_id_;
+  int64_t max_processed_sequence_id_;
+  std::deque<rpc::PubMessage> queue_;
 };
 
 /// Construct the arguments for synchronous gRPC clients

@@ -369,6 +369,8 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus Subscribe()
 
+        CRayStatus PollError(c_string* key_id, CErrorTableData* data)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",

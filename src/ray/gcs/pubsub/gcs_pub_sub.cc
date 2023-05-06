@@ -309,6 +309,8 @@ PythonGcsSubscriber::PythonGcsSubscriber(
   RAY_CHECK(address.size() == 2);
   gcs_address_ = address[0];
   gcs_port_ = std::stoi(address[1]);
+  max_processed_sequence_id_ = 0;
+  publisher_id_ = "";
 }
 
 Status PythonGcsSubscriber::Connect() {
@@ -336,6 +338,30 @@ Status PythonGcsSubscriber::Subscribe() {
 }
 
 Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* data) {
+  grpc::ClientContext context;
+
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(subscriber_id_);
+  request.set_max_processed_sequence_id(max_processed_sequence_id_);
+  request.set_publisher_id(publisher_id_);
+
+  rpc::GcsSubscriberPollReply reply;
+  grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
+
+  for (auto& message : reply.pub_messages()) {
+    // TODO: Drop out of order messages
+    queue_.emplace_back(std::move(message));
+  }
+
+  if (queue_.size() == 0) {
+    *key_id = "";
+  } else {
+    auto message = queue_.front();
+    queue_.pop_front();
+    *key_id = message.key_id();
+    *data = message.error_info_message();
+  }
+
   return Status::OK();
 }
 
