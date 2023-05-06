@@ -584,7 +584,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                 )
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
-                assert os.path.exists(replica.log_file_path)
+                file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path_id
+                assert os.path.exists(file_path)
 
     print("Finished checking application details.")
 

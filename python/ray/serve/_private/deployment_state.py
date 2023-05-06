@@ -223,7 +223,7 @@ class ActorReplicaWrapper:
             # Populated after replica is allocated.
             self._node_id: str = None
         self._node_ip: str = None
-        self._log_file_path: str = None
+        self._log_file_path_id: str = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -312,9 +312,9 @@ class ActorReplicaWrapper:
         return self._node_ip
 
     @property
-    def log_file_path(self) -> Optional[str]:
+    def log_file_path_id(self) -> Optional[str]:
         """Returns the node ip of the actor, None if not placed."""
-        return self._log_file_path
+        return self._log_file_path_id
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -538,7 +538,7 @@ class ActorReplicaWrapper:
                     self._actor_id,
                     self._node_id,
                     self._node_ip,
-                    self._log_file_path,
+                    self._log_file_path_id,
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -778,7 +778,7 @@ class DeploymentReplica(VersionedReplica):
             node_id=self._actor.node_id,
             node_ip=self._actor.node_ip,
             start_time_s=self._start_time,
-            log_file_path=self._actor._log_file_path,
+            log_file_path_id=self._actor._log_file_path_id,
         )
 
     @property

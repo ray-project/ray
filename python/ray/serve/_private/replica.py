@@ -34,7 +34,7 @@ from ray.serve._private.http_util import ASGIHTTPSender
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
-    get_component_logger_file_path,
+    get_component_logger_file_path_id,
 )
 from ray.serve._private.router import Query, RequestMetadata
 from ray.serve._private.utils import (
@@ -225,7 +225,7 @@ def create_replica_wrapper(name: str):
             to PENDING_INITIALIZATION startup state.
 
             Returns:
-                The PID, actor ID, node ID, node IP, and log file path of the replica.
+                The PID, actor ID, node ID, node IP, and log filepath id of the replica.
             """
 
             return (
@@ -233,7 +233,7 @@ def create_replica_wrapper(name: str):
                 ray.get_runtime_context().get_actor_id(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
-                get_component_logger_file_path(),
+                get_component_logger_file_path_id(),
             )
 
         async def is_initialized(
