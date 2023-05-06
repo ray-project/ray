@@ -201,6 +201,10 @@ class ImpalaTorchPolicy(
             ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
         )
 
+        # If Learner API is used, we don't need any loss-specific mixins.
+        # However, we also would like to avoid creating special Policy-subclasses
+        # for this as the entire Policy concept will soon not be used anymore with
+        # the new Learner- and RLModule APIs.
         if not config.get("_enable_learner_api"):
             VTraceOptimizer.__init__(self)
             # Need to initialize learning rate variable before calling

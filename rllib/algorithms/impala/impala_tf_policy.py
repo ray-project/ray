@@ -297,6 +297,10 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
+            # If Learner API is used, we don't need any loss-specific mixins.
+            # However, we also would like to avoid creating special Policy-subclasses
+            # for this as the entire Policy concept will soon not be used anymore with
+            # the new Learner- and RLModule APIs.
             if not self.config.get("_enable_learner_api"):
                 GradStatsMixin.__init__(self)
                 VTraceClipGradients.__init__(self)

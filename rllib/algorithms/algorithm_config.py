@@ -855,9 +855,7 @@ class AlgorithmConfig(_Config):
             )
 
         # Learner API requires RLModule API.
-        if not (
-            (self._enable_learner_api is True) is (self._enable_rl_module_api is True)
-        ):
+        if self._enable_learner_api is not self._enable_rl_module_api:
             raise ValueError(
                 "Learner API requires RLModule API and vice-versa! "
                 "Enable RLModule API via "

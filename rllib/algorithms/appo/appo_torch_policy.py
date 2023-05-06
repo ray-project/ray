@@ -69,8 +69,11 @@ class APPOTorchPolicy(
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
 
-        old_stack = not config.get("_enable_learner_api", False)
-        if old_stack:
+        # If Learner API is used, we don't need any loss-specific mixins.
+        # However, we also would like to avoid creating special Policy-subclasses
+        # for this as the entire Policy concept will soon not be used anymore with
+        # the new Learner- and RLModule APIs.
+        if not config.get("_enable_learner_api", False):
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
             VTraceOptimizer.__init__(self)
