@@ -5,6 +5,7 @@ ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.2.6; python_version == '3.7'
 # Todo: Upgrade to 0.3.1 (resolve errors in Tune)
 ax-platform==0.2.6; python_version >= '3.8'
+sqlalchemy
 # Used by ax-platform for type checking.
 # Since we pin ax-platform at an earlier version,
 # we need to pin this as well to prevent incompatible
@@ -22,6 +23,8 @@ freezegun==1.1.0
 # Requires decord which is unavailable for arm64
 gluoncv==0.10.5.post0; platform_machine != "arm64"
 gpy==1.10.0
+gpytorch==1.8.1
+
 # Requires libtorrent which is unavailable for arm64
 autorom[accept-rom-license]; platform_machine != "arm64"
 h5py==3.7.0
