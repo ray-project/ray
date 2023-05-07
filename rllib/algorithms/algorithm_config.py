@@ -1208,6 +1208,8 @@ class AlgorithmConfig(_Config):
         eager_max_retraces: Optional[int] = NotProvided,
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
+        torch_compile_learner_config=NotProvided,
+        torch_compile_worker_config=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1228,6 +1230,12 @@ class AlgorithmConfig(_Config):
             tf_session_args: Configures TF for single-process operation by default.
             local_tf_session_args: Override the following tf session args on the local
                 worker
+            torch_compile_worker_config: The config to use for torch.compile on the
+                workers. If not specified, the default is to not compile forward
+                methods on the workers because retracing can be expensive.
+            torch_compile_learner_config: The config to use for torch.compile on the
+                learner. If not specified, the default is to compile forward methods on
+                the learner.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1248,6 +1256,12 @@ class AlgorithmConfig(_Config):
             self.tf_session_args = tf_session_args
         if local_tf_session_args is not NotProvided:
             self.local_tf_session_args = local_tf_session_args
+
+        if torch_compile_worker_config is not NotProvided:
+            self.torch_compile_worker_config = torch_compile_worker_config
+
+        if torch_compile_learner_config is not NotProvided:
+            self.torch_compile_learner_config = torch_compile_learner_config
 
         return self
 
@@ -2427,8 +2441,6 @@ class AlgorithmConfig(_Config):
         self,
         *,
         rl_module_spec: Optional[ModuleSpec] = NotProvided,
-        torch_compile_learner_config=NotProvided,
-        torch_compile_worker_config=NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
@@ -2443,24 +2455,12 @@ class AlgorithmConfig(_Config):
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
-            torch_compile_worker_config: The config to use for torch.compile on the
-                workers. If not specified, the default is to not compile forward
-                methods on the workers because retracing can be expensive.
-            torch_compile_learner_config: The config to use for torch.compile on the
-                learner. If not specified, the default is to compile forward methods on
-                the learner.
 
         Returns:
             This updated AlgorithmConfig object.
         """
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
-
-        if torch_compile_worker_config is not NotProvided:
-            self.torch_compile_worker_config = torch_compile_worker_config
-
-        if torch_compile_learner_config is not NotProvided:
-            self.torch_compile_learner_config = torch_compile_learner_config
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
