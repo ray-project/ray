@@ -1,5 +1,6 @@
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Optional, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -12,6 +13,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 from ray.rllib.utils.typing import ResultDict
 
 
@@ -36,12 +38,32 @@ class ImpalaHyperparameters(LearnerHyperparameters):
     discount_factor: float = None
     vtrace_clip_rho_threshold: float = None
     vtrace_clip_pg_rho_threshold: float = None
-    vtrace_drop_last_ts: bool = None
     vf_loss_coeff: float = None
     entropy_coeff: float = None
+    entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None
 
 
 class ImpalaLearner(Learner):
+    @override(Learner)
+    def build(self) -> None:
+        super().build()
+
+        # Build entropy coeff scheduling tools.
+        self.entropy_coeff_scheduler = None
+        if self.hps.entropy_coeff_schedule:
+            # Custom schedule, based on list of
+            # ([ts], [value to be reached by ts])-tuples.
+            self.entropy_coeff_schedule_per_module = defaultdict(
+                lambda: PiecewiseSchedule(
+                    self.hps.entropy_coeff_schedule,
+                    outside_value=self.hps.entropy_coeff_schedule[-1][-1],
+                    framework=None,
+                )
+            )
+            self.curr_entropy_coeffs_per_module = defaultdict(
+                lambda: self._get_tensor_variable(self.hps.entropy_coeff)
+            )
+
     @override(Learner)
     def compile_results(
         self,
