@@ -1,4 +1,5 @@
 import copy
+import os
 import sys
 from typing import Dict
 
@@ -544,33 +545,21 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     assert serve_details.http_options.port == 8005
     print("Confirmed fetched proxy location, host and port metadata correct.")
     # Check HTTP Proxy statuses
-    assert all(
-        proxy.status == HTTPProxyStatus.HEALTHY
-        for proxy in serve_details.http_proxy_details.values()
-    )
-    print("Confirmed HTTP Proxies are healthy.")
+    for proxy in serve_details.http_proxies.values():
+        assert proxy.status == HTTPProxyStatus.HEALTHY
+        assert os.path.exists("/tmp/ray/session_latest/logs" + proxy.log_file_path_id)
+    print("Checked HTTP Proxy details.")
 
     app_details = serve_details.applications
     # CHECK: application details
     for i, app in enumerate(["app1", "app2"]):
-        # CHECK: app configs are equal
         assert (
             app_details[app].deployed_app_config.dict(exclude_unset=True)
             == config1["applications"][i]
         )
-        print(f"Checked the deployed app config for {app} from the fetched metadata.")
-
-        # CHECK: deployment timestamp
         assert app_details[app].last_deployed_time_s > 0
-        print(f"Confirmed deployment timestamp for {app} is nonzero.")
-
-        # CHECK: route prefix
         assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
-        print(f"Checked route prefix for {app}.")
-
-        # CHECK: docs path
         assert app_details[app].docs_path == expected_values[app]["docs_path"]
-        print(f"Checked docs path for {app}.")
 
         # CHECK: all deployments are present
         assert (

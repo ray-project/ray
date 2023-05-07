@@ -761,7 +761,19 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="alpha")
 class HTTPProxyDetails(BaseModel):
-    status: HTTPProxyStatus
+    node_id: str = Field(description="ID of the node that the HTTP Proxy is running on")
+    node_ip: str = Field(
+        description="IP address of the node that the HTTP Proxy is running on."
+    )
+    actor_id: str = Field(description="ID of the HTTP Proxy actor.")
+    actor_name: str = Field(description="Name of the HTTP Proxy actor.")
+    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+    log_file_path_id: Optional[str] = Field(
+        description=(
+            "Path identifier for log file of the HTTP Proxy actor. This is the "
+            "relative path to the log file from the ray logs directory."
+        )
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -782,8 +794,10 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
-    http_proxy_details: Optional[Dict[str, HTTPProxyDetails]] = Field(
-        description="Info about HTTP Proxies."
+    http_proxies: Optional[Dict[str, HTTPProxyDetails]] = Field(
+        description=(
+            "Mapping from node_id to details about the HTTP Proxy running on that node."
+        )
     )
     deploy_mode: ServeDeployMode = Field(
         description=(

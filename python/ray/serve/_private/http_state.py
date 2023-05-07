@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -29,54 +29,73 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class HTTPProxyState:
-    def __init__(self, actor_handle: ActorHandle, actor_name: str):
+    def __init__(
+        self, actor_handle: ActorHandle, actor_name: str, node_ip: str
+    ):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
+        self._node_ip = node_ip
+        self._actor_id = None
+        self._log_file_path_id = None
 
+        self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
-        self._actor_started = False
-        self._health_check_obj_ref = self._actor_handle.check_health.remote()
-        self._last_health_check_time: float = time.time()
+        self._health_check_obj_ref = None
+        self._last_health_check_time: float = 0
+
+    @property
+    def node_ip(self) -> str:
+        return self._node_ip
+
+    @property
+    def actor_handle(self) -> ActorHandle:
+        return self._actor_handle
+
+    @property
+    def actor_name(self) -> str:
+        return self._actor_name
 
     @property
     def status(self) -> HTTPProxyStatus:
         return self._status
 
-    def _check_health_obj_ref_result(self):
-        """Check on the result of the health check.
+    @property
+    def actor_id(self) -> Optional[str]:
+        return self._actor_id
 
-        Should only be called after confirming the object ref is ready.
-        Resets _health_check_obj_ref to None at the end.
-        """
-        assert len(ray.wait([self._health_check_obj_ref], timeout=0)[0])
-        try:
-            ray.get(self._health_check_obj_ref)
-            self._status = HTTPProxyStatus.HEALTHY
-        except Exception as e:
-            logger.warning(
-                f"Health check for HTTP proxy {self._actor_name} failed: {e}"
-            )
-            self._status = HTTPProxyStatus.UNHEALTHY
-
-        self._health_check_obj_ref = None
+    @property
+    def log_file_path_id(self) -> Optional[str]:
+        return self._log_file_path_id
 
     def update(self):
-        # Wait for first no-op health check to finish, indicating the actor has started
-        if not self._actor_started:
-            finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
-            if not finished:
-                return
-            self._check_health_obj_ref_result()
-            self._actor_started = True
+        if self._status == HTTPProxyStatus.STARTING:
+            try:
+                finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
+                if finished:
+                    self._actor_id, self._log_file_path_id = ray.get(finished[0])
+                    self._status = HTTPProxyStatus.HEALTHY
+            except Exception:
+                self._status = HTTPProxyStatus.UNHEALTHY
+            return
 
-        randomized_period_s = PROXY_HEALTH_CHECK_PERIOD_S * random.uniform(0.9, 1.1)
-
+        # Perform periodic health checks
         if self._health_check_obj_ref:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
-                self._check_health_obj_ref_result()
+                try:
+                    ray.get(finished[0])
+                    self._status = HTTPProxyStatus.HEALTHY
+                except Exception as e:
+                    logger.warning(
+                        f"Health check for HTTP proxy {self._actor_name} failed: {e}"
+                    )
+                    self._status = HTTPProxyStatus.UNHEALTHY
+
+                self._health_check_obj_ref = None
+
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check
+        randomized_period_s = PROXY_HEALTH_CHECK_PERIOD_S * random.uniform(0.9, 1.1)
         if time.time() - self._last_health_check_time > randomized_period_s:
             # If the HTTP Proxy is still blocked, mark unhealthy
             if self._health_check_obj_ref:
@@ -113,8 +132,6 @@ class HTTPState:
             self._config = config
         else:
             self._config = HTTPOptions()
-        self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
-        self._proxy_actor_names: Dict[NodeId, str] = dict()
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
         self._head_node_id: str = head_node_id
 
@@ -134,14 +151,25 @@ class HTTPState:
         return self._config
 
     def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
-        return self._proxy_actors
+        return {
+            node_id: state.actor_handle for node_id, state in self._proxy_states.items()
+        }
 
     def get_http_proxy_names(self) -> Dict[NodeId, str]:
-        return self._proxy_actor_names
+        return {
+            node_id: state.actor_name for node_id, state in self._proxy_states.items()
+        }
 
     def get_http_proxy_details(self) -> Dict[NodeId, HTTPProxyDetails]:
         return {
-            node_id: HTTPProxyDetails(status=state.status)
+            node_id: HTTPProxyDetails(
+                node_id=node_id,
+                node_ip=state.node_ip,
+                actor_id=state.actor_id,
+                actor_name=state.actor_name,
+                status=state.status,
+                log_file_path_id=state.log_file_path_id,
+            )
             for node_id, state in self._proxy_states.items()
         }
 
@@ -193,7 +221,7 @@ class HTTPState:
         """Start a proxy on every node if it doesn't already exist."""
 
         for node_id, node_ip_address in self._get_target_nodes():
-            if node_id in self._proxy_actors:
+            if node_id in self._proxy_states:
                 continue
 
             name = format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
@@ -227,23 +255,20 @@ class HTTPState:
                     http_middlewares=self._config.middlewares,
                 )
 
-            self._proxy_actors[node_id] = proxy
-            self._proxy_actor_names[node_id] = name
-            self._proxy_states[node_id] = HTTPProxyState(proxy, name)
+            self._proxy_states[node_id] = HTTPProxyState(proxy, name, node_ip_address)
 
     def _stop_proxies_if_needed(self) -> bool:
         """Removes proxy actors from any nodes that no longer exist."""
         all_node_ids = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
         to_stop = []
-        for node_id in self._proxy_actors:
+        for node_id in self._proxy_states:
             if node_id not in all_node_ids:
                 logger.info("Removing HTTP proxy on removed node '{}'.".format(node_id))
                 to_stop.append(node_id)
 
         for node_id in to_stop:
-            proxy = self._proxy_actors.pop(node_id)
-            del self._proxy_actor_names[node_id]
-            ray.kill(proxy, no_restart=True)
+            proxy = self._proxy_states.pop(node_id)
+            ray.kill(proxy.actor_handle, no_restart=True)
 
     async def ensure_http_route_exists(self, endpoint: EndpointTag, timeout_s: float):
         """Block until the route has been propagated to all HTTP proxies.
@@ -252,7 +277,9 @@ class HTTPState:
         """
         await asyncio.gather(
             *[
-                proxy.block_until_endpoint_exists.remote(endpoint, timeout_s=timeout_s)
-                for proxy in self._proxy_actors.values()
+                proxy.actor_handle.block_until_endpoint_exists.remote(
+                    endpoint, timeout_s=timeout_s
+                )
+                for proxy in self._proxy_states.values()
             ]
         )
