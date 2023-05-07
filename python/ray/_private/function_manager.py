@@ -161,7 +161,7 @@ class FunctionActorManager:
                 holder = make_export_key(
                     self._num_exported, self._worker.current_job_id
                 )
-                with open(f"C:\\out\\driver.txt", "a+") as f:
+                with open("C:\\out\\driver.txt", "a+") as f:
                     f.write(f"YYY setting key {holder} {key}")
                     f.flush()
                 # This step is atomic since internal kv is a single thread
@@ -172,7 +172,7 @@ class FunctionActorManager:
                     )
                     > 0
                 ):
-                    with open(f"C:\\out\\driver.txt", "a+") as f:
+                    with open("C:\\out\\driver.txt", "a+") as f:
                         f.write(f"YYY succeeded {holder} {key}")
                         f.flush()
                     break
