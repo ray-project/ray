@@ -236,9 +236,9 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
         from time import sleep
 
         sleep(2)
-        return ray._private.utils._CALLED_FREQ
+        return ray._private.utils._CALLED_FREQ, ray._private.utils._CALLED_GETS
 
-    freqs = ray.get(get_kv_metrics.remote())
+    freqs, gets = ray.get(get_kv_metrics.remote())
     # So far we have the following gets
     """
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
@@ -250,7 +250,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     ???? # unknown
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 4
+    assert freqs["internal_kv_get"] == 4, gets
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")

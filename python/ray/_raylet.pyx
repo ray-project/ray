@@ -1610,6 +1610,7 @@ cdef class GcsClient:
 
     @_auto_reconnect
     def internal_kv_get(self, c_string key, namespace=None, timeout=None):
+        ray._private.utils._CALLED_GETS.append(key)
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
