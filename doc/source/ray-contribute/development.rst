@@ -117,7 +117,7 @@ You probably want some type of Python virtual environment. For example, you can 
 .. _python-develop:
 
 Building Python-Only Components
---------------------------
+-------------------------------
 
 .. note:: Unless otherwise stated, directory and file paths are relative to the project root directory.
 
