@@ -249,6 +249,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     b'tracing' b'tracing_startup_hook'
     ???? # unknown
     """
+    print("gets", gets)
     # !!!If you want to increase this number, please let ray-core knows this!!!
     assert freqs["internal_kv_get"] == 4, gets
     assert False, gets
