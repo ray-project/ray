@@ -99,6 +99,7 @@ class ImportThread:
                 key = self.gcs_client.internal_kv_get(
                     export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
                 )
+                print("XXXX got key", export_key, key)
                 if key is not None:
                     self._process_key(key)
                     self.num_imported += 1
