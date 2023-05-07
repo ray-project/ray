@@ -126,17 +126,22 @@ class TestPPO(unittest.TestCase):
                     config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
+                    # TODO: Maybe add an API to get the Learner(s) instances within
+                    #  a learner group, remote or not.
                     learner = algo.learner_group._learner
                     optim = algo.learner_group._learner._named_optimizers[
                         DEFAULT_POLICY_ID
                     ]
-                    entropy_coeff = learner.curr_entropy_coeffs_per_module[
-                        DEFAULT_POLICY_ID
-                    ]
+                    # Check initial LR directly set in optimizer vs the first (ts=0)
+                    # value from the schedule.
                     lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
+                    check(lr, config.lr_schedule[0][1])
+
+                    # Check current entropy coeff value using the respective Scheduler.
+                    entropy_coeff = learner.entropy_coeff_scheduler.get_current_value(
+                        DEFAULT_POLICY_ID
+                    )
                     check(entropy_coeff, 0.1)
-                    # Check initial LR directly set in optimizer.
-                    check(lr, config.lr)
 
                     for i in range(num_iterations):
                         results = algo.train()

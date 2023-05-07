@@ -245,6 +245,7 @@ class Learner:
         self._module_obj = module
         self._optimizer_config = optimizer_config
         self._hps = learner_hyperparameters or LearnerHyperparameters()
+        self._device = None
 
         # pick the configs that we need for the learner from scaling config
         self._learner_group_scaling_config = (
@@ -623,10 +624,13 @@ class Learner:
         self._is_built = True
 
         # Build learning rate scheduling tools.
+        # TODO (sven): Move lr from optimizer config to Learner HPs?
+        #  We might not need optimizer config.
         self.lr_scheduler = Scheduler(
             fixed_value=self._optimizer_config["lr"],
             schedule=self.hps.lr_schedule,
             framework=self.framework,
+            device=self._device,
         )
 
         self._module = self._make_module()

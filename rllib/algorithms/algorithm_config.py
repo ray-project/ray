@@ -1595,7 +1595,8 @@ class AlgorithmConfig(_Config):
             lr_schedule: Learning rate schedule. In the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 Intermediary timesteps will be assigned to interpolated learning rate
-                values. A schedule must start from timestep 0.
+                values. A schedule config's first entry must start with timestep 0,
+                i.e.: [[0, initial_value], [...]].
             grad_clip: The value to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more

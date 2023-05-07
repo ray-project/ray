@@ -1,7 +1,10 @@
 from collections import defaultdict
+from typing import List, Optional, Tuple
 
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
+from ray.rllib.utils.typing import TensorType
 
 
 _, tf, _ = try_import_tf()
@@ -9,40 +12,79 @@ torch, _ = try_import_torch()
 
 
 class Scheduler:
-    def __init__(self, fixed_value, schedule, framework):
+    """Class to manage a scheduled (framework-dependent) tensor variable.
 
+    Uses the PiecewiseSchedule (for maximum configuration flexibility)
+    """
+    def __init__(
+        self,
+        *,
+        fixed_value: Optional[float] = None,
+        schedule: Optional[List[Tuple[int, float]]] = None,
+        framework: str = "torch",
+        device: Optional[str] = None,
+    ):
+        """Initializes a Scheduler instance.
+
+        Args:
+            fixed_value: A fixed, constant value (in case no schedule should be used).
+                Set `schedule` to None to always just use this fixed value.
+                If `fixed_value` is None, `schedule` must be provided.
+            schedule: The schedule configuration to use. In the format of
+                [[timestep, value], [timestep, value], ...]
+                Intermediary timesteps will be assigned to interpolated values (linear
+                interpolation will be used). A schedule config's first entry must
+                start with timestep 0, i.e.: [[0, initial_value], [...]].
+            framework: The framework string, for which to create the tensor variable
+                that hold the current value. This is the variable that can be used in
+                the graph, e.g. in a loss function.
+            device: Optional device (for torch) to place the tensor variable on.
+        """
         self.use_schedule = schedule is not None
         self.framework = framework
+        self.device = device
 
         if self.use_schedule:
             # Custom schedule, based on list of
             # ([ts], [value to be reached by ts])-tuples.
-            self.entropy_coeff_schedule_per_module = defaultdict(
+            self.schedule_per_module = defaultdict(
                 lambda: PiecewiseSchedule(
                     schedule,
                     outside_value=schedule[-1][-1],
                     framework=None,
                 )
             )
-            # As initial entropy coeff value, use the first timestep's (must be 0)
-            # value.
-            self.curr_entropy_coeffs_per_module = defaultdict(
-                lambda: self._get_tensor_variable(
-                    schedule[0][1],
-                    framework=self.framework,
-                )
+            # As initial tensor valie, use the first timestep's (must be 0) value.
+            self.curr_value_per_module = defaultdict(
+                lambda: self._create_tensor_variable(initial_value=schedule[0][1])
             )
-        # If no schedule, pin entropy coeff to its given (fixed) value.
+        # If no schedule, pin (fix) given value.
         else:
-            self.curr_entropy_coeffs_per_module = defaultdict(lambda: fixed_value)
+            self.curr_value_per_module = defaultdict(lambda: fixed_value)
 
     @staticmethod
-    def validate(schedule, schedule_name, value_name):
-        # Schedule checking: Any schedule data must start at ts=0 to avoid
-        # ambiguity (user might think that the fixed setting (e.g. `lr` vs
-        # `lr_schedule`) plays a role as well of that that's the initial value,
-        # when it isn't). If a schedule is provided (not None), we ignore the
-        # corresponding fixed value.
+    def validate(
+        schedule: Optional[List[Tuple[int, float]]],
+        schedule_name: str,
+        value_name: str,
+    ) -> None:
+        """Performs checking of a certain schedule configuration.
+
+        The first entry in `schedule` must have a timestep of 0.
+
+        Args:
+            schedule: The schedule configuration to check. In the format of
+                [[timestep, value], [timestep, value], ...]
+                Intermediary timesteps will be assigned to interpolated values (linear
+                interpolation will be used). A schedule config's first entry must
+                start with timestep 0, i.e.: [[0, initial_value], [...]].
+            schedule_name: The name of the schedule, e.g. `lr_schedule`.
+            value_name: A full text description of the variable that's being scheduled,
+                e.g. `learning rate`.
+
+        Raises:
+            ValueError: In case, errors are found in the schedule's format.
+        """
         if schedule is not None:
             if not isinstance(schedule, (list, tuple)) or (len(schedule) < 2):
                 raise ValueError(
@@ -58,30 +100,55 @@ class Scheduler:
                     f"provided ts={schedule[0][0]} {value_name}={schedule[0][1]}."
                 )
 
-    def get_current_value(self, module_id):
-        return self.curr_entropy_coeffs_per_module[module_id]
+    def get_current_value(self, module_id: ModuleID) -> TensorType:
+        """Returns the current value (as a tensor variable), given a ModuleID.
 
-    def update(self, module_id, timestep: int) -> float:
+        Args:
+            module_id: The module ID, for which to retrueve the current tensor value.
+
+        Returns:
+            The tensor variable (holding the current value to be used).
+        """
+        return self.curr_value_per_module[module_id]
+
+    def update(self, module_id: ModuleID, timestep: int) -> float:
+        """Updates the underlying (framework specific) tensor variable.
+
+        Args:
+            module_id: The module ID, for which to update the tensor variable.
+            timestep: The current timestep.
+
+        Returns:
+            The current value of the tensor variable as a python float.
+        """
         if self.use_schedule:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
+            python_value = (
+                self.schedule_per_module[module_id].value(t=timestep)
+            )
             if self.framework == "torch":
-                self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(
-                    value
-                )
+                self.curr_value_per_module[module_id].data = torch.tensor(python_value)
             else:
-                self.curr_entropy_coeffs_per_module[module_id].assign(value)
+                self.curr_value_per_module[module_id].assign(python_value)
         else:
-            value = self.curr_entropy_coeffs_per_module[module_id]
+            python_value = self.curr_value_per_module[module_id]
 
-        return value
+        return python_value
 
-    def _get_tensor_variable(self, initial_value, framework, device=None):
-        if framework == "torch":
+    def _create_tensor_variable(self, initial_value: float) -> TensorType:
+        """Creates a framework-specific tensor variable to be scheduled.
+
+        Args:
+            initial_value: The initial (float) value for the variable to hold.
+
+        Returns:
+            The created framework-specific tensor variable.
+        """
+        if self.framework == "torch":
             return torch.tensor(
                 initial_value,
                 requires_grad=False,
                 dtype=torch.float32,
-                device=device,
+                device=self.device,
             )
         else:
             return tf.Variable(

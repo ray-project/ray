@@ -88,9 +88,7 @@ class TfLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        # TODO (sven): Move lr from optimizer config to Learner HPs?
-        #  We might not need optimizer config.
-        lr = self.curr_lr_per_module[module_id]
+        lr = self.lr_scheduler.get_current_value(module_id)
         optim = tf.keras.optimizers.Adam(learning_rate=lr)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
@@ -532,7 +530,7 @@ class TfLearner(Learner):
         results = super().additional_update_per_module(module_id, timestep=timestep)
 
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        new_lr = self.lr_scheduler.update(timestep=timestep)
+        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
 
         # Not sure why we need to do this here besides setting the original
         # tf Variable `self.curr_lr_per_module[module_id]`. But when tf creates the

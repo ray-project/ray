@@ -1,9 +1,10 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules.scheduler import Scheduler
 
@@ -45,6 +46,7 @@ class PPOLearner(Learner):
             fixed_value=self.hps.entropy_coeff,
             schedule=self.hps.entropy_coeff_schedule,
             framework=self.framework,
+            device=self._device,
         )
 
         # Set up KL coefficient variables (per module).
@@ -53,3 +55,21 @@ class PPOLearner(Learner):
         self.curr_kl_coeffs_per_module = defaultdict(
             lambda: self._get_tensor_variable(self.hps.kl_coeff)
         )
+
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    ) -> Dict[str, Any]:
+        results = super().additional_update_per_module(
+            module_id,
+            sampled_kl_values=sampled_kl_values,
+            timestep=timestep,
+        )
+
+        # Update entropy coefficient via our Scheduler.
+        new_entropy_coeff = (
+            self.entropy_coeff_scheduler.update(module_id, timestep=timestep)
+        )
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
+
+        return results
