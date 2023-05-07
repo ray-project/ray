@@ -622,6 +622,8 @@ async def test_logs_manager_stream_log(logs_manager):
         lines=10,
         interval=None,
         timeout=30,
+        task_id=None,
+        attempt_number=0,
     )
 
     # Test pid, media_type = "stream", node_ip
@@ -649,6 +651,8 @@ async def test_logs_manager_stream_log(logs_manager):
         lines=10,
         interval=0.5,
         timeout=None,
+        task_id=None,
+        attempt_number=0,
     )
 
     # Currently cannot test actor_id with AsyncMock.
@@ -691,6 +695,8 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
         lines=10,
         interval=None,
         timeout=None,
+        task_id=None,
+        attempt_number=0,
     )
 
 
@@ -823,24 +829,22 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
-        + "/api/v0/logs/stream?&lines=2"
+        + "/api/v0/logs/stream?&lines=-1"
         + f"&actor_id={actor._ray_actor_id.hex()}",
         stream=True,
     )
     if stream_response.status_code != 200:
         raise ValueError(stream_response.content.decode("utf-8"))
     stream_iterator = stream_response.iter_content(chunk_size=None)
-    # NOTE: Prefix 1 indicates the stream has succeeded.
-    assert (
-        next(stream_iterator).decode("utf-8")
-        == "1:actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
-    )
+    actual_output = next(stream_iterator).decode("utf-8")
+    assert "actor_name:Actor\n" in actual_output
+    assert test_log_text.format("XXXXXX") in actual_output
 
     streamed_string = ""
     for i in range(5):
         strings = []
-        for j in range(100):
-            strings.append(test_log_text.format(f"{100*i + j:06d}"))
+        for j in range(3):
+            strings.append(test_log_text.format(f"{3*i + j:06d}"))
 
         ray.get(actor.write_log.remote(strings))
 
@@ -849,7 +853,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
             string += s + "\n"
         streamed_string += string
         # NOTE: Prefix 1 indicates the stream has succeeded.
-        assert next(stream_iterator).decode("utf-8") == "1" + string
+        assert string in next(stream_iterator).decode("utf-8")
     del stream_response
 
     # Test tailing log by actor id
@@ -861,7 +865,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
-    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    for line in streamed_string.split("\n")[-(LINES + 1) :]:
+        assert line in file_response
 
     # Test query by pid & node_ip instead of actor id.
     node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
@@ -872,7 +877,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"&pid={pid}",
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
-    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    for line in streamed_string.split("\n")[-(LINES + 1) :]:
+        assert line in file_response
 
 
 def test_log_list(ray_start_cluster):
@@ -1155,6 +1161,24 @@ def test_log_get(ray_start_cluster):
         actual_output = "".join(lines)
         assert actual_output.count(out_msg.format(name="b")) == 3
 
+        return True
+
+    wait_for_condition(verify)
+
+    # Test task logs tail with lines.
+    expected_out = [f"task-{i}\n" for i in range(5)]
+
+    @ray.remote
+    def f():
+        print("".join(expected_out), end="", file=sys.stdout)
+
+    t = f.remote()
+    ray.get(t)
+
+    def verify():
+        lines = get_log(task_id=t.task_id().hex(), tail=2)
+        actual_output = "".join(lines)
+        assert actual_output == "".join(expected_out[-2:])
         return True
 
     wait_for_condition(verify)

@@ -290,7 +290,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     async def _find_task_log_offsets(
-        self, task_id: str, attempt_number: int, f: io.BufferedIOBase
+        self, task_id: str, attempt_number: int, lines: int, f: io.BufferedIOBase
     ) -> Tuple[int, int]:
         """Find the start and end offsets in the log file for a task attempt
         Current task log is in the format of below:
@@ -308,27 +308,40 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         For async actor tasks, task logs from multiple tasks might however
         be interleaved.
         """
-        task_attempt_magic_line = (
+        # Find the end of the task log, which is the start of the next task log if any
+        # with the LOG_PREFIX_TASK_ATTEMPT_END magic line.
+        task_attempt_end_magic_line = (
+            f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
+        )
+        end_offset = find_offset_of_content_in_file(
+            f, task_attempt_end_magic_line.encode()
+        )
+        if end_offset == -1:
+            # No other tasks (might still be running), stream til the end.
+            end_offset = find_end_offset_file(f)
+
+        # Find start
+        task_attempt_start_magic_line = (
             f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
         )
         task_attempt_magic_line_offset = find_offset_of_content_in_file(
-            f, task_attempt_magic_line.encode()
+            f, task_attempt_start_magic_line.encode()
         )
 
         if task_attempt_magic_line_offset == -1:
             raise FileNotFoundError(
                 f"Log for task attempt({task_id},{attempt_number}) not found"
             )
-        start_offset = task_attempt_magic_line_offset + len(task_attempt_magic_line)
-
-        # Find the end of the task log, which is the start of the next task log if any
-        # with the LOG_PREFIX_TASK_NAME magic line.
-        end_offset = find_offset_of_content_in_file(
-            f, LOG_PREFIX_TASK_ATTEMPT_END.encode(), start_offset
+        start_offset = task_attempt_magic_line_offset + len(
+            task_attempt_start_magic_line
         )
-        if end_offset == -1:
-            # No other tasks (might still be running), stream til the end.
-            end_offset = find_end_offset_file(f)
+
+        if lines != -1:
+            # Tail lines specified, find end_offset - lines offsets.
+            start_offset = max(
+                find_start_offset_last_n_lines_from_offset(f, end_offset, lines),
+                start_offset,
+            )
 
         return start_offset, end_offset
 
@@ -367,7 +380,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                         else 0
                     )
                     start_offset, end_offset = await self._find_task_log_offsets(
-                        task_id, attempt_number, f
+                        task_id, attempt_number, lines, f
                     )
                     logger.info(
                         f"Tailing task logs from {start_offset} to {end_offset} for"
@@ -393,8 +406,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                     end_offset = -1
 
                 logger.info(
-                    f"Tailing logs from {start_offset} to {end_offset} for {lines}, "
-                    f"with keep_alive={keep_alive_interval_sec}"
+                    f"Tailing logs from {start_offset} to {end_offset} for "
+                    f"lines={lines}, with keep_alive={keep_alive_interval_sec}"
                 )
 
                 # Read and send the file data in chunk

@@ -1192,6 +1192,7 @@ def log_worker(
 @address_option
 @log_follow_option
 @log_interval_option
+@log_tail_option
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
@@ -1203,6 +1204,7 @@ def log_task(
     address: Optional[str],
     follow: bool,
     interval: float,
+    tail: int,
     timeout: int,
     err: bool,
 ):
@@ -1233,6 +1235,7 @@ def log_task(
         task_id=task_id,
         attempt_number=attempt_number,
         follow=follow,
+        tail=tail,
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
