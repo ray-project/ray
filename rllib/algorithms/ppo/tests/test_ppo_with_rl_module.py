@@ -227,23 +227,20 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
             policy = algo.get_policy()
+            learner = algo.learner_group._learner
+            module = learner.module[DEFAULT_POLICY_ID]
 
             # Check the free log std var is created.
             if fw == "torch":
-                matching = [
-                    v for (n, v) in policy.model.named_parameters() if "log_std" in n
-                ]
+                matching = [v for (n, v) in module.named_parameters() if "log_std" in n]
             else:
                 matching = [
-                    v for v in policy.model.trainable_variables if "log_std" in str(v)
+                    v for v in module.trainable_variables if "log_std" in str(v)
                 ]
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            # linter yells at you if you don't pass in the parameters.
-            # reason: https://docs.python-guide.org/writing/gotchas/
-            # #late-binding-closures
-            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
+            def get_value():
                 if fw == "torch":
                     return log_std_var.detach().cpu().numpy()[0]
                 else:
