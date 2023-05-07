@@ -121,7 +121,7 @@ Building Python-Only Components
 
 .. note:: Unless otherwise stated, directory and file paths are relative to the project root directory.
 
-RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray. If you are interested in building Ray as a whole, please refer to the next sessions for preparation and installation in Linux, MacOS or Windows.
+RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray. If you are interested in building Ray as a whole, please refer to the next sessions for preparation and installation in Linux, MacOS, or Windows.
 
 1. Make sure you have a clone of Ray's git repository as explained above.
 
