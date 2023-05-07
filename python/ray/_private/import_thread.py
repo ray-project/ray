@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import traceback
 from collections import defaultdict
@@ -100,6 +101,9 @@ class ImportThread:
                     export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
                 )
                 print("XXXX got key", export_key, key)
+                with open(f"/tmp/{os.getpid()}.txt", "a+") as f:
+                    f.write(f"XXXX got key {export_key} {key}")
+                    f.flush()
                 if key is not None:
                     self._process_key(key)
                     self.num_imported += 1
