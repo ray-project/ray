@@ -168,6 +168,7 @@ def test_context_information_in_logging(serve_instance):
         return {
             "request_id": request_context.request_id,
             "route": request_context.route,
+            "app_name": request_context.app_name,
         }
 
     @serve.deployment
@@ -178,6 +179,7 @@ def test_context_information_in_logging(serve_instance):
             return {
                 "request_id": request_context.request_id,
                 "route": request_context.route,
+                "app_name": request_context.app_name,
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -190,14 +192,18 @@ def test_context_information_in_logging(serve_instance):
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} replica.py",
+            f'"request_id": "{resp["request_id"]}", "route": "{resp["route"]}", '
+            f'"app_name": "{resp["app_name"]}", "message": "replica.py',
+            f'"request_id": "{resp2["request_id"]}", "route": "{resp2["route"]}", '
+            f'"app_name": "{resp2["app_name"]}", "message": "replica.py',
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} {resp['route']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']}.* user log "
+            f'.*"request_id": "{resp["request_id"]}", "route": "{resp["route"]}", '
+            f'"app_name": "{resp["app_name"]}", "message":.* user func.*',
+            f'.*"request_id": "{resp2["request_id"]}", "route": "{resp2["route"]}", '
+            f'"app_name": "{resp2["app_name"]}", "message":.* user log '
             "message from class method.*",
         ]
 

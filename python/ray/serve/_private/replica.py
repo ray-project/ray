@@ -521,7 +521,7 @@ class RayServeReplica:
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
-                    request.metadata.route, request.metadata.request_id
+                    request.metadata.route, request.metadata.request_id, self.app_name
                 )
             )
 

@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Optional
 import json
+import copy
 
 import ray
 from ray.serve._private.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
@@ -9,9 +10,9 @@ from ray.serve._private.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 
 LOG_FILE_FMT = "{component_name}_{component_id}.log"
 MESSAGE_FMT = "%(filename)s:%(lineno)d - %(message)s"
-REQUEST_ID_FMT = "%(request_id)s "
-ROUTE_FMT = "%(route)s "
-APP_NAME_FMT = "%(app_name)s "
+REQUEST_ID_FMT = "%(request_id)s"
+ROUTE_FMT = "%(route)s"
+APP_NAME_FMT = "%(app_name)s"
 
 
 class ServeFormatter(logging.Formatter):
@@ -30,7 +31,7 @@ class ServeFormatter(logging.Formatter):
 
     def format(self, record):
         # generate a format string based on the record field.
-        cur_format = self.component_log_fmt
+        cur_format = copy.deepcopy(self.component_log_fmt)
         if "request_id" in record.__dict__:
             cur_format["request_id"] = REQUEST_ID_FMT
         if "route" in record.__dict__:
