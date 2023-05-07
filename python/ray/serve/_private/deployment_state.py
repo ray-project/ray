@@ -313,7 +313,7 @@ class ActorReplicaWrapper:
 
     @property
     def log_file_path_id(self) -> Optional[str]:
-        """Returns the node ip of the actor, None if not placed."""
+        """Returns the relative log file path of the actor, None if not placed."""
         return self._log_file_path_id
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
