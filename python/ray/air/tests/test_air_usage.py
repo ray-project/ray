@@ -1,15 +1,11 @@
 """Unit tests for AIR telemetry."""
 
-import json
-import os
-
+from collections import namedtuple
 import pytest
-from unittest import mock
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray._private.usage.usage_lib import TagKey
-from ray.air import session
 from ray.air._internal import usage as air_usage
 
 
@@ -35,9 +31,6 @@ def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
     yield address_info
     ray.shutdown()
-
-
-from collections import namedtuple
 
 
 # (nfs: bool, remote_path: str | None, syncing_disabled: bool, expected: str)
