@@ -290,10 +290,13 @@ class ApplicationState:
                     )
                 )
                 if deployment_statuses[DeploymentStatus.UNHEALTHY]:
-                    if self._status == ApplicationStatus.RUNNING:
-                        self._status = ApplicationStatus.UNHEALTHY
-                    else:
+                    if self._status in [
+                        ApplicationStatus.DEPLOYING,
+                        ApplicationStatus.DEPLOY_FAILED,
+                    ]:
                         self._status = ApplicationStatus.DEPLOY_FAILED
+                    else:
+                        self._status = ApplicationStatus.UNHEALTHY
                 elif deployment_statuses[DeploymentStatus.HEALTHY] == len(
                     self.deployments
                 ):
