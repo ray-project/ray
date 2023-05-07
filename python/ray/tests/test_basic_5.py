@@ -251,6 +251,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
     assert freqs["internal_kv_get"] == 4, gets
+    assert False, gets
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
