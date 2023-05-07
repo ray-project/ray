@@ -236,7 +236,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
 Advanced batch inference guide
 ------------------------------
 
- Let's use batch inference on a pre-trained PyTorch model for image classification
+Let's use batch inference on a pre-trained PyTorch model for image classification
 to illustrate advanced concepts of batch processing with Ray.
 
 .. important::
@@ -260,7 +260,7 @@ to illustrate advanced concepts of batch processing with Ray.
             :img-top: /images/ray_logo.png
             :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-            .. button-ref:: /data/examples/torch_detection
+            .. button-ref:: /ray-air/examples/torch_detection
 
                 Fine-tuning an Object Detection Model and using it for Batch Inference
 
@@ -268,7 +268,7 @@ to illustrate advanced concepts of batch processing with Ray.
             :img-top: /images/ray_logo.png
             :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-            .. button-ref:: /data/examples/torch_image_example
+            .. button-ref:: /ray-air/examples/torch_image_example
 
                 Training an Image Classifier and using it for Batch Inference
 
@@ -456,6 +456,7 @@ In many standard cases, the input batch format is the same as the output batch f
 but it's good to be aware of the differences.
 
 .. margin::
+
     We refer to batch formats by name in Ray Data (using strings).
     For instance, the batch format used to represent Pandas dataframes is called ``"pandas"``.
     We often use batch format names and the libraries they represent interchangeably.
@@ -465,35 +466,37 @@ namely NumPy, Pandas and Arrow, and how they're used in Ray Data.
 By default, the batch format will be ``"numpy"``, but you can specify other formats
 as you see fit.
 
-.. tabbed:: NumPy (default)
+.. tab-set::
 
-  The ``"numpy"`` batch format presents batches as dictionary of
-  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
+    .. tab-item:: NumPy (default)
 
-  .. literalinclude:: ./doc_code/batch_formats.py
-    :language: python
-    :start-after: __simple_numpy_start__
-    :end-before: __simple_numpy_end__
+      The ``"numpy"`` batch format presents batches as dictionary of
+      `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
 
-.. tabbed:: Pandas
-
-  The ``"pandas"`` batch format presents batches in
-  `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format.
-
-  .. literalinclude:: ./doc_code/batch_formats.py
-    :language: python
-    :start-after: __simple_pandas_start__
-    :end-before: __simple_pandas_end__
-
-.. tabbed:: Arrow
-
-    The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
-
-    .. literalinclude:: ./doc_code/batch_formats.py
+      .. literalinclude:: ./doc_code/batch_formats.py
         :language: python
-        :start-after: __simple_pyarrow_start__
-        :end-before: __simple_pyarrow_end__
+        :start-after: __simple_numpy_start__
+        :end-before: __simple_numpy_end__
+
+    .. tab-item:: Pandas
+
+      The ``"pandas"`` batch format presents batches in
+      `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+      format.
+
+      .. literalinclude:: ./doc_code/batch_formats.py
+        :language: python
+        :start-after: __simple_pandas_start__
+        :end-before: __simple_pandas_end__
+
+    .. tab-item:: Arrow
+
+        The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
+
+        .. literalinclude:: ./doc_code/batch_formats.py
+            :language: python
+            :start-after: __simple_pyarrow_start__
+            :end-before: __simple_pyarrow_end__
 
 When defining the return value of your function, you can choose between
 dictionaries of NumPy arrays (``Dict[str, np.ndarray]``), Pandas dataframes
