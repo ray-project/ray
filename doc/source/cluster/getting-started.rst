@@ -56,8 +56,7 @@ What's next?
         Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
         Kubernetes cluster or on your laptop via KinD.
 
-    .. grid-item-card::
-
+        +++
         .. button-ref:: kuberay-quickstart
             :color: primary
             :outline:
