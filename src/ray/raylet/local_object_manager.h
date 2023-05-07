@@ -149,9 +149,14 @@ class LocalObjectManager {
 
   /// Populate object spilling stats.
   ///
-  /// \param Output parameter.
+  /// \param reply Output parameter.
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
 
+  /// Populate the owner information of the primary copy in this node.
+  ///
+  /// \param reply Output parameter
+  void FillOwnerStats(rpc::GetNodeStatsReply *reply) const;
+  
   /// Record object spilling stats to metrics.
   void RecordMetrics() const;
 

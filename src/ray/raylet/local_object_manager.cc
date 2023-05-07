@@ -256,6 +256,19 @@ void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
   SpillObjectsInternal(object_ids, callback);
 }
 
+void LocalObjectManager::FillOwnerStats(rpc::GetNodeStatsReply *reply) const {
+  absl::flat_hash_map<std::string, rpc::OwnerStats> owner_stats;
+  for(const auto& info : local_objects_) {
+    auto& stats = owner_stats[info.second.owner_address.raylet_id()];
+    stats.set_num_object_ids(stats.num_object_ids() + 1);
+  }
+  auto store_stats = reply->mutable_store_stats();
+  for(auto& [owner_id, owner_stats] : owner_stats) {
+    owner_stats.set_owner_id(owner_id);
+    *store_stats->add_owner_stats() = std::move(owner_stats);
+  }
+}
+
 void LocalObjectManager::SpillObjectsInternal(
     const std::vector<ObjectID> &object_ids,
     std::function<void(const ray::Status &)> callback) {
