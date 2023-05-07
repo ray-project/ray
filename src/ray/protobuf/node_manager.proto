@@ -186,6 +186,14 @@ message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 1;
+  // Whether to include owner information for primary copy
+  bool include_owner_stats = 2;
+}
+
+
+message OwnerStats {
+  string owner_id = 1;
+  int64 num_object_ids = 2;
 }
 
 // Object store stats, which may be reported per-node or aggregated across
@@ -219,6 +227,9 @@ message ObjectStoreStats {
   // the node has more pull requests than available object store
   // memory.
   bool object_pulls_queued = 13;
+  // Owner stats of the primary objects in the local nodes.
+  // It'll only be set if include_owner_stats is true.
+  repeated OwnerStats owner_stats = 14;
 }
 
 message GetNodeStatsReply {
