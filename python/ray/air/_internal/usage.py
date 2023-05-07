@@ -120,20 +120,48 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
 
 
-def tag_ray_air_storage_configuration(
+def _get_tag_for_remote_path(remote_path: str) -> str:
+    scheme = urllib.parse.urlparse(remote_path).scheme
+    if scheme == "file":
+        # NOTE: We treat a file:// storage_path as a "remote" path, so this case
+        # differs from the local path only case.
+        # In particular, default syncing to head node is not enabled here.
+        tag = "local_uri"
+    elif scheme == "memory":
+        # NOTE: This is used in tests and does not make sense to use in
+        # real usage. This condition filters the tag out of the `custom` catch-all.
+        tag = "memory"
+    elif scheme == "hdfs":
+        tag = "hdfs"
+    elif scheme in {"s3", "s3a"}:
+        tag = "s3"
+    elif scheme in {"gs", "gcs"}:
+        tag = "gs"
+    else:
+        tag = "custom_remote_storage"
+    return tag
+
+
+def tag_ray_air_storage_config(
     local_path: str, remote_path: Optional[str], sync_config: "SyncConfig"
-):
+) -> None:
+    """Records the storage storage configuration of an experiment.
+
+    The storage configuration is set by `RunConfig(storage_path, sync_config)`.
+
+    The possible configurations are:
+    - 'local+sync' = Default head node syncing if no remote path is specified
+    - 'local+no_sync' = No synchronization at all.
+    - 'nfs' = Using a mounted shared network filesystem.
+        NOTE: This currently detects *any* mount, not necessarily
+        a mounted network filesystem.
+    - ('s3', 'gs', 'hdfs', 'custom_remote_storage'): Various remote storage schemes.
+    - ('local_uri', 'memory'): Mostly used by internal testing by setting `storage_path`
+        to `file://` or `memory://`.
+    """
     if remote_path:
         # HDFS or cloud storage
-        scheme = urllib.parse.urlparse(remote_path).scheme
-        if scheme == "hdfs":
-            storage_config_tag = "hdfs"
-        elif scheme in {"s3", "s3a"}:
-            storage_config_tag = "s3"
-        elif scheme in {"gs", "gcs"}:
-            storage_config_tag = "gs"
-        else:
-            storage_config_tag = "custom_remote_storage"
+        storage_config_tag = _get_tag_for_remote_path(remote_path)
     elif is_mounted(local_path):
         # NFS
         storage_config_tag = "nfs"
