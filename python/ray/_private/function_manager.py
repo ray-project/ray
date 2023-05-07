@@ -161,6 +161,7 @@ class FunctionActorManager:
                 holder = make_export_key(
                     self._num_exported, self._worker.current_job_id
                 )
+                print(f"YYY setting key {holder} {key}")
                 # This step is atomic since internal kv is a single thread
                 # atomic db.
                 if (
@@ -169,6 +170,7 @@ class FunctionActorManager:
                     )
                     > 0
                 ):
+                    print(f"YYY succeeded {export_key} {key}")
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
