@@ -66,8 +66,8 @@ class ImpalaLearner(Learner):
         results = super().additional_update_per_module(module_id, timestep=timestep)
 
         # Update entropy coefficient via our Scheduler.
-        new_entropy_coeff = (
-            self.entropy_coeff_scheduler.update(module_id, timestep=timestep)
+        new_entropy_coeff = self.entropy_coeff_scheduler.update(
+            module_id, timestep=timestep
         )
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 

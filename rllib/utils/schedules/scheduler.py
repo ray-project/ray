@@ -16,6 +16,7 @@ class Scheduler:
 
     Uses the PiecewiseSchedule (for maximum configuration flexibility)
     """
+
     def __init__(
         self,
         *,
@@ -122,9 +123,7 @@ class Scheduler:
             The current value of the tensor variable as a python float.
         """
         if self.use_schedule:
-            python_value = (
-                self.schedule_per_module[module_id].value(t=timestep)
-            )
+            python_value = self.schedule_per_module[module_id].value(t=timestep)
             if self.framework == "torch":
                 self.curr_value_per_module[module_id].data = torch.tensor(python_value)
             else:
