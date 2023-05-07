@@ -65,6 +65,9 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         # the interface of that base-class not the actual implementation.
         self.config = self.unwrapped().config
 
+    def get_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
+        return self.unwrapped().get_action_dist_cls(*args, **kwargs)
+
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
         return self(*args, **kwargs)
