@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
-import warnings
 
 import ray
 
@@ -175,16 +174,10 @@ class Tuner:
     def restore(
         cls,
         path: str,
-        trainable: Optional[
-            Union[str, Callable, Type[Trainable], "BaseTrainer"]
-        ] = None,
+        trainable: Union[str, Callable, Type[Trainable], "BaseTrainer"],
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        # Deprecated
-        overwrite_trainable: Optional[
-            Union[str, Callable, Type[Trainable], "BaseTrainer"]
-        ] = None,
         param_space: Optional[Dict[str, Any]] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
@@ -215,7 +208,6 @@ class Tuner:
             trainable: The trainable to use upon resuming the experiment.
                 This should be the same trainable that was used to initialize
                 the original Tuner.
-                NOTE: Starting in 2.5, this will be a required parameter.
             param_space: The same `param_space` that was passed to
                 the original Tuner. This can be optionally re-specified due
                 to the `param_space` potentially containing Ray object
@@ -230,29 +222,11 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-            overwrite_trainable: Deprecated. Use the `trainable` argument instead.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
-
-        if overwrite_trainable:
-            if not trainable:
-                trainable = overwrite_trainable
-            warning_message = (
-                "`overwrite_trainable` has been renamed to `trainable`. "
-                "The old argument will be removed starting from version 2.5."
-            )
-            warnings.warn(warning_message, DeprecationWarning)
-
-        if not trainable:
-            warning_message = (
-                "Passing in the experiment's `trainable` will be a required argument "
-                "to `Tuner.restore` starting from version 2.5. "
-                "Please specify the trainable to avoid this warning."
-            )
-            warnings.warn(warning_message)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
