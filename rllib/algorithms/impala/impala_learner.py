@@ -1,4 +1,3 @@
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, List, Mapping, Optional, Union
 
@@ -13,7 +12,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
 )
-from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 
 
@@ -49,21 +48,11 @@ class ImpalaLearner(Learner):
         super().build()
 
         # Build entropy coeff scheduling tools.
-        if self.hps.entropy_coeff_schedule:
-            # Custom schedule, based on list of
-            # ([ts], [value to be reached by ts])-tuples.
-            self.entropy_coeff_schedule_per_module = defaultdict(
-                lambda: PiecewiseSchedule(
-                    self.hps.entropy_coeff_schedule,
-                    outside_value=self.hps.entropy_coeff_schedule[-1][-1],
-                    framework=None,
-                )
-            )
-            # As initial entropy coeff value, use the first timestep's (must be 0)
-            # value.
-            self.curr_entropy_coeffs_per_module = defaultdict(
-                lambda: self._get_tensor_variable(self.hps.entropy_coeff_schedule[0][1])
-            )
+        self.entropy_coeff_scheduler = Scheduler(
+            fixed_value=self.hps.entropy_coeff,
+            schedule=self.hps.entropy_coeff_schedule,
+            framework=self.framework,
+        )
 
     @override(Learner)
     def compile_results(

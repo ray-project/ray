@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
@@ -134,12 +133,5 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         elif sampled_kl < 0.5 * self.hps.kl_target:
             curr_var.data *= 0.5
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
 
         return results

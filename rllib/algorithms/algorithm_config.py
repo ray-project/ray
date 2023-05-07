@@ -52,6 +52,7 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     deserialize_type,
     NOT_SERIALIZABLE,
@@ -872,25 +873,8 @@ class AlgorithmConfig(_Config):
             self.enable_connectors = True
 
         # LR-schedule checking.
-        # For the new Learner API stack, any schedule must start at ts 0 to avoid
-        # ambiguity (user might think that the `lr` setting plays a role as well
-        # of that that's the initial LR, when it isn't).
-        if self._enable_learner_api and self.lr_schedule is not None:
-            if not isinstance(self.lr_schedule, (list, tuple)) or (
-                len(self.lr_schedule) < 2
-            ):
-                raise ValueError(
-                    f"Invalid `lr_schedule` ({self.lr_schedule}) specified! Must be a "
-                    "list of at least 2 tuples, each of the form "
-                    "(`timestep`, `learning rate to reach`), e.g. "
-                    "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
-                )
-            elif self.lr_schedule[0][0] != 0:
-                raise ValueError(
-                    "When providing a `lr_schedule`, the first timestep must be 0 and "
-                    "the corresponding lr value is the initial learning rate! You "
-                    f"provided ts={self.lr_schedule[0][0]} lr={self.lr_schedule[0][1]}."
-                )
+        if self._enable_learner_api:
+            Scheduler.validate(self.lr_schedule, "lr_schedule", "learning rate")
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:

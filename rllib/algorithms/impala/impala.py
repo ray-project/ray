@@ -46,10 +46,10 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     PolicyID,
@@ -372,26 +372,12 @@ class ImpalaConfig(AlgorithmConfig):
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
         # Entropy coeff schedule checking.
-        # For the new Learner API stack, any schedule must start at ts 0 to avoid
-        # ambiguity (user might think that the `entropy_coeff` setting plays a role as
-        # well of that that's the initial entropy coeff, when it isn't).
-        if self._enable_learner_api and self.entropy_coeff_schedule is not None:
-            if not isinstance(self.entropy_coeff_schedule, (list, tuple)) or (
-                len(self.entropy_coeff_schedule) < 2
-            ):
-                raise ValueError(
-                    f"Invalid `entropy_coeff_schedule` ({self.entropy_coeff_schedule}) "
-                    "specified! Must be a list of at least 2 tuples, each of the form "
-                    "(`timestep`, `coeff to reach`), e.g. "
-                    "`[(0, 0.01, (1e6, 0.001), (2e6, 0.0005)]`."
-                )
-            elif self.entropy_coeff_schedule[0][0] != 0:
-                raise ValueError(
-                    "When providing a `entropy_coeff_schedule`, the first timestep must"
-                    " be 0 and the corresponding value is the initial coefficient! "
-                    f"You provided ts={self.entropy_coeff_schedule[0][0]} "
-                    f"entropy_coeff={self.entropy_coeff_schedule[0][1]}."
-                )
+        if self._enable_learner_api:
+            Scheduler.validate(
+                self.entropy_coeff_schedule,
+                "entropy_coeff_schedule",
+                "entropy coefficient",
+            )
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
