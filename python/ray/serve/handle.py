@@ -178,7 +178,7 @@ class RayServeHandle:
         if model_id != DEFAULT.VALUE:
             # If the user specifies a model_id, we need to update the RequestContext
             # to include the model_id.
-            ray.serve.context.set_request_context(model_id=model_id)
+            ray.serve.context._set_request_context(model_id=model_id)
 
         return self.__class__(
             self.controller_handle,

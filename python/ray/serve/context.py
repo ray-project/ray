@@ -157,7 +157,7 @@ _serve_request_context = contextvars.ContextVar(
 )
 
 
-def set_request_context(
+def _set_request_context(
     route: str = "", request_id: str = "", app_name: str = "", model_id: str = ""
 ):
     """Set the request context. If the value is not set,
