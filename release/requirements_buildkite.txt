@@ -161,6 +161,9 @@ backports-zoneinfo==0.2.1 \
     # via
     #   pytz-deprecation-shim
     #   tzlocal
+bazel-runfiles==0.21.0 \
+    --hash=sha256:3e430dd9a5aba90a90bc2493fdcfce02a3ece47fb574db0f4ac898261e6b068d
+    # via -r release/requirements_buildkite.in
 boto3==1.26.118 \
     --hash=sha256:1ff703152553f4d5fc9774071d114dbf06ec661eb1b29b6051f6b1f9d0c24873 \
     --hash=sha256:d0ed43228952b55c9f44d1c733f74656418c39c55dbe36bc37feeef6aa583ded

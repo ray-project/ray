@@ -38,6 +38,34 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_python/releases/download/0.21.0/rules_python-0.21.0.tar.gz",
 )
 
+load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+python_register_toolchains(
+    name = "python3_9",
+    python_version = "3.9",
+    register_toolchains = False,
+)
+
+load("@python3_9//:defs.bzl", bk_python = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
+
+load("@rules_python//python:pip.bzl", "pip_parse")
+
+pip_parse(
+    name = "py_deps_buildkite",
+    python_interpreter_target = bk_python,
+    requirements_lock = "//release:requirements_buildkite.txt",
+)
+
+load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
+
+install_py_deps_buildkite()
+
+register_toolchains("//release:python_toolchain")
+
+register_execution_platforms(
+    "@local_config_platform//:host",
+    "//release:hermetic_python_platform",
+)

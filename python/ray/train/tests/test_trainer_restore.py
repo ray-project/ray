@@ -11,7 +11,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.huggingface import HuggingFaceTrainer
+from ray.train.hf_transformers import TransformersTrainer
 from ray.train.rl import RLTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
@@ -172,14 +172,14 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
     assert tmpdir / exp_name in result.log_dir.parents
 
 
-@pytest.mark.parametrize("trainer_cls", [HuggingFaceTrainer])
+@pytest.mark.parametrize("trainer_cls", [TransformersTrainer])
 def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     """Tests restore for data parallel trainers that take in a `train_init` function
     and config. Success criteria: same as for data parallel trainers."""
     exp_name = f"{trainer_cls.__name__}_restore_test"
 
-    if trainer_cls == HuggingFaceTrainer:
-        from ray.train.tests.test_huggingface_trainer import (
+    if trainer_cls == TransformersTrainer:
+        from ray.train.tests.test_transformers_trainer import (
             train_function as hf_init,
             train_df,
         )
