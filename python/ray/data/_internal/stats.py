@@ -774,6 +774,13 @@ class IterStatsSummary:
             out += (
                 "* Batch iteration time breakdown (summed across prefetch threads):\n"
             )
+            if self.wait_time.get():
+                out += "    * In block fetching: {} min, {} max, {} avg, {} total\n".format(
+                    fmt(self.wait_time.min()),
+                    fmt(self.wait_time.max()),
+                    fmt(self.wait_time.avg()),
+                    fmt(self.wait_time.get()),
+                )
             if self.get_time.get():
                 out += "    * In ray.get(): {} min, {} max, {} avg, {} total\n".format(
                     fmt(self.get_time.min()),
