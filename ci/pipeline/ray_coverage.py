@@ -58,12 +58,11 @@ def main(
     coverage_info = _collect_coverage(coverage_file)
     _logger.info(coverage_info)
     if upload:
-        s3_file_name = _persist_coverage_info(coverage_file)
-        _logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
+        _upload_coverage_info(coverage_file)
     return 0
 
 
-def _persist_coverage_info(coverage_file: str) -> str:
+def _upload_coverage_info(coverage_file: str) -> None:
     s3_file_name = (
         f"{_S3_BUCKET_DIR}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
     )
@@ -72,7 +71,8 @@ def _persist_coverage_info(coverage_file: str) -> str:
         _S3_BUCKET_NAME,
         s3_file_name,
     )
-    return s3_file_name
+    s3_file_name = _upload_coverage_info(coverage_file)
+    _logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
 
 
 def _run_test(test_target: str, coverage_file: str) -> None:
