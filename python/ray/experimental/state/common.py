@@ -1,4 +1,3 @@
-import dataclasses
 import datetime
 import json
 import logging
@@ -78,7 +77,8 @@ PredicateType = str  # Literal["=", "!="]
 
 
 class Humanify:
-    """A class containing default methods to convert units into a human readable string."""
+    """A class containing default methods to
+    convert units into a human readable string."""
 
     def timestamp(x: float):
         """Converts miliseconds to a datetime object."""
