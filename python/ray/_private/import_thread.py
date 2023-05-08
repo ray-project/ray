@@ -91,11 +91,13 @@ class ImportThread:
             self.subscriber.close()
 
     def _do_importing(self):
+        print("UUUU do_importing")
         job_id = self.worker.current_job_id
         if job_id == JobID.nil():
             return
 
         while True:
+            print("before lock")
             with self._lock:
                 export_key = ray._private.function_manager.make_export_key(
                     self.num_imported + 1, job_id
