@@ -308,6 +308,9 @@ def test_stage_linking(ray_start_regular_shared):
     ds = ds.materialize()
     _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
     assert len(ds._plan._stages_after_snapshot) == 0
+    # since the new optimizer path does not use the stage fusion path,
+    # but instead performs operator fusion, we expect _last_optimized_stages
+    # to be not updated (None)?
     _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 
