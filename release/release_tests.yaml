@@ -6084,3 +6084,6 @@
     - __suffix__: gce
       env: gce
       frequency: manual
+      cluster:
+        cluster_env: aws/tests/aws_config.yaml
+        cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
