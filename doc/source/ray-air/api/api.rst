@@ -16,4 +16,4 @@ Ray AIR API
     AIR Checkpoint (All Libraries)<checkpoint.rst>
     Predictors (Ray Data + Ray Train)<predictor.rst>
     Model Serving in AIR (Ray Serve)<serve.rst>
-    External Library Integrations<../../tune/api/integration>
+    External Library Integrations<integrations.rst>
