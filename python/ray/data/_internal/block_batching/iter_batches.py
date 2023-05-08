@@ -1,5 +1,5 @@
 import collections
-from typing import Any, Callable, Dict, Iterator, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray.types import ObjectRef
@@ -19,7 +19,7 @@ from ray.data._internal.block_batching.util import (
     make_async_gen,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
 from ray.data.context import DataContext
 from contextlib import nullcontext
 
@@ -128,6 +128,7 @@ def iter_batches(
             block_ref_iter=block_refs,
             prefetcher=prefetcher,
             num_batches_to_prefetch=prefetch_batches,
+            stats=stats,
             batch_size=batch_size,
             eager_free=eager_free,
         )
@@ -225,7 +226,8 @@ def prefetch_batches_locally(
     block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
-    batch_size: Optional[int],
+    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    batch_size: Optional[int] = None,
     eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched block references, returns an iterator over the same
@@ -267,7 +269,8 @@ def prefetch_batches_locally(
         sliding_window.append(next_block_ref_and_metadata)
         current_window_size += next_block_ref_and_metadata[1].num_rows
 
-    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    with stats.iter_wait_s.timer() if stats else nullcontext():
+        prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
@@ -275,9 +278,10 @@ def prefetch_batches_locally(
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 sliding_window.append(next(block_ref_iter))
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
+                with stats.iter_wait_s.timer() if stats else nullcontext():
+                    prefetcher.prefetch_blocks(
+                        [block_ref for block_ref, _ in list(sliding_window)]
+                    )
             except StopIteration:
                 pass
         yield block_ref
