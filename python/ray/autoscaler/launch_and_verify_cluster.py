@@ -5,11 +5,11 @@ verification process. The script requires one command-line argument: the path to
 cluster configuration file.
 
 Usage:
-    python aws_launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
+    python launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
         <cluster_configuration_file_path>
 
 Example:
-    python aws_launch_and_verify_cluster.py --retries 5 --no-config-cache
+    python launch_and_verify_cluster.py --retries 5 --no-config-cache
         /path/to/cluster_config.yaml
 """
 import argparse
