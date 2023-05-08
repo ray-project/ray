@@ -76,6 +76,7 @@ class ImportThread:
                 if self.threads_stopped.is_set():
                     return
                 key = self.subscriber.poll()
+                print("polling for", key)
                 if key is None:
                     # subscriber has closed.
                     break
