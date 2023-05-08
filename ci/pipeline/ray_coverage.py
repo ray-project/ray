@@ -1,23 +1,41 @@
-import click
 import logging
 import os
 import subprocess
 import sys
-import tempfile
 
-COVERAGE_FILE_NAME = "ray_release.cov"
+import click
+
+_COVERAGE_FILE_NAME = "ray_release.cov"
+def _get_logger():
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
+    )
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    return logger
+logger = _get_logger()
 
 
 @click.command()
 @click.argument("test_target", required=True, type=str)
-def main(test_target: str) -> None:
+@click.option(
+    "--artifact-dir",
+    default="artifact-mount",
+    type=str,
+    help=(
+        "This directory is used to store artifacts, such as coverage information. "
+        "In buildkite CI, this is usually artifact-mount.",
+    ),
+)
+def main(test_target: str, artifact_dir: str) -> None:
     """
     This script collects dynamic coverage data for the test target, and upload the
     results to database (S3).
     """
-    logger = _get_logger()
     logger.info(f"Collecting coverage for test target: {test_target}")
-    coverage_file = os.path.join(tempfile.gettempdir(), COVERAGE_FILE_NAME)
+    coverage_file = os.path.join(artifact_dir, _COVERAGE_FILE_NAME)
     _run_test(test_target, coverage_file)
     coverage_info = _collect_coverage(coverage_file)
     logger.info(coverage_info)
@@ -32,18 +50,21 @@ def _run_test(test_target: str, coverage_file: str) -> None:
     file coverage information.
     """
     source_dir = os.path.join(os.getcwd(), "release")
-    subprocess.check_output(
+    subprocess.check(
         [
             "bazel",
             "test",
             test_target,
-            "--test_tag_filters=release_unit",
+            "--test_tag_filters",
+            "release_unit",
             "--jobs",
             "1",
-            "--test_env="
+            "--test_env",
             f"PYTEST_ADDOPTS=--cov-context=test --cov={source_dir} --cov-append",
-            f"--test_env=COVERAGE_FILE={coverage_file}",
-            "--cache_test_results=no",
+            "--test_env",
+            f"COVERAGE_FILE={coverage_file}",
+            "--cache_test_results",
+            "no",
         ]
     )
 
@@ -52,17 +73,6 @@ def _collect_coverage(coverage_file: str) -> str:
     return subprocess.check_output(
         ["coverage", "report", f"--data-file={coverage_file}"]
     ).decode("utf-8")
-
-
-def _get_logger():
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
-    )
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    return logger
 
 
 if __name__ == "__main__":
