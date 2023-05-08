@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 from datetime import date
-from ray_logger import get_logger
+from ray_logger import logger
 
 import click
 import boto3
@@ -40,11 +40,11 @@ def main(
     This script collects dynamic coverage data for the test target, and upload the
     results to database (S3).
     """
-    _logger.info(f"Collecting coverage for test target: {test_target}")
+    logger.info(f"Collecting coverage for test target: {test_target}")
     coverage_file = os.path.join(artifact_dir, _COVERAGE_FILE_NAME)
     _run_test(test_target, coverage_file)
     coverage_info = _collect_coverage(coverage_file)
-    _logger.info(coverage_info)
+    logger.info(coverage_info)
     if upload:
         _upload_coverage_info(coverage_file)
     return 0
@@ -60,7 +60,7 @@ def _upload_coverage_info(coverage_file: str) -> None:
         s3_file_name,
     )
     s3_file_name = _upload_coverage_info(coverage_file)
-    _logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
+    logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
 
 
 def _run_test(test_target: str, coverage_file: str) -> None:
