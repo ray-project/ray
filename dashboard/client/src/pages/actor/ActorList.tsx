@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import React, { useState } from "react";
 import ActorTable, { ActorTableProps } from "../../components/ActorTable";
 import { Actor } from "../../type/actor";
-import { useActorList } from "./hook/useActorList";
+import { useActorList } from "./hook/mockedUseActorList";
 
 /**
  * Represent the embedable actors page.

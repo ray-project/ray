@@ -15,6 +15,7 @@ import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
+import _ from "lodash";
 import React, { useContext, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
@@ -39,14 +40,19 @@ export type ActorTableProps = {
   detailPathPrefix?: string;
 };
 
+const SEQUENCE = {
+  FIRST: 0,
+  MIDDLE: 1,
+  LAST: 2,
+};
+
 type StateOrder = {
   [key in ActorEnum]: number;
 };
-const stateOrder: StateOrder = {
-  [ActorEnum.ALIVE]: 0,
-  [ActorEnum.PENDING]: 1,
-  [ActorEnum.RECONSTRUCTING]: 2,
-  [ActorEnum.DEAD]: 3,
+
+const stateOrder: Partial<StateOrder> = {
+  [ActorEnum.ALIVE]: SEQUENCE.FIRST,
+  [ActorEnum.DEAD]: SEQUENCE.LAST,
 };
 //type predicate for ActorEnum
 const isActorEnum = (state: unknown): state is ActorEnum => {
@@ -56,26 +62,13 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 // We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
 export const sortActors = (actorList: Actor[]) => {
   const sortedActors = [...actorList];
-  sortedActors.sort((actor1, actor2) => {
-    const actorOrder1 = isActorEnum(actor1.state)
-      ? stateOrder[actor1.state]
-      : 0;
-    const actorOrder2 = isActorEnum(actor2.state)
-      ? stateOrder[actor2.state]
-      : 0;
-
-    const actorTime1 = actor1.startTime || 0;
-    const actorTime2 = actor2.startTime || 0;
-
-    if (actorOrder1 !== actorOrder2) {
-      return actorOrder1 - actorOrder2;
-    } else {
-      // When the state is equal, we sort by startTime
-      // in order to provide a determined order for users no matter the backend API changes
-      return actorTime1 - actorTime2;
-    }
+  return _.sortBy(sortedActors, (actor) => {
+    const actorOrder = isActorEnum(actor.state)
+      ? stateOrder[actor.state]
+      : SEQUENCE.MIDDLE;
+    const actorTime = actor.startTime || 0;
+    return [actorOrder, actorTime];
   });
-  return sortedActors;
 };
 
 const ActorTable = ({
