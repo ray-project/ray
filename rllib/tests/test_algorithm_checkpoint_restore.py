@@ -15,6 +15,7 @@ from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.ars import ARSConfig
 from ray.rllib.algorithms.a3c import A3CConfig
+from ray.rllib.utils.test_utils import test_ckpt_restore
 from ray.tune.registry import get_trainable_cls
 import os
 
@@ -213,10 +214,14 @@ class TestCheckpointRestorePG(unittest.TestCase):
 
     def test_a3c_checkpoint_restore(self):
         # TODO(Kourosh) A3C cannot run a restored algorithm for some reason.
-        ckpt_restore_test("A3C", run_restored_algorithm=False)
+        test_ckpt_restore(
+            algorithms_and_configs["A3C"], "CartPole-v1", run_restored_algorithm=False
+        )
 
     def test_ppo_checkpoint_restore(self):
-        ckpt_restore_test("PPO", object_store=True)
+        test_ckpt_restore(
+            algorithms_and_configs["PPO"], "CartPole-v1", object_store=True
+        )
 
 
 class TestCheckpointRestoreOffPolicy(unittest.TestCase):
@@ -229,19 +234,30 @@ class TestCheckpointRestoreOffPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_apex_ddpg_checkpoint_restore(self):
-        ckpt_restore_test("APEX_DDPG")
+        test_ckpt_restore(algorithms_and_configs["APEX_DDPG"], "Pendulum-v1")
 
     def test_ddpg_checkpoint_restore(self):
-        ckpt_restore_test("DDPG", replay_buffer=True)
+        test_ckpt_restore(
+            algorithms_and_configs["DDPG"], "Pendulum-v1", replay_buffer=True
+        )
 
     def test_dqn_checkpoint_restore(self):
-        ckpt_restore_test("DQN", object_store=True, replay_buffer=True)
+        test_ckpt_restore(
+            algorithms_and_configs["DQN"],
+            "CartPole-v1",
+            object_store=True,
+            replay_buffer=True,
+        )
 
     def test_sac_checkpoint_restore(self):
-        ckpt_restore_test("SAC", replay_buffer=True)
+        test_ckpt_restore(
+            algorithms_and_configs["SAC"], "Pendulum-v1", replay_buffer=True
+        )
 
     def test_simpleq_checkpoint_restore(self):
-        ckpt_restore_test("SimpleQ", replay_buffer=True)
+        test_ckpt_restore(
+            algorithms_and_configs["SimpleQ"], "CartPole-v1", replay_buffer=True
+        )
 
 
 class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
@@ -254,10 +270,10 @@ class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
         ray.shutdown()
 
     def test_ars_checkpoint_restore(self):
-        ckpt_restore_test("ARS")
+        test_ckpt_restore(algorithms_and_configs["ARS"], "CartPole-v1")
 
     def test_es_checkpoint_restore(self):
-        ckpt_restore_test("ES")
+        test_ckpt_restore(algorithms_and_configs["ES"], "CartPole-v1")
 
 
 if __name__ == "__main__":
