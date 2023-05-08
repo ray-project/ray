@@ -278,7 +278,10 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    # Todo (krfricke): Find a better way to pass entrypoint information, e.g.
+    # a context object or similar.
     _tuner_api: bool = False,
+    _trainer_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -487,19 +490,24 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
-    error_message_map = (
-        {
+    if _tuner_api and _trainer_api:
+        error_message_map = {
+            "entrypoint": "Trainer(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
+        }
+    elif _tuner_api and not _trainer_api:
+        error_message_map = {
             "entrypoint": "Tuner(...)",
             "search_space_arg": "param_space",
             "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
         }
-        if _tuner_api
-        else {
+    else:
+        error_message_map = {
             "entrypoint": "tune.run(...)",
             "search_space_arg": "config",
             "restore_entrypoint": "tune.run(..., resume=True)",
         }
-    )
     _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
     if _remote is None:
@@ -908,6 +916,7 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
+        _trainer_api=_trainer_api,
     )
 
     if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
@@ -923,6 +932,9 @@ def run(
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
+        # search_alg.total_samples has been updated, so we should
+        # update the number of pending trials
+        runner.update_max_pending_trials()
     else:
         logger.debug(
             "You have resumed the Tune run, which means that any newly specified "
@@ -1031,10 +1043,16 @@ def run(
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
             path=runner.experiment_path,
         )
-        logger.warning(
-            "Experiment has been interrupted, but the most recent state was saved.\n"
-            f"Continue running this experiment with: {restore_entrypoint}"
-        )
+        if _trainer_api:
+            logger.warning(
+                f"Training has been interrupted, but the most recent state was saved.\n"
+                f"Resume training with: {restore_entrypoint}"
+            )
+        else:
+            logger.warning(
+                f"Experiment has been interrupted, but the most recent state was "
+                f"saved.\nResume experiment with: {restore_entrypoint}"
+            )
     ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
