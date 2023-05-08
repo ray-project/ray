@@ -106,17 +106,6 @@ def start_and_shutdown_ray_cli_class():
         yield
 
 
-@pytest.fixture(scope="function")
-def client():
-    with start_and_shutdown_ray_cli():
-        wait_for_condition(
-            lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-            == 200,
-            timeout=15,
-        )
-        yield serve.start(detached=True)
-
-
 def _check_ray_stop():
     try:
         requests.get("http://localhost:52365/api/ray/version")
@@ -469,6 +458,18 @@ serve.run(B.bind())"""
 
 
 class TestDeployApp:
+    @pytest.fixture(scope="function")
+    def client(self):
+        with start_and_shutdown_ray_cli():
+            wait_for_condition(
+                lambda: requests.get(
+                    "http://localhost:52365/api/ray/version"
+                ).status_code
+                == 200,
+                timeout=15,
+            )
+            yield serve.start(detached=True)
+
     def check_deployment_running(self, client: ServeControllerClient, name: str):
         serve_status = client.get_serve_status()
         return (
