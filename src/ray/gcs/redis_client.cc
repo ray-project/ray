@@ -222,7 +222,7 @@ void RedisClient::Disconnect() {
 std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &shard_key) {
   // TODO (iycheng) Remove shard context from RedisClient
   RAY_CHECK(shard_contexts_.size() == 1);
-  return shard_contexts[0];
+  return shard_contexts_[0];
 }
 
 int RedisClient::GetNextJobID() {

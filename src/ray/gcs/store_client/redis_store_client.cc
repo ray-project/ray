@@ -82,7 +82,7 @@ std::vector<std::vector<std::string>> GenCommandsBatched(
     }
     batched_requests.back().push_back(key);
   }
-  return commands_by_shards;
+  return batched_requests;
 }
 
 std::string GetKeyFromRedisKey(const std::string &external_storage_namespace,
@@ -101,11 +101,11 @@ Status MGetValues(std::shared_ptr<RedisClient> redis_client,
   // The `MGET` command for each shard.
   auto batched_commands = GenCommandsBatched("HMGET", external_storage_namespace, keys);
   auto total_count = batched_commands.size();
-  auto finished_count = std::make_shared<int>(0);
+  auto finished_count = std::make_shared<size_t>(0);
   auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  auto context = redis_client_->GetShardContext("");
+  auto context = redis_client->GetShardContext("");
 
-  for (auto &command : command_list.second) {
+  for (auto &command : batched_commands) {
     auto mget_keys = std::move(command);
     auto mget_callback = [table_name,
                           external_storage_namespace,
@@ -231,49 +231,21 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
-void RedisStoreClient::NextWrite(const std::string &key) {
-  Request req;
-  {
-    absl::MutexLock lock(&mu_);
-    auto iter = write_ops_.find(key);
-    // If no outstanding requests, we'll send it immediately.
-    // Put an entry there to indicate there is outstanding requests.
-    if (iter == write_ops_.end()) {
-      return;
-    }
-    if (iter->second.empty()) {
-      write_ops_.erase(iter);
-      return;
-    }
-    req = std::move(iter->second.front());
-    iter->second.pop_front();
-  }
-  auto cxt = redis_client_->GetShardContext(key);
-  RAY_CHECK_OK(
-      cxt->RunArgvAsync(std::move(req.first),
-                        [this, key, redis_callback = std::move(req.second)](auto reply) {
-                          NextWrite(key);
-                          if (redis_callback) {
-                            redis_callback(reply);
-                          }
-                        }));
-}
-
 void RedisStoreClient::ProcessNext(std::string key) {
   std::function<void()> op;
   {
     absl::MutexLock lock(&mu_);
     auto ops_iter = write_ops_.find(key);
-    auto &queue = ops_iter.second;
+    auto &queue = ops_iter->second;
     RAY_CHECK(ops_iter != write_ops_.end());
     while (!queue.empty() && queue.front() == nullptr) {
-      queue.pop_front();
+      queue.pop();
     }
     if (queue.empty()) {
-      write_ops_.erase(iter);
+      write_ops_.erase(ops_iter);
     } else {
       op = std::move(queue.front());
-      queue.pop_front();
+      queue.pop();
     }
   }
   if (op) {
@@ -289,11 +261,11 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
                      keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
-    auto cxt = redis_client_->GetShardContext(key);
+    auto cxt = redis_client_->GetShardContext("");
     RAY_CHECK_OK(cxt->RunArgvAsync(std::move(args),
                                    [this,
                                     keys = std::move(keys),
-                                    redis_callback = std::move(req.second)](auto reply) {
+                                    redis_callback = std::move(redis_callback)](auto reply) {
                                      for (const auto &key : keys) {
                                        ProcessNext(key);
                                        if (redis_callback) {
@@ -310,16 +282,16 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
       if (auto iter = write_ops_.find(key); iter != write_ops_.end()) {
         can_fire = false;
       } else {
-        write_ops_.emplace(key, {});
+        write_ops_.emplace(key, std::queue<std::function<void()>>());
       }
     }
 
     if (can_fire) {
       for (size_t i = 0; i < keys.size(); ++i) {
         if (i == 0) {
-          write_ops_[keys[0]].push_back(std::move(send_redis));
+          write_ops_[keys[0]].push(std::move(send_redis));
         } else {
-          write_ops_[keys[i]].push_back(nullptr);
+          write_ops_[keys[i]].push(nullptr);
         }
       }
     }
@@ -341,7 +313,7 @@ Status RedisStoreClient::DoPut(const std::string &key,
           callback(added_num != 0);
         };
   }
-  DoWriteWork({key}, std::move(args), std::move(write_callback));
+  DoWrite({key}, std::move(args), std::move(write_callback));
   return Status::OK();
 }
 
@@ -349,7 +321,7 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       std::function<void(int64_t)> callback) {
   auto del_cmds = GenCommandsBatched("HDEL", external_storage_namespace_, keys);
   auto total_count = del_cmds.size();
-  auto finished_count = std::make_shared<int>(0);
+  auto finished_count = std::make_shared<size_t>(0);
   auto num_deleted = std::make_shared<int64_t>(0);
   auto context = redis_client_->GetShardContext("");
   for (auto &command : del_cmds) {
