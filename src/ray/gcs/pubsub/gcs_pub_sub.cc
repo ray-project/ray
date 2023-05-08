@@ -296,7 +296,7 @@ Status PythonGcsPublisher::PublishFunctionKey(
   auto *message = request.add_pub_messages();
   message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);
   message->mutable_python_function_message()->MergeFrom(python_function);
-  return DoPublishWithRetries(request, -1, -1);
+  return DoPublishWithRetries(request, 0, -1);
 }
 
 }  // namespace gcs
