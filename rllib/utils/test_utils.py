@@ -1268,7 +1268,7 @@ class ModelChecker:
             check(v, self.output_values[main_key], rtol=rtol or 0.002)
 
 
-def get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
+def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
     """Returns the mean action computed by the given algorithm.
 
     Note: This makes calls to `Algorithm.compute_single_action`
@@ -1373,8 +1373,8 @@ def test_ckpt_restore(
 
             for _ in range(1):
                 obs = env.observation_space.sample()
-                a1 = get_mean_action_from_algorithm(alg1, obs)
-                a2 = get_mean_action_from_algorithm(alg2, obs)
+                a1 = _get_mean_action_from_algorithm(alg1, obs)
+                a2 = _get_mean_action_from_algorithm(alg2, obs)
                 print("Checking computed actions", alg1, obs, a1, a2)
                 if abs(a1 - a2) > 0.1:
                     raise AssertionError(
@@ -1390,7 +1390,7 @@ def test_ckpt_restore(
             alg2.stop()
 
 
-def check_support(
+def check_supported_spaces(
     alg: str,
     config: "AlgorithmConfig",
     train: bool = True,

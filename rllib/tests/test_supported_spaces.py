@@ -11,7 +11,7 @@ from ray.rllib.algorithms.es import ESConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
-from ray.rllib.utils.test_utils import check_support
+from ray.rllib.utils.test_utils import check_supported_spaces
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class TestSupportedSpacesIMPALA(unittest.TestCase):
         ray.shutdown()
 
     def test_impala(self):
-        check_support(
+        check_supported_spaces(
             "IMPALA",
             (
                 ImpalaConfig()
@@ -53,7 +53,7 @@ class TestSupportedSpacesAPPO(unittest.TestCase):
             .training(vtrace=False, model={"fcnet_hiddens": [10]})
         )
         config.training(vtrace=True)
-        check_support("APPO", config)
+        check_supported_spaces("APPO", config)
 
 
 class TestSupportedSpacesA3C(unittest.TestCase):
@@ -74,7 +74,7 @@ class TestSupportedSpacesA3C(unittest.TestCase):
                 model={"fcnet_hiddens": [10]},
             )
         )
-        check_support("A3C", config, check_bounds=True)
+        check_supported_spaces("A3C", config, check_bounds=True)
 
 
 class TestSupportedSpacesPPO(unittest.TestCase):
@@ -99,7 +99,7 @@ class TestSupportedSpacesPPO(unittest.TestCase):
                 },
             )
         )
-        check_support("PPO", config, check_bounds=True)
+        check_supported_spaces("PPO", config, check_bounds=True)
 
 
 class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
@@ -140,7 +140,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             _enable_learner_api=False
         )
 
-        check_support(
+        check_supported_spaces(
             "PPO",
             config,
             check_bounds=True,
@@ -168,7 +168,7 @@ class TestSupportedSpacesDQN(unittest.TestCase):
                 }
             )
         )
-        check_support("DQN", config, frameworks=["tf2", "torch", "tf"])
+        check_supported_spaces("DQN", config, frameworks=["tf2", "torch", "tf"])
 
 
 class TestSupportedSpacesOffPolicy(unittest.TestCase):
@@ -181,7 +181,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_ddpg(self):
-        check_support(
+        check_supported_spaces(
             "DDPG",
             DDPGConfig()
             .exploration(exploration_config={"ou_base_scale": 100.0})
@@ -194,7 +194,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
         )
 
     def test_sac(self):
-        check_support(
+        check_supported_spaces(
             "SAC",
             SACConfig().training(replay_buffer_config={"capacity": 1000}),
             check_bounds=True,
@@ -211,7 +211,7 @@ class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
         ray.shutdown()
 
     def test_ars(self):
-        check_support(
+        check_supported_spaces(
             "ARS",
             ARSConfig()
             .rollouts(num_rollout_workers=1)
@@ -219,7 +219,7 @@ class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
         )
 
     def test_es(self):
-        check_support(
+        check_supported_spaces(
             "ES",
             ESConfig()
             .rollouts(num_rollout_workers=1)
