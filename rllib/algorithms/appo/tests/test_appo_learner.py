@@ -92,7 +92,6 @@ class TestAPPOTfLearner(unittest.TestCase):
                 )
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.training(_enable_learner_api=True)
             algo_config.validate()
             algo_config.freeze()
 
