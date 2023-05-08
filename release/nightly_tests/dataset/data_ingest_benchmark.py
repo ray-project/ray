@@ -17,18 +17,36 @@ GiB = 1024 * 1024 * 1024
 
 @ray.remote
 class ConsumingActor:
-    def __init__(self, rank, use_gpu=False):
+    def __init__(self, rank):
         self._rank = rank
         self._use_gpu = use_gpu
 
-    def consume(self, split):
-        do_consume(split, self._rank, self._use_gpu)
+    def consume(
+        self,
+        split,
+        expected_total_read_bytes,
+        use_gpu=False,
+        early_stop_when_read_bytes=None,
+    ):
+        do_consume(
+            split,
+            self._rank,
+            expected_total_read_bytes,
+            use_gpu,
+            early_stop_when_read_bytes,
+        )
 
     def get_location(self):
         return ray.get_runtime_context().get_node_id()
 
 
-def do_consume(split, rank, use_gpu):
+def do_consume(
+    split,
+    rank,
+    expected_total_read_bytes,
+    use_gpu=False,
+    early_stop_when_read_bytes=None,
+):
     prefetch_batches = 1
     batch_size = 4096
     num_epochs = 1
@@ -87,6 +105,9 @@ def do_consume(split, rank, use_gpu):
                 # the object pointers if list of non-primitive types.
                 bytes_read += sys.getsizeof(batch)
             batch_start = time.perf_counter()
+            if early_stop_when_read_bytes is not None:
+                if bytes_read >= early_stop_when_read_bytes:
+                    break
     delta = time.perf_counter() - start
 
     print("Time to read all data", delta, "seconds")
@@ -104,6 +125,8 @@ def do_consume(split, rank, use_gpu):
     if rank == 0:
         print("Ingest stats from rank=0:\n\n{}".format(split.stats()))
 
+    assert bytes_read == expected_total_read_bytes
+
 
 def make_ds(size_gb: int, parallelism: int = -1):
     # Dataset of 10KiB tensor records.
@@ -118,21 +141,33 @@ def make_ds(size_gb: int, parallelism: int = -1):
     return dataset
 
 
-def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu):
+def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu, early_stop):
     ds = make_ds(dataset_size_gb)
     resources = {"num_cpus": 0.5}
     if use_gpu:
         resources["num_gpus"] = 0.5
     consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD", **resources).remote(
-            i, use_gpu
-        )
+        ConsumingActor.options(scheduling_strategy="SPREAD", **resources).remote(i)
         for i in range(num_workers)
     ]
     locality_hints = ray.get([actor.get_location.remote() for actor in consumers])
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    expected_total_read_bytes = dataset_size_gb * GiB
+    early_stop_when_read_bytes = None
+    if early_stop:
+        early_stop_when_read_bytes = expected_total_read_bytes // 2
+        expected_total_read_bytes //= 2
+    # Early stop when we've read half the dataset.
+    future = [
+        consumers[i].consume.remote(
+            s,
+            expected_total_read_bytes,
+            use_gpu,
+            early_stop_when_read_bytes,
+        )
+        for i, s in enumerate(splits)
+    ]
     ray.get(future)
 
 
@@ -144,7 +179,10 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
     ]
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.split(num_workers, equal=True, locality_hints=consumers)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    future = [
+        consumers[i].consume.remote(s, dataset_size_gb * GiB)
+        for i, s in enumerate(splits)
+    ]
     ray.get(future)
 
     # Example ballpark number for transformation (5s):
@@ -174,7 +212,10 @@ def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
         .map_batches(lambda df: df * 2, batch_format="pandas")
     )
     splits = p.split(num_workers, equal=True, locality_hints=consumers)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    future = [
+        consumers[i].consume.remote(s, dataset_size_gb * GiB)
+        for i, s in enumerate(splits)
+    ]
     ray.get(future)
 
     # Example ballpark numbers:
@@ -206,11 +247,14 @@ if __name__ == "__main__":
     parser.add_argument("--streaming", action="store_true", default=False)
     parser.add_argument("--new_streaming", action="store_true", default=False)
     parser.add_argument("--use-gpu", action="store_true", default=False)
+    parser.add_argument("--early-stop", action="store_true", default=False)
     args = parser.parse_args()
 
     start = time.time()
     if args.new_streaming:
-        run_ingest_streaming(args.dataset_size_gb, args.num_workers, args.use_gpu)
+        run_ingest_streaming(
+            args.dataset_size_gb, args.num_workers, args.use_gpu, arg.early_stop
+        )
     elif args.streaming:
         run_ingest_dataset_pipeline(args.dataset_size_gb, args.num_workers)
     else:
