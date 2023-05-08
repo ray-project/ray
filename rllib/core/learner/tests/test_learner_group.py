@@ -207,7 +207,7 @@ class TestLearnerGroup(unittest.TestCase):
 
             # do training that includes the test_module
             results = learner_group.update(
-                [MultiAgentBatch(
+                batches=[MultiAgentBatch(
                     {new_module_id: batch, DEFAULT_POLICY_ID: batch}, batch.count
                 )],
                 reduce_fn=None,
@@ -266,7 +266,7 @@ class TestLearnerGroup(unittest.TestCase):
                 learner_group.update([batch.as_multi_agent()], block=True, reduce_fn=None)
             with timer_async:
                 result_async = learner_group.update(
-                    [batch.as_multi_agent()], block=False, reduce_fn=None
+                    batches=[batch.as_multi_agent()], block=False, reduce_fn=None
                 )
             # ideally the the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
@@ -277,7 +277,7 @@ class TestLearnerGroup(unittest.TestCase):
             for iter_i in range(1000):
                 batch = reader.next()
                 results = learner_group.update(
-                    [batch.as_multi_agent()], block=False, reduce_fn=None
+                    batches=[batch.as_multi_agent()], block=False, reduce_fn=None
                 )
                 if not results:
                     continue
@@ -336,7 +336,7 @@ class TestLearnerGroup(unittest.TestCase):
 
             # do another update
             results_with_break = new_learner_group.update(
-                [batch.as_multi_agent()], reduce_fn=None
+                batches=[batch.as_multi_agent()], reduce_fn=None
             )
             weights_after_1_update_with_break = new_learner_group.get_weights()
             new_learner_group.shutdown()
@@ -348,9 +348,9 @@ class TestLearnerGroup(unittest.TestCase):
             )
             learner_group.load_state(initial_learner_checkpoint_dir)
             check(learner_group.get_weights(), initial_learner_group_weights)
-            learner_group.update([batch.as_multi_agent()], reduce_fn=None)
+            learner_group.update(batches=[batch.as_multi_agent()], reduce_fn=None)
             results_without_break = learner_group.update(
-                [batch.as_multi_agent()], reduce_fn=None
+                batches=[batch.as_multi_agent()], reduce_fn=None
             )
             weights_after_1_update_without_break = learner_group.get_weights()
             learner_group.shutdown()

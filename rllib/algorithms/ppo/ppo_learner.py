@@ -16,13 +16,6 @@ LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
-LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
-LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_var"
-LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
-LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
-
-
 @dataclass
 class PPOLearnerHyperparameters(LearnerHyperparameters):
     """Hyperparameters for the PPOLearner sub-classes (framework specific).

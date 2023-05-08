@@ -163,7 +163,7 @@ class LearnerGroup:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
-            batches: The List of data to use for the update(s).
+            batches: The list of data batches to use for the update(s).
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -180,7 +180,7 @@ class LearnerGroup:
             A list of dictionaries of results from the updates from the Learner(s)
         """
 
-        # Construct a multi-agent batch with only the trainable modules.
+        # Construct multi-agent batch(es) with only the trainable modules.
         train_batches = []
         for batch in batches:
             train_batch = {}
@@ -239,7 +239,8 @@ class LearnerGroup:
             See `.update()` docstring.
 
         Returns:
-            A list of dictionaries of results from the updates from the Learner(s)
+            A list of dictionaries of results from the updates from the individual
+            Learner(s)
         """
         # Make sure minibatch size is reduced to the correct number of shards as well
         # (just like we split each batch into the number of learner workers).
@@ -261,7 +262,6 @@ class LearnerGroup:
                     partial(_learner_update, minibatch=minibatch)
                     for minibatch in ShardBatchIterator(batch, len(self._workers))
                 ])))
-            return results
         else:
             # Queue the new batches.
             if batches:
@@ -280,8 +280,8 @@ class LearnerGroup:
             if self._worker_manager_ready():
                 count = 0
                 while len(self._in_queue) > 0 and count < 3:
-                    #TODO: TOTEST Pull a single batch from the queue (from the right side, meaning:
-                    # use the newest ones first!).
+                    # Pull a single batch from the queue (from the left side, meaning:
+                    # use the oldest one first).
                     batch = self._in_queue.popleft()
                     self._worker_manager.foreach_actor_async([
                         partial(_learner_update, minibatch=minibatch)
@@ -291,11 +291,17 @@ class LearnerGroup:
 
             results = self._get_results(results)
 
-            return results
+        return results
 
     def _worker_manager_ready(self):
-        # TODO: TOTEST: Allow for some number of in-flight requests.
-        return self._worker_manager.num_outstanding_async_reqs() <= self._worker_manager.num_actors() * 2
+        # TODO (sven): This probably works even without any restriction (allowing for
+        #  any arbitrary number of requests in-flight). Test with 3 first, then with
+        #  unlimited, and if both show the same behavior on an async algo, remove
+        #  this method entirely.
+        return (
+            self._worker_manager.num_outstanding_async_reqs()
+            <= self._worker_manager.num_actors() * 2
+        )
 
     def _get_results(self, results):
         processed_results = []

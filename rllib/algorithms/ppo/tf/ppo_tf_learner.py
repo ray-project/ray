@@ -127,29 +127,6 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         results = super().additional_update_per_module(
             module_id,
-            sampled_kl_values,
-            timestep=timestep,
-        )
-
-        sampled_kl = sampled_kl_values[module_id]
-        curr_val = self.curr_kl_coeffs_per_module[module_id]
-        if sampled_kl > 2.0 * self.hps.kl_target:
-            # TODO (Kourosh) why not 2?
-            curr_val.assign(curr_val * 1.5)
-        elif sampled_kl < 0.5 * self.hps.kl_target:
-            curr_val.assign(curr_val * 0.5)
-
-        results.update({"kl_coeff": curr_val})
-        return results
-
-    @override(PPOLearner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
-    ) -> Dict[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
-
-        results = super().additional_update_per_module(
-            module_id,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )

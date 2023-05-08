@@ -939,7 +939,7 @@ class Impala(Algorithm):
 
         """
         result = {}
-        # There are batches on the queue -> Send them to the learner group.
+        # There are batches on the queue -> Send them all to the learner group.
         if self.batches_to_place_on_learner:
             batches = self.batches_to_place_on_learner[:]
             self.batches_to_place_on_learner.clear()
