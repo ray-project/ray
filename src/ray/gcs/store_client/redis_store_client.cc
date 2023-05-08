@@ -262,17 +262,17 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
     auto cxt = redis_client_->GetShardContext("");
-    RAY_CHECK_OK(cxt->RunArgvAsync(std::move(args),
-                                   [this,
-                                    keys = std::move(keys),
-                                    redis_callback = std::move(redis_callback)](auto reply) {
-                                     for (const auto &key : keys) {
-                                       ProcessNext(key);
-                                       if (redis_callback) {
-                                         redis_callback(reply);
-                                       }
-                                     }
-                                   }));
+    RAY_CHECK_OK(cxt->RunArgvAsync(
+        std::move(args),
+        [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
+            auto reply) {
+          for (const auto &key : keys) {
+            ProcessNext(key);
+            if (redis_callback) {
+              redis_callback(reply);
+            }
+          }
+        }));
   };
 
   absl::MutexLock lock(&mu_);
