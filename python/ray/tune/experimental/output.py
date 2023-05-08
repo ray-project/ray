@@ -1,5 +1,15 @@
 import sys
-from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+)
 
 import contextlib
 import collections
@@ -14,6 +24,8 @@ import os
 import pandas as pd
 import textwrap
 import time
+
+from ray.tune.utils.log import Verbosity
 
 try:
     import rich
@@ -90,10 +102,16 @@ class AirVerbosity(IntEnum):
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
-def get_air_verbosity() -> Optional[AirVerbosity]:
-    verbosity = os.environ.get("AIR_VERBOSITY", None)
-    if verbosity:
-        return AirVerbosity(int(verbosity)) if verbosity else None
+def get_air_verbosity(verbose: Union[int, Verbosity]) -> Optional[AirVerbosity]:
+    if os.environ.get("AIR_NEW_OUTPUT", "1") == "0":
+        return None
+
+    verbose_int = verbose if isinstance(verbose, int) else verbose.value
+
+    # Legacy verbosity 2 + 3 --> new verbosity 2
+    verbose_int = min(2, verbose_int)
+
+    return AirVerbosity(verbose_int)
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:

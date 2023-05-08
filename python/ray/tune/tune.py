@@ -523,10 +523,10 @@ def run(
         )
 
     if _remote:
-        if get_air_verbosity() is not None:
+        if get_air_verbosity(verbose) is not None:
             logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
+                "[output] This will use the legacy output and progress reporter, "
+                "as Ray client is not supported by the new engine."
             )
 
         remote_run = ray.remote(num_cpus=0)(run)
@@ -573,21 +573,24 @@ def run(
             "must be one of ['min', 'max']"
         )
 
-    air_verbosity = get_air_verbosity()
+    air_verbosity = get_air_verbosity(verbose)
     if air_verbosity is not None and IS_NOTEBOOK:
         logger.warning(
-            "Ignoring AIR_VERBOSITY setting, "
-            "as it doesn't support JupyterNotebook mode yet."
+            "[output] This will use the legacy output and progress reporter, "
+            "as Jupyter notebooks are not supported by the new output engine, yet."
         )
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.warning(
-            f"Testing new AIR console output flow with verbosity={air_verbosity}. "
-            f"This will also disable the old flow - setting it to 0 now."
+        logger.info(
+            f"[output] This will use the new output engine with verbosity "
+            f"{air_verbosity}. To disable the new output and use the legacy "
+            f"output engine, set the environment variable AIR_NEW_OUTPUT=0"
         )
+        # Disable old output engine
         set_verbosity(0)
     else:
+        # Use old output engine
         set_verbosity(verbose)
 
     config = config or {}
@@ -1105,10 +1108,10 @@ def run_experiments(
         _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if _remote:
-        if get_air_verbosity() is not None:
+        if get_air_verbosity(verbose) is not None:
             logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
+                "[output] This will use the legacy output and progress reporter, "
+                "as Ray client is not supported by the new engine."
             )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
