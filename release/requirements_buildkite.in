@@ -10,6 +10,7 @@ jinja2
 protobuf >= 3.15.3, != 3.19.5
 pydantic < 1.10.0
 pytest
+pytest-cov
 pyyaml
 requests
 retry

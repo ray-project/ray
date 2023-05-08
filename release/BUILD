@@ -432,6 +432,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -447,6 +448,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -462,6 +464,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -478,6 +481,7 @@ py_test(
         ":ray_release",
         bk_require("pyyaml"),
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -495,6 +499,7 @@ py_test(
         ":test_utils",
         bk_require("freezegun"),
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -516,6 +521,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -531,6 +537,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -547,6 +554,7 @@ py_test(
         ":ray_release",
         ":test_utils",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -562,6 +570,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -582,6 +591,7 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
 
@@ -601,5 +611,6 @@ py_test(
         ":ray_release",
         bk_require("freezegun"),
         bk_require("pytest"),
+        bk_require("pytest-cov"),
     ],
 )
