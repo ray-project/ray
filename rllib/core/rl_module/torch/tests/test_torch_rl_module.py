@@ -49,7 +49,7 @@ class TestRLModule(unittest.TestCase):
         self.assertIn(SampleBatch.ACTION_DIST_INPUTS, output)
 
         action_dist_inputs = output[SampleBatch.ACTION_DIST_INPUTS]
-        action_dist_class = module.get_action_dist_cls()
+        action_dist_class = module.get_action_dist_cls(module.TRAIN)
         action_dist = action_dist_class.from_logits(action_dist_inputs)
 
         loss = -action_dist.logp(actions.view(-1)).mean()

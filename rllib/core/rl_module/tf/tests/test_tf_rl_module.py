@@ -47,7 +47,7 @@ class TestRLModule(unittest.TestCase):
         )
         with tf.GradientTape() as tape:
             output = module.forward_train({"obs": obs})
-            action_dist_class = module.get_action_dist_cls()
+            action_dist_class = module.get_action_dist_cls(module.TRAIN)
             action_dist = action_dist_class(output[SampleBatch.ACTION_DIST_INPUTS])
             loss = -tf.math.reduce_mean(action_dist.logp(actions))
 

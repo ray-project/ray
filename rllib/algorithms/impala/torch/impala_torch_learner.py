@@ -25,8 +25,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        action_dist_class = self._module[module_id].get_action_dist_cls()
-        target_policy_dist = action_dist_class.from_logits(
+        action_dist_class_train = self._module[module_id].get_action_dist_cls(
+            self._module[module_id].TRAIN
+        )
+        target_policy_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
         values = fwd_out[SampleBatch.VF_PREDS]

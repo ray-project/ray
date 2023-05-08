@@ -33,7 +33,7 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         self.input_dim = input_dim
 
-    def get_action_dist_cls(self):
+    def get_action_dist_cls(self, mode: str):
         return TorchCategorical
 
     @override(RLModule)
@@ -89,7 +89,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
             nn.Linear(hidden_dim, action_dim),
         )
 
-    def get_action_dist_cls(self):
+    def get_action_dist_cls(self, mode: str):
         return TorchCategorical
 
     @override(RLModule)

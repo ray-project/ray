@@ -100,8 +100,9 @@ class PPOTorchPolicyWithRLModule(
         """
 
         fwd_out = model.forward_train(train_batch)
-        action_dist_class = model.get_action_dist_cls()
-        curr_action_dist = action_dist_class.from_logits(
+        action_dist_class_train = model.get_action_dist_cls(model.TRAIN)
+        action_dist_class_exploration = model.get_action_dist_cls(model.EXPLORATION)
+        curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
         state = fwd_out.get("state_out", {})
@@ -127,7 +128,7 @@ class PPOTorchPolicyWithRLModule(
             mask = None
             reduce_mean_valid = torch.mean
 
-        prev_action_dist = action_dist_class.from_logits(
+        prev_action_dist = action_dist_class_exploration.from_logits(
             train_batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
