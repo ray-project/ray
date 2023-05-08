@@ -5373,6 +5373,34 @@
         cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
 
+# This case will early stop the data ingestion iteration on the GPU actors.
+# This is a common usage in PyTorch. And there was a bug in Ray Data that caused
+# GPU memoy leak.
+- name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu --early-stop
+    wait_for_nodes:
+      num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+
 - name: aggregate_benchmark
   group: data-tests
   working_dir: nightly_tests/dataset
