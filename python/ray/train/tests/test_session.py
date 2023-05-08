@@ -205,42 +205,6 @@ def test_checkpoint():
     shutdown_session()
 
 
-def test_encode_data():
-    def train_func():
-        report(dict(epoch=0), checkpoint=Checkpoint.from_dict(dict(epoch=0)))
-
-    def encode_checkpoint(checkpoint):
-        data = checkpoint.to_dict()
-        data["encoded"] = True
-        return checkpoint.from_dict(data)
-
-    def validate_encoded(result_type: TrainingResultType):
-        next = session.get_next()
-        assert next.type is result_type
-        data = next.data
-        if isinstance(data, Checkpoint):
-            data = data.to_dict()
-        assert data["encoded"] is True
-
-    init_session(
-        training_func=train_func,
-        world_rank=0,
-        local_rank=0,
-        node_rank=0,
-        local_world_size=1,
-        world_size=1,
-        encode_data_fn=encode_checkpoint,
-    )
-
-    session = get_session()
-    session.start()
-    # Validate checkpoint is encoded.
-    validate_encoded(TrainingResultType.CHECKPOINT)
-    session.get_next()
-    session.finish()
-    shutdown_session()
-
-
 def test_load_checkpoint_after_save():
     def train_func():
         for i in range(2):

@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.train.backend import BackendConfig, Backend
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
@@ -142,12 +141,6 @@ class _HorovodBackend(Backend):
         coordinator_envs.update(nics_to_env_var(nics))
 
         worker_group.execute(update_env_vars, coordinator_envs)
-
-    # TODO(ml-team): Remove in 2.6.
-    @classmethod
-    def _encode_data(cls, checkpoint: Checkpoint):
-        checkpoint = super()._encode_data(checkpoint)
-        return checkpoint
 
 
 def _init_env_vars(world_rank: int, world_size: int, node_id: str):

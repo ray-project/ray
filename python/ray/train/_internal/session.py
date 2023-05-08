@@ -76,8 +76,6 @@ class _TrainSession:
         dataset_shard: Optional[Union[Datastream, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
-        # TODO(ml-team): Deprecated, remove in 2.6.
-        encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
         # If True and the worker is on the same node as driver,
         # will send over checkpoint path and metadata instead of
@@ -96,15 +94,6 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         self.loaded_checkpoint = checkpoint
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
-
-        # Function to encode checkpoint dict before sending to the driver.
-        if not encode_data_fn:
-
-            def noop(x):
-                return x
-
-            encode_data_fn = noop
-        self._encode_data_fn = encode_data_fn
 
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         if trial_info:
@@ -293,8 +282,6 @@ class _TrainSession:
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             checkpoint = None
-        elif checkpoint:
-            checkpoint = self._encode_data_fn(checkpoint)
 
         metadata = self._auto_fill_checkpoint_metrics({})
 
