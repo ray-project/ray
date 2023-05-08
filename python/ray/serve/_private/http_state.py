@@ -29,9 +29,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class HTTPProxyState:
-    def __init__(
-        self, actor_handle: ActorHandle, actor_name: str, node_ip: str
-    ):
+    def __init__(self, actor_handle: ActorHandle, actor_name: str, node_ip: str):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
         self._node_ip = node_ip
@@ -61,7 +59,7 @@ class HTTPProxyState:
 
     @property
     def actor_id(self) -> Optional[str]:
-        return self._actor_id
+        return self._actor_handle._actor_id.hex()
 
     @property
     def log_file_path_id(self) -> Optional[str]:
@@ -72,7 +70,7 @@ class HTTPProxyState:
             try:
                 finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
                 if finished:
-                    self._actor_id, self._log_file_path_id = ray.get(finished[0])
+                    self._log_file_path_id = ray.get(finished[0])
                     self._status = HTTPProxyStatus.HEALTHY
             except Exception:
                 self._status = HTTPProxyStatus.UNHEALTHY
