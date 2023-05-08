@@ -1,7 +1,9 @@
 """Unit tests for AIR telemetry."""
 
 import json
+
 import pytest
+from unittest.mock import MagicMock
 
 import ray
 from ray._private.usage.usage_lib import TagKey
@@ -13,21 +15,25 @@ from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
 
 
-@pytest.fixture
-def mock_record(monkeypatch):
-    import ray.air._internal.usage
-
+def _mock_record_from_module(module, monkeypatch):
     recorded = {}
 
     def mock_record_extra_usage_tag(key: TagKey, value: str):
         recorded[key] = value
 
     monkeypatch.setattr(
-        ray.air._internal.usage,
+        module,
         "record_extra_usage_tag",
         mock_record_extra_usage_tag,
     )
-    yield recorded
+    return recorded
+
+
+@pytest.fixture
+def mock_record(monkeypatch):
+    import ray.air._internal.usage
+
+    yield _mock_record_from_module(ray.air._internal.usage, monkeypatch=monkeypatch)
 
 
 @pytest.fixture(scope="module")
@@ -43,6 +49,27 @@ class _CustomLoggerCallback(LoggerCallback):
 
 class _CustomCallback(Callback):
     pass
+
+
+def test_tag_setup_wandb(monkeypatch):
+    from ray.air.integrations.wandb import _setup_wandb
+
+    recorded = _mock_record_from_module(
+        ray.air.integrations.wandb, monkeypatch=monkeypatch
+    )
+    _setup_wandb(trial_id="a", trial_name="b", config={}, _wandb=MagicMock())
+    assert recorded[TagKey.AIR_SETUP_WANDB_INTEGRATION_USED] == "1"
+
+
+def test_tag_setup_mlflow(monkeypatch):
+    from ray.air.integrations.mlflow import setup_mlflow
+
+    recorded = _mock_record_from_module(
+        ray.air.integrations.mlflow, monkeypatch=monkeypatch
+    )
+    monkeypatch.setattr(ray.air.integrations.mlflow, "_MLflowLoggerUtil", MagicMock())
+    setup_mlflow()
+    assert recorded[TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED] == "1"
 
 
 @pytest.mark.parametrize(
