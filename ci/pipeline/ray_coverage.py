@@ -8,9 +8,9 @@ import click
 import boto3
 
 
-_COVERAGE_FILE_NAME = "ray_release.cov"
-_S3_BUCKET_NAME = "ray-test-coverage"
-_S3_BUCKET_DIR = "ci"
+COVERAGE_FILE_NAME = "ray_release.cov"
+S3_BUCKET_NAME = "ray-test-coverage"
+S3_BUCKET_DIR = "ci"
 
 
 @click.command()
@@ -41,7 +41,7 @@ def main(
     results to database (S3).
     """
     logger.info(f"Collecting coverage for test target: {test_target}")
-    coverage_file = os.path.join(artifact_dir, _COVERAGE_FILE_NAME)
+    coverage_file = os.path.join(artifact_dir, COVERAGE_FILE_NAME)
     _run_test(test_target, coverage_file)
     coverage_info = _collect_coverage(coverage_file)
     logger.info(coverage_info)
@@ -52,11 +52,11 @@ def main(
 
 def _upload_coverage_info(coverage_file: str) -> None:
     s3_file_name = (
-        f"{_S3_BUCKET_DIR}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
+        f"{S3_BUCKET_DIR}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
     )
     boto3.client("s3").upload_file(
         coverage_file,
-        _S3_BUCKET_NAME,
+        S3_BUCKET_NAME,
         s3_file_name,
     )
     s3_file_name = _upload_coverage_info(coverage_file)
