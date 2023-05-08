@@ -1573,7 +1573,7 @@ def check_supported_spaces(
         frameworks = frameworks.intersection(rlmodule_supported_frameworks)
 
     if not frameworks:
-        frameworks = ["torch", "tf"]
+        frameworks = ["tf2", "torch", "tf"]
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
     for _ in framework_iterator(config, frameworks=frameworks):

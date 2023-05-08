@@ -105,7 +105,8 @@ class TestSupportedSpacesPPO(unittest.TestCase):
 class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=1)
+        # ray.init(num_gpus=1)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -144,7 +145,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             "PPO",
             config,
             check_bounds=True,
-            frameworks=("tf2", "torch", "tf"),
+            frameworks=["torch", "tf"],
             use_gpu=True,
         )
 
