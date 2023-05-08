@@ -581,7 +581,48 @@ def delete(name: str, _blocking: bool = True):
 
 @PublicAPI(stability="alpha")
 def multiplexed(func=None, num_models_per_replica: int = 0):
-    """Multiplex a model to multiple replicas.
+    """Coverts a function or method to a multiplexed function.
+
+    The function can be standalone function or a method of a class. The
+    function must have at least one argument with type `str` and the argument
+    must be the first argument. The `str` argument is the model id of the model to
+    be loaded. The function can have other arguments and keyword arguments.
+
+    The multiplexed function will load the model with the given model id and call
+    the original function. The multiplexed function will return the return
+    value of the original function.
+
+    When the number of models in one replica is larger than num_models_per_replica,
+    the multiplexed function will unload the model with LRU policy.
+
+    If you want to release resource after the model is loaded, you can define
+    a `__del__` method in your model class. The `__del__` method will be called when
+    the model is unloaded.
+
+    Example:
+
+    .. code-block:: python
+            from ray import serve
+
+            @serve.deployment
+            class MultiplexedDeployment:
+
+                @serve.multiplexed(num_models_per_replica=5)
+                def load_model(self, model_id: str) -> Any:
+                    # Load model with the given tag
+                    # You can use any model loading library here
+                    # and return the loaded model. load_from_s3 is
+                    # a placeholder function.
+                    return load_from_s3(model_id)
+
+                async def __call__(self, request):
+                    # Get model id from request context
+                    model_id = serve.get_model_id()
+                    # Load model with the given model id
+                    model = await self.get_model(tag)
+                    # Call the model
+                    return model(request)
+
 
     Args:
         num_models_per_replica: number of models to be loaded on each replica.
@@ -628,6 +669,10 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
 
 @PublicAPI(stability="alpha")
 def get_model_id() -> str:
-    """Returns the model id of the current request."""
+    """Returns the model id of the current request.
+
+    When user defines a multiplexed deployment, the model id of the current request
+    can be retrieved by calling `serve.get_model_id()`.
+    """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.model_id
