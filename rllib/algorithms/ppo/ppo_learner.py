@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
+from ray.rllib.utils.schedules.scheduler import Scheduler
 
 
 LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
@@ -41,10 +42,6 @@ class PPOLearnerHyperparameters(LearnerHyperparameters):
     entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None
     vf_loss_coeff: float = None
 
-    # TODO: Move to base LearnerHyperparameter class (and handling of this setting
-    #  into base Learners).
-    lr_schedule: Optional[List[List[Union[int, float]]]] = None
-
 
 class PPOLearner(Learner):
     @override(Learner)
@@ -52,25 +49,12 @@ class PPOLearner(Learner):
         super().build()
 
         # Build entropy coeff scheduling tools.
-        self.entropy_coeff_scheduler = None
-        if self.hps.entropy_coeff_schedule:
-            # Custom schedule, based on list of
-            # ([ts], [value to be reached by ts])-tuples.
-            self.entropy_coeff_schedule_per_module = defaultdict(
-                lambda: PiecewiseSchedule(
-                    self.hps.entropy_coeff_schedule,
-                    outside_value=self.hps.entropy_coeff_schedule[-1][-1],
-                    framework=None,
-                )
-            )
-            self.curr_entropy_coeffs_per_module = defaultdict(
-                lambda: self._get_tensor_variable(self.hps.entropy_coeff)
-            )
-        # If no schedule, pin entropy coeff to its given (fixed) value.
-        else:
-            self.curr_entropy_coeffs_per_module = defaultdict(
-                lambda: self.hps.entropy_coeff
-            )
+        self.entropy_coeff_scheduler = Scheduler(
+            fixed_value=self.hps.entropy_coeff,
+            schedule=self.hps.entropy_coeff_schedule,
+            framework=self.framework,
+            device=self._device,
+        )
 
         # Set up KL coefficient variables (per module).
         # Note that the KL coeff is not controlled by a schedul, but seeks
@@ -78,3 +62,21 @@ class PPOLearner(Learner):
         self.curr_kl_coeffs_per_module = defaultdict(
             lambda: self._get_tensor_variable(self.hps.kl_coeff)
         )
+
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    ) -> Dict[str, Any]:
+        results = super().additional_update_per_module(
+            module_id,
+            sampled_kl_values=sampled_kl_values,
+            timestep=timestep,
+        )
+
+        # Update entropy coefficient via our Scheduler.
+        new_entropy_coeff = self.entropy_coeff_scheduler.update(
+            module_id, timestep=timestep
+        )
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
+
+        return results

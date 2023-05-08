@@ -67,6 +67,7 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
+                _enable_learner_api=True,
             )
             .rl_module(
                 _enable_rl_module_api=True,
@@ -86,13 +87,11 @@ class TestPPO(unittest.TestCase):
                     lambda x: torch.as_tensor(x).float(), train_batch
                 )
             else:
-                # tf
                 train_batch = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.training(_enable_learner_api=True)
             algo_config.validate()
             algo_config.freeze()
 

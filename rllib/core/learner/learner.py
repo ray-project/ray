@@ -47,7 +47,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
+from ray.rllib.utils.schedules.scheduler import Scheduler
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -245,6 +245,7 @@ class Learner:
         self._module_obj = module
         self._optimizer_config = optimizer_config
         self._hps = learner_hyperparameters or LearnerHyperparameters()
+        self._device = None
 
         # pick the configs that we need for the learner from scaling config
         self._learner_group_scaling_config = (
@@ -622,24 +623,15 @@ class Learner:
             return
         self._is_built = True
 
-        # Generic LR scheduling tools.
-        self.lr_scheduler = None
-        if self.hps.lr_schedule is not None:
-            # Custom schedule, based on list of
-            # ([ts], [value to be reached by ts])-tuples.
-            self.lr_schedule_per_module = defaultdict(
-                lambda: PiecewiseSchedule(
-                    self.hps.lr_schedule,
-                    outside_value=self.hps.lr_schedule[-1][-1],
-                    framework=None,
-                )
-            )
-            self.curr_lr_per_module = defaultdict(
-                lambda: self._get_tensor_variable(self._optimizer_config["lr"])
-            )
-        # If no schedule, pin learning rate to its given (fixed) value.
-        else:
-            self.curr_lr_per_module = defaultdict(lambda: self._optimizer_config["lr"])
+        # Build learning rate scheduling tools.
+        # TODO (sven): Move lr from optimizer config to Learner HPs?
+        #  We might not need optimizer config.
+        self.lr_scheduler = Scheduler(
+            fixed_value=self._optimizer_config["lr"],
+            schedule=self.hps.lr_schedule,
+            framework=self.framework,
+            device=self._device,
+        )
 
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
@@ -773,7 +765,7 @@ class Learner:
 
         return results_all_modules
 
-    @OverrideToImplementCustomLogic
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def additional_update_per_module(
         self, module_id: ModuleID, **kwargs
     ) -> Dict[str, Any]:

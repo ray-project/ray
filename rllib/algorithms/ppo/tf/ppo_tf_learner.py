@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
@@ -99,7 +98,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
+            # - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
@@ -163,12 +163,5 @@ class PPOTfLearner(PPOLearner, TfLearner):
         elif sampled_kl < 0.5 * self.hps.kl_target:
             curr_var.assign(curr_var * 0.5)
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].assign(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
 
         return results
