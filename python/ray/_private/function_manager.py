@@ -179,6 +179,9 @@ class FunctionActorManager:
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
         # TODO(mwtian) implement per-job notification here.
+        with open("C:\\out\\driver.txt", "a+") as f:
+            f.write(f"YYY publish {key}")
+            f.flush()
         self._worker.gcs_publisher.publish_function_key(key)
 
     def export(self, remote_function):
