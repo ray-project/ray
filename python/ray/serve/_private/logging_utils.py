@@ -5,21 +5,30 @@ import json
 import copy
 
 import ray
-from ray.serve._private.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEBUG_LOG_ENV_VAR,
+    SERVE_LOGGER_NAME,
+    JSONIFY_LOG_MESSAGE,
+)
 
 
 LOG_FILE_FMT = "{component_name}_{component_id}.log"
 MESSAGE_FMT = "%(filename)s:%(lineno)d - %(message)s"
-REQUEST_ID_FMT = "%(request_id)s"
-ROUTE_FMT = "%(route)s"
-APP_NAME_FMT = "%(app_name)s"
+
+# Whether to jsonify the log message.
+FLAGS_JSONIFY_LOG_MESSAGE = os.environ.get(JSONIFY_LOG_MESSAGE, "0") == "1"
 
 
-class ServeFormatter(logging.Formatter):
-    """Serve Logging Formatter
+class ServeJsonFormatter(logging.Formatter):
+    """Serve Logging Json Formatter
 
-    The formatter will generate the log format on the fly based on the field of record.
+    The formatter will generate the json log format on the fly
+    based on the field of record.
     """
+
+    REQUEST_ID_FMT = "%(request_id)s"
+    ROUTE_FMT = "%(route)s"
+    APP_NAME_FMT = "%(app_name)s"
 
     def __init__(self, component_name: str, component_id: str):
         self.component_log_fmt = {
@@ -33,16 +42,52 @@ class ServeFormatter(logging.Formatter):
         # generate a format string based on the record field.
         cur_format = copy.deepcopy(self.component_log_fmt)
         if "request_id" in record.__dict__:
-            cur_format["request_id"] = REQUEST_ID_FMT
+            cur_format["request_id"] = ServeJsonFormatter.REQUEST_ID_FMT
         if "route" in record.__dict__:
-            cur_format["route"] = ROUTE_FMT
+            cur_format["route"] = ServeJsonFormatter.ROUTE_FMT
         if "app_name" in record.__dict__:
-            cur_format["app_name"] = APP_NAME_FMT
+            cur_format["app_name"] = ServeJsonFormatter.APP_NAME_FMT
 
         cur_format["message"] = MESSAGE_FMT
 
         # create a formatter using the format string
         formatter = logging.Formatter(json.dumps(cur_format))
+
+        # format the log record using the formatter
+        return formatter.format(record)
+
+
+class ServeFormatter(logging.Formatter):
+    """Serve Logging Formatter
+
+    The formatter will generate the log format on the fly based on the field of record.
+    """
+
+    REQUEST_ID_FMT = "%(request_id)s "
+    ROUTE_FMT = "%(route)s "
+    APP_NAME_FMT = "%(app_name)s "
+    COMPONENT_LOG_FMT = (
+        "%(levelname)s %(asctime)s {component_name} {component_id} "  # noqa:E501
+    )
+
+    def __init__(self, component_name: str, component_id: str):
+        self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
+            component_name=component_name, component_id=component_id
+        )
+
+    def format(self, record):
+        # generate a format string based on the record field.
+        cur_format = self.component_log_fmt
+        if "request_id" in record.__dict__:
+            cur_format += ServeFormatter.REQUEST_ID_FMT
+        if "route" in record.__dict__:
+            cur_format += ServeFormatter.ROUTE_FMT
+        if "app_name" in record.__dict__:
+            cur_format += ServeFormatter.APP_NAME_FMT
+        cur_format += MESSAGE_FMT
+
+        # create a formatter using the format string
+        formatter = logging.Formatter(cur_format)
 
         # format the log record using the formatter
         return formatter.format(record)
@@ -137,7 +182,10 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    file_handler.setFormatter(ServeFormatter(component_name, component_id))
+    if FLAGS_JSONIFY_LOG_MESSAGE:
+        file_handler.setFormatter(ServeJsonFormatter(component_name, component_id))
+    else:
+        file_handler.setFormatter(ServeFormatter(component_name, component_id))
     logger.addHandler(file_handler)
 
 

@@ -12,6 +12,14 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import re
+from ray.serve._private.constants import JSONIFY_LOG_MESSAGE
+
+
+@pytest.fixture
+def serve_and_ray_shutdown():
+    serve.shutdown()
+    ray.shutdown()
+    yield
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -156,8 +164,11 @@ def test_disable_access_log(serve_instance):
             assert replica_tag not in f.getvalue()
 
 
-def test_context_information_in_logging(serve_instance):
+@pytest.mark.parametrize("json_log_format", ["0", "1"])
+def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format):
     """Make sure all context information exist in the log message"""
+
+    ray.init(runtime_env={"env_vars": {JSONIFY_LOG_MESSAGE: json_log_format}})
 
     logger = logging.getLogger("ray.serve")
 
@@ -169,6 +180,7 @@ def test_context_information_in_logging(serve_instance):
             "request_id": request_context.request_id,
             "route": request_context.route,
             "app_name": request_context.app_name,
+            "log_file": logger.handlers[1].baseFilename,
         }
 
     @serve.deployment
@@ -180,6 +192,7 @@ def test_context_information_in_logging(serve_instance):
                 "request_id": request_context.request_id,
                 "route": request_context.route,
                 "app_name": request_context.app_name,
+                "log_file": logger.handlers[1].baseFilename,
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -192,18 +205,14 @@ def test_context_information_in_logging(serve_instance):
 
         # Check the component log
         expected_log_infos = [
-            f'"request_id": "{resp["request_id"]}", "route": "{resp["route"]}", '
-            f'"app_name": "{resp["app_name"]}", "message": "replica.py',
-            f'"request_id": "{resp2["request_id"]}", "route": "{resp2["route"]}", '
-            f'"app_name": "{resp2["app_name"]}", "message": "replica.py',
+            f"{resp['request_id']} {resp['route']} {resp['app_name']} replica.py",
+            f"{resp2['request_id']} {resp2['route']} {resp2['app_name']} replica.py",
         ]
 
         # Check User log
         user_log_regexes = [
-            f'.*"request_id": "{resp["request_id"]}", "route": "{resp["route"]}", '
-            f'"app_name": "{resp["app_name"]}", "message":.* user func.*',
-            f'.*"request_id": "{resp2["request_id"]}", "route": "{resp2["route"]}", '
-            f'"app_name": "{resp2["app_name"]}", "message":.* user log '
+            f".*{resp['request_id']} {resp['route']} {resp['app_name']}.* user func.*",
+            f".*{resp2['request_id']} {resp2['route']} {resp2['app_name']}.* user log "
             "message from class method.*",
         ]
 
@@ -219,7 +228,40 @@ def test_context_information_in_logging(serve_instance):
             for regex in user_log_regexes:
                 assert re.findall(regex, logs_content) != []
 
+        # Check stream log
         check_log()
+
+        # Check user log file
+        if json_log_format == "1":
+            user_method_log_regexes = [
+                f'.*"request_id": "{resp["request_id"]}", '
+                f'"route": "{resp["route"]}", '
+                f'"app_name": "{resp["app_name"]}", "message":.* user func.*',
+            ]
+            user_class_method_log_regexes = [
+                f'.*"request_id": "{resp2["request_id"]}", '
+                f'"route": "{resp2["route"]}", '
+                f'"app_name": "{resp2["app_name"]}", "message":.* user log '
+                "message from class method.*",
+            ]
+        else:
+            user_method_log_regexes = [
+                f".*{resp['request_id']} {resp['route']} {resp['app_name']}.* "
+                f"user func.*",
+            ]
+            user_class_method_log_regexes = [
+                f".*{resp2['request_id']} {resp2['route']} {resp2['app_name']}.* "
+                f"user log message from class method.*",
+            ]
+
+        def check_log_file(log_file: str, expected_regex: list):
+            with open(log_file, "r") as f:
+                s = f.read()
+                for regex in expected_regex:
+                    assert re.findall(regex, s) != []
+
+        check_log_file(resp["log_file"], user_method_log_regexes)
+        check_log_file(resp2["log_file"], user_class_method_log_regexes)
 
 
 if __name__ == "__main__":

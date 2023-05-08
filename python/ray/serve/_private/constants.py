@@ -160,3 +160,6 @@ MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
 )
+
+# Jsonify the log messages
+JSONIFY_LOG_MESSAGE = "SERVE_JSONIFY_LOG_MESSAGE"
