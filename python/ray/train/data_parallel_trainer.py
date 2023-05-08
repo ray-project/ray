@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ipywidgets import HTML, VBox, Tab, Layout
 
 import ray
 from ray import tune
@@ -22,7 +21,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import repr_fallback_if_colab
+from ray.widgets.util import ensure_ipywidgets_dep, repr_fallback_if_colab
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -444,6 +443,7 @@ class DataParallelTrainer(BaseTrainer):
         """
         return self._dataset_config.copy()
 
+    @ensure_ipywidgets_dep("8")
     @repr_fallback_if_colab
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
@@ -458,6 +458,7 @@ class DataParallelTrainer(BaseTrainer):
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
+        from ipywidgets import HTML, VBox, Tab, Layout
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
@@ -535,6 +536,8 @@ class DataParallelTrainer(BaseTrainer):
         return Template("rendered_html_common.html.j2").render(content=content)
 
     def _datasets_repr_(self) -> str:
+        from ipywidgets import HTML, VBox, Layout
+
         content = []
         if self.datasets:
             for name, config in self.datasets.items():

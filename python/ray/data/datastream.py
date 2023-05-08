@@ -22,7 +22,6 @@ from typing import (
 from uuid import uuid4
 
 import numpy as np
-import ipywidgets
 
 import ray
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -136,6 +135,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import (
+    ensure_ipywidgets_dep,
     repr_fallback_if_colab,
 )
 
@@ -4223,6 +4223,7 @@ class Datastream:
         else:
             return result
 
+    @ensure_ipywidgets_dep("8")
     @repr_fallback_if_colab
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
@@ -4237,11 +4238,13 @@ class Datastream:
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
+        import ipywidgets
+
         title = ipywidgets.HTML(f"<h2>{self.__class__.__name__}</h2>")
         tab = self._tab_repr_()
         widget = ipywidgets.VBox([title, tab], layout=ipywidgets.Layout(width="100%"))
 
-        # Get the widget mime bundle, but replace the plaintext with repr
+        # Get the widget mime bundle, but replace the plaintext
         # with the Datastream repr
         bundle = widget._repr_mimebundle_(**kwargs)
         bundle.update(
@@ -4252,6 +4255,8 @@ class Datastream:
         return bundle
 
     def _tab_repr_(self):
+        import ipywidgets
+
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
             "num_rows": self._meta_count(),

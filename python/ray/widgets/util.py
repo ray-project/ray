@@ -122,11 +122,21 @@ def ensure_ipywidgets_dep(version: str) -> Callable[[F], F]:
         "the notebook server for rich notebook output."
     )
 
-    return ensure_notebook_deps(
-        ["ipywidgets", version],
-        missing_message=text.format(""),
-        outdated_message=text.format("-U "),
-    )
+    if in_notebook():
+        return ensure_notebook_deps(
+            ["ipywidgets", version],
+            missing_message=text.format(""),
+            outdated_message=text.format("-U "),
+        )
+    else:
+        # If not in a notebook, then immediately short-circuit.
+        # We do not log has_missing or has_outdated messages if not in a notebook
+        # setting.
+        def dummy_decorator(func):
+            # Return the original function without any changes.
+            return func
+
+        return dummy_decorator
 
 
 def _has_missing(
@@ -228,8 +238,10 @@ def repr_fallback_if_colab(func: F) -> Callable[[F], F]:
 def in_notebook() -> bool:
     """Return whether we are in a Jupyter notebook."""
     try:
-        class_name = get_ipython().__class__.__name__
+        import IPython
+
+        class_name = IPython.get_ipython().__class__.__name__
         is_notebook = True if "Terminal" not in class_name else False
-    except NameError:
+    except (ModuleNotFoundError, NameError):
         is_notebook = False
     return is_notebook
