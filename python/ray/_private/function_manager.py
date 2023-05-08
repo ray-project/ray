@@ -182,7 +182,7 @@ class FunctionActorManager:
         with open("C:\\out\\driver.txt", "a+") as f:
             f.write(f"YYY publish {key}")
             f.flush()
-        # self._worker.gcs_publisher.publish_function_key(key)
+        self._worker.gcs_publisher.publish_function_key(key)
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
