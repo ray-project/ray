@@ -847,6 +847,10 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
+    # NOTE: Report callback telemetry before populating the list with default callbacks.
+    # This tracks user-specified callback usage.
+    air_usage.tag_callbacks(callbacks)
+
     # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
@@ -855,7 +859,6 @@ def run(
         metric=metric,
         progress_metrics=progress_metrics,
     )
-    air_usage.tag_callbacks(callbacks)
 
     # User Warning for GPUs
     if ray.cluster_resources().get("GPU", 0):

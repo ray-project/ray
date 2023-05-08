@@ -162,11 +162,14 @@ def _count_callbacks(callbacks: Optional[List["Callback"]]) -> Dict[str, int]:
 
 def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
     """Records built-in callback usage via a JSON str representing a
-    dictionary mapping callback class name -> counts. User-defined callbacks will
-    increment the count under the `CustomLoggerCallback` / `CustomCallback` key
-    depending on which of the provided interfaces they subclass.
+    dictionary mapping callback class name -> counts.
 
-    This will NOT report if no callbacks are provided by the user.
+    User-defined callbacks will increment the count under the `CustomLoggerCallback`
+    or `CustomCallback` key depending on which of the provided interfaces they subclass.
+    NOTE: This will NOT track the name of the user-defined callback,
+    nor its implementation.
+
+    This will NOT report telemetry if no callbacks are provided by the user.
 
     Returns:
         bool: True if usage was recorded, False otherwise.
