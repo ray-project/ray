@@ -34,7 +34,7 @@ class HTTPProxyState:
         self._actor_name = actor_name
         self._node_ip = node_ip
         self._actor_id = None
-        self._log_file_path_id = None
+        self._log_file_path = None
 
         self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
@@ -62,15 +62,15 @@ class HTTPProxyState:
         return self._actor_handle._actor_id.hex()
 
     @property
-    def log_file_path_id(self) -> Optional[str]:
-        return self._log_file_path_id
+    def log_file_path(self) -> Optional[str]:
+        return self._log_file_path
 
     def update(self):
         if self._status == HTTPProxyStatus.STARTING:
             try:
                 finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
                 if finished:
-                    self._log_file_path_id = ray.get(finished[0])
+                    self._log_file_path = ray.get(finished[0])
                     self._status = HTTPProxyStatus.HEALTHY
             except Exception:
                 self._status = HTTPProxyStatus.UNHEALTHY
@@ -166,7 +166,7 @@ class HTTPState:
                 actor_id=state.actor_id,
                 actor_name=state.actor_name,
                 status=state.status,
-                log_file_path_id=state.log_file_path_id,
+                log_file_path=state.log_file_path,
             )
             for node_id, state in self._proxy_states.items()
         }

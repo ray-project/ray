@@ -768,10 +768,10 @@ class HTTPProxyDetails(BaseModel):
     actor_id: str = Field(description="ID of the HTTP Proxy actor.")
     actor_name: str = Field(description="Name of the HTTP Proxy actor.")
     status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
-    log_file_path_id: Optional[str] = Field(
+    log_file_path: Optional[str] = Field(
         description=(
-            "Path identifier for log file of the HTTP Proxy actor. This is the "
-            "relative path to the log file from the ray logs directory."
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
         )
     )
 
