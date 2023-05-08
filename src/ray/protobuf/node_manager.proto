@@ -192,7 +192,7 @@ message GetNodeStatsRequest {
 
 
 message OwnerStats {
-  string owner_id = 1;
+  bytes owner_id = 1;
   int64 num_object_ids = 2;
 }
 
@@ -230,6 +230,8 @@ message ObjectStoreStats {
   // Owner stats of the primary objects in the local nodes.
   // It'll only be set if include_owner_stats is true.
   repeated OwnerStats owner_stats = 14;
+  // The number of primary copies of objects in the local node.
+  int64 object_store_primary_copies_total = 15;
 }
 
 message GetNodeStatsReply {

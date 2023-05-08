@@ -99,6 +99,97 @@ def test_worker_stats(shutdown_only):
 
     wait_for_condition(verify)
 
+def test_node_metrics_for_scale_down(ray_start_cluster, monkeypatch):
+    monkeypatch.setenv("RAY_lineage_pinning_enabled", "0")
+    NUM_NODES = 3
+    cluster = ray_start_cluster
+    for i in range(NUM_NODES):
+        cluster.add_node(True, resources={f"node_{i}": 1})
+        if i == 0:
+            ray.init(address=cluster.address)
+    node_ids = []
+
+    for i in range(NUM_NODES):
+        @ray.remote(resources={f"node_{i}": 1})
+        def get_node_id():
+            return ray.get_runtime_context().get_node_id()
+        node_ids.append(ray.get(get_node_id.remote()))    
+    
+    node_addrs = {n["NodeID"] : (n['NodeManagerAddress'], n['NodeManagerPort']) for n in ray.nodes()}
+    def get_owner_info():
+        import gc
+        gc.collect()
+        import time
+        time.sleep(1)
+        # node_id: {"driver_count", "running_workers_count", "running_actors_count"}
+        owner_stats = {}
+        worker_stats = {}
+        primary_copy_stats = {}
+        for node_id in node_ids:
+            node_stats = ray._private.internal_api.node_stats(node_addrs[node_id][0], node_addrs[node_id][1], False, True)
+            for owner_stat in node_stats.store_stats.owner_stats:
+                owner_id = ray.NodeID(owner_stat.owner_id).hex()
+                if owner_id not in owner_stats:
+                    owner_stats[owner_id] = 0
+                owner_stats[owner_id] += owner_stat.num_object_ids
+            primary_copy_stats[node_id] = node_stats.store_stats.object_store_primary_copies_total
+        print(owner_stats)
+        print(node_ids)
+        owner_stats = [owner_stats.get(node_id, 0) for node_id in node_ids]
+        primary_copy_stats = [primary_copy_stats.get(node_id, 0) for node_id in node_ids]
+        print("owner_stats", owner_stats)
+        print("primary_copy_stats", primary_copy_stats)
+
+        return owner_stats, primary_copy_stats
+    
+    # Object store stats
+    # x is owned by the driver
+    # x is stored at node_0
+    x = ray.put([1] * 1024 * 1024 * 2)
+
+    # Make sure we can terminate the worker where the data is stored in memory
+    # So we don't need count it.
+    @ray.remote(resources={"node_0": 1})
+    def mem_obj():
+        return os.getpid()
+    y = mem_obj.remote()
+    f_pid = ray.get(y)
+    import signal
+    print(y, ray.get(y))
+    os.kill(ray.get(y), signal.SIGKILL)
+    @ray.remote(resources={"node_1":1})
+    def check_available(pid):
+        assert pid == f_pid
+    ray.get(check_available.remote(y))        
+    
+    @ray.remote(resources={"node_1":1})
+    def big_obj():
+        return ray.put([1] * 1024 * 1024 * 10)
+    # Object store stats
+    # big_obj is owned by node_1
+    # big_obj is stored at node_1
+    big_obj_ref = big_obj.remote()
+    ray.get(big_obj_ref)
+
+    @ray.remote(resources={"node_2":1})
+    class A:
+        def gen(self, s):
+            return [1] * s
+        def owned_by_a(self, s):
+            return ray.put([1] * s)
+    a = A.remote()
+    # Object store stats
+    # a_obj is owned by node_0
+    # a_obj is stored at node_2
+    a_obj = a.gen.remote(1024 * 1024 * 10)
+    ray.get(a_obj)
+
+    # b is owned by node_2
+    # b is stored at node_2
+    b = a.owned_by_a.remote(1024 * 1024 * 10)
+    ray.get(b)
+    get_owner_info()
+
 
 def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
     NUM_NODES = 3

@@ -763,6 +763,8 @@ message CoreWorkerStats {
   WorkerType worker_type = 23;
   // Length of the number of objects without truncation.
   int64 objects_total = 24;
+  // Whether the current task or actor can be restarted.
+  bool can_restart = 25;
 }
 
 // Resource usage reported by the node reporter.

@@ -156,7 +156,7 @@ class LocalObjectManager {
   ///
   /// \param reply Output parameter
   void FillOwnerStats(rpc::GetNodeStatsReply *reply) const;
-  
+
   /// Record object spilling stats to metrics.
   void RecordMetrics() const;
 

@@ -2505,7 +2505,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
-  if(node_stats_request.include_owner_stats()) {
+  if (node_stats_request.include_owner_stats()) {
     local_object_manager_.FillOwnerStats(reply);
   }
 
