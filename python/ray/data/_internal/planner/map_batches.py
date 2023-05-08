@@ -62,18 +62,6 @@ def generate_map_batches_fn(
                             f"{type(value)}. To fix this issue, convert "
                             f"the {type(value)} to a `np.ndarray`."
                         )
-                    if isinstance(value, list):
-                        # Try to convert list values into an numpy array via
-                        # np.array(), so users don't need to manually cast.
-                        # NOTE: we don't cast generic iterables, since types like
-                        # `str` are also Iterable.
-                        try:
-                            batch[key] = np.array(value)
-                        except Exception:
-                            raise ValueError(
-                                "Failed to convert column values to numpy array: "
-                                f"({_truncated_repr(value)})."
-                            )
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
             # Apply UDF.

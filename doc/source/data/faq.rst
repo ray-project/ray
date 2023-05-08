@@ -219,8 +219,7 @@ Ray Data supports creating a ``Datastream`` from local and distributed in-memory
 via integrations with common data libraries, as well as from local and remote storage
 systems via our support for many common file formats and storage backends.
 
-Check out our :ref:`feature guide for creating datastreams <creating_datastreams>` for
-details.
+For more details, read :ref:`Loading Data <loading_data>`.
 
 When should I use global per-epoch shuffling?
 =============================================
@@ -287,6 +286,57 @@ How much performance tuning does Ray Data require?
 Ray Data doesn't perform query optimization, so some manual performance
 tuning may be necessary depending on your use case and data scale. Please see our
 :ref:`performance tuning guide <data_performance_tips>` for more information.
+
+What is strict mode?
+====================
+
+In Ray 2.5, Ray Data by default always requires data schemas, dropping support for
+standalone Python objects. In addition to unification and simplicity benefits, this
+aligns the Ray Data API closer to industry-standard distributed data APIs like Apache
+Spark and also emerging standards for machine learning datasets like HuggingFace.
+
+Migrating to strict mode
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can disable strict mode temporarily by setting the environment variable
+``RAY_DATA_STRICT_MODE=0`` on all cluster processes. Strict mode will not be
+possible to disable in future releases.
+
+Migrating existing code is straightforward. There are two common changes you may need
+to make to your code to be compatible:
+
+1. Pass the ``batch_format="pandas"`` argument to ``map_batches`` or ``iter_batches``,
+   if your code assumes pandas is the default batch format.
+2. Instead of returning a standalone objects or numpy arrays from ``map`` or ``map_batches``,
+   return a dictionary that names the field. E.g., change function code from ``return object()`` to
+   ``return {"my_obj": object()}``, and ``return [1, 2, 3]`` to ``return {"my_values": [1, 2, 3]}``.
+
+List of strict mode changes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In more detail, support for standalone Python objects is dropped. This means that
+instead of directly storing, e.g., Python ``Tuple[str, int]`` instance in Ray Data,
+you must either give each field a name (i.e., ``{foo: str, bar: int}``), or
+use a named object-type field (i.e., ``{foo: object}``). In addition, the ``default``
+batch format is replaced with ``numpy`` by default. This means that most users
+just need to be aware of ``Dict[str, Any]`` (non-batched data records) and
+``Dict[str, np.ndarray]`` (batched data) types when working with Ray Data.
+
+**Full list of changes**:
+
+* All read apis return structured data, never standalone Python objects.
+* Standalone Python objects are prohibited from being returned from map / map batches.
+* Standalone Numpy arrays are prohibited from being returned from map / map batches.
+* There is no more special interpretation of single-column schema containing just ``__value__`` as a column.
+* The default batch format is ``numpy`` instead of ``default`` (pandas).
+* ``schema()`` returns a unified Schema class instead of ``Union[pyarrow.lib.Schema, type]``.
+
+**Datasource behavior changes**:
+
+* ``range_tensor``: create ``data``  column instead of ``__value__``.
+* ``from_numpy`` / ``from_numpy_refs`` : create ``data`` column instead of using ``__value__``.
+* ``from_items``: create ``item`` column instead of using Python objects.
+* ``range``: create ``id`` column instead of using Python objects.
 
 How can I contribute to Ray Data?
 =====================================
