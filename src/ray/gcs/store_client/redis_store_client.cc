@@ -66,15 +66,16 @@ std::string GenKeyRedisMatchPattern(const std::string &external_storage_namespac
                       "*");
 }
 
-std::vector<std::vector<std::string>>
-GenCommandsBatched(const std::string &command,
-                   const std::string &hash_field,
-                   const std::vector<std::string> &keys) {
+std::vector<std::vector<std::string>> GenCommandsBatched(
+    const std::string &command,
+    const std::string &hash_field,
+    const std::vector<std::string> &keys) {
   std::vector<std::vector<std::string>> batched_requests;
   for (auto &key : keys) {
     // If it's empty or the last batch is full, add a new batch.
-    if (batched_requests.empty() || batched_requests.back().size() - 1 ==
-        RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
+    if (batched_requests.empty() ||
+        batched_requests.back().size() - 1 ==
+            RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
       batched_requests.emplace_back(std::vector<std::string>());
       batched_requests.back().push_back(command);
       batched_requests.back().push_back(hash_field);
@@ -196,7 +197,7 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,
                                      std::function<void(bool)> callback) {
   return AsyncBatchDelete(table_name, {key}, [callback](int64_t cnt) {
-    if(callback != nullptr) {
+    if (callback != nullptr) {
       callback(cnt > 0);
     }
   });
@@ -237,10 +238,10 @@ void RedisStoreClient::NextWrite(const std::string &key) {
     auto iter = write_ops_.find(key);
     // If no outstanding requests, we'll send it immediately.
     // Put an entry there to indicate there is outstanding requests.
-    if(iter == write_ops_.end()) {
+    if (iter == write_ops_.end()) {
       return;
     }
-    if(iter->second.empty()) {
+    if (iter->second.empty()) {
       write_ops_.erase(iter);
       return;
     }
@@ -248,72 +249,74 @@ void RedisStoreClient::NextWrite(const std::string &key) {
     iter->second.pop_front();
   }
   auto cxt = redis_client_->GetShardContext(key);
-  RAY_CHECK_OK(cxt->RunArgvAsync(
-      std::move(req.first),
-      [this, key, redis_callback = std::move(req.second)] (auto reply) {
-        NextWrite(key);
-        if(redis_callback) {
-          redis_callback(reply);
-        }
-      }));
+  RAY_CHECK_OK(
+      cxt->RunArgvAsync(std::move(req.first),
+                        [this, key, redis_callback = std::move(req.second)](auto reply) {
+                          NextWrite(key);
+                          if (redis_callback) {
+                            redis_callback(reply);
+                          }
+                        }));
 }
 
-void RedisStoreClient::ProcessNext(
-    std::string key) {
+void RedisStoreClient::ProcessNext(std::string key) {
   std::function<void()> op;
   {
     absl::MutexLock lock(&mu_);
     auto ops_iter = write_ops_.find(key);
-    auto& queue = ops_iter.second;
-    RAY_CHECK(ops_iter !=  write_ops_.end());
-    while(!queue.empty() && queue.front() == nullptr) {
+    auto &queue = ops_iter.second;
+    RAY_CHECK(ops_iter != write_ops_.end());
+    while (!queue.empty() && queue.front() == nullptr) {
       queue.pop_front();
     }
-    if(queue.empty()) {
+    if (queue.empty()) {
       write_ops_.erase(iter);
     } else {
       op = std::move(queue.front());
       queue.pop_front();
     }
   }
-  if(op) {
+  if (op) {
     op();
   }
 }
 
-void RedisStoreClient::DoWrite(
-    std::vector<std::string> keys,
-    std::vector<std::string> args,
-    RedisCallback redis_callback) {
+void RedisStoreClient::DoWrite(std::vector<std::string> keys,
+                               std::vector<std::string> args,
+                               RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
-  auto send_redis = [this, keys, args = std::move(args), redis_callback = std::move(redis_callback)]() mutable {
+  auto send_redis = [this,
+                     keys,
+                     args = std::move(args),
+                     redis_callback = std::move(redis_callback)]() mutable {
     auto cxt = redis_client_->GetShardContext(key);
-    RAY_CHECK_OK(cxt->RunArgvAsync(
-        std::move(args),
-        [this, keys = std::move(keys), redis_callback= std::move(req.second)](auto reply) {
-          for(const auto& key : keys) {
-            ProcessNext(key);
-            if(redis_callback) {
-              redis_callback(reply);
-            }
-          }
-        }));
+    RAY_CHECK_OK(cxt->RunArgvAsync(std::move(args),
+                                   [this,
+                                    keys = std::move(keys),
+                                    redis_callback = std::move(req.second)](auto reply) {
+                                     for (const auto &key : keys) {
+                                       ProcessNext(key);
+                                       if (redis_callback) {
+                                         redis_callback(reply);
+                                       }
+                                     }
+                                   }));
   };
 
   absl::MutexLock lock(&mu_);
   bool can_fire = true;
   {
-    for(const auto& key : keys) {
-      if(auto iter = write_ops_.find(key); iter != write_ops_.end()) {
+    for (const auto &key : keys) {
+      if (auto iter = write_ops_.find(key); iter != write_ops_.end()) {
         can_fire = false;
       } else {
         write_ops_.emplace(key, {});
       }
     }
 
-    if(can_fire) {
-      for(size_t i = 0; i < keys.size(); ++i) {
-        if(i == 0) {
+    if (can_fire) {
+      for (size_t i = 0; i < keys.size(); ++i) {
+        if (i == 0) {
           write_ops_[keys[0]].push_back(std::move(send_redis));
         } else {
           write_ops_[keys[i]].push_back(nullptr);
@@ -323,7 +326,6 @@ void RedisStoreClient::DoWrite(
   }
   ProcessNext(keys[0]);
 }
-
 
 Status RedisStoreClient::DoPut(const std::string &key,
                                const std::string &data,
@@ -343,8 +345,6 @@ Status RedisStoreClient::DoPut(const std::string &key,
   return Status::OK();
 }
 
-
-
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       std::function<void(int64_t)> callback) {
   auto del_cmds = GenCommandsBatched("HDEL", external_storage_namespace_, keys);
@@ -355,7 +355,7 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   for (auto &command : del_cmds) {
     std::vector<std::string> partition_keys(keys.begin() + 2, keys.end());
     auto delete_callback = [num_deleted, finished_count, total_count, callback](
-        const std::shared_ptr<CallbackReply> &reply) {
+                               const std::shared_ptr<CallbackReply> &reply) {
       (*num_deleted) += reply->ReadAsInteger();
       ++(*finished_count);
       if (*finished_count == total_count) {

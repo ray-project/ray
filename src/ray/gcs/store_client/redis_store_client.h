@@ -121,12 +121,11 @@ class RedisStoreClient : public StoreClient {
 
   void ProcessNext(std::string key);
 
-
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> write_ops_ GUARDED_BY(mu_);
-
+  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> write_ops_
+      GUARDED_BY(mu_);
 };
 
 }  // namespace gcs
