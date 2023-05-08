@@ -72,7 +72,7 @@
             <img src="_static/img/download.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Install Ray</h3>
         </div>
-        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
+        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install -U "ray[air]"</code></pre></p>      
         <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p></a>
   </div>
   <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
