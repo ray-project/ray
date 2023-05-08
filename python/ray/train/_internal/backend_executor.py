@@ -415,7 +415,6 @@ class BackendExecutor:
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
-                    encode_data_fn=self._backend._encode_data,
                 )
             )
 

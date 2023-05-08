@@ -65,7 +65,6 @@ class Backend(metaclass=Singleton):
     # TODO(ml-team): Remove in 2.6.
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
-        """Temporary method until ``encode_data`` is deprecated."""
         if cls._encode_data != Backend._encode_data:
             raise DeprecationWarning(_encode_decode_deprecation_message)
         return checkpoint
