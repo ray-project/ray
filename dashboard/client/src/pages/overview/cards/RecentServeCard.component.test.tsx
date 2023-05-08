@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import React from "react";
 import { getServeApplications } from "../../../service/serve";
 import {
@@ -44,43 +44,37 @@ describe("RecentServeCard", () => {
   });
 
   it("should display serve applications with deployed_app_config", async () => {
-    await act(async () => {
-      render(<RecentServeCard />, {
-        wrapper: TEST_APP_WRAPPER,
-      });
+    render(<RecentServeCard />, {
+      wrapper: TEST_APP_WRAPPER,
     });
 
-    expect.assertions(4);
+    await screen.findByText("View all applications");
 
-    await expect(screen.getByText("View all applications")).toBeInTheDocument();
-
+    expect.assertions(3);
     expect(screen.getByText("home")).toBeInTheDocument();
     expect(screen.getByText("home:graph")).toBeInTheDocument();
     expect(screen.getByText("Serve Applications")).toBeInTheDocument();
   });
 
   it("should display serve applications without deployed_app_config", async () => {
-    await act(async () => {
-      render(<RecentServeCard />, {
-        wrapper: TEST_APP_WRAPPER,
-      });
+    render(<RecentServeCard />, {
+      wrapper: TEST_APP_WRAPPER,
     });
-    expect.assertions(4);
 
-    await expect(screen.getByText("View all applications")).toBeInTheDocument();
+    await screen.findByText("View all applications");
 
+    expect.assertions(3);
     expect(screen.getByText("second-app")).toBeInTheDocument();
     expect(screen.getByText("-")).toBeInTheDocument(); // default value for no deployed_app_config
     expect(screen.getByText("Serve Applications")).toBeInTheDocument();
   });
 
   it("should navigate to the applications page when the 'View all applications' link is clicked", async () => {
-    await act(async () => {
-      render(<RecentServeCard />, {
-        wrapper: TEST_APP_WRAPPER,
-      });
+    render(<RecentServeCard />, {
+      wrapper: TEST_APP_WRAPPER,
     });
 
+    await screen.findByText("View all applications");
     const link = screen.getByRole("link", {
       name: /view all applications/i,
     });

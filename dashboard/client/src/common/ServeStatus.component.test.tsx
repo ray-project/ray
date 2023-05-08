@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { MemoryRouter } from "react-router-dom";
 import { ServeApplication, ServeApplicationStatus } from "../type/serve";
 import { ServeStatusIcon } from "./ServeStatus";
 
@@ -16,22 +15,19 @@ const APP: ServeApplication = {
 };
 
 describe("ServeStatusIcon", () => {
-  it("renders RUNNING status", async () => {
-    await render(<ServeStatusIcon app={APP} small={false} />, {
-      wrapper: MemoryRouter,
-    });
+  it("renders RUNNING status", () => {
+    render(<ServeStatusIcon app={APP} small={false} />);
     const icon = screen.getByTestId("serve-status-icon");
     const classList = icon.getAttribute("class");
     expect(classList).toContain("colorSuccess");
   });
 
-  it("renders NOT_STARTED status", async () => {
-    await render(
+  it("renders NOT_STARTED status", () => {
+    render(
       <ServeStatusIcon
         app={{ ...APP, status: ServeApplicationStatus.NOT_STARTED }}
         small={false}
       />,
-      { wrapper: MemoryRouter },
     );
     expect(screen.queryByTestId("serve-status-icon")).not.toHaveClass(
       "colorSuccess",
@@ -41,35 +37,32 @@ describe("ServeStatusIcon", () => {
     );
   });
 
-  it("renders DEPLOY_FAILED status", async () => {
-    await render(
+  it("renders DEPLOY_FAILED status", () => {
+    render(
       <ServeStatusIcon
         app={{ ...APP, status: ServeApplicationStatus.DEPLOY_FAILED }}
         small={false}
       />,
-      { wrapper: MemoryRouter },
     );
     const icon = screen.getByTestId("serve-status-icon");
     const classList = icon.getAttribute("class");
     expect(classList).toContain("colorError");
   });
 
-  it("renders DEPLOYING and DELETING status", async () => {
-    await render(
+  it("renders DEPLOYING and DELETING status", () => {
+    render(
       <ServeStatusIcon
         app={{ ...APP, status: ServeApplicationStatus.DEPLOYING }}
         small={false}
       />,
-      { wrapper: MemoryRouter },
     );
     expect(screen.queryByTestId("serve-status-icon")).toBeNull();
 
-    await render(
+    render(
       <ServeStatusIcon
         app={{ ...APP, status: ServeApplicationStatus.DELETING }}
         small={false}
       />,
-      { wrapper: MemoryRouter },
     );
     expect(screen.queryByTestId("serve-status-icon")).toBeNull();
   });
