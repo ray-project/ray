@@ -638,4 +638,6 @@ padding: 20px;
     font-weight: 500;
 }
 
-
+.ratd-widget {
+    right: 100px !important;
+}
