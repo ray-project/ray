@@ -144,9 +144,9 @@ class StreamingExecutor(Executor, threading.Thread):
         global _num_shutdown
 
         with self._shutdown_lock:
-            logger.get_logger().info(f"Shutting down {self}.")
             if self._shutdown:
                 return
+            logger.get_logger().info(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.

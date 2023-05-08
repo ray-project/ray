@@ -40,6 +40,15 @@ SESSION_MISUSE_LOG_ONCE_KEY = "air_warn_session_misuse"
 # training with Ray Train
 CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
 
+# Name of the marker dropped by the Trainable. If a worker detects
+# the presence of the marker in the trial dir, it will use lazy
+# checkpointing.
+LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
+
+# ==================================================
+#               Environment Variables
+# ==================================================
+
 # Integer value which if set will copy files in reported AIR directory
 # checkpoints instead of moving them (if worker is on the same node as Trainable)
 COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
@@ -51,7 +60,10 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
 # as Trainable)
 DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 
-# Name of the marker dropped by the Trainable. If a worker detects
-# the presence of the marker in the trial dir, it will use lazy
-# checkpointing.
-LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
+
+# NOTE: When adding a new environment variable, please track it in this list.
+# TODO(ml-team): Most env var constants should get moved here.
+AIR_ENV_VARS = {
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+}

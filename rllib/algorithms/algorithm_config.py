@@ -1,5 +1,4 @@
 import copy
-import dataclasses
 import logging
 import math
 import os
@@ -8,6 +7,7 @@ from typing import (
     Callable,
     Container,
     Dict,
+    List,
     Mapping,
     Optional,
     Tuple,
@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -52,6 +52,7 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     deserialize_type,
     NOT_SERIALIZABLE,
@@ -316,18 +317,15 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
+        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
-        self.learner_class = None
+        self._learner_class = None
         self._enable_learner_api = False
-        # experimental: this will contain the hyper-parameters that are passed to the
-        # Learner, for computing loss, etc. New algorithms have to set this to their
-        # own default. .training() will modify the fields of this object.
-        self._learner_hps = LearnerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -468,10 +466,6 @@ class AlgorithmConfig(_Config):
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
         self.no_done_at_end = DEPRECATED_VALUE
-
-    @property
-    def learner_hps(self) -> LearnerHPs:
-        return self._learner_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -853,7 +847,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors.
+        # RLModule API only works with connectors and with Learner API.
         if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
@@ -862,39 +856,25 @@ class AlgorithmConfig(_Config):
             )
 
         # Learner API requires RLModule API.
-        if self._enable_learner_api and not self._enable_rl_module_api:
+        if self._enable_learner_api is not self._enable_rl_module_api:
             raise ValueError(
-                "Learner API requires RLModule API. "
-                "Please enable RLModule API via "
-                "`config.training(_enable_rl_module_api=True)`."
+                "Learner API requires RLModule API and vice-versa! "
+                "Enable RLModule API via "
+                "`config.rl_module(_enable_rl_module_api=True)` and the Learner API "
+                "via `config.training(_enable_learner_api=True)` (or set both to "
+                "False)."
             )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # enable RLModule API and connectors if env variable is set
+            # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
             self.rl_module(_enable_rl_module_api=True)
+            self.training(_enable_learner_api=True)
             self.enable_connectors = True
 
-        # Explore parameter cannot be False with RLModule API enabled.
-        # The reason is that `explore` is not just a parameter that will get passed
-        # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
-        # forward_exploration() will get called during sampling. If user needs to
-        # really disable the stochasticity during this phase, they need to override the
-        # RLModule.forward_exploration() method or setup model parameters such that it
-        # will disable the stochasticity of this method (e.g. by setting the std to 0
-        # or setting temperature to 0 for the Categorical distribution).
-        if self._enable_rl_module_api and not self.explore:
-            raise ValueError(
-                "When RLModule API is enabled, explore parameter cannot be False. "
-                "Please set explore=None or disable RLModule API via "
-                "`config.rl_module(_enable_rl_module_api=False)`."
-                "If you want to disable the stochasticity during the exploration "
-                "phase, you can customize your RLModule and override the RLModule."
-                "forward_exploration() method "
-                "or setup model parameters such that it will disable the "
-                "stochasticity of this method (e.g. by setting the std to 0 or "
-                "setting temperature to 0 for the Categorical distribution)."
-            )
+        # LR-schedule checking.
+        if self._enable_learner_api:
+            Scheduler.validate(self.lr_schedule, "lr_schedule", "learning rate")
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1038,11 +1018,6 @@ class AlgorithmConfig(_Config):
                 "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
                 "(i.e. num_learner_workers = 0)"
             )
-
-        # Resolve learner class.
-        if self._enable_learner_api and self.learner_class is None:
-            learner_class_path = self.get_default_learner_class()
-            self.learner_class = deserialize_type(learner_class_path)
 
     def build(
         self,
@@ -1602,6 +1577,7 @@ class AlgorithmConfig(_Config):
         *,
         gamma: Optional[float] = NotProvided,
         lr: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
@@ -1616,6 +1592,11 @@ class AlgorithmConfig(_Config):
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
             lr: The default learning rate.
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule config's first entry must start with timestep 0,
+                i.e.: [[0, initial_value], [...]].
             grad_clip: The value to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more
@@ -1667,6 +1648,8 @@ class AlgorithmConfig(_Config):
             self.gamma = gamma
         if lr is not NotProvided:
             self.lr = lr
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
@@ -1690,7 +1673,7 @@ class AlgorithmConfig(_Config):
                 deprecation_warning(
                     old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
-                    "anymore. To get rid of this error, set `experimental("
+                    "anymore. To get rid of this error, set `rl_module("
                     "_enable_rl_module_api` to True. Native models will "
                     "be better supported by the upcoming RLModule API.",
                     # Error out if user tries to enable this
@@ -1706,7 +1689,7 @@ class AlgorithmConfig(_Config):
         if _enable_learner_api is not NotProvided:
             self._enable_learner_api = _enable_learner_api
         if learner_class is not NotProvided:
-            self.learner_class = learner_class
+            self._learner_class = learner_class
 
         return self
 
@@ -2544,6 +2527,20 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    @property
+    def learner_class(self) -> Type["Learner"]:
+        """Returns the Learner sub-class to use by this Algorithm.
+
+        Either
+        a) User sets a specific learner class via calling `.training(learner_class=...)`
+        b) User leaves learner class unset (None) and the AlgorithmConfig itself
+        figures out the actual learner class by calling its own
+        `.get_default_learner_class()` method.
+        """
+        return self._learner_class or self.get_default_learner_class()
+
+    # TODO: Make rollout_fragment_length as read-only property and replace the current
+    #  self.rollout_fragment_length a private variable.
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         """Automatically infers a proper rollout_fragment_length setting if "auto".
 
@@ -2579,6 +2576,8 @@ class AlgorithmConfig(_Config):
         else:
             return self.rollout_fragment_length
 
+    # TODO: Make evaluation_config as read-only property and replace the current
+    #  self.evaluation_config a private variable.
     def get_evaluation_config_object(
         self,
     ) -> Optional["AlgorithmConfig"]:
@@ -2872,6 +2871,8 @@ class AlgorithmConfig(_Config):
 
         return policies, is_policy_to_train
 
+    # TODO: Move this to those algorithms that really need this, which is currently
+    #  only A2C and PG.
     def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
         """Detects mismatches for `train_batch_size` vs `rollout_fragment_length`.
 
@@ -3125,12 +3126,15 @@ class AlgorithmConfig(_Config):
             .learner(
                 learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
+                # TODO (Sven): Shouldn't optimizer config be part of learner HPs?
+                #  E.g. if we have a lr schedule, this will have to be managed by
+                #  the learner, NOT the optimizer directly.
                 optimizer_config={
                     "lr": self.lr,
                     "grad_clip": self.grad_clip,
                     "grad_clip_by": self.grad_clip_by,
                 },
-                learner_hps=self.learner_hps,
+                learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
@@ -3142,6 +3146,20 @@ class AlgorithmConfig(_Config):
         )
 
         return config
+
+    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
+        """Returns a new LearnerHyperparameters instance for the respective Learner.
+
+        The LearnerHyperparameters is a dataclass containing only those config settings
+        from AlgorithmConfig that are used by the algorithm's specific Learner
+        sub-class. They allow distributing only those settings relevant for learning
+        across a set of learner workers (instead of having to distribute the entire
+        AlgorithmConfig object).
+
+        Note that LearnerHyperparameters should always be derived directly from a
+        AlgorithmConfig object's own settings and considered frozen/read-only.
+        """
+        return LearnerHyperparameters(lr_schedule=self.lr_schedule)
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
@@ -3246,10 +3264,6 @@ class AlgorithmConfig(_Config):
             config["model"]["custom_model"] = serialize_type(
                 config["model"]["custom_model"]
             )
-
-        # Serialize dataclasses.
-        if isinstance(config.get("_learner_hps"), LearnerHPs):
-            config["_learner_hps"] = dataclasses.asdict(config["_learner_hps"])
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
         ma_config = config.get("multiagent")

@@ -5,15 +5,11 @@ import textwrap
 from functools import wraps
 from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
+from packaging.version import Version
+
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
 
 logger = logging.getLogger(__name__)
 

@@ -450,11 +450,13 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     )
 
 
-def ndarray_to_block(ndarray: np.ndarray, strict_mode: bool) -> "Block":
+def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    DataContext._set_current(ctx)
+
     stats = BlockExecStats.builder()
-    if strict_mode:
+    if ctx.strict_mode:
         block = BlockAccessor.batch_to_block({"data": ndarray})
     else:
         block = BlockAccessor.batch_to_block(ndarray)

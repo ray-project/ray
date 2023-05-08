@@ -44,6 +44,14 @@ def enable_strict_mode():
     ctx.strict_mode = False
 
 
+@pytest.fixture(scope="module")
+def enable_nonstrict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = False
+    yield
+    ctx.strict_mode = True
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
     import os
