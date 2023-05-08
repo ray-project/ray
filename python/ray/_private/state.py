@@ -329,6 +329,10 @@ class GlobalState:
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
+                for bundle in placement_group_info.bundles
+            },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
             "stats": {
