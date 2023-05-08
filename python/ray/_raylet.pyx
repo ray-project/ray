@@ -174,6 +174,11 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
+cdef extern from "ray/common/constants.h" nogil:
+    cdef int kResourceUnitScaling
+
+RESOURCE_UNIT_SCALING = kResourceUnitScaling
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -586,6 +591,7 @@ cdef store_task_errors(
         exc,
         task_exception,
         actor,
+        actor_id,
         function_name,
         CTaskType task_type,
         proctitle,
@@ -606,15 +612,22 @@ cdef store_task_errors(
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
 
+    if actor_id is None or actor_id.is_nil():
+        actor_id = None
+    else:
+        actor_id = actor_id.hex()
+
     if isinstance(exc, RayTaskError):
         # Avoid recursive nesting of RayTaskError.
         failure_object = RayTaskError(function_name, backtrace,
                                       exc.cause, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
     else:
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
@@ -698,6 +711,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         worker, error,
                         False,  # task_exception
                         None,  # actor
+                        None,  # actor id
                         function_name, task_type, title,
                         dynamic_returns, application_error)
             if num_errors_stored == 0:
@@ -740,6 +754,7 @@ cdef void execute_task(
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
+    actor_id = None
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
@@ -780,7 +795,8 @@ cdef void execute_task(
         print(task_name_magic_token, end="")
         print(task_name_magic_token, file=sys.stderr, end="")
     else:
-        actor = worker.actors[core_worker.get_actor_id()]
+        actor_id = core_worker.get_actor_id()
+        actor = worker.actors[actor_id]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
 
@@ -866,7 +882,8 @@ cdef void execute_task(
                     args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
+                actor_id = core_worker.get_actor_id()
+                actor = worker.actors[actor_id]
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
@@ -1005,7 +1022,7 @@ cdef void execute_task(
                     returns)
         except Exception as e:
             num_errors_stored = store_task_errors(
-                    worker, e, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
@@ -1139,7 +1156,9 @@ cdef execute_task_with_cancellation_handler(
                 # Task cancellation can happen anytime so we don't really need
                 # to differentiate between mid-task or not.
                 False,  # task_exception
-                actor, execution_info.function_name,
+                actor,
+                actor_id,
+                execution_info.function_name,
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
@@ -2406,7 +2425,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            optional[c_vector[CObjectReference]] return_refs
+            c_vector[CObjectReference] return_refs
             c_vector[CObjectID] incremented_put_arg_ids
 
         with self.profile_event(b"submit_task"):
@@ -2419,12 +2438,13 @@ cdef class CoreWorker:
                 &incremented_put_arg_ids)
 
             with nogil:
-                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name))
+                        name, num_returns, c_resources, concurrency_group_name),
+                    return_refs)
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -2434,28 +2454,25 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                     put_arg_id)
 
-            if return_refs.has_value():
+            if status.ok():
                 # The initial local reference is already acquired internally
                 # when adding the pending task.
-                return VectorToObjectRefs(return_refs.value(),
+                return VectorToObjectRefs(return_refs,
                                           skip_adding_local_ref=True)
             else:
-                actor = self.get_actor_handle(actor_id)
-                actor_handle = (CCoreWorkerProcess.GetCoreWorker()
-                                .GetActorHandle(c_actor_id))
-                raise PendingCallsLimitExceeded("The task {} could not be "
-                                                "submitted to {} because more "
-                                                "than {} tasks are queued on "
-                                                "the actor. This limit "
-                                                "can be adjusted with the "
-                                                "`max_pending_calls` actor "
-                                                "option.".format(
-                                                    function_descriptor
-                                                    .function_name,
-                                                    repr(actor),
-                                                    (dereference(actor_handle)
-                                                        .MaxPendingCalls())
-                                                ))
+                if status.IsOutOfResource():
+                    actor = self.get_actor_handle(actor_id)
+                    actor_handle = (CCoreWorkerProcess.GetCoreWorker()
+                                    .GetActorHandle(c_actor_id))
+                    raise PendingCallsLimitExceeded(
+                        f"The task {function_descriptor.function_name} could not be "
+                        f"submitted to {repr(actor)} because more than"
+                        f" {(dereference(actor_handle).MaxPendingCalls())}"
+                        " tasks are queued on the actor. This limit can be adjusted"
+                        " with the `max_pending_calls` actor option.")
+                else:
+                    raise Exception(f"Failed to submit task to actor {actor_id} "
+                                    f"due to {status.message()}")
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:

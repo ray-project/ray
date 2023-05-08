@@ -10,14 +10,14 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    BatchUDF,
+    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    RowUDF,
+    StrictModeError,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
@@ -36,14 +36,11 @@ BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
-    # Callable[[Block, BatchUDF, ...], Iterable[Block]],
+    # Callable[[Block, UserDefinedFunction, ...], Iterable[Block]],
     Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, UserDefinedFunction], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
-
-# UDF on a batch or row.
-UDF = Union[BatchUDF, RowUDF]
 
 
 @DeveloperAPI
@@ -68,7 +65,7 @@ class TaskPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -177,7 +174,7 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, TaskPoolStrategy)
+        return isinstance(other, TaskPoolStrategy) or other == "tasks"
 
 
 @PublicAPI
@@ -222,12 +219,18 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
+        ctx = DataContext.get_current()
         if legacy_min_size is not None or legacy_max_size is not None:
-            # TODO: make this an error in Ray 2.5.
-            logger.warning(
-                "DeprecationWarning: ActorPoolStrategy will require min_size and "
-                "max_size to be explicit kwargs in a future release"
-            )
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    "In strict mode, ActorPoolStrategy requires min_size and "
+                    "max_size to be explicit kwargs."
+                )
+            else:
+                logger.warning(
+                    "DeprecationWarning: ActorPoolStrategy will require min_size and "
+                    "max_size to be explicit kwargs in a future release"
+                )
             if legacy_min_size is not None:
                 min_size = legacy_min_size
             if legacy_max_size is not None:
@@ -270,7 +273,7 @@ class ActorPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -495,7 +498,15 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
-    if not compute_spec or compute_spec == "tasks":
+    ctx = DataContext.get_current()
+    if ctx.strict_mode and not isinstance(
+        compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
+    ):
+        raise StrictModeError(
+            "In strict mode, the compute spec must be either "
+            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+        )
+    elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
     elif compute_spec == "actors":
         return ActorPoolStrategy()
@@ -516,7 +527,7 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 def _map_block_split(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
@@ -544,7 +555,7 @@ def _map_block_split(
 def _map_block_nosplit(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,

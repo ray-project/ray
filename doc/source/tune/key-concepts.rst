@@ -38,33 +38,35 @@ hyperparameters we want to tune to `minimize` the objective.
 Since the objective also has a variable ``x``, we need to test for different values of ``x``.
 Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
 
-.. tabbed:: Function API
+.. tab-set::
 
-    With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
-    takes in a dictionary of hyperparameters.
-    This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
+    .. tab-item:: Function API
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __function_api_start__
-        :end-before: __function_api_end__
+        With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
+        takes in a dictionary of hyperparameters.
+        This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
 
-    Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
-    in many machine learning tasks.
-    If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
-    end of the ``trainable`` function with ``return {"score": score}``.
-    You can also use ``yield {"score": score}`` instead of ``session.report()``.
+        .. literalinclude:: doc_code/key_concepts.py
+            :language: python
+            :start-after: __function_api_start__
+            :end-before: __function_api_end__
 
-.. tabbed:: Class API
+        Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
+        in many machine learning tasks.
+        If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
+        end of the ``trainable`` function with ``return {"score": score}``.
+        You can also use ``yield {"score": score}`` instead of ``session.report()``.
 
-    Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+    .. tab-item:: Class API
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __class_api_start__
-        :end-before: __class_api_end__
+        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-    .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
+        .. literalinclude:: doc_code/key_concepts.py
+            :language: python
+            :start-after: __class_api_start__
+            :end-before: __class_api_end__
+
+        .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.

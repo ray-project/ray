@@ -135,6 +135,13 @@ def validate_release_test_collection(
             )
             num_errors += 1
 
+        error = validate_test_cluster_env(test)
+        if error:
+            logger.error(
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
+            )
+            num_errors += 1
+
     if num_errors > 0:
         raise ReleaseTestConfigError(
             f"Release test configuration error: Found {num_errors} test "
@@ -176,6 +183,19 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
         error = validate_aws_config(config)
         if error:
             return error
+
+    return None
+
+
+def validate_test_cluster_env(test: Test) -> Optional[str]:
+    from ray_release.template import get_cluster_env_path
+
+    cluster_env_path = get_cluster_env_path(test)
+
+    if not os.path.exists(cluster_env_path):
+        raise ReleaseTestConfigError(
+            f"Cannot load yaml template from {cluster_env_path}: Path not found."
+        )
 
     return None
 

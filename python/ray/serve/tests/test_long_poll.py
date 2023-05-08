@@ -182,8 +182,8 @@ def test_listen_for_change_java(serve_instance):
     assert poll_result_1.updated_objects["key_1"].object_snapshot.decode() == "999"
     request_2 = {"keys_to_snapshot_ids": {"ROUTE_TABLE": -1}}
     endpoints: Dict[EndpointTag, EndpointInfo] = dict()
-    endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
-    endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
+    endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll", app_name="")
+    endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1", app_name="")
     ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))
     object_ref_2 = host.listen_for_change_java.remote(
         LongPollRequest(**request_2).SerializeToString()

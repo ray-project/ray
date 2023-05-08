@@ -2,6 +2,7 @@ import ray
 import unittest
 import numpy as np
 import torch
+import tempfile
 import tensorflow as tf
 import tree  # pip install dm-tree
 
@@ -11,7 +12,6 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.metrics import ALL_MODULES
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -74,8 +74,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             train_batch = SampleBatch(FAKE_BATCH)
             train_batch = compute_gae_for_sample_batch(policy, train_batch)
@@ -90,8 +90,6 @@ class TestPPO(unittest.TestCase):
                 train_batch = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x), train_batch
                 )
-
-            policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
             algo_config = config.copy(copy_frozen=False)
             algo_config.training(_enable_learner_api=True)
@@ -109,13 +107,55 @@ class TestPPO(unittest.TestCase):
             )
             learner_group = learner_group_config.build()
 
-            # load the trainer weights onto the learner_group
-            learner_group.set_weights(trainer.get_weights())
-            results = learner_group.update(train_batch.as_multi_agent())
+            # Load the algo weights onto the learner_group.
+            learner_group.set_weights(algo.get_weights())
+            learner_group.update(train_batch.as_multi_agent())
 
-            learner_group_loss = results[ALL_MODULES]["total_loss"]
+            algo.stop()
 
-            check(learner_group_loss, policy_loss)
+    def test_save_load_state(self):
+        """Tests saving and loading the state of the PPO Learner Group."""
+        config = (
+            ppo.PPOConfig()
+            .environment("CartPole-v1")
+            .rollouts(
+                num_rollout_workers=0,
+            )
+            .training(
+                gamma=0.99,
+                model=dict(
+                    fcnet_hiddens=[10, 10],
+                    fcnet_activation="linear",
+                    vf_share_layers=False,
+                ),
+                _enable_learner_api=True,
+            )
+            .rl_module(
+                _enable_rl_module_api=True,
+            )
+        )
+        algo = config.build()
+        policy = algo.get_policy()
+
+        for _ in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
+            algo_config = config.copy(copy_frozen=False)
+            algo_config.validate()
+            algo_config.freeze()
+            learner_group_config = algo_config.get_learner_group_config(
+                SingleAgentRLModuleSpec(
+                    module_class=algo_config.rl_module_spec.module_class,
+                    observation_space=policy.observation_space,
+                    action_space=policy.action_space,
+                    model_config_dict=policy.config["model"],
+                    catalog_class=PPOCatalog,
+                )
+            )
+            learner_group1 = learner_group_config.build()
+            learner_group2 = learner_group_config.build()
+            with tempfile.TemporaryDirectory() as tmpdir:
+                learner_group1.save_state(tmpdir)
+                learner_group2.load_state(tmpdir)
+                check(learner_group1.get_state(), learner_group2.get_state())
 
 
 if __name__ == "__main__":

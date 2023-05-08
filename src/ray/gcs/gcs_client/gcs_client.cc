@@ -128,7 +128,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
-  RAY_LOG(DEBUG) << "GcsClient connected.";
+  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
+                 << options_.gcs_port_;
   return Status::OK();
 }
 
@@ -396,6 +397,12 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
     return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
+}
+
+std::unordered_map<std::string, double> PythonGetResourcesTotal(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
+                                                 node_info.resources_total().end());
 }
 
 }  // namespace gcs

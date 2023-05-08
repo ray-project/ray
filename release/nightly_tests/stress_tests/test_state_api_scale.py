@@ -226,7 +226,7 @@ def test_many_objects(num_objects, num_actors):
         list_objects,
         filters=[
             ("reference_type", "=", "LOCAL_REFERENCE"),
-            ("type", "=", "Worker"),
+            ("type", "=", "WORKER"),
         ],
         key_suffix=f"{num_objects}",
         limit=STATE_LIST_LIMIT,
@@ -262,7 +262,7 @@ def test_large_log_file(log_file_size_byte: int):
                 log_file_size_byte -= n
 
             sys.stdout.flush()
-            return ctx.hexdigest(), ray.get_runtime_context().node_id.hex()
+            return ctx.hexdigest(), ray.get_runtime_context().get_node_id()
 
     actor = LogActor.remote()
     expected_hash, node_id = ray.get(
@@ -276,7 +276,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = 0
     t_start = time.perf_counter()
-    for s in get_log(actor_id=actor._actor_id.hex(), tail=-1):
+    for s in get_log(actor_id=actor._actor_id.hex(), tail=1000000000):
         t_end = time.perf_counter()
         time_taken += t_end - t_start
         # Not including this time
