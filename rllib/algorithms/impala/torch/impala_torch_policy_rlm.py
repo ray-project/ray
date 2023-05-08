@@ -104,15 +104,17 @@ class ImpalaTorchPolicyWithRLModule(
                 drop_last=drop_last,
             ).type(dtype=torch.float32)
         ) * self.config["gamma"]
+
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
+            discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
             clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
-            discounts=discounts_time_major,
         )
 
         # The policy gradients loss.
@@ -125,20 +127,20 @@ class ImpalaTorchPolicyWithRLModule(
         mean_vf_loss = 0.5 * torch.mean(torch.pow(delta, 2.0))
 
         # The entropy loss.
-        entropy_loss = -torch.sum(target_actions_logp_time_major)
+        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
             pi_loss
             + vf_loss * self.config["vf_loss_coeff"]
-            + entropy_loss * self.entropy_coeff
+            + mean_entropy_loss * self.entropy_coeff
         )
         self.stats = {
             "total_loss": total_loss,
             "pi_loss": mean_pi_loss,
             "vf_loss": mean_vf_loss,
             "values": values_time_major,
-            "entropy_loss": entropy_loss,
+            "entropy_loss": mean_entropy_loss,
             "vtrace_adjusted_target_values": vtrace_adjusted_target_values,
         }
         return total_loss
