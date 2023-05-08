@@ -6081,7 +6081,6 @@
   run:
     timeout: 1200
     script: cd tests && python aws_launch_and_verify_cluster.py gcp/example-minimal.yaml
-    type: sdk_command
 
   variations:
     - __suffix__: aws
