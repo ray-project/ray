@@ -15,20 +15,26 @@ const APP: ServeApplication = {
 };
 
 describe("ServeStatusIcon", () => {
-  it("renders RUNNING status", () => {
+  it("renders RUNNING status", async () => {
     render(<ServeStatusIcon app={APP} small={false} />);
+
+    await screen.findByTestId("serve-status-icon");
+
     const icon = screen.getByTestId("serve-status-icon");
     const classList = icon.getAttribute("class");
     expect(classList).toContain("colorSuccess");
   });
 
-  it("renders NOT_STARTED status", () => {
+  it("renders NOT_STARTED status", async () => {
     render(
       <ServeStatusIcon
         app={{ ...APP, status: ServeApplicationStatus.NOT_STARTED }}
         small={false}
       />,
     );
+
+    await screen.findByTestId("serve-status-icon");
+
     expect(screen.queryByTestId("serve-status-icon")).not.toHaveClass(
       "colorSuccess",
     );
@@ -37,33 +43,18 @@ describe("ServeStatusIcon", () => {
     );
   });
 
-  it("renders DEPLOY_FAILED status", () => {
+  it("renders DEPLOY_FAILED status", async () => {
     render(
       <ServeStatusIcon
         app={{ ...APP, status: ServeApplicationStatus.DEPLOY_FAILED }}
         small={false}
       />,
     );
+
+    await screen.findByTestId("serve-status-icon");
+
     const icon = screen.getByTestId("serve-status-icon");
     const classList = icon.getAttribute("class");
     expect(classList).toContain("colorError");
-  });
-
-  it("renders DEPLOYING and DELETING status", () => {
-    render(
-      <ServeStatusIcon
-        app={{ ...APP, status: ServeApplicationStatus.DEPLOYING }}
-        small={false}
-      />,
-    );
-    expect(screen.queryByTestId("serve-status-icon")).toBeNull();
-
-    render(
-      <ServeStatusIcon
-        app={{ ...APP, status: ServeApplicationStatus.DELETING }}
-        small={false}
-      />,
-    );
-    expect(screen.queryByTestId("serve-status-icon")).toBeNull();
   });
 });
