@@ -45,6 +45,9 @@ PY_MATRIX = {
     "py310": "3.10",
 }
 
+# Versions for which we build the ray-ml image
+ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
+
 BASE_IMAGES = {
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
     "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
@@ -525,15 +528,22 @@ def create_image_tags(
     tag_mapping = defaultdict(list)
     for py_name in py_versions:
         for image_type in image_types:
-            if image_name == "ray-ml" and image_type not in [
-                ML_CUDA_VERSION,
-                "cpu",
-            ]:
-                print(
-                    "ML Docker image is not built for the following "
-                    f"device type: {image_type}"
-                )
-                continue
+            if image_name == "ray-ml":
+                if image_type not in [
+                    ML_CUDA_VERSION,
+                    "cpu",
+                ]:
+                    print(
+                        "ML Docker image is not built for the following "
+                        f"device type: {image_type}"
+                    )
+                    continue
+                if py_name not in ML_IMAGES_PY_VERSIONS:
+                    print(
+                        "ML Docker iamge is not build for the following "
+                        f"python version: {py_name}"
+                    )
+                    continue
 
             tag = _with_suffix(f"{version}-{py_name}-{image_type}", suffix=suffix)
 
@@ -899,11 +909,18 @@ def main(
                 # Do not build ray-ml e.g. for arm64
                 ml_image_types = []
 
+            # Only build ray-ml image for pythons in ML_IMAGES_PY_VERSIONS
+            ml_py_versions = [
+                py_version
+                for py_version in py_versions
+                if py_version in ML_IMAGES_PY_VERSIONS
+            ]
+
             if len(ml_image_types) > 0:
                 prep_ray_ml()
                 all_tagged_images += build_for_all_versions(
                     "ray-ml",
-                    py_versions,
+                    ml_py_versions,
                     image_types=ml_image_types,
                     suffix=suffix,
                 )
