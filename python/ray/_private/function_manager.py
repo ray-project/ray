@@ -161,9 +161,6 @@ class FunctionActorManager:
                 holder = make_export_key(
                     self._num_exported, self._worker.current_job_id
                 )
-                with open("C:\\out\\driver.txt", "a+") as f:
-                    f.write(f"YYY setting key {holder} {key}")
-                    f.flush()
                 # This step is atomic since internal kv is a single thread
                 # atomic db.
                 if (
@@ -172,16 +169,11 @@ class FunctionActorManager:
                     )
                     > 0
                 ):
-                    with open("C:\\out\\driver.txt", "a+") as f:
-                        f.write(f"YYY succeeded {holder} {key}")
-                        f.flush()
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
         # TODO(mwtian) implement per-job notification here.
-        with open("C:\\out\\driver.txt", "a+") as f:
-            f.write(f"YYY publish {key}")
-            f.flush()
+        print("UUUUUUU")
         self._worker.gcs_publisher.publish_function_key(key)
 
     def export(self, remote_function):

@@ -242,6 +242,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
         return _CALLED_FREQ, _CALLED_GETS
 
     freqs, gets = ray.get(get_kv_metrics.remote())
+    print("driver", str(ray._private.utils._CALLED_GETS))
     # So far we have the following gets
     """
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
