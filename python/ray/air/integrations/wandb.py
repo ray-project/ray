@@ -118,8 +118,6 @@ def setup_wandb(
             "Wandb was not found - please install with `pip install wandb`"
         )
 
-    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
-
     try:
         # Do a try-catch here if we are not in a train session
         _session = session._get_session(warn=False)
@@ -210,6 +208,9 @@ def _setup_wandb(
 
     run = _wandb.init(**wandb_init_kwargs)
     _run_wandb_process_run_info_hook(run)
+
+    # Record `setup_wandb` usage when everything has setup successfully.
+    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
     return run
 
 

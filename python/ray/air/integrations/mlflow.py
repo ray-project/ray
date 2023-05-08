@@ -148,8 +148,6 @@ def setup_mlflow(
             "mlflow was not found - please install with `pip install mlflow`"
         )
 
-    record_extra_usage_tag(TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED, "1")
-
     try:
         # Do a try-catch here if we are not in a train session
         _session = session._get_session(warn=False)
@@ -197,6 +195,9 @@ def setup_mlflow(
         set_active=True,
     )
     mlflow_util.log_params(_config)
+
+    # Record `setup_mlflow` usage when everything has setup successfully.
+    record_extra_usage_tag(TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED, "1")
     return mlflow_util._mlflow
 
 
