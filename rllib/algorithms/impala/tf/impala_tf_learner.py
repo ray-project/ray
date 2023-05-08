@@ -92,7 +92,9 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         total_loss = (
             pi_loss
             + vf_loss * self.hps.vf_loss_coeff
-            + mean_entropy_loss * self.hps.entropy_coeff
+            + mean_entropy_loss * (
+                self.entropy_coeff_scheduler.get_current_value(module_id)
+            )
         )
         return {
             self.TOTAL_LOSS_KEY: total_loss,
