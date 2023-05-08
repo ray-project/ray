@@ -14,10 +14,10 @@ import os
 import subprocess
 import sys
 import time
-import yaml
 from pathlib import Path
 
 import boto3
+import yaml
 
 
 def check_arguments(args):
@@ -166,13 +166,35 @@ if __name__ == "__main__":
     elif provider_type == "gcp":
         print("======================================")
         print("GCP provider detected. Skipping ssh key download step.")
-        print("Injecting GCP project 'anyscale-oss-ci' into cluster config provider->project_id")
-        config_yaml["provider"]["project_id"] = "anyscale-oss-ci"
+        # Get the active account email
+        account_email = (
+            subprocess.run(
+                ["gcloud", "config", "get-value", "account"],
+                stdout=subprocess.PIPE,
+                check=True,
+            )
+            .stdout.decode("utf-8")
+            .strip()
+        )
+        print("Active account email:", account_email)
+        # Get the current project ID
+        project_id = (
+            subprocess.run(
+                ["gcloud", "config", "get-value", "project"],
+                stdout=subprocess.PIPE,
+                check=True,
+            )
+            .stdout.decode("utf-8")
+            .strip()
+        )
+        print(
+            f"Injecting GCP project '{project_id}' into cluster configuration file..."
+        )
+        config_yaml["provider"]["project_id"] = project_id
         cluster_config.write_text(yaml.dump(config_yaml))
     else:
         print("======================================")
         print("Provider type not recognized. Exiting script.")
         sys.exit(1)
-
 
     run_ray_commands(cluster_config, retries)
