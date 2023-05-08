@@ -54,7 +54,6 @@ sphinx-click==3.0.2
 sphinx-copybutton==0.4.0
 sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
-sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
 sphinx-book-theme==0.3.3
 sphinx-external-toc==0.2.4
@@ -71,3 +70,6 @@ myst-nb==0.13.1
 
 # Jupyter conversion
 jupytext==1.13.6
+
+# Pin urllib to avoid downstream ssl incompatibility issues
+urllib3 < 1.27

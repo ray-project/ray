@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
+from ray_release.bazel import bazel_runfile
 from ray_release.config import Test
 from ray_release.template import load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
@@ -31,9 +32,7 @@ def remove_buildkite_env():
 
 
 def test_get_ray_version(remove_buildkite_env):
-    init_file = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "python", "ray", "__init__.py"
-    )
+    init_file = bazel_runfile("python/ray/__init__.py")
     with open(init_file, "rt") as fp:
         content = [line.encode() for line in fp.readlines()]
 

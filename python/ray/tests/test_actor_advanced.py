@@ -768,8 +768,9 @@ def test_actor_creation_task_crash(ray_start_regular):
 
     # Verify an exception is thrown.
     a = Actor.remote()
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError) as excinfo:
         ray.get(a.f.remote())
+    assert excinfo.value.actor_id == a._actor_id.hex()
 
     # Test an actor can be restarted successfully
     # afte it dies in its constructor.
