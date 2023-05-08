@@ -284,7 +284,7 @@ class HTTPProxy:
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=("route", "method", "application"),
+            tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
@@ -371,6 +371,7 @@ class HTTPProxy:
                     "route": route_path,
                     "method": scope["method"].upper(),
                     "application": "",
+                    "status_code": "200",
                 }
             )
             return await starlette.responses.JSONResponse(self.route_info)(
@@ -383,6 +384,7 @@ class HTTPProxy:
                     "route": route_path,
                     "method": scope["method"].upper(),
                     "application": "",
+                    "status_code": "200",
                 }
             )
             return await starlette.responses.PlainTextResponse("success")(
@@ -403,16 +405,11 @@ class HTTPProxy:
                     "route": route_path,
                     "method": scope["method"].upper(),
                     "application": "",
+                    "status_code": "404",
                 }
             )
             return await self._not_found(scope, receive, send)
-        self.request_counter.inc(
-            tags={
-                "route": route_path,
-                "method": scope["method"].upper(),
-                "application": app_name,
-            }
-        )
+
         # Modify the path and root path so that reverse lookups and redirection
         # work as expected. We do this here instead of in replicas so it can be
         # changed without restarting the replicas.
@@ -428,6 +425,16 @@ class HTTPProxy:
             )
         )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
+
+        self.request_counter.inc(
+            tags={
+                "route": route_path,
+                "method": scope["method"].upper(),
+                "application": app_name,
+                "status_code": status_code,
+            }
+        )
+
         latency_ms = (time.time() - start_time) * 1000.0
         self.processing_latency_tracker.observe(
             latency_ms, tags={"route": route_path, "application": app_name}
