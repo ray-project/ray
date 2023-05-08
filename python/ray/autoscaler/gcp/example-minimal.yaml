@@ -3,6 +3,6 @@ auth:
 cluster_name: minimal
 provider:
   availability_zone: us-west1-a
-  project_id: null # Globally unique project id
+  project_id: anyscale-bridge-cd812d38
   region: us-west1
   type: gcp

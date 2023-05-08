@@ -1,15 +1,18 @@
 """
 This script automates the process of launching and verifying a Ray cluster using a given
 cluster configuration file. It also handles cluster cleanup before and after the
-verification process. The script requires two command-line arguments: the path to the
-cluster configuration file and an optional number of retries for the verification step.
+verification process. The script requires one command-line argument: the path to the
+cluster configuration file.
 
 Usage:
-    python aws_launch_and_verify_cluster.py <cluster_configuration_file_path> [retries]
+    python aws_launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
+        <cluster_configuration_file_path>
 
 Example:
-    python aws_launch_and_verify_cluster.py /path/to/cluster_config.yaml 5
+    python aws_launch_and_verify_cluster.py --retries 5 --no-config-cache
+        /path/to/cluster_config.yaml
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -20,27 +23,33 @@ import boto3
 import yaml
 
 
-def check_arguments(args):
+def check_arguments():
     """
-    Check command line arguments and return the cluster configuration file path and the
-    number of retries.
-
-    Args:
-        args: The list of command line arguments.
+    Check command line arguments and return the cluster configuration file path, the
+    number of retries, and the value of the --no-config-cache flag.
 
     Returns:
-        A tuple containing the cluster config file path and the number of retries.
-
-    Raises:
-        SystemExit: If an incorrect number of command line arguments is provided.
+        A tuple containing the cluster config file path, the number of retries, and the
+        value of the --no-config-cache flag.
     """
-    if len(args) < 2:
-        print(
-            "Error: Please provide a path to the cluster configuration file as a "
-            "command line argument."
-        )
-        sys.exit(1)
-    return args[1], int(args[2]) if len(args) >= 3 else 3
+    parser = argparse.ArgumentParser(description="Launch and verify a Ray cluster")
+    parser.add_argument(
+        "--no-config-cache",
+        action="store_true",
+        help="Pass the --no-config-cache flag to Ray CLI commands",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Number of retries for verifying Ray is running (default: 3)",
+    )
+    parser.add_argument(
+        "cluster_config", type=str, help="Path to the cluster configuration file"
+    )
+    args = parser.parse_args()
+
+    return args.cluster_config, args.retries, args.no_config_cache
 
 
 def check_file(file_path):
@@ -91,7 +100,7 @@ def cleanup_cluster(cluster_config):
     subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
 
 
-def run_ray_commands(cluster_config, retries):
+def run_ray_commands(cluster_config, retries, no_config_cache):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
@@ -99,13 +108,19 @@ def run_ray_commands(cluster_config, retries):
     Args:
         cluster_config: The path of the cluster configuration file.
         retries: The number of retries for the verification step.
+        no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
+            commands.
     """
     print("======================================")
     cleanup_cluster(cluster_config)
 
     print("======================================")
     print("Starting new cluster...")
-    subprocess.run(["ray", "up", "-v", "-y", str(cluster_config)], check=True)
+    cmd = ["ray", "up", "-v", "-y"]
+    if no_config_cache:
+        cmd.append("--no-config-cache")
+    cmd.append(str(cluster_config))
+    subprocess.run(cmd, check=True)
 
     print("======================================")
     print("Verifying Ray is running...")
@@ -114,16 +129,16 @@ def run_ray_commands(cluster_config, retries):
     count = 0
     while count < retries:
         try:
-            subprocess.run(
-                [
-                    "ray",
-                    "exec",
-                    "-v",
-                    str(cluster_config),
-                    "python -c 'import ray; ray.init(\"localhost:6379\")'",
-                ],
-                check=True,
-            )
+            cmd = [
+                "ray",
+                "exec",
+                "-v",
+                str(cluster_config),
+                "python -c 'import ray; ray.init(\"localhost:6379\")'",
+            ]
+            if no_config_cache:
+                cmd.append("--no-config-cache")
+            subprocess.run(cmd, check=True)
             success = True
             break
         except subprocess.CalledProcessError:
@@ -152,12 +167,13 @@ def run_ray_commands(cluster_config, retries):
 
 
 if __name__ == "__main__":
-    cluster_config, retries = check_arguments(sys.argv)
+    cluster_config, retries, no_config_cache = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
 
     print(f"Using cluster configuration file: {cluster_config}")
     print(f"Number of retries for 'verify ray is running' step: {retries}")
+    print(f"Using --no-config-cache flag: {no_config_cache}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
     provider_type = config_yaml.get("provider", {}).get("type")
@@ -197,4 +213,4 @@ if __name__ == "__main__":
         print("Provider type not recognized. Exiting script.")
         sys.exit(1)
 
-    run_ray_commands(cluster_config, retries)
+    run_ray_commands(cluster_config, retries, no_config_cache)
