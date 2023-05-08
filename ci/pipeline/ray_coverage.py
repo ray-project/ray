@@ -1,11 +1,11 @@
-import boto3
-import click
 import logging
 import os
 import subprocess
 import sys
+from datetime import date
 
 import click
+import boto3
 
 
 def _get_logger():
@@ -21,6 +21,8 @@ def _get_logger():
 
 _logger = _get_logger()
 _COVERAGE_FILE_NAME = "ray_release.cov"
+_S3_BUCKET_NAME = "ray-test-coverage"
+_S3_BUCKET_DIR = "ci"
 
 
 @click.command()
@@ -34,7 +36,18 @@ _COVERAGE_FILE_NAME = "ray_release.cov"
         "In buildkite CI, this is usually artifact-mount."
     ),
 )
-def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
+@click.option(
+    "--upload",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Upload the computed coverage data to S3."),
+)
+def main(
+    test_target: str,
+    artifact_dir: str = "/artifact-mount",
+    upload: bool = False,
+) -> None:
     """
     This script collects dynamic coverage data for the test target, and upload the
     results to database (S3).
@@ -43,20 +56,20 @@ def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
     coverage_file = os.path.join(artifact_dir, _COVERAGE_FILE_NAME)
     _run_test(test_target, coverage_file)
     coverage_info = _collect_coverage(coverage_file)
-    logger.info(coverage_info)
+    _logger.info(coverage_info)
     if upload:
         s3_file_name = _persist_coverage_info(coverage_file)
-        logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
+        _logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
     return 0
 
 
 def _persist_coverage_info(coverage_file: str) -> str:
     s3_file_name = (
-        f"{S3_BUCKET_FILEPATH}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
+        f"{_S3_BUCKET_DIR}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
     )
     boto3.client("s3").upload_file(
         coverage_file,
-        S3_BUCKET_NAME,
+        _S3_BUCKET_NAME,
         s3_file_name,
     )
     return s3_file_name
