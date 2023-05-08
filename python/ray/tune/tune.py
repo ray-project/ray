@@ -278,6 +278,8 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    # Todo (krfricke): Find a better way to pass entrypoint information, e.g.
+    # a context object or similar.
     _tuner_api: bool = False,
     _trainer_api: bool = False,
 ) -> ExperimentAnalysis:
