@@ -22,7 +22,7 @@ public class NativeWorkerContext implements WorkerContext {
 
   @Override
   public JobId getCurrentJobId() {
-    return JobId.fromByteBuffer(nativeGetCurrentJobId());
+    return JobId.fromBytes(nativeGetCurrentJobId());
   }
 
   @Override
@@ -62,7 +62,7 @@ public class NativeWorkerContext implements WorkerContext {
 
   private static native ByteBuffer nativeGetCurrentTaskId();
 
-  private static native ByteBuffer nativeGetCurrentJobId();
+  private static native byte[] nativeGetCurrentJobId();
 
   private static native ByteBuffer nativeGetCurrentWorkerId();
 

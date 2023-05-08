@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional

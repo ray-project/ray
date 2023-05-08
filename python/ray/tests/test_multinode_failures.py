@@ -165,7 +165,8 @@ def check_components_alive(cluster, component_type, check_component_alive):
             "num_nodes": 4,
             "_system_config": {
                 # Raylet codepath is not stable with a shorter timeout.
-                "num_heartbeats_timeout": 10
+                "health_check_initial_delay_ms": 0,
+                "health_check_failure_threshold": 10,
             },
         }
     ],

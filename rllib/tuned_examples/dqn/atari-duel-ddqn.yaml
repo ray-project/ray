@@ -3,14 +3,19 @@
 dueling-ddqn:
     env:
         grid_search:
-            - BreakoutNoFrameskip-v4
-            - BeamRiderNoFrameskip-v4
-            - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4
+            - ALE/Breakout-v5
+            - ALE/BeamRider-v5
+            - ALE/Qbert-v5
+            - ALE/SpaceInvaders-v5
     run: DQN
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         double_q: true
         dueling: true
         num_atoms: 1

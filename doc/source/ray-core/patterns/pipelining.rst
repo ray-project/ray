@@ -7,7 +7,7 @@ you can use the `pipelining <https://en.wikipedia.org/wiki/Pipeline_(computing)>
 .. note::
 
   Pipelining is an important technique to improve the performance and is heavily used by Ray libraries.
-  See :ref:`Ray Dataset pipelines <pipelining_datasets>` as an example.
+  See :ref:`DatasetPipelines <pipelining_datasets>` as an example.
 
 .. figure:: ../images/pipelining.svg
 
@@ -23,5 +23,5 @@ Code example
 .. literalinclude:: ../doc_code/pattern_pipelining.py
 
 In the example above, a worker actor pulls work off of a queue and then does some computation on it.
-Without pipelining, we call :ref:`ray.get() <ray-get-ref>` immediately after requesting a work item, so we block while that RPC is in flight, causing idle CPU time.
+Without pipelining, we call :func:`ray.get() <ray.get>` immediately after requesting a work item, so we block while that RPC is in flight, causing idle CPU time.
 With pipelining, we instead preemptively request the next work item before processing the current one, so we can use the CPU while the RPC is in flight which increases the CPU utilization.

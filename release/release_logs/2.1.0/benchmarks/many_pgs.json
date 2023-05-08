@@ -1,0 +1,15 @@
+{
+    "_peak_memory": 1.69,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n142\t0.6GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n1511\t0.34GiB\tpython distributed/test_many_pgs.py\n178\t0.15GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dash\n271\t0.1GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n56\t0.1GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n216\t0.09GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/raylet/raylet --raylet_socket_name=\n1551\t0.06GiB\tray::MemoryMonitorActor.run()\n163\t0.05GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=172.31.121.242:9031 --host=0.0.0.\n231\t0.05GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/log_m\n53\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=aph0_Ckg",
+    "num_pgs": 1000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "pgs_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 16.465956209666828
+        }
+    ],
+    "pgs_per_second": 16.465956209666828,
+    "success": "1",
+    "time": 60.73136520385742
+}

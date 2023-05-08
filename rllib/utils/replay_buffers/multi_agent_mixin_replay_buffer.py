@@ -8,9 +8,8 @@ import numpy as np
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
-    MultiAgentBatch,
     SampleBatch,
-    concat_samples,
+    concat_samples_into_ma_batch,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
@@ -216,9 +215,9 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 for policy_id, sample_batch in pids_and_batches.items():
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
-                        if (
-                            eps.get(SampleBatch.T)[0] == 0
-                            and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                        if eps.get(SampleBatch.T)[0] == 0 and (
+                            eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                            or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                         ):
                             self.replay_buffers[policy_id].add(eps, **kwargs)
                             self.last_added_batches[policy_id].append(eps)
@@ -291,7 +290,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             # No replay desired
             if self.replay_ratio == 0.0:
-                return concat_samples(output_batches)
+                return concat_samples_into_ma_batch(output_batches)
             # Only replay desired
             elif self.replay_ratio == 1.0:
                 return _buffer.sample(num_items, **kwargs)
@@ -315,7 +314,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             # Depending on the implementation of underlying buffers, samples
             # might be SampleBatches
             output_batches = [batch.as_multi_agent() for batch in output_batches]
-            return MultiAgentBatch.concat_samples(output_batches)
+            return concat_samples_into_ma_batch(output_batches)
 
         def check_buffer_is_ready(_policy_id):
             if (
@@ -344,7 +343,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                     if check_buffer_is_ready(policy_id):
                         samples.append(mix_batches(policy_id).as_multi_agent())
 
-            return MultiAgentBatch.concat_samples(samples)
+            return concat_samples_into_ma_batch(samples)
 
     @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)

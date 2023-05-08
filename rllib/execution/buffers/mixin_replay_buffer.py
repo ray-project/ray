@@ -5,7 +5,7 @@ from typing import Optional
 
 from ray.util.timer import _Timer
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
@@ -155,7 +155,7 @@ class MixInMultiAgentReplayBuffer:
 
             # No replay desired -> Return here.
             if self.replay_ratio == 0.0:
-                return SampleBatch.concat_samples(output_batches)
+                return concat_samples(output_batches)
             # Only replay desired -> Return a (replayed) sample from the
             # buffer.
             elif self.replay_ratio == 1.0:
@@ -168,7 +168,7 @@ class MixInMultiAgentReplayBuffer:
             while random.random() < num_new * replay_proportion:
                 replay_proportion -= 1
                 output_batches.append(buffer.replay())
-            return SampleBatch.concat_samples(output_batches)
+            return concat_samples(output_batches)
 
     def get_host(self) -> str:
         """Returns the computer's network name.

@@ -1,4 +1,4 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
 region: us-central1
 
 max_workers: 3

@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, IO, AnyStr
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -23,8 +23,7 @@ import psutil
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -39,22 +38,24 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 RUN_RAYLET_PROFILER = False
 
 # Location of the redis server.
-RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
+RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
-AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
+AUTOSCALER_PRIVATE_DIR = os.path.join("autoscaler", "_private")
 
 # Location of the raylet executables.
-RAYLET_EXECUTABLE = os.path.join(RAY_PATH, "core/src/ray/raylet/raylet" + EXE_SUFFIX)
+RAYLET_EXECUTABLE = os.path.join(
+    RAY_PATH, "core", "src", "ray", "raylet", "raylet" + EXE_SUFFIX
+)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX
+    RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
-DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
@@ -96,6 +97,30 @@ ProcessInfo = collections.namedtuple(
         "use_tmux",
     ],
 )
+
+
+def _site_flags() -> List[str]:
+    """Detect whether flags related to site packages are enabled for the current
+    interpreter. To run Ray in hermetic build environments, it helps to pass these flags
+    down to Python workers.
+    """
+    flags = []
+    # sys.flags hidden behind helper methods for unit testing.
+    if _no_site():
+        flags.append("-S")
+    if _no_user_site():
+        flags.append("-s")
+    return flags
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_site():
+    return sys.flags.no_site
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_user_site():
+    return sys.flags.no_user_site
 
 
 def _build_python_executable_command_memory_profileable(
@@ -354,7 +379,7 @@ def find_bootstrap_address(temp_dir: Optional[str]):
 def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     """Attempts to find the address of Ray cluster to use, in this order:
 
-    1. Use RAY_ADDRESS if defined.
+    1. Use RAY_ADDRESS if defined and nonempty.
     2. If no address is provided or the provided address is "auto", use the
     address in /tmp/ray/ray_current_cluster if available. This will error if
     the specified address is None and there is no address found. For "auto",
@@ -365,7 +390,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
     env_addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if env_addr is not None:
+    if env_addr is not None and env_addr != "":
         addr = env_addr
 
     if addr is not None and addr != "auto":
@@ -431,7 +456,11 @@ def wait_for_node(
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for node to startup.")
+    raise TimeoutError(
+        f"Timed out after {timeout} seconds while waiting for node to startup. "
+        f"Did not find socket name {node_plasma_store_socket_name} in the list "
+        "of object store socket names."
+    )
 
 
 def get_node_to_connect_for_driver(gcs_address, node_ip_address):
@@ -577,8 +606,8 @@ def resolve_ip_for_localhost(address: str):
     if not address:
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
-    # Make sure localhost isn't resolved to the loopback ip
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
+        # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
     else:
@@ -621,10 +650,10 @@ def node_ip_address_from_perspective(address: str):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
-    if sys.platform == "darwin" or sys.platform == "win32":
-        # Due to the mac osx/windows firewall,
-        # we use loopback ip as the ip address
-        # to prevent security popups.
+    if not ray_constants.ENABLE_RAY_CLUSTER:
+        # Use loopback IP as the local IP address to prevent bothersome
+        # firewall popups on OSX and Windows.
+        # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
 
@@ -946,6 +975,8 @@ def start_log_monitor(
     max_bytes: int = 0,
     backup_count: int = 0,
     redirect_logging: bool = True,
+    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
 ):
     """Start a log monitor process.
 
@@ -960,6 +991,10 @@ def start_log_monitor(
             RotatingFileHandler's backupCount.
         redirect_logging: Whether we should redirect logging to
             the provided log directory.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -975,11 +1010,8 @@ def start_log_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if redirect_logging:
-        # Avoid hanging due to fd inheritance.
-        stdout_file = subprocess.DEVNULL
-        stderr_file = subprocess.DEVNULL
-    else:
+
+    if not redirect_logging:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -1006,14 +1038,18 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    node_ip_address: str,
     temp_dir: str,
     logdir: str,
     session_dir: str,
     port: Optional[int] = None,
+    dashboard_grpc_port: Optional[int] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
     redirect_logging: bool = True,
+    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
 ):
     """Start a API server process.
 
@@ -1026,6 +1062,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
         session_dir: The session directory under temp_dir.
@@ -1033,15 +1070,23 @@ def start_api_server(
         logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
+        dashboard_grpc_port: The port which the dashboard listens for
+            gRPC on. Defaults to a random, available port.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
         redirect_logging: Whether we should redirect logging to
             the provided log directory.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
 
     Returns:
-        ProcessInfo for the process that was started.
+        A tuple of :
+            - Dashboard URL if dashboard enabled and started.
+            - ProcessInfo for the process that was started.
     """
     try:
         # Make sure port is available.
@@ -1072,7 +1117,6 @@ def start_api_server(
                     )
                 else:
                     raise e
-
         # Make sure the process can start.
         minimal = not ray._private.utils.check_dashboard_dependencies_installed()
         # Start the dashboard process.
@@ -1095,13 +1139,10 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--node-ip-address={node_ip_address}",
         ]
 
-        if redirect_logging:
-            # Avoid hanging due to fd inheritance.
-            stdout_file = subprocess.DEVNULL
-            stderr_file = subprocess.DEVNULL
-        else:
+        if not redirect_logging:
             # If not redirecting logging to files, unset log filename.
             # This will cause log records to go to stderr.
             command.append("--logging-filename=")
@@ -1110,7 +1151,8 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-            # Inherit stdout/stderr streams.
+            # Inherit stdout/stderr streams so that
+            # logs are redirected to stderr.
             stdout_file = None
             stderr_file = None
         if minimal:
@@ -1122,6 +1164,10 @@ def start_api_server(
             # TODO(sang): Modules like job or state APIs should be
             # loaded although dashboard is disabled. Fix it.
             command.append("--modules-to-load=UsageStatsHead")
+            command.append("--disable-frontend")
+
+        if dashboard_grpc_port is not None:
+            command.append(f"--grpc-port={dashboard_grpc_port}")
 
         process_info = start_ray_process(
             command,
@@ -1150,39 +1196,75 @@ def start_api_server(
             # This is often on the critical path of ray.init() and ray start,
             # so we need to poll often.
             time.sleep(0.1)
+
+        # Dashboard couldn't be started.
         if dashboard_url is None:
             returncode_str = (
                 f", return code {dashboard_returncode}"
                 if dashboard_returncode is not None
                 else ""
             )
-            # TODO(sang): Change it to the API server.
-            err_msg = "Failed to start the dashboard" + returncode_str
-            if logdir:
-                dashboard_log = os.path.join(logdir, "dashboard.log")
+            logger.error(f"Failed to start the dashboard {returncode_str}")
+
+            def read_log(filename, lines_to_read):
+                """Read a log file and return the last 20 lines."""
+                dashboard_log = os.path.join(logdir, filename)
                 # Read last n lines of dashboard log. The log file may be large.
-                n = 10
+                lines_to_read = 20
                 lines = []
+                with open(dashboard_log, "rb") as f:
+                    with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                        end = mm.size()
+                        for _ in range(lines_to_read):
+                            sep = mm.rfind(b"\n", 0, end - 1)
+                            if sep == -1:
+                                break
+                            lines.append(mm[sep + 1 : end].decode("utf-8"))
+                            end = sep
+                lines.append(
+                    f"The last {lines_to_read} lines of {dashboard_log} "
+                    "(it contains the error message from the dashboard): "
+                )
+                return lines
+
+            if logdir:
+                lines_to_read = 20
+                logger.error(
+                    "Error should be written to 'dashboard.log' or "
+                    "'dashboard.err'. We are printing the last "
+                    f"{lines_to_read} lines for you. See "
+                    "'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' "  # noqa
+                    "to find where the log file is."
+                )
                 try:
-                    with open(dashboard_log, "rb") as f:
-                        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                            end = mm.size()
-                            for _ in range(n):
-                                sep = mm.rfind(b"\n", 0, end - 1)
-                                if sep == -1:
-                                    break
-                                lines.append(mm[sep + 1 : end].decode("utf-8"))
-                                end = sep
-                    lines.append(f" The last {n} lines of {dashboard_log}:")
+                    lines = read_log("dashboard.log", lines_to_read=lines_to_read)
                 except Exception as e:
-                    raise Exception(err_msg + f"\nFailed to read dashboard log: {e}")
-
-                last_log_str = "\n" + "\n".join(reversed(lines[-n:]))
-                raise Exception(err_msg + last_log_str)
+                    logger.error(
+                        f"Couldn't read dashboard.log file. Error: {e}. "
+                        "It means the dashboard is broken even before it "
+                        "initializes the logger (mostly dependency issues). "
+                        "Reading the dashboard.err file which contains stdout/stderr."
+                    )
+                    # If we cannot read the .log file, we fallback to .err file.
+                    # This is the case where dashboard couldn't be started at all
+                    # and couldn't even initialize the logger to write logs to .log
+                    # file.
+                    try:
+                        lines = read_log("dashboard.err", lines_to_read=lines_to_read)
+                    except Exception as e:
+                        raise Exception(
+                            f"Failed to read dashboard.err file: {e}. "
+                            "It is unexpected. Please report an issue to "
+                            "Ray github. "
+                            "https://github.com/ray-project/ray/issues"
+                        )
+                last_log_str = "\n" + "\n".join(reversed(lines[-lines_to_read:]))
+                raise Exception(last_log_str)
             else:
-                raise Exception(err_msg)
+                # Is it reachable?
+                raise Exception("Failed to start a dashboard.")
 
-        if minimal:
+        if minimal or not include_dashboard:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
@@ -1191,9 +1273,7 @@ def start_api_server(
         if raise_on_failure:
             raise e from e
         else:
-            # TODO(sang): Change it to the API server.
-            logger.error(f"Failed to start the dashboard: {e}")
-            logger.exception(e)
+            logger.error(e)
             return None, None
 
 
@@ -1288,6 +1368,7 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     session_name: str,
+    is_head_node: bool,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1304,12 +1385,12 @@ def start_raylet(
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
-    start_initial_python_workers_for_first_job: bool = False,
     max_bytes: int = 0,
     backup_count: int = 0,
     ray_debugger_external: bool = False,
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
+    webui: Optional[str] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1342,6 +1423,8 @@ def start_raylet(
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
+        dashboard_agent_listen_port: The port at which the dashboard agent
+            listens to for http.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1428,23 +1511,34 @@ def start_raylet(
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = [
-        sys.executable,
-        setup_worker_path,
-        worker_path,
-        f"--node-ip-address={node_ip_address}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--redis-address={redis_address}",
-        f"--storage={storage}",
-        f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
-        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
-    ]
+    start_worker_command = (
+        [
+            sys.executable,
+            setup_worker_path,
+        ]
+        + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
+        + [
+            worker_path,
+            f"--node-ip-address={node_ip_address}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--metrics-agent-port={metrics_agent_port}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
+            f"--session-name={session_name}",
+            f"--temp-dir={temp_dir}",
+            f"--webui={webui}",
+        ]
+    )
+
+    if storage is not None:
+        start_worker_command.append(f"--storage={storage}")
+
+    start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
@@ -1525,14 +1619,14 @@ def start_raylet(
         f"--session-name={session_name}",
     ]
 
+    if is_head_node:
+        command.append("--head")
+
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
-    if start_initial_python_workers_for_first_job:
-        command.append(
-            "--num_initial_python_workers_for_first_job={}".format(
-                resource_spec.num_cpus
-            )
-        )
+    command.append(
+        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+    )
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")

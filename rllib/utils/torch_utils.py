@@ -1,12 +1,12 @@
 import os
 import logging
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from gym.spaces import Discrete, MultiDiscrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -32,11 +32,18 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
+# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
+#  Replaced with `clip_gradients()`.
 @PublicAPI
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
+
+    Note: This function does NOT perform an analogous operation as
+    tf.clip_by_global_norm. It merely clips by norm (per gradient tensor) and
+    then computes the global norm across all given tensors (but without clipping
+    by that global norm).
 
     Args:
         policy: The TorchPolicy, which calculated `loss`.
@@ -53,6 +60,7 @@ def apply_grad_clipping(
     else:
         clip_value = np.inf
 
+    num_none_grads = 0
     for param_group in optimizer.param_groups:
         # Make sure we only pass params with grad != None into torch
         # clip_grad_norm_. Would fail otherwise.
@@ -66,17 +74,80 @@ def apply_grad_clipping(
                 global_norm = global_norm.cpu().numpy()
 
             grad_gnorm += min(global_norm, clip_value)
+        else:
+            num_none_grads += 1
 
-    if grad_gnorm > 0:
-        return {"grad_gnorm": grad_gnorm}
-    else:
+    # Note (Kourosh): grads could indeed be zero. This method should still return
+    # grad_gnorm in that case.
+    if num_none_grads == len(optimizer.param_groups):
         # No grads available
         return {}
+    return {"grad_gnorm": grad_gnorm}
 
 
 @Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
     pass
+
+
+@PublicAPI
+def clip_gradients(
+    gradients_dict: Dict[str, "torch.Tensor"],
+    *,
+    grad_clip: Optional[float] = None,
+    grad_clip_by: str = "value",
+) -> None:
+    """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
+
+    Changes the provided gradient dict in place.
+
+    Args:
+        gradients_dict: The gradients dict, mapping str to gradient tensors.
+        grad_clip: The value to clip with. The way gradients are clipped is defined
+            by the `grad_clip_by` arg (see below).
+        grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+    """
+    # No clipping, return.
+    if grad_clip is None:
+        return
+
+    # Clip by value (each gradient individually).
+    if grad_clip_by == "value":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = (
+                None if v is None else torch.clip(v, -grad_clip, grad_clip)
+            )
+
+    # Clip by L2-norm (per gradient tensor).
+    elif grad_clip_by == "norm":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = (
+                None if v is None else nn.utils.clip_grad_norm_(v, grad_clip)
+            )
+
+    # Clip by global L2-norm (across all gradient tensors).
+    else:
+        assert (
+            grad_clip_by == "global_norm"
+        ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
+
+        # Compute the global L2-norm of all the gradient tensors.
+        total_l2_norm = sum(
+            # `.norm()` is the square root of the sum of all squares.
+            # We need to "undo" the square root b/c we want to compute the global
+            # norm afterwards -> `** 2`.
+            t.norm(2) ** 2
+            for t in gradients_dict.values()
+            if t is not None
+        )
+        # Now we do the square root.
+        total_l2_norm = torch.sqrt(total_l2_norm)
+
+        # Clip all the gradients.
+        if total_l2_norm > grad_clip:
+            for tensor in gradients_dict.values():
+                if tensor is not None:
+                    tensor.mul_(grad_clip / total_l2_norm)
 
 
 @PublicAPI
@@ -123,13 +194,14 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
-            values converted to torch Tensor types.
+            values converted to torch Tensor types. This does not convert possibly
+            nested elements that are None because torch has no representation for that.
     """
 
     def mapping(item):
         if item is None:
-            # returns None with dtype=np.obj
-            return np.asarray(item)
+            # Torch has no representation for `None`, so we return None
+            return item
 
         # Special handling of "Repeated" values.
         if isinstance(item, RepeatedValues):
@@ -137,14 +209,14 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
 
-        tensor = None
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             tensor = item
         # Numpy arrays.
         elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
-            if item.dtype == object:
+            # str type (e.g. agent_id in train batch): leave as-is.
+            if item.dtype == object or item.dtype.type is np.str_:
                 return item
             # Non-writable numpy-arrays will cause PyTorch warning.
             elif item.flags.writeable is False:
@@ -163,6 +235,37 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
             tensor = tensor.float()
 
         return tensor if device is None else tensor.to(device)
+
+    return tree.map_structure(mapping, x)
+
+
+@PublicAPI
+def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
+    """Creates a copy of `x` and makes deep copies torch.Tensors in x.
+
+    Also moves the copied tensors to the specified device (if not None).
+
+    Note if an object in x is not a torch.Tensor, it will be shallow-copied.
+
+    Args:
+        x : Any (possibly nested) struct possibly containing torch.Tensors.
+        device : The device to move the tensors to.
+
+    Returns:
+        Any: A new struct with the same structure as `x`, but with all
+            torch.Tensors deep-copied and moved to the specified device.
+
+    """
+
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return (
+                torch.clone(item.detach())
+                if device is None
+                else item.detach().to(device)
+            )
+        else:
+            return item
 
     return tree.map_structure(mapping, x)
 
@@ -226,7 +329,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1))))
@@ -431,7 +534,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
 
     Examples:
         >>> import torch
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.utils.torch_utils import one_hot
         >>> x = torch.IntTensor([0, 3])  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.
@@ -573,13 +676,3 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
-
-
-@PublicAPI
-class Swish(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self._beta = nn.Parameter(torch.tensor(1.0))
-
-    def forward(self, input_tensor):
-        return input_tensor * torch.sigmoid(self._beta * input_tensor)

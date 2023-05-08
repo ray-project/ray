@@ -1,8 +1,8 @@
 .. _tune-60-seconds:
 
-============
-Key Concepts
-============
+========================
+Key Concepts of Ray Tune
+========================
 
 .. TODO: should we introduce checkpoints as well?
 .. TODO: should we at least mention "Stopper" classes here?
@@ -22,8 +22,10 @@ The following figure shows an overview of these components, which we cover in de
 
 .. image:: images/tune_flow.png
 
-Trainables
-----------
+.. _tune_60_seconds_trainables:
+
+Ray Tune Trainables
+-------------------
 
 In short, a :ref:`Trainable <trainable-docs>` is an object that you can pass into a Tune run.
 Ray Tune has two ways of defining a `trainable`, namely the :ref:`Function API <tune-function-api>`
@@ -36,40 +38,44 @@ hyperparameters we want to tune to `minimize` the objective.
 Since the objective also has a variable ``x``, we need to test for different values of ``x``.
 Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
 
-.. tabbed:: Function API
+.. tab-set::
 
-    With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
-    takes in a dictionary of hyperparameters.
-    This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
+    .. tab-item:: Function API
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __function_api_start__
-        :end-before: __function_api_end__
+        With the :ref:`the function-based API <tune-function-api>` you create a function (here called ``trainable``) that
+        takes in a dictionary of hyperparameters.
+        This function computes a ``score`` in a "training loop" and `reports` this score back to Tune:
 
-    Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
-    in many machine learning tasks.
-    If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
-    end of the ``trainable`` function with ``return {"score": score}``.
-    You can also use ``yield {"score": score}`` instead of ``session.report()``.
+        .. literalinclude:: doc_code/key_concepts.py
+            :language: python
+            :start-after: __function_api_start__
+            :end-before: __function_api_end__
 
-.. tabbed:: Class API
+        Note that we use ``session.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
+        in many machine learning tasks.
+        If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
+        end of the ``trainable`` function with ``return {"score": score}``.
+        You can also use ``yield {"score": score}`` instead of ``session.report()``.
 
-    Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+    .. tab-item:: Class API
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __class_api_start__
-        :end-before: __class_api_end__
+        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-    .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
+        .. literalinclude:: doc_code/key_concepts.py
+            :language: python
+            :start-after: __class_api_start__
+            :end-before: __class_api_end__
+
+        .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
-Search Spaces
--------------
+.. _tune-key-concepts-search-spaces:
+
+Tune Search Spaces
+------------------
 
 To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
@@ -77,27 +83,29 @@ how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
 
 Tune offers various functions to define search spaces and sampling methods.
-:ref:`You can find the documentation of these search space definitions here <tune-sample-docs>`.
+:ref:`You can find the documentation of these search space definitions here <tune-search-space>`.
 
 Here's an example covering all search space functions. Again,
-:ref:`here is the full explanation of all these functions <tune-sample-docs>`.
+:ref:`here is the full explanation of all these functions <tune-search-space>`.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __config_start__
     :end-before: __config_end__
 
-Trials
-------
+.. _tune_60_seconds_trials:
+
+Tune Trials
+-----------
 
 You use :ref:`Tuner.fit <tune-run-ref>` to execute and manage hyperparameter tuning and generate your `trials`.
 At a minimum, your ``Tuner`` call takes in a trainable as first argument, and a ``param_space`` dictionary
-to define your search space.
+to define the search space.
 
 The ``Tuner.fit()`` function also provides many features such as :ref:`logging <tune-logging>`,
-:ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping-ref>`.
-Continuing with the example defined earlier (minimizing ``a (x ** 2) + b``), a simple Tune run with a simplistic
-search space for ``a`` and ``b`` would look like this:
+:ref:`checkpointing <tune-trial-checkpoint>`, and :ref:`early stopping <tune-stopping-ref>`.
+In the example, minimizing ``a (x ** 2) + b``, a simple Tune run with a simplistic search space for ``a`` and ``b``
+looks like this:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -155,8 +163,8 @@ check out the :ref:`Tuner API reference <tune-run-ref>`.
 
 .. _search-alg-ref:
 
-Search Algorithms
------------------
+Tune Search Algorithms
+----------------------
 
 To optimize the hyperparameters of your training process, you use
 a :ref:`Search Algorithm <tune-search-alg>` which suggests hyperparameter configurations.
@@ -264,8 +272,8 @@ This way of stopping trials with explicit rules is useful, but in many cases we 
 
 .. _schedulers-ref:
 
-Schedulers
-----------
+Tune Schedulers
+---------------
 
 To make your training process more efficient, you can use a :ref:`Trial Scheduler <tune-schedulers>`.
 For instance, in our ``trainable`` example minimizing a function in a training loop, we used ``session.report()``.
@@ -300,10 +308,10 @@ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
 Certain schedulers cannot be used with search algorithms,
-and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
+and certain schedulers require that you implement :ref:`checkpointing <tune-trial-checkpoint>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
-This is currently implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
+This is implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
 which can wrap around any other scheduler.
 
 .. list-table:: Scheduler Compatibility Matrix
@@ -342,8 +350,8 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation <sche
 
 .. _tune-concepts-analysis:
 
-Analyses
---------
+Tune Run Analyses
+-----------------
 
 ``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.
@@ -362,6 +370,8 @@ allowing you to do ad-hoc data analysis over your results.
     :language: python
     :start-after: __results_start__
     :end-before: __results_end__
+
+See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
 
 What's Next?
 -------------

@@ -35,6 +35,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a configuration class from which a DQN Algorithm can be built.
+    r"""Defines a configuration class from which a DQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -288,10 +289,6 @@ class DQNConfig(SimpleQConfig):
             self.training_intensity = training_intensity
         if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
-            assert self.td_error_loss_fn in [
-                "huber",
-                "mse",
-            ], "td_error_loss_fn must be 'huber' or 'mse'."
         if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
@@ -303,6 +300,9 @@ class DQNConfig(SimpleQConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        if self.td_error_loss_fn not in ["huber", "mse"]:
+            raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
 
         # Check rollout_fragment_length to be compatible with n_step.
         if (
@@ -403,9 +403,10 @@ class DQN(SimpleQ):
 
         for _ in range(store_weight):
             # Sample (MultiAgentBatch) from workers.
-            new_sample_batch = synchronous_parallel_sample(
-                worker_set=self.workers, concat=True
-            )
+            with self._timers[SAMPLE_TIMER]:
+                new_sample_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, concat=True
+                )
 
             # Update counters
             self._counters[NUM_AGENT_STEPS_SAMPLED] += new_sample_batch.agent_steps()
@@ -474,23 +475,6 @@ class DQN(SimpleQ):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DQNConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
 
 
 @Deprecated(new="Sub-class directly from `DQN` and override its methods", error=True)

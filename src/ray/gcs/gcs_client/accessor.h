@@ -305,6 +305,14 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
 
+  /// Send a check alive request to GCS for the liveness of some node.
+  ///
+  /// \param callback The callback function once the request is finished.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status
+  virtual Status AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
+                                     int64_t timeout_ms);
+
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// asynchronously.
   ///
@@ -360,16 +368,6 @@ class NodeInfoAccessor {
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
   virtual bool IsRemoved(const NodeID &node_id) const;
-
-  /// Report heartbeat of a node to GCS asynchronously.
-  ///
-  /// \param data_ptr The heartbeat that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual  // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
-      Status
-      AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                           const StatusCallback &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -526,29 +524,28 @@ class ErrorInfoAccessor {
   GcsClient *client_impl_;
 };
 
-/// \class StatsInfoAccessor
-/// `StatsInfoAccessor` is a sub-interface of `GcsClient`.
+/// \class TaskInfoAccessor
+/// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing
-/// stats in the GCS.
-class StatsInfoAccessor {
+/// task info in the GCS.
+class TaskInfoAccessor {
  public:
-  StatsInfoAccessor() = default;
-  explicit StatsInfoAccessor(GcsClient *client_impl);
-  virtual ~StatsInfoAccessor() = default;
-  /// Add profile data to GCS asynchronously.
+  TaskInfoAccessor() = default;
+  explicit TaskInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
+  virtual ~TaskInfoAccessor() = default;
+  /// Add task event data to GCS asynchronously.
   ///
-  /// \param data_ptr The profile data that will be added to GCS.
+  /// \param data_ptr The task states event data that will be added to GCS.
   /// \param callback Callback that will be called when add is complete.
   /// \return Status
-  virtual Status AsyncAddProfileData(
-      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-      const StatusCallback &callback);
+  virtual Status AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
+                                       StatusCallback callback);
 
-  /// Get all profile info from GCS asynchronously.
+  /// Get all info/events of all tasks stored in GCS asynchronously.
   ///
-  /// \param callback Callback that will be called after lookup finished.
+  /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback);
+  virtual Status AsyncGetTaskEvents(const MultiItemCallback<rpc::TaskEvents> &callback);
 
  private:
   GcsClient *client_impl_;

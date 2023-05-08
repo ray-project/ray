@@ -3,7 +3,7 @@ import concurrent
 import copy
 from datetime import datetime
 import functools
-import gym
+import gymnasium as gym
 import importlib
 import json
 import logging
@@ -11,8 +11,10 @@ import numpy as np
 import os
 from packaging import version
 import pkg_resources
+import re
 import tempfile
 import time
+import tree  # pip install dm_tree
 from typing import (
     Callable,
     Container,
@@ -25,17 +27,17 @@ from typing import (
     Type,
     Union,
 )
-from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
-import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -59,6 +61,8 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
+from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
@@ -70,7 +74,12 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     override,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
+from ray.rllib.utils.checkpoints import (
+    CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_LEARNER,
+    get_checkpoint_info,
+    try_import_msgpack,
+)
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -89,12 +98,15 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TRAINING_ITERATION_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
+from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -125,22 +137,13 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
-def with_common_config(extra_config: PartialAlgorithmConfigDict) -> AlgorithmConfigDict:
-    """Returns the given config dict merged with common agent confs.
-
-    Args:
-        extra_config: A user defined partial config
-            which will get merged with a default AlgorithmConfig() object and returned
-            as plain python dict.
-
-    Returns:
-        AlgorithmConfigDict: The merged config dict resulting from AlgorithmConfig()
-            plus `extra_config`.
-    """
-    return Algorithm.merge_trainer_configs(
-        AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
-    )
+@Deprecated(
+    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    error=True,
+)
+def with_common_config(*args, **kwargs):
+    pass
 
 
 @PublicAPI
@@ -207,12 +210,14 @@ class Algorithm(Trainable):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
-    _progress_metrics = [
-        "episode_reward_mean",
-        "evaluation/episode_reward_mean",
+    _progress_metrics = (
         "num_env_steps_sampled",
         "num_env_steps_trained",
-    ]
+        "episodes_total",
+        "sampler_results/episode_len_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
+    )
 
     @staticmethod
     def from_checkpoint(
@@ -260,13 +265,35 @@ class Algorithm(Trainable):
                 "2) Call the `restore()` method of this algo object passing it"
                 " your checkpoint dir or AIR Checkpoint object."
             )
-
-        if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+        elif checkpoint_info["checkpoint_version"] < version.Version("1.0"):
             raise ValueError(
                 "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
                 "()` must be 1.0 or later! You are using a checkpoint with "
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
+
+        # This is a msgpack checkpoint.
+        if checkpoint_info["format"] == "msgpack":
+            # User did not provide unserializable function with this call
+            # (`policy_mapping_fn`). Note that if `policies_to_train` is None, it
+            # defaults to training all policies (so it's ok to not provide this here).
+            if policy_mapping_fn is None:
+                # Only DEFAULT_POLICY_ID present in this algorithm, provide default
+                # implementations of these two functions.
+                if checkpoint_info["policy_ids"] == {DEFAULT_POLICY_ID}:
+                    policy_mapping_fn = AlgorithmConfig.DEFAULT_POLICY_MAPPING_FN
+                # Provide meaningful error message.
+                else:
+                    raise ValueError(
+                        "You are trying to restore a multi-agent algorithm from a "
+                        "`msgpack` formatted checkpoint, which do NOT store the "
+                        "`policy_mapping_fn` or `policies_to_train` "
+                        "functions! Make sure that when using the "
+                        "`Algorithm.from_checkpoint()` utility, you also pass the "
+                        "args: `policy_mapping_fn` and `policies_to_train` with your "
+                        "call. You might leave `policies_to_train=None` in case "
+                        "you would like to train all policies anyways."
+                    )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
@@ -386,7 +413,8 @@ class Algorithm(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
+            env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
+            logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -431,11 +459,17 @@ class Algorithm(Trainable):
         # (although their values may be nan), so that Tune does not complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
+            # TODO: Don't dump sampler results into top-level.
             "evaluation": {
                 "episode_reward_max": np.nan,
                 "episode_reward_min": np.nan,
                 "episode_reward_mean": np.nan,
-            }
+                "sampler_results": {
+                    "episode_reward_max": np.nan,
+                    "episode_reward_min": np.nan,
+                    "episode_reward_mean": np.nan,
+                },
+            },
         }
 
         super().__init__(
@@ -495,16 +529,17 @@ class Algorithm(Trainable):
 
         self._record_usage(self.config)
 
-        self.callbacks = self.config["callbacks"]()
-        log_level = self.config.get("log_level")
-        if log_level in ["WARN", "ERROR"]:
+        # Create the callbacks object.
+        self.callbacks = self.config.callbacks_class()
+
+        if self.config.log_level in ["WARN", "ERROR"]:
             logger.info(
-                "Current log_level is {}. For more information, "
+                f"Current log_level is {self.config.log_level}. For more information, "
                 "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
-                "-vv flags.".format(log_level)
+                "-vv flags."
             )
-        if self.config.get("log_level"):
-            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
+        if self.config.log_level:
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -528,13 +563,13 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new="config.evaluation(evaluation_config={"
-                f"'off_policy_estimation_methods'={ope_dict}"
-                "})",
+                new="config.evaluation(evaluation_config=config.overrides("
+                f"off_policy_estimation_methods={ope_dict}"
+                "))",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
-            self.config["off_policy_estimation_methods"] = ope_dict
+            self.config.off_policy_estimation_methods = ope_dict
 
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
@@ -568,14 +603,14 @@ class Algorithm(Trainable):
                 validate_env=self.validate_env,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
-                num_workers=self.config["num_workers"],
+                num_workers=self.config.num_rollout_workers,
                 local_worker=True,
                 logdir=self.logdir,
             )
 
             # TODO (avnishn): Remove the execution plan API by q1 2023
             # Function defining one single training iteration's behavior.
-            if self.config["_disable_execution_plan_api"]:
+            if self.config._disable_execution_plan_api:
                 # Ensure remote workers are initially in sync with the local worker.
                 self.workers.sync_weights()
             # LocalIterator-creating "execution plan".
@@ -616,13 +651,11 @@ class Algorithm(Trainable):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                num_workers=self.config["evaluation_num_workers"],
-                # Don't even create a local worker if num_workers > 0.
-                local_worker=False,
+                num_workers=self.config.evaluation_num_workers,
                 logdir=self.logdir,
             )
 
-            if self.config["enable_async_evaluation"]:
+            if self.config.enable_async_evaluation:
                 self._evaluation_weights_seq_number = 0
 
         self.evaluation_dataset = None
@@ -641,7 +674,9 @@ class Algorithm(Trainable):
             parallelism = self.evaluation_config.evaluation_num_workers or 1
             batch_size = max(ds.count() // parallelism, 1)
             self.evaluation_dataset = ds.map_batches(
-                remove_time_dim, batch_size=batch_size
+                remove_time_dim,
+                batch_size=batch_size,
+                batch_format="pandas",
             )
             logger.info("Evaluation dataset created")
 
@@ -652,7 +687,7 @@ class Algorithm(Trainable):
             "dm": DirectMethod,
             "dr": DoublyRobust,
         }
-        for name, method_config in self.config["off_policy_estimation_methods"].items():
+        for name, method_config in self.config.off_policy_estimation_methods.items():
             method_type = method_config.pop("type")
             if method_type in ope_types:
                 deprecation_warning(
@@ -673,7 +708,7 @@ class Algorithm(Trainable):
                 # offline evaluators.
                 policy = self.get_policy()
                 if issubclass(method_type, OffPolicyEstimator):
-                    method_config["gamma"] = self.config["gamma"]
+                    method_config["gamma"] = self.config.gamma
                 self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
@@ -681,6 +716,25 @@ class Algorithm(Trainable):
                     "either a class path or a sub-class of ray.rllib."
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
+            # TODO (Rohan138): Refactor this and remove deprecated methods
+            # Need to add back method_type in case Algorithm is restored from checkpoint
+            method_config["type"] = method_type
+
+        self.learner_group = None
+        if self.config._enable_learner_api:
+            # TODO (Kourosh): This is an interim solution where policies and modules
+            #  co-exist. In this world we have both policy_map and MARLModule that need
+            #  to be consistent with one another. To make a consistent parity between
+            #  the two we need to loop through the policy modules and create a simple
+            #  MARLModule from the RLModule within each policy.
+            local_worker = self.workers.local_worker()
+            module_spec = local_worker.marl_module_spec
+            learner_group_config = self.config.get_learner_group_config(module_spec)
+            self.learner_group = learner_group_config.build()
+
+            # sync the weights from local rollout worker to trainers
+            weights = local_worker.get_weights()
+            self.learner_group.set_weights(weights)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -737,7 +791,7 @@ class Algorithm(Trainable):
         results: ResultDict = {}
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        if evaluate_this_iter and self.config["evaluation_parallel_to_training"]:
+        if evaluate_this_iter and self.config.evaluation_parallel_to_training:
             (
                 results,
                 train_iter_ctx,
@@ -749,12 +803,12 @@ class Algorithm(Trainable):
             results, train_iter_ctx = self._run_one_training_iteration()
 
         # Sequential: Train (already done above), then evaluate.
-        if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
+        if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
             results.update(self._run_one_evaluation(train_future=None))
 
         # Attach latest available evaluation results to train results,
         # if necessary.
-        if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
+        if not evaluate_this_iter and self.config.always_attach_evaluation_results:
             assert isinstance(
                 self.evaluation_metrics, dict
             ), "Trainer.evaluate() needs to return a dict."
@@ -765,17 +819,15 @@ class Algorithm(Trainable):
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
                 workers=self.workers,
-                timeout_seconds=self.config[
-                    "sync_filters_on_rollout_workers_timeout_s"
-                ],
+                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
             )
             # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
-            if self.config["_disable_execution_plan_api"]:
+            if self.config._disable_execution_plan_api:
                 episodes_this_iter = collect_episodes(
                     self.workers,
                     self._remote_worker_ids_for_metrics(),
-                    timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+                    timeout_seconds=self.config.metrics_episode_collection_timeout_s,
                 )
                 results = self._compile_iteration_results(
                     episodes_this_iter=episodes_this_iter,
@@ -784,8 +836,8 @@ class Algorithm(Trainable):
                 )
 
         # Check `env_task_fn` for possible update of the env's task.
-        if self.config["env_task_fn"] is not None:
-            if not callable(self.config["env_task_fn"]):
+        if self.config.env_task_fn is not None:
+            if not callable(self.config.env_task_fn):
                 raise ValueError(
                     "`env_task_fn` must be None or a callable taking "
                     "[train_results, env, env_ctx] as args!"
@@ -797,7 +849,7 @@ class Algorithm(Trainable):
                 if cur_task != new_task:
                     env.set_task(new_task)
 
-            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
+            fn = functools.partial(fn, task_fn=self.config.env_task_fn)
             self.workers.foreach_env_with_context(fn)
 
         return results
@@ -827,25 +879,25 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker=self.workers.local_worker()
+                from_worker_or_trainer=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
                 workers=self.evaluation_workers,
-                timeout_seconds=self.config[
-                    "sync_filters_on_rollout_workers_timeout_s"
-                ],
+                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
             )
 
         self.callbacks.on_evaluate_start(algorithm=self)
 
-        if self.config["custom_eval_function"]:
+        if self.config.custom_evaluation_function:
             logger.info(
                 "Running custom eval function {}".format(
-                    self.config["custom_eval_function"]
+                    self.config.custom_evaluation_function
                 )
             )
-            metrics = self.config["custom_eval_function"](self, self.evaluation_workers)
+            metrics = self.config.custom_evaluation_function(
+                self, self.evaluation_workers
+            )
             if not metrics or not isinstance(metrics, dict):
                 raise ValueError(
                     "Custom eval function must return "
@@ -870,15 +922,15 @@ class Algorithm(Trainable):
             # How many episodes/timesteps do we need to run?
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
-            unit = self.config["evaluation_duration_unit"]
+            unit = self.config.evaluation_duration_unit
             eval_cfg = self.evaluation_config
-            rollout = eval_cfg["rollout_fragment_length"]
-            num_envs = eval_cfg["num_envs_per_worker"]
-            auto = self.config["evaluation_duration"] == "auto"
+            rollout = eval_cfg.rollout_fragment_length
+            num_envs = eval_cfg.num_envs_per_worker
+            auto = self.config.evaluation_duration == "auto"
             duration = (
-                self.config["evaluation_duration"]
+                self.config.evaluation_duration
                 if not auto
-                else (self.config["evaluation_num_workers"] or 1)
+                else (self.config.evaluation_num_workers or 1)
                 * (1 if unit == "episodes" else rollout)
             )
             agent_steps_this_iter = 0
@@ -891,7 +943,7 @@ class Algorithm(Trainable):
                 def duration_fn(num_units_done):
                     return duration - num_units_done
 
-            logger.info(f"Evaluating current policy for {duration} {unit}.")
+            logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
 
             metrics = None
             all_batches = []
@@ -912,8 +964,8 @@ class Algorithm(Trainable):
                         all_batches.append(batch)
                 metrics = collect_metrics(
                     self.workers,
-                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
-                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
+                    keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
+                    timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
 
             # Evaluation worker set only has local worker.
@@ -958,13 +1010,13 @@ class Algorithm(Trainable):
                         func=lambda w: w.sample(),
                         local_worker=False,
                         remote_worker_ids=selected_eval_worker_ids,
-                        timeout_seconds=self.config["evaluation_sample_timeout_s"],
+                        timeout_seconds=self.config.evaluation_sample_timeout_s,
                     )
                     if len(batches) != len(selected_eval_worker_ids):
                         logger.warning(
                             "Calling `sample()` on your remote evaluation worker(s) "
                             "resulted in a timeout (after the configured "
-                            f"{self.config['evaluation_sample_timeout_s']} seconds)! "
+                            f"{self.config.evaluation_sample_timeout_s} seconds)! "
                             "Try to set `evaluation_sample_timeout_s` in your config"
                             " to a larger value."
                             + (
@@ -986,7 +1038,7 @@ class Algorithm(Trainable):
                         for ma_batch in batches:
                             ma_batch = ma_batch.as_multi_agent()
                             for batch in ma_batch.policy_batches.values():
-                                assert np.sum(batch[SampleBatch.DONES])
+                                assert batch.is_terminated_or_truncated()
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -1003,7 +1055,7 @@ class Algorithm(Trainable):
                     env_steps_this_iter += _env_steps
 
                     logger.info(
-                        f"Ran round {_round} of parallel evaluation "
+                        f"Ran round {_round} of non-parallel evaluation "
                         f"({num_units_done}/{duration if not auto else '?'} "
                         f"{unit} done)"
                     )
@@ -1015,9 +1067,14 @@ class Algorithm(Trainable):
             if metrics is None:
                 metrics = collect_metrics(
                     self.evaluation_workers,
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
-                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
+                    keep_custom_metrics=self.config.keep_per_episode_custom_metrics,
+                    timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
+
+            # TODO: Don't dump sampler results into top-level.
+            if not self.config.custom_evaluation_function:
+                metrics = dict({"sampler_results": metrics}, **metrics)
+
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             # TODO: Remove this key at some point. Here for backward compatibility.
@@ -1030,9 +1087,7 @@ class Algorithm(Trainable):
                 for batch in all_batches:
                     estimate_result = estimator.estimate(
                         batch,
-                        split_batch_by_episode=self.config[
-                            "ope_split_batch_by_episode"
-                        ],
+                        split_batch_by_episode=self.config.ope_split_batch_by_episode,
                     )
                     estimates[name].append(estimate_result)
 
@@ -1082,15 +1137,15 @@ class Algorithm(Trainable):
         # How many episodes/timesteps do we need to run?
         # In "auto" mode (only for parallel eval + training): Run as long
         # as training lasts.
-        unit = self.config["evaluation_duration_unit"]
+        unit = self.config.evaluation_duration_unit
         eval_cfg = self.evaluation_config
-        rollout = eval_cfg["rollout_fragment_length"]
-        num_envs = eval_cfg["num_envs_per_worker"]
-        auto = self.config["evaluation_duration"] == "auto"
+        rollout = eval_cfg.rollout_fragment_length
+        num_envs = eval_cfg.num_envs_per_worker
+        auto = self.config.evaluation_duration == "auto"
         duration = (
-            self.config["evaluation_duration"]
+            self.config.evaluation_duration
             if not auto
-            else (self.config["evaluation_num_workers"] or 1)
+            else (self.config.evaluation_num_workers or 1)
             * (1 if unit == "episodes" else rollout)
         )
 
@@ -1101,17 +1156,17 @@ class Algorithm(Trainable):
         self._sync_filters_if_needed(
             from_worker=self.workers.local_worker(),
             workers=self.evaluation_workers,
-            timeout_seconds=eval_cfg.get("sync_filters_on_rollout_workers_timeout_s"),
+            timeout_seconds=eval_cfg.sync_filters_on_rollout_workers_timeout_s,
         )
 
-        if self.config["custom_eval_function"]:
+        if self.config.custom_evaluation_function:
             raise ValueError(
-                "`custom_eval_function` not supported in combination "
+                "`config.custom_evaluation_function` not supported in combination "
                 "with `enable_async_evaluation=True` config setting!"
             )
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None
-            or self.config["evaluation_num_workers"] == 0
+            or self.config.evaluation_num_workers == 0
         ):
             raise ValueError(
                 "Evaluation w/o eval workers (calling Algorithm.evaluate() w/o "
@@ -1124,7 +1179,7 @@ class Algorithm(Trainable):
         agent_steps_this_iter = 0
         env_steps_this_iter = 0
 
-        logger.info(f"Evaluating current policy for {duration} {unit}.")
+        logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
 
         all_batches = []
 
@@ -1196,7 +1251,7 @@ class Algorithm(Trainable):
                 for ma_batch in batches:
                     ma_batch = ma_batch.as_multi_agent()
                     for batch in ma_batch.policy_batches.values():
-                        assert np.sum(batch[SampleBatch.DONES])
+                        assert batch.is_terminated_or_truncated()
             # n timesteps per returned batch.
             else:
                 num_units_done += (
@@ -1217,10 +1272,13 @@ class Algorithm(Trainable):
                 f"{unit} done)"
             )
 
-        metrics = summarize_episodes(
+        sampler_results = summarize_episodes(
             rollout_metrics,
             keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
         )
+
+        # TODO: Don't dump sampler results into top-level.
+        metrics = dict({"sampler_results": sampler_results}, **sampler_results)
 
         metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
         metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
@@ -1260,14 +1318,14 @@ class Algorithm(Trainable):
             workers: The WorkerSet to restore. This may be Rollout or Evaluation
                 workers.
         """
+        # If `workers` is None, or
+        # 1. `workers` (WorkerSet) does not have a local worker, and
+        # 2. `self.workers` (WorkerSet used for training) does not have a local worker
+        # -> we don't have a local worker to get state from, so we can't recover
+        # remote worker in this case.
         if not workers or (
             not workers.local_worker() and not self.workers.local_worker()
         ):
-            # If workers does not exist, or
-            # 1. this WorkerSet does not have a local worker, and
-            # 2. self.workers (rollout worker set) does not have a local worker,
-            # we don't have a local worker to get state from.
-            # We can't recover remote worker in this case.
             return
 
         # This is really cheap, since probe_unhealthy_workers() is a no-op
@@ -1276,12 +1334,20 @@ class Algorithm(Trainable):
 
         if restored:
             from_worker = workers.local_worker() or self.workers.local_worker()
-            state = ray.put(from_worker.get_state())
+            # Get the state of the correct (reference) worker. E.g. The local worker
+            # of the main WorkerSet.
+            state_ref = ray.put(from_worker.get_state())
+
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
             workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state)),
+                func=lambda w: w.set_state(ray.get(state_ref)),
+                remote_worker_ids=restored,
+                # Don't update the local_worker, b/c it's the one we are synching from.
                 local_worker=False,
+                timeout_seconds=self.config.worker_restore_timeout_s,
+                # Bring back actor after successful state syncing.
+                mark_healthy=True,
             )
 
     @OverrideToImplementCustomLogic
@@ -1302,14 +1368,16 @@ class Algorithm(Trainable):
             The results dict from executing the training iteration.
         """
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self.config.count_steps_by == "agent_steps":
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
-            )
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -1324,7 +1392,11 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config.get("simple_optimizer") is True:
+            if self.config._enable_learner_api:
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
+                train_results = self.learner_group.update(train_batch)
+            elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
@@ -1338,7 +1410,14 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            # TODO (Avnish): Implement this on learner_group.get_weights().
+            # TODO (Kourosh): figure out how we are going to sync MARLModule
+            # weights to MARLModule weights under the policy_map objects?
+            from_worker_or_trainer = None
+            if self.config._enable_learner_api:
+                from_worker_or_trainer = self.learner_group
             self.workers.sync_weights(
+                from_worker_or_trainer=from_worker_or_trainer,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
@@ -1402,17 +1481,17 @@ class Algorithm(Trainable):
             full_fetch: Whether to return extra action fetch results.
                 This is always set to True if `state` is specified.
             explore: Whether to apply exploration to the action.
-                Default: None -> use self.config["explore"].
+                Default: None -> use self.config.explore.
             timestep: The current (sampling) time step.
             episode: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
             unsquash_action: Should actions be unsquashed according to the
                 env's/Policy's action space? If None, use the value of
-                self.config["normalize_actions"].
+                self.config.normalize_actions.
             clip_action: Should actions be clipped according to the
                 env's/Policy's action space? If None, use the value of
-                self.config["clip_actions"].
+                self.config.clip_actions.
 
         Keyword Args:
             kwargs: forward compatibility placeholder
@@ -1443,10 +1522,10 @@ class Algorithm(Trainable):
 
         # `unsquash_action` is None: Use value of config['normalize_actions'].
         if unsquash_action is None:
-            unsquash_action = self.config["normalize_actions"]
+            unsquash_action = self.config.normalize_actions
         # `clip_action` is None: Use value of config['clip_actions'].
         elif clip_action is None:
-            clip_action = self.config["clip_actions"]
+            clip_action = self.config.clip_actions
 
         # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
         # are all None.
@@ -1475,11 +1554,51 @@ class Algorithm(Trainable):
             )
         local_worker = self.workers.local_worker()
 
-        # Check the preprocessor and preprocess, if necessary.
-        pp = local_worker.preprocessors[policy_id]
-        if pp and type(pp).__name__ != "NoPreprocessor":
-            observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        if not self.config.get("enable_connectors"):
+            # Check the preprocessor and preprocess, if necessary.
+            pp = local_worker.preprocessors[policy_id]
+            if pp and type(pp).__name__ != "NoPreprocessor":
+                observation = pp.transform(observation)
+            observation = local_worker.filters[policy_id](observation, update=False)
+        else:
+            # Just preprocess observations, similar to how it used to be done before.
+            pp = policy.agent_connectors[ObsPreprocessorConnector]
+
+            # convert the observation to array if possible
+            if not isinstance(observation, (np.ndarray, dict, tuple)):
+                try:
+                    observation = np.asarray(observation)
+                except Exception:
+                    raise ValueError(
+                        f"Observation type {type(observation)} cannot be converted to "
+                        f"np.ndarray."
+                    )
+            if pp:
+                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+                pp = pp[0]
+
+                if not pp.is_identity():
+                    # Note(Kourosh): This call will leave the policy's connector
+                    # in eval mode. would that be a problem?
+                    pp.in_eval()
+                    if observation is not None:
+                        _input_dict = {SampleBatch.OBS: observation}
+                    elif input_dict is not None:
+                        _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                    else:
+                        raise ValueError(
+                            "Either observation or input_dict must be provided."
+                        )
+
+                    # TODO (Kourosh): Create a new util method for algorithm that
+                    # computes actions based on raw inputs from env and can keep track
+                    # of its own internal state.
+                    acd = AgentConnectorDataType("0", "0", _input_dict)
+                    # make sure the state is reset since we are only applying the
+                    # preprocessor
+                    pp.reset(env_id="0")
+                    ac_o = pp([acd])[0]
+                    observation = ac_o.data[SampleBatch.OBS]
 
         # Input-dict.
         if input_dict is not None:
@@ -1557,17 +1676,17 @@ class Algorithm(Trainable):
             full_fetch: Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
             explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
+                action (default: None -> use self.config.explore).
             timestep: The current (sampling) time step.
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
             unsquash_actions: Should actions be unsquashed according
                 to the env's/Policy's action space? If None, use
-                self.config["normalize_actions"].
+                self.config.normalize_actions.
             clip_actions: Should actions be clipped according to the
                 env's/Policy's action space? If None, use
-                self.config["clip_actions"].
+                self.config.clip_actions.
 
         Keyword Args:
             kwargs: forward compatibility placeholder
@@ -1587,10 +1706,10 @@ class Algorithm(Trainable):
 
         # `unsquash_actions` is None: Use value of config['normalize_actions'].
         if unsquash_actions is None:
-            unsquash_actions = self.config["normalize_actions"]
+            unsquash_actions = self.config.normalize_actions
         # `clip_actions` is None: Use value of config['clip_actions'].
         elif clip_actions is None:
-            clip_actions = self.config["clip_actions"]
+            clip_actions = self.config.clip_actions
 
         # Preprocess obs and states.
         state_defined = state is not None
@@ -1710,6 +1829,7 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
+        module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
@@ -1718,8 +1838,8 @@ class Algorithm(Trainable):
         Args:
             policy_id: ID of the policy to add.
                 IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
-                or a dot `.` or space ` ` at the end of the ID.
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -1746,9 +1866,13 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
+            module_spec: In the new RLModule API we need to pass in the module_spec for
+                the new module that is supposed to be added. Knowing the policy spec is
+                not sufficient.
             workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
+
 
         Returns:
             The newly added policy (the copy that got added to the local
@@ -1758,12 +1882,12 @@ class Algorithm(Trainable):
 
         if workers is not DEPRECATED_VALUE:
             deprecation_warning(
-                old="workers",
+                old="Algorithm.add_policy(.., workers=..)",
                 help=(
-                    "The `workers` argument to `Algorithm.add_policy()` is deprecated "
-                    "and no-op now. Please do not use it anymore."
+                    "The `workers` argument to `Algorithm.add_policy()` is deprecated! "
+                    "Please do not use it anymore."
                 ),
-                error=False,
+                error=True,
             )
 
         self.workers.add_policy(
@@ -1776,7 +1900,21 @@ class Algorithm(Trainable):
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
+            module_spec=module_spec,
         )
+
+        # If learner API is enabled, we need to also add the underlying module
+        # to the learner group.
+        if self.config._enable_learner_api:
+            policy = self.get_policy(policy_id)
+            module = policy.model
+            self.learner_group.add_module(
+                module_id=policy_id,
+                module_spec=SingleAgentRLModuleSpec.from_module(module),
+            )
+
+            weights = policy.get_weights()
+            self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:
@@ -1790,6 +1928,7 @@ class Algorithm(Trainable):
                 policy_state=policy_state,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
+                module_spec=module_spec,
             )
 
         # Return newly added policy (from the local rollout worker).
@@ -1943,6 +2082,14 @@ class Algorithm(Trainable):
                     policy_state.pkl
                 pol_2/
                     policy_state.pkl
+            learner/
+                learner_state.json
+                module_state/
+                    module_1/
+                        ...
+                optimizer_state/
+                    optimizers_module_1/
+                        ...
             rllib_checkpoint.json
             algorithm_state.pkl
 
@@ -1965,7 +2112,10 @@ class Algorithm(Trainable):
             policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
-        state["checkpoint_version"] = CHECKPOINT_VERSION
+        if self.config._enable_learner_api:
+            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
+        else:
+            state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write state (w/o policies) to disk.
         state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
@@ -1978,6 +2128,9 @@ class Algorithm(Trainable):
                 {
                     "type": "Algorithm",
                     "checkpoint_version": str(state["checkpoint_version"]),
+                    "format": "cloudpickle",
+                    "state_file": state_file,
+                    "policy_ids": list(policy_states.keys()),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -1993,21 +2146,24 @@ class Algorithm(Trainable):
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
+        # if we are using the learner API, save the learner group state
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
+            self.learner_group.save_state(learner_state_dir)
+
         return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+    def load_checkpoint(self, checkpoint: str) -> None:
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
-        if isinstance(checkpoint, str):
-            checkpoint_info = get_checkpoint_info(checkpoint)
-            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info
-            )
-        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
-        else:
-            checkpoint_data = checkpoint
+
+        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint, "learner")
+            self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -2035,7 +2191,7 @@ class Algorithm(Trainable):
 
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
+        # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
         # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
         # workers to determine their CPU/GPU resource needs.
 
@@ -2049,16 +2205,34 @@ class Algorithm(Trainable):
         eval_cf.validate()
         eval_cf.freeze()
 
-        # resources for local worker
-        local_worker = {
-            "CPU": cf.num_cpus_for_local_worker,
-            "GPU": 0 if cf._fake_gpus else cf.num_gpus,
-        }
+        # resources for the driver of this trainable
+        if cf._enable_learner_api:
+            if cf.num_learner_workers == 0:
+                # in this case local_worker only does sampling and training is done on
+                # local learner worker
+                driver = {
+                    # sampling and training is not done concurrently when local is
+                    # used, so pick the max.
+                    "CPU": max(
+                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                    ),
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+            else:
+                # in this case local_worker only does sampling and training is done on
+                # remote learner workers
+                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+        else:
+            # Without Learner API, the local_worker can do both sampling and training.
+            # So, we need to allocate the same resources for the driver as for the
+            # local_worker.
+            driver = {
+                "CPU": cf.num_cpus_for_local_worker,
+                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+            }
 
-        bundles = [local_worker]
-
-        # resources for rollout env samplers
-        rollout_workers = [
+        # resources for remote rollout env samplers
+        rollout_bundles = [
             {
                 "CPU": cf.num_cpus_per_worker,
                 "GPU": cf.num_gpus_per_worker,
@@ -2067,11 +2241,11 @@ class Algorithm(Trainable):
             for _ in range(cf.num_rollout_workers)
         ]
 
-        # resources for evaluation env samplers or datasets (if any)
+        # resources for remote evaluation env samplers or datasets (if any)
         if cls._should_create_evaluation_rollout_workers(eval_cf):
             # Evaluation workers.
             # Note: The local eval worker is located on the driver CPU.
-            evaluation_bundle = [
+            evaluation_bundles = [
                 {
                     "CPU": eval_cf.num_cpus_per_worker,
                     "GPU": eval_cf.num_gpus_per_worker,
@@ -2093,9 +2267,20 @@ class Algorithm(Trainable):
             # operations. This behavior should get fixed by the dataset team. more info
             # found here:
             # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
-            evaluation_bundle = []
+            evaluation_bundles = []
 
-        bundles += rollout_workers + evaluation_bundle
+        # resources for remote learner workers
+        learner_bundles = []
+        if cf._enable_learner_api and cf.num_learner_workers > 0:
+            learner_bundles = [
+                {
+                    "CPU": cf.num_cpus_per_learner_worker,
+                    "GPU": cf.num_gpus_per_learner_worker,
+                }
+                for _ in range(cf.num_learner_workers)
+            ]
+
+        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -2177,6 +2362,14 @@ class Algorithm(Trainable):
                         return isinstance(self, MultiAgentEnv)
 
                 return env_id, lambda cfg: _wrapper.remote(cfg)
+            # gym.Env-subclass: Also go through our RLlib gym-creator.
+            elif issubclass(env_specifier, gym.Env):
+                return env_id, functools.partial(
+                    _gym_env_creator,
+                    env_descriptor=env_specifier,
+                    auto_wrap_old_gym_envs=config.get("auto_wrap_old_gym_envs", True),
+                )
+            # All other env classes: Call c'tor directly.
             else:
                 return env_id, lambda cfg: env_specifier(cfg)
 
@@ -2204,7 +2397,7 @@ class Algorithm(Trainable):
             FilterManager.synchronize(
                 from_worker.filters,
                 workers,
-                update_remote=self.config["synchronize_filters"],
+                update_remote=self.config.synchronize_filters,
                 timeout_seconds=timeout_seconds,
             )
             logger.debug("synchronized filters: {}".format(from_worker.filters))
@@ -2232,6 +2425,29 @@ class Algorithm(Trainable):
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
         )
+
+    @override(Trainable)
+    def get_auto_filled_metrics(
+        self,
+        now: Optional[datetime] = None,
+        time_this_iter: Optional[float] = None,
+        timestamp: Optional[int] = None,
+        debug_metrics_only: bool = False,
+    ) -> dict:
+        # Override this method to make sure, the `config` key of the returned results
+        # contains the proper Tune config dict (instead of an AlgorithmConfig object).
+        auto_filled = super().get_auto_filled_metrics(
+            now, time_this_iter, timestamp, debug_metrics_only
+        )
+        if "config" not in auto_filled:
+            raise KeyError("`config` key not found in auto-filled results dict!")
+
+        # If `config` key is no dict (but AlgorithmConfig object) ->
+        # make sure, it's a dict to not break Tune APIs.
+        if not isinstance(auto_filled["config"], dict):
+            assert isinstance(auto_filled["config"], AlgorithmConfig)
+            auto_filled["config"] = auto_filled["config"].to_dict()
+        return auto_filled
 
     @classmethod
     def merge_trainer_configs(
@@ -2399,7 +2615,6 @@ class Algorithm(Trainable):
                 # there in case they are used for evaluation purpose.
                 self.evaluation_workers.foreach_worker(
                     lambda w: w.set_state(ray.get(remote_state)),
-                    local_worker=False,
                     healthy_only=False,
                 )
         # If necessary, restore replay data as well.
@@ -2468,8 +2683,15 @@ class Algorithm(Trainable):
                 f"Algorithm checkpoint (but is {checkpoint_info['type']})!"
             )
 
+        msgpack = None
+        if checkpoint_info.get("format") == "msgpack":
+            msgpack = try_import_msgpack(error=True)
+
         with open(checkpoint_info["state_file"], "rb") as f:
-            state = pickle.load(f)
+            if msgpack is not None:
+                state = msgpack.load(f)
+            else:
+                state = pickle.load(f)
 
         # New checkpoint format: Policies are in separate sub-dirs.
         # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
@@ -2493,11 +2715,15 @@ class Algorithm(Trainable):
                 if pid in policy_ids
             }
 
+            # Get Algorithm class.
+            if isinstance(state["algorithm_class"], str):
+                # Try deserializing from a full classpath.
+                # Or as a last resort: Tune registered algorithm name.
+                state["algorithm_class"] = deserialize_type(
+                    state["algorithm_class"]
+                ) or get_trainable_cls(state["algorithm_class"])
             # Compile actual config object.
-            algo_cls = state["algorithm_class"]
-            if isinstance(algo_cls, str):
-                algo_cls = get_trainable_cls(algo_cls)
-            default_config = algo_cls.get_default_config()
+            default_config = state["algorithm_class"].get_default_config()
             if isinstance(default_config, AlgorithmConfig):
                 new_config = default_config.update_from_dict(state["config"])
             else:
@@ -2516,8 +2742,13 @@ class Algorithm(Trainable):
             new_config.multi_agent(
                 policies=new_policies,
                 policies_to_train=policies_to_train,
+                **(
+                    {"policy_mapping_fn": policy_mapping_fn}
+                    if policy_mapping_fn is not None
+                    else {}
+                ),
             )
-            state["config"] = new_config.to_dict()
+            state["config"] = new_config
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.
@@ -2527,7 +2758,8 @@ class Algorithm(Trainable):
                     checkpoint_info["checkpoint_dir"],
                     "policies",
                     pid,
-                    "policy_state.pkl",
+                    "policy_state."
+                    + ("msgpck" if checkpoint_info["format"] == "msgpack" else "pkl"),
                 )
                 if not os.path.isfile(policy_state_file):
                     raise ValueError(
@@ -2537,11 +2769,22 @@ class Algorithm(Trainable):
                     )
 
                 with open(policy_state_file, "rb") as f:
-                    worker_state["policy_states"][pid] = pickle.load(f)
+                    if msgpack is not None:
+                        worker_state["policy_states"][pid] = msgpack.load(f)
+                    else:
+                        worker_state["policy_states"][pid] = pickle.load(f)
 
+            # These two functions are never serialized in a msgpack checkpoint (which
+            # does not store code, unlike a cloudpickle checkpoint). Hence the user has
+            # to provide them with the `Algorithm.from_checkpoint()` call.
             if policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn
-            if policies_to_train is not None:
+            if (
+                policies_to_train is not None
+                # `policies_to_train` might be left None in case all policies should be
+                # trained.
+                or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
+            ):
                 worker_state["is_policy_to_train"] = policies_to_train
 
         return state
@@ -2560,7 +2803,7 @@ class Algorithm(Trainable):
             None, if local replay buffer is not needed.
         """
         if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
-            "no_local_replay_buffer" or config.get("no_local_replay_buffer")
+            "no_local_replay_buffer"
         ):
             return
 
@@ -2621,15 +2864,6 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-
-        eval_results = {
-            "evaluation": {
-                "episode_reward_max": np.nan,
-                "episode_reward_min": np.nan,
-                "episode_reward_mean": np.nan,
-            }
-        }
-
         eval_func_to_use = (
             self._evaluate_async
             if self.config.enable_async_evaluation
@@ -2726,11 +2960,11 @@ class Algorithm(Trainable):
         Returns False if we need to run offline evaluation
         (with ope.estimate_on_dastaset API) or when local worker is to be used for
         evaluation. Note: We only use estimate_on_dataset API with bandits for now.
-        That is when ope_split_batch_by_episode is False. TODO: In future we will do
-        the same for episodic RL OPE.
+        That is when ope_split_batch_by_episode is False.
+        TODO: In future we will do the same for episodic RL OPE.
         """
         run_offline_evaluation = (
-            eval_config.get("off_policy_estimation_methods")
+            eval_config.off_policy_estimation_methods
             and not eval_config.ope_split_batch_by_episode
         )
         return not run_offline_evaluation and (
@@ -2780,7 +3014,7 @@ class Algorithm(Trainable):
         # Calculate how many (if any) of older, historical episodes we have to add to
         # `episodes_this_iter` in order to reach the required smoothing window.
         episodes_for_metrics = episodes_this_iter[:]
-        missing = self.config["metrics_num_episodes_for_smoothing"] - len(
+        missing = self.config.metrics_num_episodes_for_smoothing - len(
             episodes_this_iter
         )
         # We have to add some older episodes to reach the smoothing window size.
@@ -2788,7 +3022,7 @@ class Algorithm(Trainable):
             episodes_for_metrics = self._episode_history[-missing:] + episodes_this_iter
             assert (
                 len(episodes_for_metrics)
-                <= self.config["metrics_num_episodes_for_smoothing"]
+                <= self.config.metrics_num_episodes_for_smoothing
             )
         # Note that when there are more than `metrics_num_episodes_for_smoothing`
         # episodes in `episodes_for_metrics`, leave them as-is. In this case, we'll
@@ -2798,12 +3032,12 @@ class Algorithm(Trainable):
         # needed.
         self._episode_history.extend(episodes_this_iter)
         self._episode_history = self._episode_history[
-            -self.config["metrics_num_episodes_for_smoothing"] :
+            -self.config.metrics_num_episodes_for_smoothing :
         ]
         results["sampler_results"] = summarize_episodes(
             episodes_for_metrics,
             episodes_this_iter,
-            self.config["keep_per_episode_custom_metrics"],
+            self.config.keep_per_episode_custom_metrics,
         )
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])
@@ -2822,22 +3056,32 @@ class Algorithm(Trainable):
             NUM_ENV_STEPS_TRAINED,
         ]:
             results[c] = self._counters[c]
+        time_taken_sec = step_ctx.get_time_taken_sec()
         if self.config.count_steps_by == "agent_steps":
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_AGENT_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_AGENT_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_ENV_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_ENV_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
 
         # TODO: Backward compatibility.
+        results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
         # Process timer results.
@@ -2879,29 +3123,12 @@ class Algorithm(Trainable):
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
-    def _make_workers(
-        self,
-        *,
-        env_creator: EnvCreator,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-        policy_class: Type[Policy],
-        config: AlgorithmConfigDict,
-        num_workers: int,
-        local_worker: bool = True,
-    ) -> WorkerSet:
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            default_policy_class=policy_class,
-            config=config,
-            num_workers=num_workers,
-            local_worker=local_worker,
-            logdir=self.logdir,
-        )
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=True)
+    def _make_workers(self, *args, **kwargs):
+        pass
 
-    def validate_config(self, config) -> None:
-        # TODO: Deprecate. All logic has been moved into the AlgorithmConfig classes.
+    @Deprecated(new="AlgorithmConfig.validate()", error=False)
+    def validate_config(self, config):
         pass
 
     @staticmethod
@@ -2918,6 +3145,8 @@ COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 class TrainIterCtx:
     def __init__(self, algo: Algorithm):
         self.algo = algo
+        self.time_start = None
+        self.time_stop = None
 
     def __enter__(self):
         # Before first call to `step()`, `results` is expected to be None ->
@@ -2938,7 +3167,11 @@ class TrainIterCtx:
         return self
 
     def __exit__(self, *args):
-        pass
+        self.time_stop = time.time()
+
+    def get_time_taken_sec(self) -> float:
+        """Returns the time we spent in the context in seconds."""
+        return self.time_stop - self.time_start
 
     def should_stop(self, results):
 

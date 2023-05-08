@@ -5,8 +5,8 @@ import tree  # pip install dm_tree
 from ray.rllib.connectors.connector import (
     ActionConnector,
     ConnectorContext,
-    register_connector,
 )
+from ray.rllib.connectors.registry import register_connector
 from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI

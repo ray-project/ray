@@ -80,20 +80,6 @@ class AgentIOTest(unittest.TestCase):
             agent = self.write_outputs("logdir", fw)
             self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 1)
 
-    def test_agent_output_infos(self):
-        """Verify that the infos dictionary is written to the output files.
-
-        Note, with torch this is always the case.
-        """
-        output_config = {"store_infos": True}
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.write_outputs(self.test_dir, fw, output_config=output_config)
-            self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
-            reader = JsonReader(self.test_dir + fw + "/*.json")
-            data = reader.next()
-            data = convert_ma_batch_to_sample_batch(data)
-            assert "infos" in data
-
     def test_agent_input_dir(self):
         config = (
             PGConfig()
@@ -168,7 +154,10 @@ class AgentIOTest(unittest.TestCase):
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )
-            .evaluation(evaluation_interval=1, evaluation_config={"input": "sampler"})
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_config=PGConfig.overrides(input_="sampler"),
+            )
         )
 
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):
@@ -227,8 +216,8 @@ class AgentIOTest(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .multi_agent(
                 policies={"policy_1", "policy_2"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: random.choice(["policy_1", "policy_2"])
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    random.choice(["policy_1", "policy_2"])
                 ),
             )
         )
@@ -244,7 +233,7 @@ class AgentIOTest(unittest.TestCase):
             config2.output = None
             config2.evaluation(
                 evaluation_interval=1,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=PGConfig.overrides(input_="sampler"),
             )
             config2.training(train_batch_size=2000)
             config2.offline_data(input_=self.test_dir + fw)

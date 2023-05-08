@@ -1,9 +1,11 @@
 import random
-import sys
 import heapq
 from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
+
+from ray import cloudpickle
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 
 if TYPE_CHECKING:
     import pandas
@@ -20,13 +22,12 @@ from ray.data.block import (
     KeyType,
     AggType,
     BlockExecStats,
-    KeyFn,
 )
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 
 
-class SimpleBlockBuilder(BlockBuilder[T]):
+class SimpleBlockBuilder(BlockBuilder):
     def __init__(self):
         self._items = []
         self._size_estimator = SizeEstimator()
@@ -44,11 +45,13 @@ class SimpleBlockBuilder(BlockBuilder[T]):
                 f"{block}"
             )
         self._items.extend(block)
-        for item in block:
-            self._size_estimator.add(item)
+        self._size_estimator.add_block(block)
 
     def num_rows(self) -> int:
         return len(self._items)
+
+    def will_build_yield_copy(self) -> bool:
+        return True
 
     def build(self) -> Block:
         return list(self._items)
@@ -64,7 +67,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def num_rows(self) -> int:
         return len(self._items)
 
-    def iter_rows(self) -> Iterator[T]:
+    def iter_rows(self, public_row_format: bool) -> Iterator[T]:
         return iter(self._items)
 
     def slice(self, start: int, end: int, copy: bool = False) -> List[T]:
@@ -76,14 +79,14 @@ class SimpleBlockAccessor(BlockAccessor):
     def take(self, indices: List[int]) -> List[T]:
         return [self._items[i] for i in indices]
 
-    def select(self, columns: List[KeyFn]) -> List[T]:
+    def select(self, columns: List[str]) -> List[T]:
         if len(columns) != 1 or not callable(columns[0]):
             raise ValueError(
                 "Column must be a single callable when selecting on Simple blocks, "
                 f"but got: {columns}."
             )
         callable_col = columns[0]
-        return [callable_col(row) for row in self.iter_rows()]
+        return [callable_col(row) for row in self.iter_rows(True)]
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)
@@ -97,9 +100,11 @@ class SimpleBlockAccessor(BlockAccessor):
         return pandas.DataFrame({"value": self._items})
 
     def to_numpy(self, columns: Optional[Union[str, List[str]]] = None) -> np.ndarray:
-        if columns:
-            raise ValueError("`columns` arg is not supported for list block.")
-        return np.array(self._items)
+        if columns is not None:
+            if not isinstance(columns, list):
+                columns = [columns]
+            return BlockAccessor.for_block(self.select(columns)).to_numpy()
+        return _create_possibly_ragged_ndarray(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
@@ -110,7 +115,9 @@ class SimpleBlockAccessor(BlockAccessor):
         return self._items
 
     def size_bytes(self) -> int:
-        return sys.getsizeof(self._items)
+        # NOTE: This is high-ish overhead, but accurate estimation is important for
+        # streaming execution (see https://github.com/ray-project/ray/issues/33627).
+        return len(cloudpickle.dumps(self._items))
 
     def schema(self) -> Any:
         if self._items:
@@ -118,7 +125,7 @@ class SimpleBlockAccessor(BlockAccessor):
         else:
             return None
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         if not isinstance(other, list):
             raise ValueError(
                 "Cannot zip {} with block of type {}".format(type(self), type(other))
@@ -132,7 +139,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return list(zip(self._items, other))
 
     @staticmethod
-    def builder() -> SimpleBlockBuilder[T]:
+    def builder() -> SimpleBlockBuilder:
         return SimpleBlockBuilder()
 
     def sample(self, n_samples: int = 1, key: "SortKeyT" = None) -> List[T]:
@@ -147,7 +154,7 @@ class SimpleBlockAccessor(BlockAccessor):
             return ret
         return [key(x) for x in ret]
 
-    def count(self, on: KeyFn) -> Optional[U]:
+    def count(self, on: str) -> Optional[U]:
         if on is not None and not callable(on):
             raise ValueError(
                 "on must be a callable or None when aggregating on Simple blocks, but "
@@ -158,7 +165,7 @@ class SimpleBlockAccessor(BlockAccessor):
             return None
 
         count = 0
-        for r in self.iter_rows():
+        for r in self.iter_rows(True):
             if on is not None:
                 r = on(r)
             if r is not None:
@@ -169,7 +176,7 @@ class SimpleBlockAccessor(BlockAccessor):
         self,
         init: AggType,
         accum: Callable[[AggType, T], AggType],
-        on: KeyFn,
+        on: str,
         ignore_nulls: bool,
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation."""
@@ -184,7 +191,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
         has_data = False
         a = init
-        for r in self.iter_rows():
+        for r in self.iter_rows(True):
             if on is not None:
                 r = on(r)
             if r is None:
@@ -197,16 +204,16 @@ class SimpleBlockAccessor(BlockAccessor):
                 a = accum(a, r)
         return a if has_data else None
 
-    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(0, lambda a, r: a + r, on, ignore_nulls)
 
-    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(float("inf"), min, on, ignore_nulls)
 
-    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(float("-inf"), max, on, ignore_nulls)
 
-    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_accum(
             [0, 0],
             lambda a, r: [a[0] + r, a[1] + 1],
@@ -214,7 +221,7 @@ class SimpleBlockAccessor(BlockAccessor):
             ignore_nulls,
         )
 
-    def std(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def std(self, on: str, ignore_nulls: bool) -> Optional[U]:
         def accum(a: List[float], r: float) -> List[float]:
             # Accumulates the current count, the current mean, and the sum of
             # squared differences from the current mean (M2).
@@ -230,7 +237,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def sum_of_squared_diffs_from_mean(
         self,
-        on: KeyFn,
+        on: str,
         ignore_nulls: bool,
         mean: Optional[U] = None,
     ) -> Optional[U]:
@@ -246,7 +253,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
             return [items]
@@ -281,9 +288,7 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(
-        self, key: KeyFn, aggs: Tuple[AggregateFn]
-    ) -> Block[Tuple[KeyType, AggType]]:
+    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -313,7 +318,7 @@ class SimpleBlockAccessor(BlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows()
+            iter = self.iter_rows(True)
             next_row = None
             # Use a bool to indicate if next_row is valid
             # instead of checking if next_row is None
@@ -354,8 +359,8 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block[T]], key: "SortKeyT", descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List[Block], key: "SortKeyT", descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         stats = BlockExecStats.builder()
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
@@ -365,11 +370,11 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block[Tuple[KeyType, AggType]]],
-        key: KeyFn,
+        blocks: List[Block],
+        key: str,
         aggs: Tuple[AggregateFn],
         finalize: bool,
-    ) -> Tuple[Block[Tuple[KeyType, Union[U, AggType]]], BlockMetadata]:
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -395,7 +400,8 @@ class SimpleBlockAccessor(BlockAccessor):
         key_fn = (lambda r: r[0]) if key else (lambda r: 0)
 
         iter = heapq.merge(
-            *[SimpleBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+            *[SimpleBlockAccessor(block).iter_rows(True) for block in blocks],
+            key=key_fn,
         )
         next_row = None
         ret = []

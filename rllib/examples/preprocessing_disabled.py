@@ -10,7 +10,7 @@ This example shows:
     (in the model).
 """
 import argparse
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import os
 
@@ -31,7 +31,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument(

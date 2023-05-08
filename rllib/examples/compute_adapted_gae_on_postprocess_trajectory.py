@@ -62,7 +62,7 @@ class MyCallbacks(DefaultCallbacks):
             ), "Elements of 'd_ts' (length of time steps) must be integer!"
 
             # Trajectory is actually complete -> last r=0.0.
-            if postprocessed_batch[SampleBatch.DONES][-1]:
+            if postprocessed_batch[SampleBatch.TERMINATEDS][-1]:
                 last_r = 0.0
             # Trajectory has been truncated -> last r=VF estimate of last obs.
             else:

@@ -131,8 +131,9 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
-
+  static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
+      io_context,
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
@@ -157,6 +158,7 @@ RayTask CreateTask(
                                  Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id,
+                                 rpc::JobConfig(),
                                  TaskID::Nil(),
                                  0,
                                  TaskID::Nil(),
@@ -167,6 +169,7 @@ RayTask CreateTask(
                                  {},
                                  "",
                                  0,
+                                 TaskID::Nil(),
                                  runtime_env_info);
 
   if (!args.empty()) {
@@ -192,7 +195,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 
   bool RequestTaskDependencies(const TaskID &task_id,
                                const std::vector<rpc::ObjectReference> &required_objects,
-                               const std::string &task_name) {
+                               const TaskMetricsKey &task_key) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
       if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
@@ -289,7 +292,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; },
             local_task_manager_,
-            /*get_time=*/[this]() { return current_time_ms_; }) {}
+            /*get_time=*/[this]() { return current_time_ms_; }) {
+    RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
+  }
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;

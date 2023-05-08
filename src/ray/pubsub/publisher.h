@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <deque>
 #include <functional>
 #include <queue>
 #include <string>
@@ -35,6 +36,7 @@ namespace ray {
 namespace pubsub {
 
 using SubscriberID = UniqueID;
+using PublisherID = UniqueID;
 
 namespace pub_internal {
 
@@ -47,7 +49,7 @@ class EntityState {
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  virtual bool Publish(const rpc::PubMessage &pub_message) = 0;
+  virtual bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) = 0;
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -77,14 +79,14 @@ class EntityState {
 /// Publishes the message to all subscribers, without size cap on buffered messages.
 class BasicEntityState : public EntityState {
  public:
-  bool Publish(const rpc::PubMessage &pub_message) override;
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) override;
 };
 
 /// Publishes the message to all subscribers, and enforce a total size cap on buffered
 /// messages.
 class CappedEntityState : public EntityState {
  public:
-  bool Publish(const rpc::PubMessage &pub_message) override;
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message) override;
 
  private:
   // Tracks inflight messages. The messages have shared ownership by
@@ -110,7 +112,7 @@ class SubscriptionIndex {
   /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the entity key of the message,
   /// returns false otherwise.
-  bool Publish(const rpc::PubMessage &pub_message);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
@@ -172,14 +174,20 @@ class SubscriberState {
   SubscriberState(SubscriberID subscriber_id,
                   std::function<double()> get_time_ms,
                   uint64_t connection_timeout_ms,
-                  const int publish_batch_size)
+                  const int publish_batch_size,
+                  PublisherID publisher_id)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(get_time_ms_()) {}
+        last_connection_update_time_ms_(get_time_ms_()),
+        publisher_id_(publisher_id) {}
 
-  ~SubscriberState() = default;
+  ~SubscriberState() {
+    // Force a push to close the long-polling.
+    // Otherwise, there will be a connection leak.
+    PublishIfPossible(true);
+  }
 
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.
@@ -225,7 +233,7 @@ class SubscriberState {
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
-  std::queue<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
@@ -234,6 +242,7 @@ class SubscriberState {
   const int publish_batch_size_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
+  PublisherID publisher_id_;
 };
 
 }  // namespace pub_internal
@@ -259,7 +268,7 @@ class PublisherInterface {
   ///
   /// \param pub_message The message to publish.
   /// Required to contain channel_type and key_id fields.
-  virtual void Publish(const rpc::PubMessage &pub_message) = 0;
+  virtual void Publish(rpc::PubMessage pub_message) = 0;
 
   /// Publish to the subscriber that the given key id is not available anymore.
   /// It will invoke the failure callback on the subscriber side.
@@ -311,11 +320,13 @@ class Publisher : public PublisherInterface {
             PeriodicalRunner *const periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
-            const int publish_batch_size)
+            const int publish_batch_size,
+            PublisherID publisher_id = NodeID::FromRandom())
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
-        publish_batch_size_(publish_batch_size) {
+        publish_batch_size_(publish_batch_size),
+        publisher_id_(publisher_id) {
     // Insert index map for each channel.
     for (auto type : channels) {
       subscription_index_map_.emplace(type, type);
@@ -350,7 +361,7 @@ class Publisher : public PublisherInterface {
   ///
   /// \param pub_message The message to publish.
   /// Required to contain channel_type and key_id fields.
-  void Publish(const rpc::PubMessage &pub_message) override;
+  void Publish(rpc::PubMessage pub_message) override;
 
   /// Publish to the subscriber that the given key id is not available anymore.
   /// It will invoke the failure callback on the subscriber side.
@@ -457,6 +468,23 @@ class Publisher : public PublisherInterface {
   int publish_batch_size_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
+
+  /// The monotonically increasing sequence_id for this publisher.
+  /// The publisher will add this sequence_id to every message to be published.
+  /// The sequence_id is used for handling failures: the publisher will not delete
+  /// a message from the sending queue until the subscriber has acknowledge
+  /// it has processed beyond the message's sequence_id.
+  ///
+  /// Note:
+  ///  - a valide sequence_id starts from 1.
+  ///  - the subscriber doesn't expect the sequences it receives are contiguous.
+  ///    this is due the fact a subscriber can only subscribe a subset
+  ///    of a channel.
+  int64_t next_sequence_id_ GUARDED_BY(mutex_) = 0;
+
+  /// A unique identifier identifies the publisher_id.
+  /// TODO(scv119) add docs about the semantics.
+  const PublisherID publisher_id_;
 };
 
 }  // namespace pubsub

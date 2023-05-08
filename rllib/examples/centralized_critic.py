@@ -15,7 +15,7 @@ modifies the environment.
 
 import argparse
 import numpy as np
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 import os
 
 import ray
@@ -51,7 +51,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -93,7 +93,10 @@ def centralized_critic_postprocessing(
         not pytorch and policy.loss_initialized()
     ):
         assert other_agent_batches is not None
-        [(_, opponent_batch)] = list(other_agent_batches.values())
+        if policy.config["enable_connectors"]:
+            [(_, _, opponent_batch)] = list(other_agent_batches.values())
+        else:
+            [(_, opponent_batch)] = list(other_agent_batches.values())
 
         # also record the opponent obs and actions in the trajectory
         sample_batch[OPPONENT_OBS] = opponent_batch[SampleBatch.CUR_OBS]
@@ -131,7 +134,7 @@ def centralized_critic_postprocessing(
             sample_batch[SampleBatch.REWARDS], dtype=np.float32
         )
 
-    completed = sample_batch["dones"][-1]
+    completed = sample_batch[SampleBatch.TERMINATEDS][-1]
     if completed:
         last_r = 0.0
     else:
@@ -244,7 +247,7 @@ class CentralizedCritic(PPO):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -259,32 +262,32 @@ if __name__ == "__main__":
         .environment(TwoStepGame)
         .framework(args.framework)
         .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
-        .training(model={"custom_model": "cc_model"})
+        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
+        .training(model={"custom_model": "cc_model"}, _enable_learner_api=False)
         .multi_agent(
             policies={
                 "pol1": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
                 "pol2": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
-            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
             if agent_id == 0
             else "pol2",
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

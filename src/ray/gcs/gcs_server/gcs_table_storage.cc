@@ -206,7 +206,6 @@ template class GcsTable<NodeID, GcsNodeInfo>;
 template class GcsTable<NodeID, ResourceMap>;
 template class GcsTable<NodeID, ResourceUsageBatchData>;
 template class GcsTable<JobID, ErrorTableData>;
-template class GcsTable<UniqueID, ProfileTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
 template class GcsTable<ActorID, TaskSpec>;

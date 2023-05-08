@@ -65,7 +65,7 @@ class TestCRR(unittest.TestCase):
                 evaluation_duration=10,
                 evaluation_duration_unit="episodes",
                 evaluation_parallel_to_training=True,
-                evaluation_config={"input": "sampler", "explore": False},
+                evaluation_config=CRRConfig.overrides(input_="sampler", explore=False),
             )
             .rollouts(num_rollout_workers=0)
         )

@@ -3,6 +3,16 @@ from typing import Optional, List
 
 from ray.data.block import Block, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_ops import transform_pyarrow
+
+# pyarrow.Table.slice is slow when the table has many chunks
+# so we combine chunks into a single one to make slice faster
+# with the cost of an extra copy.
+# See https://github.com/ray-project/ray/issues/31108 for more details.
+# TODO(jjyao): remove this once
+# https://github.com/apache/arrow/issues/35126 is resolved.
+MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 2
 
 
 class BatcherInterface:
@@ -102,11 +112,12 @@ class Batcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
+        needs_copy = self._ensure_copy
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
-            if self._ensure_copy:
+            if needs_copy:
                 # Copy block if needing to ensure fresh batch copy.
                 block = BlockAccessor.for_block(block)
                 block = block.slice(0, block.num_rows(), copy=True)
@@ -129,6 +140,15 @@ class Batcher(BatcherInterface):
                 output.add_block(accessor.slice(0, accessor.num_rows(), copy=False))
                 needed -= accessor.num_rows()
             else:
+                if (
+                    isinstance(accessor, ArrowBlockAccessor)
+                    and block.num_columns > 0
+                    and block.column(0).num_chunks
+                    >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
+                ):
+                    accessor = BlockAccessor.for_block(
+                        transform_pyarrow.combine_chunks(block)
+                    )
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
                 # Add the rest of the block to the leftovers.
@@ -139,13 +159,11 @@ class Batcher(BatcherInterface):
         # blocks consumed on the next batch extraction.
         self._buffer = leftover
         self._buffer_size -= self._batch_size
+        needs_copy = needs_copy and not output.will_build_yield_copy()
         batch = output.build()
-        if self._ensure_copy:
+        if needs_copy:
             # Need to ensure that the batch is a fresh copy.
             batch = BlockAccessor.for_block(batch)
-            # TOOD(Clark): This copy will often be unnecessary, e.g. for pandas
-            # DataFrame batches that have required concatenation to construct, which
-            # always requires a copy. We should elide this copy in those cases.
             batch = batch.slice(0, batch.num_rows(), copy=True)
         return batch
 
@@ -255,11 +273,13 @@ class ShufflingBatcher(BatcherInterface):
     def has_batch(self) -> bool:
         """Whether this batcher has any batches."""
         buffer_size = self._buffer_size()
-        # If still adding blocks, ensure that removing a batch wouldn't cause the
-        # shuffle buffer to dip beneath its configured minimum size.
-        return buffer_size - self._batch_size >= self._buffer_min_size or (
-            self._done_adding and buffer_size >= self._batch_size
-        )
+
+        if not self._done_adding:
+            # If still adding blocks, ensure that removing a batch wouldn't cause the
+            # shuffle buffer to dip beneath its configured minimum size.
+            return buffer_size - self._batch_size >= self._buffer_min_size
+        else:
+            return buffer_size >= self._batch_size
 
     def _buffer_size(self) -> int:
         """Return shuffle buffer size."""
@@ -295,6 +315,17 @@ class ShufflingBatcher(BatcherInterface):
                 self._builder.add_block(self._shuffle_buffer)
             # Build the new shuffle buffer.
             self._shuffle_buffer = self._builder.build()
+            if (
+                isinstance(
+                    BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
+                )
+                and self._shuffle_buffer.num_columns > 0
+                and self._shuffle_buffer.column(0).num_chunks
+                >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
+            ):
+                self._shuffle_buffer = transform_pyarrow.combine_chunks(
+                    self._shuffle_buffer
+                )
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
             # Invalidate the shuffle indices.

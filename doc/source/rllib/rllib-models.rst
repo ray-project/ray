@@ -152,7 +152,7 @@ Custom Preprocessors and Environment Filters
 .. warning::
 
     Custom preprocessors have been fully deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
-    Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+    Please use `wrapper classes <https://github.com/Farama-Foundation/Gymnasium/tree/main/gymnasium/wrappers>`__ around your environment instead of preprocessors.
     Note that the built-in **default** Preprocessors described above will still be used and won't be deprecated.
 
 Instead of using the deprecated custom Preprocessors, you should use ``gym.Wrappers`` to preprocess your environment's output (observations and rewards),
@@ -229,7 +229,7 @@ Once implemented, your TF model can then be registered and used in place of a bu
     ModelCatalog.register_custom_model("my_tf_model", MyModelClass)
 
     ray.init()
-    algo = ppo.PPO(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v1", config={
         "model": {
             "custom_model": "my_tf_model",
             # Extra kwargs to be passed to your model's c'tor.
@@ -284,7 +284,7 @@ Once implemented, your PyTorch model can then be registered and used in place of
     ModelCatalog.register_custom_model("my_torch_model", CustomTorchModel)
 
     ray.init()
-    algo = ppo.PPO(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v1", config={
         "framework": "torch",
         "model": {
             "custom_model": "my_torch_model",
@@ -510,7 +510,7 @@ Similar to custom models and preprocessors, you can also specify a custom action
     ModelCatalog.register_custom_action_dist("my_dist", MyActionDist)
 
     ray.init()
-    algo = ppo.PPO(env="CartPole-v0", config={
+    algo = ppo.PPO(env="CartPole-v1", config={
         "model": {
             "custom_action_dist": "my_dist",
         },

@@ -76,6 +76,8 @@ class CSVLoggerCallback(LoggerCallback):
 
     """
 
+    _SAVED_FILE_TEMPLATES = [EXPR_PROGRESS_FILE]
+
     def __init__(self):
         self._trial_continue: Dict["Trial", bool] = {}
         self._trial_files: Dict["Trial", TextIO] = {}
@@ -86,8 +88,8 @@ class CSVLoggerCallback(LoggerCallback):
             self._trial_files[trial].close()
 
         # Make sure logdir exists
-        trial.init_logdir()
-        local_file = os.path.join(trial.logdir, EXPR_PROGRESS_FILE)
+        trial.init_local_path()
+        local_file = os.path.join(trial.local_path, EXPR_PROGRESS_FILE)
         self._trial_continue[trial] = (
             os.path.exists(local_file) and os.path.getsize(local_file) > 0
         )

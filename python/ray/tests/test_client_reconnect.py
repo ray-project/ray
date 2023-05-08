@@ -165,7 +165,17 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(request, context, "ListNamedActors")
 
     def ClusterInfo(self, request, context=None) -> ray_client_pb2.ClusterInfoResponse:
-        return self._call_inner_function(request, context, "ClusterInfo")
+        # Cluster info is currently used for health checks and isn't retried, so
+        # don't inject errors.
+        # TODO(ckw): update ClusterInfo so that retries are only skipped for PING
+        try:
+            return self.stub.ClusterInfo(
+                request, metadata=context.invocation_metadata()
+            )
+        except grpc.RpcError as e:
+            context.set_code(e.code())
+            context.set_details(e.details())
+            raise
 
     def Terminate(self, req, context=None):
         return self._call_inner_function(req, context, "Terminate")

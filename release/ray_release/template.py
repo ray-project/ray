@@ -23,15 +23,6 @@ if TYPE_CHECKING:
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
-    "EXPIRATION_1D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_2D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_3D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-    ),
 }
 
 
@@ -107,11 +98,16 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
+def get_cluster_env_path(test: "Test") -> str:
     cluster_env_file = test["cluster"]["cluster_env"]
     cluster_env_path = os.path.join(
         RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
     )
+    return cluster_env_path
+
+
+def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
+    cluster_env_path = get_cluster_env_path(test)
 
     env = populate_cluster_env_variables(test, ray_wheels_url=ray_wheels_url)
 

@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 import re
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
 
 import ray.data
@@ -12,7 +12,10 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
+from ray.rllib.utils.typing import SampleBatchType
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
@@ -65,8 +68,8 @@ def _unzip_if_needed(paths: List[str], format: str):
 
 @PublicAPI
 def get_dataset_and_shards(
-    config: AlgorithmConfigDict, num_workers: int = 0
-) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
+    config: "AlgorithmConfig", num_workers: int = 0
+) -> Tuple[ray.data.Datastream, List[ray.data.Datastream]]:
     """Returns a dataset and a list of shards.
 
     This function uses algorithm configs to create a dataset and a list of shards.
@@ -74,12 +77,12 @@ def get_dataset_and_shards(
         input: The input type should be "dataset".
         input_config: A dict containing the following key and values:
             `format`: str, speciifies the format of the input data. This will be the
-            format that ray dataset supports. See ray.data.dataset.Dataset for
+            format that ray dataset supports. See ray.data.Datastream for
             supported formats. Only "parquet" or "json" are supported for now.
             `paths`: str, a single string or a list of strings. Each string is a path
             to a file or a directory holding the dataset. It can be either a local path
             or a remote path (e.g. to an s3 bucket).
-            `loader_fn`: Callable[None, ray.data.dataset.Dataset], Instead of
+            `loader_fn`: Callable[None, ray.data.Datastream], Instead of
             specifying paths and format, you can specify a function to load the dataset.
             `parallelism`: int, The number of tasks to use for loading the dataset.
             If not specified, it will be set to the number of workers.
@@ -96,16 +99,13 @@ def get_dataset_and_shards(
         shared would be a dummy None shard for local_worker.
     """
     # check input and input config keys
-    assert config["input"] == "dataset", (
-        f"Must specify input as dataset if"
-        f" calling `get_dataset_and_shards`. Got {config['input']}"
+    assert config.input_ == "dataset", (
+        f"Must specify config.input_ as 'dataset' if"
+        f" calling `get_dataset_and_shards`. Got {config.input_}"
     )
-    assert (
-        "input_config" in config
-    ), "Must specify input_config dict if using Dataset input."
 
     # check input config format
-    input_config = config["input_config"]
+    input_config = config.input_config
     format = input_config.get("format")
 
     supported_fmts = ["json", "parquet"]
@@ -185,7 +185,7 @@ class DatasetReader(InputReader):
             "input_config": {
                 "format": "json",
                 # A single data file, a directory, or anything
-                # that ray.data.dataset recognizes.
+                # that ray.data.datastream recognizes.
                 "paths": "/tmp/sample_batches/",
                 # By default, parallelism=num_workers.
                 "parallelism": 3,
@@ -197,7 +197,7 @@ class DatasetReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ds: ray.data.Dataset, ioctx: Optional[IOContext] = None):
+    def __init__(self, ds: ray.data.Datastream, ioctx: Optional[IOContext] = None):
         """Initializes a DatasetReader instance.
 
         Args:
@@ -246,7 +246,7 @@ class DatasetReader(InputReader):
         ret = []
         count = 0
         while count < self.batch_size:
-            d = next(self._iter).as_pydict()
+            d = next(self._iter)
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
             count += d.count

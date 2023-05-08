@@ -225,6 +225,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Get the owner address of the given object.
   ///
+  /// Use `HasOwner` instead if the caller doesn't need to use owner_address for
+  /// performance.
+  ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
   /// \return false if the object is out of scope or we do not yet have
@@ -232,6 +235,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
+
+  /// Check if the object has an owner.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return if the object has an owner.
+  bool HasOwner(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.

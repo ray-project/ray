@@ -1,8 +1,7 @@
 import logging
 import os
 from typing import Dict, List, Optional
-
-import numpy as np
+import pkg_resources
 
 import ray._private.ray_constants as ray_constants
 
@@ -88,6 +87,9 @@ class RayParams:
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
             Defaults to 52365.
+        dashboard_grpc_port: The port for the dashboard head process to listen
+            for gRPC on.
+            Defaults to random available port.
         plasma_store_socket_name: If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name: If provided, it will specify the socket path
@@ -113,12 +115,12 @@ class RayParams:
             core feature flags.
         enable_object_reconstruction: Enable plasma reconstruction on
             failure.
-        start_initial_python_workers_for_first_job: If true, start
-            initial Python workers for the first job on the node.
         ray_debugger_external: If true, make the Ray debugger for a
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars: Override environment variables for the raylet.
+        session_name: The name of the session of the ray cluster.
+        webui: The url of the UI.
     """
 
     def __init__(
@@ -160,6 +162,7 @@ class RayParams:
         dashboard_agent_listen_port: Optional[
             int
         ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+        dashboard_grpc_port: Optional[int] = None,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
@@ -167,7 +170,6 @@ class RayParams:
         runtime_env_dir_name: Optional[str] = None,
         include_log_monitor: Optional[str] = None,
         autoscaling_config: Optional[str] = None,
-        start_initial_python_workers_for_first_job=False,
         ray_debugger_external: bool = False,
         _system_config: Optional[Dict[str, str]] = None,
         enable_object_reconstruction: Optional[bool] = False,
@@ -176,6 +178,8 @@ class RayParams:
         tracing_startup_hook=None,
         no_monitor: Optional[bool] = False,
         env_vars: Optional[Dict[str, str]] = None,
+        session_name: Optional[str] = None,
+        webui: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -211,6 +215,7 @@ class RayParams:
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
         self.dashboard_agent_listen_port = dashboard_agent_listen_port
+        self.dashboard_grpc_port = dashboard_grpc_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
@@ -227,11 +232,10 @@ class RayParams:
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
         self.object_ref_seed = object_ref_seed
-        self.start_initial_python_workers_for_first_job = (
-            start_initial_python_workers_for_first_job
-        )
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
+        self.session_name = session_name
+        self.webui = webui
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
@@ -299,6 +303,7 @@ class RayParams:
             "dashboard": wrap_port(self.dashboard_port),
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
+            "dashboard_grpc": wrap_port(self.dashboard_grpc_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
@@ -412,7 +417,7 @@ class RayParams:
             raise DeprecationWarning("The redirect_output argument is deprecated.")
 
         # Parse the numpy version.
-        numpy_version = np.__version__.split(".")
+        numpy_version = pkg_resources.get_distribution("numpy").version.split(".")
         numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning(

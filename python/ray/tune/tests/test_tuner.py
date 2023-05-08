@@ -19,10 +19,11 @@ from ray.train.examples.pytorch.torch_linear_example import (
 )
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
 from ray.data.block import BlockMetadata
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.tune import Callback, TuneError, CLIReporter
+from ray.tune import Callback, CLIReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -207,32 +208,16 @@ class TunerTest(unittest.TestCase):
             # As the unit test only has access to 4 CPUs on Buildkite.
             _tuner_kwargs={"max_concurrent_trials": 1},
         )
-        with self.assertRaises(TuneError):
+        with self.assertRaises(RuntimeError):
             tuner.fit()
 
         # Test resume
         restore_path = os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail")
-        tuner = Tuner.restore(restore_path)
+        tuner = Tuner.restore(restore_path, trainable=trainer)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
         assert len(results) == 4
-
-    def test_tuner_trainer_fail(self):
-        trainer = FailingTrainer()
-        param_space = {
-            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
-        }
-        tuner = Tuner(
-            trainable=trainer,
-            run_config=RunConfig(name="test_tuner_trainer_fail"),
-            param_space=param_space,
-            tune_config=TuneConfig(mode="max", metric="iteration"),
-        )
-        results = tuner.fit()
-        assert len(results) == 2
-        for i in range(2):
-            assert results[i].error
 
     def test_tuner_with_torch_trainer(self):
         """Test a successful run using torch trainer."""
@@ -302,8 +287,12 @@ def test_tuner_api_kwargs(shutdown_only, params_expected):
 
     caught_kwargs = {}
 
+    class MockExperimentAnalysis:
+        trials = []
+
     def catch_kwargs(**kwargs):
         caught_kwargs.update(kwargs)
+        return MockExperimentAnalysis()
 
     with patch("ray.tune.impl.tuner_internal.run", catch_kwargs):
         tuner.fit()
@@ -311,15 +300,63 @@ def test_tuner_api_kwargs(shutdown_only, params_expected):
     assert assertion(caught_kwargs)
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
+def test_tuner_fn_trainable_invalid_checkpoint_config(shutdown_only):
     tuner = Tuner(
-        lambda config, checkpoint_dir: 1,
+        lambda config: 1,
         run_config=ray.air.RunConfig(
             checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
+
+    tuner = Tuner(
+        lambda config: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+
+def test_tuner_trainer_checkpoint_config(shutdown_only):
+    custom_training_loop_trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: 1
+    )
+    tuner = Tuner(
+        custom_training_loop_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    tuner = Tuner(
+        custom_training_loop_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    handles_checkpoints_trainer = XGBoostTrainer(
+        label_column="target",
+        params={},
+        datasets={"train": ray.data.from_items(list(range(5)))},
+    )
+    tuner = Tuner(
+        handles_checkpoints_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
+                checkpoint_at_end=True, checkpoint_frequency=1
+            )
+        ),
+    )._local_tuner
+    # Check that validation passes for a Trainer that does handle checkpointing
+    tuner._get_tune_run_arguments(tuner.converted_trainable)
 
 
 def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
@@ -340,6 +377,15 @@ def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
         ),
     )
     tuner.fit()
+
+
+def test_nonserializable_trainable():
+    import threading
+
+    lock = threading.Lock()
+    # Check that the `inspect_serializability` trace was printed
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        Tuner(lambda config: print(lock))
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
@@ -424,6 +470,33 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
     for result in results:
         artifact_data = open(result.log_dir / "write.txt", "r").read()
         assert artifact_data == f"{result.config['id']}"
+
+
+def test_invalid_param_space(shutdown_only):
+    """Check that Tune raises an error on invalid param_space types."""
+
+    def trainable(config):
+        return {"metric": 1}
+
+    with pytest.raises(ValueError):
+        Tuner(trainable, param_space="not allowed")
+
+    from ray.tune.tune import _Config
+
+    class CustomConfig(_Config):
+        def to_dict(self) -> dict:
+            return {"hparam": 1}
+
+    with pytest.raises(ValueError):
+        Tuner(trainable, param_space="not allowed").fit()
+
+    with pytest.raises(ValueError):
+        tune.run(trainable, config="not allowed")
+
+    # Dict and custom _Config subclasses are fine
+    Tuner(trainable, param_space={}).fit()
+    Tuner(trainable, param_space=CustomConfig()).fit()
+    tune.run(trainable, config=CustomConfig())
 
 
 if __name__ == "__main__":

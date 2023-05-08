@@ -89,11 +89,11 @@ def test_xgboost_dynamic_resources_example(start_client_server):
 
 def test_mlflow_example(start_client_server):
     assert ray.util.client.ray.is_connected()
-    from ray.tune.examples.mlflow_example import tune_function, tune_decorated
+    from ray.tune.examples.mlflow_example import tune_with_callback, tune_with_setup
 
     mlflow_tracking_uri = os.path.join(tempfile.gettempdir(), "mlruns")
-    tune_function(mlflow_tracking_uri, finish_fast=True)
-    tune_decorated(mlflow_tracking_uri, finish_fast=True)
+    tune_with_callback(mlflow_tracking_uri, finish_fast=True)
+    tune_with_setup(mlflow_tracking_uri, finish_fast=True)
 
 
 def test_pbt_transformers(start_client_server):

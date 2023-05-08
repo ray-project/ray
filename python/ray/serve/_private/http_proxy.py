@@ -25,21 +25,45 @@ from ray.serve._private.http_util import (
     Response,
     set_socket_reuse_port,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag
-from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
+from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+    DEFAULT_LATENCY_BUCKET_MS,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
+from ray.serve._private.utils import get_random_letters
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-MAX_REPLICA_FAILURE_RETRIES = 10
+HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
+assert HTTP_REQUEST_MAX_RETRIES >= 0, (
+    f"Got unexpected value {HTTP_REQUEST_MAX_RETRIES} for "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES environment variable. "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
+)
+
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+
+# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
 )
+
+if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
+    logger.warning(
+        "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
+        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
+        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
+        "future versions."
+    )
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -60,7 +84,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < MAX_REPLICA_FAILURE_RETRIES:
+    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
@@ -74,7 +98,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             )
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
-                "request."
+                "request.",
+                extra={"log_to_stderr": False},
             )
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
@@ -90,14 +115,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
             if request_timed_out:
                 logger.info(
                     "Request didn't finish within "
-                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
                     "with another replica. You can modify this timeout by "
-                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 backoff = True
             else:
@@ -113,9 +138,9 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
-            logger.debug(
+            logger.info(
                 "Request failed due to replica failure. There are "
-                f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
+                f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                 "remaining."
             )
             backoff = True
@@ -128,7 +153,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             retries += 1
             backoff = False
     else:
-        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
@@ -149,7 +174,7 @@ class LongestPrefixRouter:
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, Tuple[EndpointTag, ApplicationName]] = dict()
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[str, RayServeHandle] = dict()
 
@@ -157,20 +182,27 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.debug(f"Got updated endpoints: {endpoints}.")
+        logger.info(
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+        )
 
         existing_handles = set(self.handles.keys())
         routes = []
         route_info = {}
         for endpoint, info in endpoints.items():
             routes.append(info.route)
-            route_info[info.route] = endpoint
+            route_info[info.route] = (endpoint, info.app_name)
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
                 self.handles[endpoint] = self._get_handle(endpoint)
 
         # Clean up any handles that are no longer used.
+        if len(existing_handles) > 0:
+            logger.info(
+                f"Deleting {len(existing_handles)} unused handles.",
+                extra={"log_to_stderr": False},
+            )
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
@@ -209,10 +241,10 @@ class LongestPrefixRouter:
                     matched = True
 
                 if matched:
-                    endpoint = self.route_info[route]
-                    return route, self.handles[endpoint]
+                    endpoint, app_name = self.route_info[route]
+                    return route, self.handles[endpoint], app_name
 
-        return None, None
+        return None, None, None
 
 
 class HTTPProxy:
@@ -227,7 +259,7 @@ class HTTPProxy:
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
-            None, None, controller_name, None
+            None, None, controller_name, None, None
         )
 
         # Used only for displaying the route table.
@@ -252,10 +284,7 @@ class HTTPProxy:
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=(
-                "route",
-                "method",
-            ),
+            tag_keys=("route", "method", "application"),
         )
 
         self.request_error_counter = metrics.Counter(
@@ -277,6 +306,20 @@ class HTTPProxy:
                 "deployment",
                 "error_code",
                 "method",
+                "route",
+                "application",
+            ),
+        )
+        self.processing_latency_tracker = metrics.Histogram(
+            "serve_http_request_latency_ms",
+            description=(
+                "The end-to-end latency of HTTP requests "
+                "(measured from the Serve HTTP proxy)."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=(
+                "route",
+                "application",
             ),
         )
 
@@ -322,21 +365,31 @@ class HTTPProxy:
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
 
-        self.request_counter.inc(
-            tags={"route": route_path, "method": scope["method"].upper()}
-        )
-
         if route_path == "/-/routes":
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send
             )
 
         if route_path == "/-/healthz":
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await starlette.responses.PlainTextResponse("success")(
                 scope, receive, send
             )
 
-        route_prefix, handle = self.prefix_router.match_route(route_path)
+        route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(
                 tags={
@@ -345,8 +398,21 @@ class HTTPProxy:
                     "method": scope["method"].upper(),
                 }
             )
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                }
+            )
             return await self._not_found(scope, receive, send)
-
+        self.request_counter.inc(
+            tags={
+                "route": route_path,
+                "method": scope["method"].upper(),
+                "application": app_name,
+            }
+        )
         # Modify the path and root path so that reverse lookups and redirection
         # work as expected. We do this here instead of in replicas so it can be
         # changed without restarting the replicas.
@@ -356,15 +422,23 @@ class HTTPProxy:
             scope["root_path"] = root_path + route_prefix
 
         start_time = time.time()
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(
+                route_path, get_random_letters(10), app_name
+            )
+        )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
+        self.processing_latency_tracker.observe(
+            latency_ms, tags={"route": route_path, "application": app_name}
+        )
         logger.info(
             access_log_msg(
                 method=scope["method"],
-                route=route_prefix,
                 status=str(status_code),
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"log_to_stderr": False},
         )
         if status_code != "200":
             self.request_error_counter.inc(
@@ -379,6 +453,8 @@ class HTTPProxy:
                     "deployment": handle.deployment_name,
                     "error_code": status_code,
                     "method": scope["method"].upper(),
+                    "route": route_path,
+                    "application": app_name,
                 }
             )
 
@@ -421,11 +497,12 @@ class HTTPProxyActor:
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         done_set, _ = await asyncio.wait(
             [
                 # Either the HTTP setup has completed.
                 # The event is set inside self.run.
-                self.setup_complete.wait(),
+                setup_task,
                 # Or self.run errored.
                 self.running_task,
             ],

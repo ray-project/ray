@@ -42,24 +42,6 @@ by simply importing.
 As long as Ray is initialized before any dataframes are created, Modin
 will be able to connect to and use the Ray cluster.
 
-Modin with the Ray Client
--------------------------
-
-When using Modin with the :ref:`Ray Client <ray-client-ref>`, it is important to ensure that the
-cluster has all dependencies installed.
-
-.. code-block:: python
-
-   import modin.pandas as pd
-   import ray
-   import ray.util
-
-   ray.init("ray://<head_node_host>:10001")
-   df = pd.read_parquet("s3://my-bucket/big.parquet")
-
-Modin will automatically use the Ray Client for computation when the file
-is read.
-
 How Modin uses Ray
 ------------------
 

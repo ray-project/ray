@@ -29,6 +29,9 @@ test --test_env=PYENV_VERSION
 test --test_env=PYENV_SHELL
 # Do not send usage stats to the server for tests
 test --test_env=RAY_USAGE_STATS_REPORT_URL="http://127.0.0.1:8000"
+# Enable cluster mode for OSX and Windows. By default, Ray
+# will not allow multinode OSX and Windows clusters.
+test --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
 # This is needed for some core tests to run correctly
 build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
@@ -41,8 +44,8 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
-build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
-#build --per_file_copt="external/.*@-Wno-unused-result"
+build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
+build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
 # Ignore minor warnings for host tools, which we generally can't control
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
@@ -97,6 +100,7 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
+build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
@@ -196,5 +200,5 @@ try-import %workspace%/.llvm-local.bazelrc
 # It picks up the system headers when someone has protobuf installed via Homebrew.
 # Work around for https://github.com/bazelbuild/bazel/issues/8053
 build:macos --sandbox_block_path=/usr/local/
-#This option controls whether javac checks for missing direct dependencies.
-build --strict_java_deps=off
+# This option controls whether javac checks for missing direct dependencies.
+build --experimental_strict_java_deps=off

@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import is_overridden
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 
 torch, nn = try_import_torch()
 
@@ -135,7 +135,7 @@ class FQETorchModel:
                     minibatch[SampleBatch.NEXT_OBS], device=self.device
                 )
                 dones = torch.tensor(
-                    minibatch[SampleBatch.DONES], device=self.device, dtype=float
+                    minibatch[SampleBatch.TERMINATEDS], device=self.device, dtype=float
                 )
 
                 # Compute Q-values for current obs

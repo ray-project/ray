@@ -13,7 +13,7 @@ class DummyTrainer(BaseTrainer):
         pass
 
 
-class DummyDataset(ray.data.Dataset):
+class DummyDataset(ray.data.Datastream):
     def __init__(self):
         pass
 
@@ -147,7 +147,7 @@ def test_scaling_config_pgf_equivalance(
     except ValueError as e:
         # We do not have to test invalid placement group factories
         assert str(e) == (
-            "Cannot initialize a PlacementGroupFactory with an empty head "
+            "Cannot initialize a ResourceRequest with an empty head "
             "and zero worker bundles."
         )
 

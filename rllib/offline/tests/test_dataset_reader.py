@@ -33,7 +33,7 @@ class TestDatasetReader(unittest.TestCase):
         """Test that the dataset reader iterates over batches of rows correctly."""
         input_config = {"format": "json", "paths": self.dset_path}
         dataset, _ = get_dataset_and_shards(
-            {"input": "dataset", "input_config": input_config}
+            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
         )
 
         ioctx = IOContext(
@@ -50,10 +50,9 @@ class TestDatasetReader(unittest.TestCase):
     def test_dataset_shard_with_only_local(self):
         """Tests whether the dataset_shard function works correctly for a single shard
         for the local worker."""
-        config = {
-            "input": "dataset",
-            "input_config": {"format": "json", "paths": self.dset_path},
-        }
+        config = AlgorithmConfig().offline_data(
+            input_="dataset", input_config={"format": "json", "paths": self.dset_path}
+        )
 
         # two ways of doing this:
 
@@ -61,16 +60,15 @@ class TestDatasetReader(unittest.TestCase):
         _, shards = get_dataset_and_shards(config, num_workers=0)
 
         assert len(shards) == 1
-        assert isinstance(shards[0], ray.data.Dataset)
+        assert isinstance(shards[0], ray.data.Datastream)
 
     def test_dataset_shard_remote_workers_with_local_worker(self):
         """Tests whether the dataset_shard function works correctly for the remote
         workers with a dummy dataset shard for the local worker."""
 
-        config = {
-            "input": "dataset",
-            "input_config": {"format": "json", "paths": self.dset_path},
-        }
+        config = AlgorithmConfig().offline_data(
+            input_="dataset", input_config={"format": "json", "paths": self.dset_path}
+        )
         NUM_WORKERS = 4
 
         _, shards = get_dataset_and_shards(config, num_workers=NUM_WORKERS)
@@ -78,20 +76,23 @@ class TestDatasetReader(unittest.TestCase):
         assert len(shards) == NUM_WORKERS + 1
         assert shards[0] is None
         assert all(
-            isinstance(remote_shard, ray.data.Dataset) for remote_shard in shards[1:]
+            isinstance(remote_shard, ray.data.Datastream) for remote_shard in shards[1:]
         )
 
     def test_dataset_shard_with_task_parallelization(self):
         """Tests whether the dataset_shard function works correctly with parallelism
         for reading the dataset."""
-        config = {
-            "input": "dataset",
-            "input_config": {
-                "format": "json",
-                "paths": self.dset_path,
-                "parallelism": 10,
-            },
-        }
+        config = (
+            AlgorithmConfig()
+            .offline_data(
+                input_="dataset",
+                input_config={
+                    "format": "json",
+                    "paths": self.dset_path,
+                },
+            )
+            .rollouts(num_rollout_workers=10)
+        )
         NUM_WORKERS = 4
 
         _, shards = get_dataset_and_shards(config, num_workers=NUM_WORKERS)
@@ -99,13 +100,15 @@ class TestDatasetReader(unittest.TestCase):
         assert len(shards) == NUM_WORKERS + 1
         assert shards[0] is None
         assert all(
-            isinstance(remote_shard, ray.data.Dataset) for remote_shard in shards[1:]
+            isinstance(remote_shard, ray.data.Datastream) for remote_shard in shards[1:]
         )
 
     def test_dataset_shard_with_loader_fn(self):
         """Tests whether the dataset_shard function works correctly with loader_fn."""
         dset = ray.data.range(100)
-        config = {"input": "dataset", "input_config": {"loader_fn": lambda: dset}}
+        config = AlgorithmConfig().offline_data(
+            input_="dataset", input_config={"loader_fn": lambda: dset}
+        )
 
         ret_dataset, _ = get_dataset_and_shards(config)
         assert ret_dataset.count() == dset.count()
@@ -113,13 +116,14 @@ class TestDatasetReader(unittest.TestCase):
     def test_dataset_shard_error_with_unsupported_dataset_format(self):
         """Tests whether the dataset_shard function raises an error when an unsupported
         dataset format is specified."""
-        config = {
-            "input": "dataset",
-            "input_config": {
+
+        config = AlgorithmConfig().offline_data(
+            input_="dataset",
+            input_config={
                 "format": "__UNSUPPORTED_FORMAT__",
                 "paths": self.dset_path,
             },
-        }
+        )
 
         with self.assertRaises(ValueError):
             get_dataset_and_shards(config)
@@ -128,14 +132,15 @@ class TestDatasetReader(unittest.TestCase):
         """Tests whether the dataset_shard function raises an error when both format
         and loader_fn are specified."""
         dset = ray.data.range(100)
-        config = {
-            "input": "dataset",
-            "input_config": {
+
+        config = AlgorithmConfig().offline_data(
+            input_="dataset",
+            input_config={
                 "format": "json",
                 "paths": self.dset_path,
                 "loader_fn": lambda: dset,
             },
-        }
+        )
 
         with self.assertRaises(ValueError):
             get_dataset_and_shards(config)
@@ -143,9 +148,10 @@ class TestDatasetReader(unittest.TestCase):
     def test_default_ioctx(self):
         # Test DatasetReader without passing in IOContext
         input_config = {"format": "json", "paths": self.dset_path}
-        dataset, _ = get_dataset_and_shards(
-            {"input": "dataset", "input_config": input_config}
+        config = AlgorithmConfig().offline_data(
+            input_="dataset", input_config=input_config
         )
+        dataset, _ = get_dataset_and_shards(config)
         reader = DatasetReader(dataset)
         # Reads in one line of Pendulum dataset with 600 timesteps
         assert len(reader.next()) == 600

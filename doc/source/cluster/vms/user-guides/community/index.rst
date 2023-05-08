@@ -15,6 +15,7 @@ The following is a list of community supported cluster managers.
    yarn.rst
    slurm.rst
    lsf.rst
+   spark.rst
 
 .. _ref-additional-cloud-providers:
 

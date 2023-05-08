@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
 
@@ -79,7 +79,7 @@ class TestPG(unittest.TestCase):
             for env in [
                 "random_dict_env",
                 "random_tuple_env",
-                "MsPacmanNoFrameskip-v4",
+                "ALE/MsPacman-v5",
                 "CartPole-v1",
                 "FrozenLake-v1",
             ]:
@@ -116,7 +116,7 @@ class TestPG(unittest.TestCase):
                 ),
                 SampleBatch.ACTIONS: np.array([0, 1, 1]),
                 SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
-                SampleBatch.DONES: np.array([False, False, True]),
+                SampleBatch.TERMINATEDS: np.array([False, False, True]),
                 SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
                 SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
             }

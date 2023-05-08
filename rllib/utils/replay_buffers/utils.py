@@ -1,9 +1,9 @@
 import logging
 import psutil
 from typing import Optional, Any
+
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -14,7 +14,7 @@ from ray.rllib.utils.replay_buffers import (
     ReplayBuffer,
     MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
+from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 

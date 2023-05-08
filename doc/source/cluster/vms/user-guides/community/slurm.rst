@@ -118,7 +118,7 @@ as a single task/node (recall that ``tasks-per-node=1``).
 
 Below, you'll see that we explicitly specify the number of CPUs (``num-cpus``)
 and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
-more resources than allocated. We also need to explictly
+more resources than allocated. We also need to explicitly
 indicate the ``node-ip-address`` for the Ray head runtime:
 
 .. literalinclude:: /cluster/doc_code/slurm-basic.sh
@@ -146,6 +146,9 @@ Finally, you can invoke your Python script:
 .. literalinclude:: /cluster/doc_code/slurm-basic.sh
    :language: bash
    :start-after: __doc_script_start__
+
+
+.. note:: The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
 
 .. _slurm-network-ray:
 

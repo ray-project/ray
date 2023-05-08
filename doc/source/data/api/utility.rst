@@ -3,4 +3,9 @@
 Utility
 =======
 
-.. autofunction:: ray.data.set_progress_bars
+.. currentmodule:: ray.data
+
+.. autosummary::
+   :toctree: doc/
+
+   set_progress_bars

@@ -185,6 +185,17 @@ public class RayServeWrappedReplica implements RayServeReplica {
   }
 
   /**
+   * Tell the caller this replica is successfully initialized.
+   *
+   * @return
+   */
+  public Object isInitialized(byte[] deploymentConfigBytes) {
+    Object deploymentVersion = reconfigure(deploymentConfigBytes);
+    checkHealth();
+    return deploymentVersion;
+  }
+
+  /**
    * Wait until there is no request in processing. It is used for stopping replica gracefully.
    *
    * @return true if it is ready for shutdown.
@@ -202,13 +213,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
    *     DeploymentVersion is serialized to protobuf byte[].
    */
   @Override
-  public Object reconfigure(Object userConfig) {
-    boolean isCrossLanguage = userConfig instanceof byte[];
-    DeploymentVersion deploymentVersion =
-        replica.reconfigure(
-            isCrossLanguage && userConfig != null
-                ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
-                : userConfig);
+  public Object reconfigure(byte[] deploymentConfigBytes) {
+    DeploymentVersion deploymentVersion = replica.reconfigure(deploymentConfigBytes);
     return deploymentVersion.toProtoBytes();
   }
 

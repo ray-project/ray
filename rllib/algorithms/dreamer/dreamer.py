@@ -19,14 +19,13 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -78,7 +77,13 @@ class DreamerConfig(AlgorithmConfig):
         self.td_model_lr = 6e-4
         self.actor_lr = 8e-5
         self.critic_lr = 8e-5
+
         self.grad_clip = 100.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.lambda_ = 0.95
         self.dreamer_train_iters = 100
         self.batch_size = 50
@@ -101,10 +106,10 @@ class DreamerConfig(AlgorithmConfig):
             "action_init_std": 5.0,
         }
 
-        # Override some of AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with Dreamer-specific
+        # values.
         # .rollouts()
         self.num_envs_per_worker = 1
-        self.horizon = 1000
         self.batch_mode = "complete_episodes"
         self.clip_actions = False
 
@@ -120,6 +125,11 @@ class DreamerConfig(AlgorithmConfig):
             # Repeats action send by policy for frame_skip times in env
             "frame_skip": 2,
         })
+
+        # .exploration()
+        # This dreamer implementation does not need an exploration config
+        self.exploration_config = {}
+
         # __sphinx_doc_end__
         # fmt: on
 
@@ -338,7 +348,7 @@ class Dreamer(Algorithm):
         return DreamerTorchPolicy
 
     @override(Algorithm)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Setup buffer.
@@ -366,7 +376,8 @@ class Dreamer(Algorithm):
         batch_size = self.config.batch_size
 
         # Collect SampleBatches from rollout workers.
-        batch = synchronous_parallel_sample(worker_set=self.workers)
+        with self._timers[SAMPLE_TIMER]:
+            batch = synchronous_parallel_sample(worker_set=self.workers)
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
 
@@ -397,20 +408,3 @@ class Dreamer(Algorithm):
         self.local_replay_buffer.add(batch)
 
         return fetches
-
-
-# Deprecated: Use ray.rllib.algorithms.dreamer.DreamerConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DreamerConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dreamer.dreamer.DreamerConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

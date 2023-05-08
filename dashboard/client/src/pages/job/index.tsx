@@ -12,10 +12,12 @@ import {
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
+import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { HelpInfo } from "../../components/Tooltip";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
 
@@ -55,7 +57,7 @@ const columns = [
     ),
   },
   {
-    label: "Logs",
+    label: "Actions",
   },
   { label: "StartTime" },
   { label: "EndTime" },
@@ -66,6 +68,7 @@ const JobList = () => {
   const classes = useStyles();
   const {
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     jobList,
@@ -76,7 +79,7 @@ const JobList = () => {
 
   return (
     <div className={classes.root}>
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
         <Switch
@@ -147,6 +150,24 @@ const JobList = () => {
         </TableContainer>
       </TitleCard>
     </div>
+  );
+};
+
+/**
+ * Jobs page for the new information hierarchy
+ */
+export const JobsLayout = () => {
+  return (
+    <React.Fragment>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Jobs",
+          id: "jobs",
+          path: "/jobs",
+        }}
+      />
+      <Outlet />
+    </React.Fragment>
   );
 };
 

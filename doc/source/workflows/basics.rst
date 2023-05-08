@@ -56,7 +56,7 @@ Next, let's execute the DAG we defined and inspect the result:
 
     # You can also run the workflow asynchronously and fetch the output via
     # 'ray.get'
-    output_ref = workflow.run_async(dag)
+    output_ref = workflow.run_async(output)
     print(ray.get(output_ref))
 
 
@@ -77,8 +77,8 @@ either as a decorator or as kwargs to ``<task>.options``:
     import ray
     from ray import workflow
 
-    @workflow.options(max_retries=5)
-    @ray.remote(num_cpus=2, num_gpus=3)
+    @workflow.options(checkpoint=True)
+    @ray.remote(num_cpus=2, num_gpus=3, max_retries=5)
     def read_data(num: int):
         return [i for i in range(num)]
 
@@ -315,7 +315,7 @@ makes Ray DAG node can return a DAG in the runtime:
 The dynamic workflow enables nesting, looping, and recursion within workflows.
 
 The following example shows how to implement the recursive ``factorial`` program
-using dynamically workflow: 
+using dynamically workflow:
 
 .. code-block:: python
 
@@ -339,7 +339,7 @@ using dynamically workflow:
 
 The key behavior to note is that when a task returns a DAG wrapped by
 ``workflow.continuation`` instead of a concrete value, that wrapped DAG will be
-substituted for the task's return. 
+substituted for the task's return.
 
 To better understand dynamic workflows, let's look at a more realistic example of booking a trip:
 
@@ -372,7 +372,7 @@ Here the workflow initially just consists of the ``book_trip`` task. Once
 executed, ``book_trip`` generates tasks to book flights and hotels in parallel,
 which feeds into a task to decide whether to cancel the trip or finalize it. The
 DAG can be visualized as follows (note the dynamically generated nested
-workflows within ``book_trip``): 
+workflows within ``book_trip``):
 
 .. image:: trip.png
    :width: 500px

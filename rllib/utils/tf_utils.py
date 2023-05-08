@@ -1,9 +1,9 @@
-import gym
-from gym.spaces import Discrete, MultiDiscrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete, MultiDiscrete
 import logging
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -18,11 +18,55 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.policy.policy import Policy
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+    from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
 
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
+
+
+@PublicAPI
+def clip_gradients(
+    gradients_dict: Dict[str, "tf.Tensor"],
+    *,
+    grad_clip: Optional[float] = None,
+    grad_clip_by: str = "value",
+) -> None:
+    """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
+
+    Changes the provided gradient dict in place.
+
+    Args:
+        gradients_dict: The gradients dict, mapping str to gradient tensors.
+        grad_clip: The value to clip with. The way gradients are clipped is defined
+            by the `grad_clip_by` arg (see below).
+        grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+    """
+    # No clipping, return.
+    if grad_clip is None:
+        return
+
+    # Clip by value (each gradient individually).
+    if grad_clip_by == "value":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = tf.clip_by_value(v, -grad_clip, grad_clip)
+
+    # Clip by L2-norm (per gradient tensor).
+    elif grad_clip_by == "norm":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = tf.clip_by_norm(v, grad_clip)
+
+    # Clip by global L2-norm (across all gradient tensors).
+    else:
+        assert grad_clip_by == "global_norm"
+
+        clipped_grads, _ = tf.clip_by_global_norm(
+            list(gradients_dict.values()), grad_clip
+        )
+        for k, v in zip(gradients_dict.copy().keys(), clipped_grads):
+            gradients_dict[k] = v
 
 
 @PublicAPI
@@ -80,7 +124,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
@@ -174,7 +218,7 @@ def get_placeholder(
     value: Optional[Any] = None,
     name: Optional[str] = None,
     time_axis: bool = False,
-    flatten: bool = True
+    flatten: bool = True,
 ) -> "tf1.placeholder":
     """Returns a tf1.placeholder object given optional hints, such as a space.
 
@@ -228,14 +272,15 @@ def get_placeholder(
 
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["Policy"], config: PartialAlgorithmConfigDict
-) -> Type["Policy"]:
+    orig_cls: Type["TFPolicy"],
+    config: Union["AlgorithmConfig", PartialAlgorithmConfigDict],
+) -> Type[Union["TFPolicy", "EagerTFPolicy", "EagerTFPolicyV2"]]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Algorithm config dict.
+        config: The Algorithm config dict or AlgorithmConfig object.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.
@@ -247,6 +292,8 @@ def get_tf_eager_cls_if_necessary(
         raise ImportError("Could not import tensorflow!")
 
     if framework == "tf2":
+        if not tf1.executing_eagerly():
+            tf1.enable_eager_execution()
         assert tf1.executing_eagerly()
 
         from ray.rllib.policy.tf_policy import TFPolicy
@@ -408,6 +455,8 @@ def make_tf_callable(
     return make_wrapper
 
 
+# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
+#  Replaced with `clip_gradients()`.
 @PublicAPI
 def minimize_and_clip(
     optimizer: LocalOptimizer,
@@ -466,7 +515,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         ValueError: If the given space is not a discrete one.
 
     Examples:
-        >>> import gym
+        >>> import gymnasium as gym
         >>> import tensorflow as tf
         >>> from ray.rllib.utils.tf_utils import one_hot
         >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
@@ -565,7 +614,7 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
 
 @DeveloperAPI
 def warn_if_infinite_kl_divergence(
-    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+    policy: Type["TFPolicy"], mean_kl: TensorType
 ) -> None:
     def print_warning():
         logger.warning(
@@ -580,7 +629,7 @@ def warn_if_infinite_kl_divergence(
 
     if policy.loss_initialized():
         tf.cond(
-            tf.math.is_inf(mean_kl_loss),
+            tf.math.is_inf(mean_kl),
             false_fn=lambda: tf.constant(0.0),
             true_fn=lambda: print_warning(),
         )

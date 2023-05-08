@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Tuple
 import random
 
 
@@ -23,10 +23,10 @@ class CorrelatedActionsEnv(gym.Env):
         self.action_space = Tuple([Discrete(2), Discrete(2)])
         self.last_observation = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.t = 0
         self.last_observation = random.choice([0, 1])
-        return self.last_observation
+        return self.last_observation, {}
 
     def step(self, action):
         self.t += 1
@@ -38,6 +38,6 @@ class CorrelatedActionsEnv(gym.Env):
         # Encourage correlation between a1 and a2.
         if a1 == a2:
             reward += 5
-        done = self.t > 20
+        done = truncated = self.t > 20
         self.last_observation = random.choice([0, 1])
-        return self.last_observation, reward, done, {}
+        return self.last_observation, reward, done, truncated, {}

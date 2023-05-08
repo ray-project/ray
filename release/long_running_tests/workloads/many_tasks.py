@@ -1,21 +1,16 @@
 # This workload tests submitting and getting many tasks over and over.
-import json
-import os
 import time
 
 import numpy as np
 
 import ray
 from ray.cluster_utils import Cluster
+from ray._private.test_utils import safe_write_to_results_json
 
 
 def update_progress(result):
     result["last_update"] = time.time()
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
-    )
-    with open(test_output_json, "wt") as f:
-        json.dump(result, f)
+    safe_write_to_results_json(result)
 
 
 num_redis_shards = 5

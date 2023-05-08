@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Dict, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete
 import numpy as np
 import random
 
@@ -53,13 +53,14 @@ class ParametricActionsCartPole(gym.Env):
         self.action_mask[self.left_idx] = 1
         self.action_mask[self.right_idx] = 1
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.update_avail_actions()
+        obs, infos = self.wrapped.reset()
         return {
             "action_mask": self.action_mask,
             "avail_actions": self.action_assignments,
-            "cart": self.wrapped.reset(),
-        }
+            "cart": obs,
+        }, infos
 
     def step(self, action):
         if action == self.left_idx:
@@ -75,7 +76,7 @@ class ParametricActionsCartPole(gym.Env):
                 self.left_idx,
                 self.right_idx,
             )
-        orig_obs, rew, done, info = self.wrapped.step(actual_action)
+        orig_obs, rew, done, truncated, info = self.wrapped.step(actual_action)
         self.update_avail_actions()
         self.action_mask = self.action_mask.astype(np.float32)
         obs = {
@@ -83,7 +84,7 @@ class ParametricActionsCartPole(gym.Env):
             "avail_actions": self.action_assignments,
             "cart": orig_obs,
         }
-        return obs, rew, done, info
+        return obs, rew, done, truncated, info
 
 
 class ParametricActionsCartPoleNoEmbeddings(gym.Env):
@@ -117,11 +118,12 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
         )
         self._skip_env_checking = True
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
+        obs, infos = self.wrapped.reset()
         return {
             "valid_avail_actions_mask": self.valid_avail_actions_mask,
-            "cart": self.wrapped.reset(),
-        }
+            "cart": obs,
+        }, infos
 
     def step(self, action):
         if action == self.left_idx:
@@ -136,9 +138,9 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
                 self.left_idx,
                 self.right_idx,
             )
-        orig_obs, rew, done, info = self.wrapped.step(actual_action)
+        orig_obs, rew, done, truncated, info = self.wrapped.step(actual_action)
         obs = {
             "valid_avail_actions_mask": self.valid_avail_actions_mask,
             "cart": orig_obs,
         }
-        return obs, rew, done, info
+        return obs, rew, done, truncated, info

@@ -4,102 +4,104 @@
 Key Concepts
 ============
 
-.. _dataset_concept:
+.. _datastream_concept:
 
---------
-Datasets
---------
+----------
+Datastream
+----------
 
-A Dataset consists of a list of Ray object references to *blocks*.
-Each block holds a set of items in either `Arrow table format <https://arrow.apache.org/docs/python/data.html#tables>`__
-or a Python list (for non-tabular data).
-For ML use cases, Datasets also natively supports mixing :ref:`Tensor <datasets_tensor_support>` and tabular data.
-Having multiple blocks in a dataset allows for parallel transformation and ingest.
+A :term:`Datastream <Datastream (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
+Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
+`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
+Having multiple blocks in a datastream allows for parallel transformation and ingest.
 
-Informally, we refer to:
+For ML use cases, Datastream natively supports mixing tensors with tabular data. To
+learn more, read :ref:`Working with tensor data <working_with_tensors>`.
 
-* A Dataset with Arrow blocks as a *Tabular Dataset*,
-* A Dataset with Python list blocks as a *Simple Dataset*, and
-* A Tabular Dataset with one or more tensor-type columns as a *Tensor Dataset*.
+The following figure visualizes a datastream with three blocks, each holding 1000 rows. Note that certain blocks
+may not be computed yet. Normally, callers iterate over datastream blocks in a streaming fashion, so that not all
+blocks need to be materialized in the cluster memory at once.
 
-The following figure visualizes a tabular dataset with three blocks, each block holding 1000 rows each:
-
-.. image:: images/dataset-arch.svg
+.. image:: images/datastream-arch.svg
 
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
 
-Since a Dataset is just a list of Ray object references, it can be freely passed between Ray tasks,
-actors, and libraries like any other object reference.
-This flexibility is a unique characteristic of Ray Datasets.
-
 Reading Data
 ============
 
-Datasets uses Ray tasks to read data from remote storage. When reading from a file-based datasource (e.g., S3, GCS), it creates a number of read tasks proportional to the number of CPUs in the cluster. Each read task reads its assigned files and produces an output block:
+Datastream uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
 
-.. image:: images/dataset-read.svg
+.. image:: images/datastream-read.svg
    :align: center
 
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-The parallelism can also be manually specified, but the final parallelism for a read is always capped by the number of files in the underlying dataset. See the :ref:`Creating Datasets Guide <creating_datasets>` for an in-depth guide
-on creating datasets.
+You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying datastream.
+
+For an in-depth guide on creating datastreams, read :ref:`Loading Data <loading_data>`.
 
 Transforming Data
 =================
 
-Datasets can use either Ray tasks or Ray actors to transform datasets. By default, tasks are used. Actors can be specified using ``compute=ActorPoolStrategy()``, which creates an autoscaling pool of Ray actors to process transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be cached:
+Datastream uses either Ray tasks or Ray actors to transform data blocks. By default, it uses tasks.
 
-.. image:: images/dataset-map.svg
+To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
+:meth:`~ray.data.Datastream.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
+pool of Ray actors. This allows you to cache expensive state initialization
+(e.g., model loading for GPU-based tasks).
+
+.. image:: images/datastream-map.svg
    :align: center
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-See the :ref:`Transforming Datasets Guide <transforming_datasets>` for an in-depth guide
-on transforming datasets.
+For an in-depth guide on transforming datastreams, read :ref:`Transforming Data <transforming_data>`.
 
 Shuffling Data
 ==============
 
-Certain operations like *sort* or *groupby* require data blocks to be partitioned by value, or *shuffled*. Datasets uses tasks to implement distributed shuffles in a map-reduce style, using map tasks to partition blocks by value, and then reduce tasks to merge co-partitioned blocks together.
+Operations like :meth:`~ray.data.Datastream.sort` and :meth:`~ray.data.Datastream.groupby`
+require blocks to be partitioned by value or *shuffled*. Datastream uses tasks to shuffle blocks in a map-reduce
+style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
+blocks.
 
-You can also change just the number of blocks of a Dataset using :meth:`~ray.data.Dataset.repartition`.
+Call :meth:`~ray.data.Datastream.repartition` to change the number of blocks in a :class:`~ray.data.Datastream`.
 Repartition has two modes:
 
-1. ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
-2. ``shuffle=True`` - performs a full distributed shuffle
+* ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
+* ``shuffle=True`` - performs a full distributed shuffle
 
-.. image:: images/dataset-shuffle.svg
+.. image:: images/datastream-shuffle.svg
    :align: center
 
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
-Datasets shuffle can scale to processing hundreds of terabytes of data. See the :ref:`Performance Tips Guide <shuffle_performance_tips>` for an in-depth guide on shuffle performance.
+Datastream can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
+Note that operations like shuffle materialize the entire Datastream prior to their execution (shuffle execution is not streamed through memory).
+
+Iteration and materialization
+=============================
+
+Most transformations on a datastream are lazy. They don't execute until you iterate over the datastream or call
+:meth:`Datastream.materialize() <ray.data.Datastream.materialize>`. When a Datastream is materialized, its
+type becomes a `MaterializedDatastream`, which indicates that all its blocks are materialized in Ray
+object store memory.
+
+Datastream transformations are executed in a streaming way, incrementally on the data and
+with operators processed in parallel, see :ref:`Streaming Execution <streaming_execution>`.
+
+Datastreams and MaterializedDatastreams can be freely passed between Ray tasks, actors, and libraries without
+incurring copies of the underlying block data (pass by reference semantics).
 
 Fault tolerance
 ===============
 
-Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a Dataset will be automatically recovered by Ray in case of failures. This works through *lineage reconstruction*: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the tasks that created them.
+Datastream performs *lineage reconstruction* to recover data. If an application error or
+system failure occurs, Datastream recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
+restarts the actor used for computing the block prior to re-executing the task.
 
-There are a few cases that are not currently supported:
-
-* If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
-* When ``compute=ActorPoolStrategy()`` is specified for transformations.
-
-.. _dataset_pipeline_concept:
-
------------------
-Dataset Pipelines
------------------
-
-Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
-
-..
-  https://docs.google.com/drawings/d/1A_nWvignkdvs4GPRShCNYcnb1T--iQoSEeS4uWRVQ4k/edit
-
-.. image:: images/dataset-pipeline-2-mini.svg
-
-Dataset pipelines can be read in a streaming fashion by one consumer, or split into multiple sub-pipelines and read in parallel by multiple consumers for distributed training. See the :ref:`Dataset Pipelines Guide <pipelining_datasets>` for an in-depth guide on pipelining compute.
+Fault tolerance is not supported if the original worker process that created the Datastream dies.
+This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Datastream.

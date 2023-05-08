@@ -8,19 +8,11 @@ head_node_type:
     # 32 cpus, x86, 128G mem, 10Gb NIC
     instance_type: m5.8xlarge
 
-worker_node_types:
-    - name: worker_node
-      # 32 cpus, x86, 128G mem, 10Gb NIC
-      instance_type: m5.8xlarge
-      min_workers: 0
-      max_workers: 0
-      use_spot: false
+worker_node_types: []
 
 aws:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
-        - Key: anyscale-user
-          Value: '{{env["ANYSCALE_USER"]}}'
-        - Key: anyscale-expiration
-          Value: '{{env["EXPIRATION_1D"]}}'
+        - Key: ttl-hours
+          Value: '24'

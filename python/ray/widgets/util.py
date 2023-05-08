@@ -1,17 +1,15 @@
 import importlib
 import logging
+import sys
 import textwrap
 from functools import wraps
 from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
+from packaging.version import Version
+
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +31,6 @@ def make_table_html_repr(
     Returns:
         HTML representation of the object
     """
-    try:
-        from tabulate import tabulate
-    except ImportError:
-        return (
-            "Tabulate isn't installed. Run "
-            "`pip install tabulate` for rich notebook output."
-        )
-
     data = {}
     for k, v in vars(obj).items():
         if isinstance(v, (str, bool, int, float)):
@@ -126,9 +116,12 @@ def _has_missing(
         if not message:
             message = f"Run `pip install {' '.join(missing)}` for rich notebook output."
 
-        # stacklevel=3: First level is this function, then ensure_notebook_deps, then
-        # the actual function affected.
-        logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
+        if sys.version_info < (3, 8):
+            logger.warning(f"Missing packages: {missing}. {message}")
+        else:
+            # stacklevel=3: First level is this function, then ensure_notebook_deps,
+            # then the actual function affected.
+            logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
 
     return missing
 
@@ -163,3 +156,33 @@ def _has_outdated(
         logger.warning(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
 
     return outdated
+
+
+@DeveloperAPI
+def fallback_if_colab(func: F) -> Callable[[F], F]:
+    try:
+        ipython = get_ipython()
+    except NameError:
+        ipython = None
+
+    @wraps(func)
+    def wrapped(self, *args, **kwargs):
+        if ipython and "google.colab" not in str(ipython):
+            return func(self, *args, **kwargs)
+        elif hasattr(self, "__repr__"):
+            return print(self.__repr__(*args, **kwargs))
+        else:
+            return None
+
+    return wrapped
+
+
+@DeveloperAPI
+def in_notebook() -> bool:
+    """Return whether we are in a Jupyter notebook."""
+    try:
+        class_name = get_ipython().__class__.__name__
+        is_notebook = True if "Terminal" not in class_name else False
+    except NameError:
+        is_notebook = False
+    return is_notebook

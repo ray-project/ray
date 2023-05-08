@@ -133,16 +133,6 @@ class MockGcsResourceUsageBatchTable : public GcsResourceUsageBatchTable {
 namespace ray {
 namespace gcs {
 
-class MockGcsProfileTable : public GcsProfileTable {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsWorkerTable : public GcsWorkerTable {
  public:
 };

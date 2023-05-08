@@ -44,7 +44,7 @@ with ray.init(job_config=ray.job_config.JobConfig(code_search_path=["/path/to/co
 
 # fmt: off
 # __python_module_start__
-# ray_demo.py
+# /path/to/the_dir/ray_demo.py
 
 import ray
 

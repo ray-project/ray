@@ -25,7 +25,7 @@ class Node:
         self.child_number_visits = np.zeros(
             [self.action_space_size], dtype=np.float32
         )  # N
-        self.valid_actions = obs["action_mask"].astype(np.bool)
+        self.valid_actions = obs["action_mask"].astype(np.bool_)
 
         self.reward = reward
         self.done = done
@@ -84,14 +84,14 @@ class Node:
     def get_child(self, action):
         if action not in self.children:
             self.env.set_state(self.state)
-            obs, reward, done, _ = self.env.step(action)
+            obs, reward, terminated, truncated, _ = self.env.step(action)
             next_state = self.env.get_state()
             self.children[action] = Node(
                 state=next_state,
                 action=action,
                 parent=self,
                 reward=reward,
-                done=done,
+                done=terminated,
                 obs=obs,
                 mcts=self.mcts,
             )

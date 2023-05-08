@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 
@@ -20,13 +20,14 @@ class RepeatAfterMeEnv(gym.Env):
         self.episode_len = config.get("episode_len", 100)
         self.history = []
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.history = [0] * self.delay
-        return self._next_obs()
+        return self._next_obs(), {}
 
     def step(self, action):
         obs = self.history[-(1 + self.delay)]
 
+        reward = 0.0
         # Box: -abs(diff).
         if isinstance(self.action_space, Box):
             reward = -np.sum(np.abs(action - obs))
@@ -34,8 +35,8 @@ class RepeatAfterMeEnv(gym.Env):
         if isinstance(self.action_space, Discrete):
             reward = 1.0 if action == obs else -1.0
 
-        done = len(self.history) > self.episode_len
-        return self._next_obs(), reward, done, {}
+        done = truncated = len(self.history) > self.episode_len
+        return self._next_obs(), reward, done, truncated, {}
 
     def _next_obs(self):
         if isinstance(self.observation_space, Box):

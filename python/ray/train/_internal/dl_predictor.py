@@ -1,13 +1,13 @@
 import abc
-from typing import Dict, TypeVar, Union
+from typing import Dict, Optional, TypeVar, Union
 
 import numpy as np
 import pandas as pd
 
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    convert_pandas_to_batch_type,
-    convert_batch_type_to_pandas,
+    _convert_batch_type_to_pandas,
+    _convert_pandas_to_batch_type,
 )
 from ray.train.predictor import Predictor
 from ray.util.annotations import DeveloperAPI
@@ -21,7 +21,7 @@ class DLPredictor(Predictor):
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
+        dtype: Optional[Union[TensorDtype, Dict[str, TensorDtype]]],
     ) -> Union[TensorType, Dict[str, TensorType]]:
         """Converts a NumPy ndarray batch to the tensor type for the DL framework.
 
@@ -52,13 +52,14 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
+    @DeveloperAPI
     def call_model(
-        self, tensor: Union[TensorType, Dict[str, TensorType]]
+        self, inputs: Union[TensorType, Dict[str, TensorType]]
     ) -> Union[TensorType, Dict[str, TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
         Args:
-            tensor: The tensor to input to the model.
+            inputs: The tensor to input to the model.
 
         Returns:
             A tensor or dictionary of tensors containing the model output.
@@ -71,20 +72,22 @@ class DLPredictor(Predictor):
         return BatchFormat.NUMPY
 
     def _predict_pandas(
-        self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
+        self,
+        data: pd.DataFrame,
+        dtype: Optional[Union[TensorDtype, Dict[str, TensorDtype]]],
     ) -> pd.DataFrame:
-        numpy_input = convert_pandas_to_batch_type(
+        numpy_input = _convert_pandas_to_batch_type(
             data,
             BatchFormat.NUMPY,
             self._cast_tensor_columns,
         )
         numpy_output = self._predict_numpy(numpy_input, dtype)
-        return convert_batch_type_to_pandas(numpy_output)
+        return _convert_batch_type_to_pandas(numpy_output)
 
     def _predict_numpy(
         self,
         data: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
+        dtype: Optional[Union[TensorDtype, Dict[str, TensorDtype]]],
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         # Single column selection return numpy array so preprocessors can be
         # reused in both training and prediction

@@ -1,5 +1,3 @@
-import warnings
-
 from ray.util import log_once
 
 
@@ -8,7 +6,7 @@ def warn_structure_refactor(old_module: str, new_module: str, direct: bool = Tru
     if log_once(f"tune:structure:refactor:{old_module}"):
         warning = (
             f"The module `{old_module}` has been moved to `{new_module}` and the old "
-            f"location will be deprecated soon. Please adjust your imports to point "
+            f"location has been deprecated. Please adjust your imports to point "
             f"to the new location."
         )
 
@@ -24,6 +22,4 @@ def warn_structure_refactor(old_module: str, new_module: str, direct: bool = Tru
                 f"check the contents of `{new_module}` before making changes."
             )
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("always")
-            warnings.warn(warning, DeprecationWarning, stacklevel=3)
+        raise DeprecationWarning(warning)

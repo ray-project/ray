@@ -17,7 +17,7 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
-    """This buffer implements Prioritized Experience Replay
+    """This buffer implements Prioritized Experience Replay.
 
     The algorithm has been described by Tom Schaul et. al. in "Prioritized
     Experience Replay". See https://arxiv.org/pdf/1511.05952.pdf for

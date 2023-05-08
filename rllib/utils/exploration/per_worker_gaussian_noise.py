@@ -1,4 +1,4 @@
-from gym.spaces import Space
+from gymnasium.spaces import Space
 from typing import Optional
 
 from ray.rllib.utils.annotations import PublicAPI

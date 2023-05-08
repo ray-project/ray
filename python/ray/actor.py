@@ -9,6 +9,7 @@ import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
     client_mode_hook,
@@ -42,7 +43,7 @@ _actor_launch_hook = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -544,7 +545,7 @@ class ActorClass:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.accelerators` for accelerator types.
+                See `ray.util.accelerators` for accelerator types.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -596,7 +597,9 @@ class ActorClass:
                 "DEFAULT": default hybrid scheduling;
                 "SPREAD": best effort spread scheduling;
                 `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling.
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -761,7 +764,8 @@ class ActorClass:
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = 1000 if is_asyncio else 1
 
-        if client_mode_should_convert(auto_init=True):
+        auto_init_ray()
+        if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
 
         # fill actor required options
@@ -1162,10 +1166,7 @@ class ActorHandle:
             ), "Cross language remote actor method cannot be executed locally."
 
         if num_returns == "dynamic":
-            # TODO(swang): Support dynamic generators for actors.
-            raise NotImplementedError(
-                'num_returns="dynamic" not yet supported for actor tasks.'
-            )
+            num_returns = -1
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1190,7 +1191,7 @@ class ActorHandle:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
             )
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in ["__ray_terminate__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -1317,10 +1318,13 @@ def _modify_class(cls):
             "'class ClassName(object):' instead of 'class ClassName:'."
         )
 
-    # Modify the class to have an additional method that will be used for
-    # terminating the worker.
+    # Modify the class to have additional methods
+    # for checking actor alive status and to terminate the worker.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
+
+        def __ray_ready__(self):
+            return True
 
         def __ray_terminate__(self):
             worker = ray._private.worker.global_worker

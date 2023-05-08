@@ -70,7 +70,7 @@ A few notes on the above config:
   in the log directory once per 5 seconds, rather than the default 60.
   The reason is that the directory `/tmp/ray/session_latest/logs/` does not exist
   initially (Ray must create it first). Setting the `Refresh_Interval` low allows us to see logs
-  in the Fluent Bit container's stoud sooner.
+  in the Fluent Bit container's stdout sooner.
 
 
 ## Add logging sidecars to your RayCluster CR.
@@ -122,7 +122,7 @@ for instructions on this step.
 Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
 a Fluent Bit sidecar.
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 ```
 
 Determine the Ray pod's name with
@@ -142,4 +142,4 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [Fluentd]: https://docs.fluentd.org/
 [Promtail]: https://grafana.com/docs/loki/latest/clients/promtail/
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
-[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml

@@ -3,7 +3,7 @@
 Anti-pattern: Passing the same large argument by value repeatedly harms performance
 ===================================================================================
 
-**TLDR:** Avoid passing the same large argument by value to multiple tasks, use :ref:`ray.put() <ray-put-ref>` and pass by reference instead.
+**TLDR:** Avoid passing the same large argument by value to multiple tasks, use :func:`ray.put() <ray.put>` and pass by reference instead.
 
 When passing a large argument (>100KB) by value to a task,
 Ray will implicitly store the argument in the object store and the worker process will fetch the argument to the local object store from the caller's object store before running the task.

@@ -36,3 +36,7 @@ SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
+
+# learner
+LEARNER_STATS_KEY = "learner_stats"
+ALL_MODULES = "__all__"

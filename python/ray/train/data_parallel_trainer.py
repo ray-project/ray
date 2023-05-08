@@ -2,13 +2,13 @@ import inspect
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-from tabulate import tabulate
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -21,7 +21,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -43,10 +43,10 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        if isinstance(checkpoint.dir_or_data, dict):
-            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
-        else:
-            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
+        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
+            air_checkpoint, self.preprocessor
+        )
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -99,7 +99,7 @@ class DataParallelTrainer(BaseTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Datastream shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -114,7 +114,7 @@ class DataParallelTrainer(BaseTrainer):
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
+    **How do I use DataParallelTrainer or any of its subclasses?**
 
     Example:
 
@@ -136,7 +136,7 @@ class DataParallelTrainer(BaseTrainer):
         )
         result = trainer.fit()
 
-    **How do I develop on top of ``DataParallelTrainer``?**
+    **How do I develop on top of DataParallelTrainer?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.
@@ -210,7 +210,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datastreams to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -241,6 +241,10 @@ class DataParallelTrainer(BaseTrainer):
         WILDCARD_KEY: DatasetConfig(split=False),
     }
 
+    _fields_for_tuner_param_space = BaseTrainer._fields_for_tuner_param_space + [
+        "train_loop_config"
+    ]
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
@@ -254,9 +258,6 @@ class DataParallelTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not ray.is_initialized():
-            ray.init()
-
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
@@ -279,25 +280,49 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    @classmethod
+    def restore(
+        cls: Type["DataParallelTrainer"],
+        path: str,
+        train_loop_per_worker: Optional[
+            Union[Callable[[], None], Callable[[Dict], None]]
+        ] = None,
+        train_loop_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "DataParallelTrainer":
+        """Restores a DataParallelTrainer from a previously interrupted/failed run.
+
+        Args:
+            train_loop_per_worker: Optionally re-specified train loop function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g., it holds onto outdated
+                object references). This should be the same training loop
+                that was passed to the original trainer constructor.
+            train_loop_config: Optionally re-specified train config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
+            subclass that is calling this method.
+        """
+        return super(DataParallelTrainer, cls).restore(
+            path=path,
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
+        )
+
     def _validate_attributes(self):
         super()._validate_attributes()
-
-        if not self.scaling_config.use_gpu and "GPU" in ray.available_resources():
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for this trainer. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "in your scaling config."
-            )
-
-        if self.scaling_config.num_workers is None:
-            raise ValueError("You must specify the 'num_workers' in scaling_config.")
-
-        if self.scaling_config.num_workers <= 0:
-            raise ValueError(
-                "'num_workers' in `scaling_config` must be a positive "
-                f"integer. Received {self.scaling_config.num_workers}"
-            )
 
         self._validate_train_loop_per_worker(
             self._train_loop_per_worker, "train_loop_per_worker"
@@ -319,6 +344,37 @@ class DataParallelTrainer(BaseTrainer):
                 f"{fn_name} should take in 0 or 1 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
+
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        scaling_config = super(DataParallelTrainer, cls)._validate_scaling_config(
+            scaling_config
+        )
+
+        # This validation happens after the scaling config is updated from
+        # its specification in the Tuner `param_space`
+        if not scaling_config.use_gpu and "GPU" in ray.available_resources():
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
+
+        if scaling_config.num_workers is None:
+            raise ValueError(
+                "You must specify the 'num_workers' in `scaling_config` as either an "
+                f"argument of `{cls.__name__}` or through the `param_space` of a "
+                "`Tuner` (if performing hyperparameter tuning)."
+            )
+
+        if scaling_config.num_workers <= 0:
+            raise ValueError(
+                "'num_workers' in `scaling_config` must be a positive "
+                f"integer. Received {scaling_config.num_workers}"
+            )
+
+        return scaling_config
 
     def _report(self, training_iterator: TrainingIterator) -> None:
         for results in training_iterator:
@@ -343,6 +399,7 @@ class DataParallelTrainer(BaseTrainer):
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
+            driver_ip=ray.util.get_node_ip_address(),
             experiment_name=session.get_experiment_name(),
         )
 
@@ -390,6 +447,7 @@ class DataParallelTrainer(BaseTrainer):
         ["tabulate", None],
         ["ipywidgets", "8"],
     )
+    @fallback_if_colab
     def _ipython_display_(self):
         from ipywidgets import HTML, VBox, Tab, Layout
         from IPython.display import display

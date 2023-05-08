@@ -15,7 +15,7 @@ from typing import Optional
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
@@ -58,7 +58,7 @@ class DashboardAgentModule(abc.ABC):
     def is_minimal_module():
         """
         Return True if the module is minimal, meaning it
-        should work with `pip install ray` that doesn't requires additonal
+        should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 
@@ -87,7 +87,7 @@ class DashboardHeadModule(abc.ABC):
     def is_minimal_module():
         """
         Return True if the module is minimal, meaning it
-        should work with `pip install ray` that doesn't requires additonal
+        should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 
@@ -122,13 +122,13 @@ def get_all_modules(module_type):
         except ModuleNotFoundError as e:
             logger.info(
                 f"Module {name} cannot be loaded because "
-                "we cannot import all dependencies. Download "
-                "`pip install ray[default]` for the full "
+                "we cannot import all dependencies. Install this module using "
+                "`pip install 'ray[default]'` for the full "
                 f"dashboard functionality. Error: {e}"
             )
             if not should_only_load_minimal_modules:
                 logger.info(
-                    "Although `pip install ray[default] is downloaded, "
+                    "Although `pip install 'ray[default]'` is downloaded, "
                     "module couldn't be imported`"
                 )
                 raise e

@@ -12,7 +12,7 @@ Ray Jobs is available in versions 1.9+ and requires a full installation of Ray. 
 
 .. code-block:: shell
 
-    pip install ray[default]
+    pip install "ray[default]"
 
 See the :ref:`installation guide <installation>` for more details on installing Ray.
 

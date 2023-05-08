@@ -32,9 +32,6 @@ EPISODE_REWARD_MEAN = "episode_reward_mean"
 # (Optional) Mean loss for training iteration
 MEAN_LOSS = "mean_loss"
 
-# (Optional) Mean loss for training iteration
-NEG_MEAN_LOSS = "neg_mean_loss"
-
 # (Optional) Mean accuracy for training iteration
 MEAN_ACCURACY = "mean_accuracy"
 
@@ -43,6 +40,10 @@ EPISODES_THIS_ITER = "episodes_this_iter"
 
 # (Optional/Auto-filled) Accumulated number of episodes for this trial.
 EPISODES_TOTAL = "episodes_total"
+
+# The timestamp of when the result is generated.
+# Default to when the result is processed by tune.
+TIMESTAMP = "timestamp"
 
 # Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
@@ -67,7 +68,6 @@ DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 DEFAULT_RESULT_KEYS = (
     TRAINING_ITERATION,
     TIME_TOTAL_S,
-    TIMESTEPS_TOTAL,
     MEAN_ACCURACY,
     MEAN_LOSS,
 )
@@ -77,7 +77,7 @@ DEBUG_METRICS = (
     TRIAL_ID,
     "experiment_id",
     "date",
-    "timestamp",
+    TIMESTAMP,
     PID,
     HOSTNAME,
     NODE_IP,
@@ -95,14 +95,12 @@ AUTO_RESULT_KEYS = (
     PID,
     TIME_TOTAL_S,
     TIME_THIS_ITER_S,
-    "timestamp",
-    "experiment_id",
+    TIMESTAMP,
     "date",
     "time_since_restore",
-    "iterations_since_restore",
     "timesteps_since_restore",
+    "iterations_since_restore",
     "config",
-    "warmup_time",
 )
 
 # __duplicate__ is a magic keyword used internally to
@@ -118,13 +116,25 @@ TRIAL_INFO = "__trial_info__"
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
 
+
+def _get_defaults_results_dir() -> str:
+    return (
+        # This can be overwritten by our libraries
+        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
+        # This is a directory provided by Bazel automatically
+        or os.environ.get("TEST_TMPDIR")
+        # This is the old way to specify the results dir
+        # Deprecate: Remove in 2.6
+        or os.environ.get("TUNE_RESULT_DIR")
+        # Default
+        or os.path.expanduser("~/ray_results")
+    )
+
+
 # Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = (
-    # This is the file system that bazel test uses.
-    os.environ.get("TEST_TMPDIR")
-    or os.environ.get("TUNE_RESULT_DIR")
-    or os.path.expanduser("~/ray_results")
-)
+DEFAULT_RESULTS_DIR = _get_defaults_results_dir()
+
+DEFAULT_EXPERIMENT_NAME = "default"
 
 # Meta file about status under each experiment directory, can be
 # parsed by automlboard if exists.

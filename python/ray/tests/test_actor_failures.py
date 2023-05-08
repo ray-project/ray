@@ -273,8 +273,9 @@ def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
 
 def test_actor_restart_on_node_failure(ray_start_cluster):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     }
@@ -405,7 +406,10 @@ def test_caller_task_reconstruction(ray_start_regular):
     "ray_start_cluster_head",
     [
         generate_system_config_map(
-            object_timeout_milliseconds=1000, num_heartbeats_timeout=10
+            object_timeout_milliseconds=1000,
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=10,
         )
     ],
     indirect=True,
@@ -708,6 +712,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         ray.exceptions.RayActorError, match="it was killed by `ray.kill"
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
     # Test actor killed because of worker failure.
@@ -719,6 +724,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         match=("The actor is dead because its worker process has died"),
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
     # Test acator killed because of owner failure.
@@ -730,6 +736,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         match="The actor is dead because its owner has died",
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
     # Test actor killed because the node is dead.
@@ -742,6 +749,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         match="The actor is dead because its node has died.",
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
 

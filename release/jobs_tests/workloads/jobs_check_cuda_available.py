@@ -35,9 +35,9 @@ assert ray.get(f.remote()) == [0]
 NUM_NODES = 2
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, scheduling_strategy="SPREAD")
 def get_node_id():
-    return ray.get_runtime_context().node_id
+    return ray.get_runtime_context().get_node_id()
 
 
 node_ids = set(ray.get([get_node_id.remote() for _ in range(100)]))

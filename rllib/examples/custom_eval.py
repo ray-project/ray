@@ -82,7 +82,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--no-custom-eval", action="store_true")
@@ -118,23 +118,19 @@ def custom_eval_function(algorithm, eval_workers):
     Returns:
         metrics: Evaluation metrics dict.
     """
-
-    # We configured 2 eval workers in the training config.
-    funcs = [
-        lambda w: w.foreach_env(lambda env: env.set_corridor_length(4)),
-        lambda w: w.foreach_env(lambda env: env.set_corridor_length(7)),
-    ]
-
-    # Set different env settings for each worker. Here we use a fixed config,
-    # which also could have been computed in each worker by looking at
-    # env_config.worker_index (printed in SimpleCorridor class above).
-    eval_workers.foreach_worker(func=funcs)
+    # Set different env settings for each worker. Here we use the worker's
+    # `worker_index` property.
+    eval_workers.foreach_worker(
+        func=lambda w: w.foreach_env(
+            lambda env: env.set_corridor_length(4 if w.worker_index == 1 else 7)
+        )
+    )
 
     for i in range(5):
         print("Custom evaluation round", i)
         # Calling .sample() runs exactly one episode per worker due to how the
         # eval workers are configured.
-        eval_workers.foreach_worker(func=lambda w: w.sample())
+        eval_workers.foreach_worker(func=lambda w: w.sample(), local_worker=False)
 
     # Collect the accumulated episodes on the workers, and then summarize the
     # episode stats into a metrics dict.
@@ -165,7 +161,7 @@ if __name__ == "__main__":
         # process, but evaluation will be done in parallel with two
         # workers. Hence, this run will use 3 CPUs total (1 for the
         # learner + 2 more for evaluation workers).
-        .rollouts(horizon=20, num_rollout_workers=0)
+        .rollouts(num_rollout_workers=0)
         .evaluation(
             evaluation_num_workers=2,
             # Enable evaluation, once per training iteration.
@@ -175,12 +171,12 @@ if __name__ == "__main__":
             evaluation_duration="auto" if args.evaluation_parallel_to_training else 10,
             # Evaluate parallelly to training.
             evaluation_parallel_to_training=args.evaluation_parallel_to_training,
-            evaluation_config={
-                "env_config": {
+            evaluation_config=PGConfig.overrides(
+                env_config={
                     # Evaluate using LONGER corridor than trained on.
                     "corridor_length": 5,
                 },
-            },
+            ),
             custom_evaluation_function=eval_fn,
         )
         .framework(args.framework)

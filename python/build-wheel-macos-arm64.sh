@@ -22,7 +22,6 @@ if [[ -n "${SKIP_DEP_RES}" ]]; then
 
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
   curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
-  source ~/.bash_profile
   conda init bash
   source ~/.bash_profile
 
@@ -34,6 +33,7 @@ fi
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client
+  source "$HOME"/.nvm/nvm.sh
   npm ci
   npm run build
 popd
@@ -49,8 +49,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # and the -e flag ensures that we don't remove the .whl directory.
   git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client -e dashboard/client
 
-
   # Install python using conda. This should be easier to produce consistent results in buildkite and locally.
+  [ ! -f "$HOME/.bash_profile" ] && conda init bash
   source ~/.bash_profile
   conda create -y -n "$CONDA_ENV_NAME"
   conda activate "$CONDA_ENV_NAME"
@@ -71,7 +71,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
     # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
     $PIP_CMD install --upgrade setuptools==58.4
-    $PIP_CMD install -q cython==0.29.26
+    $PIP_CMD install -q cython==0.29.32
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.

@@ -23,7 +23,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -75,8 +75,12 @@ if __name__ == "__main__":
                 # "use_attention": True,
                 # "attention_use_n_prev_actions": 1,
                 # "attention_use_n_prev_rewards": 1,
-            }
+            },
+            # TODO (Kourosh): This example needs to be migrated to the new RLModule API
+            # stack.
+            _enable_learner_api=False,
         )
+        .rl_module(_enable_rl_module_api=False)
     )
     if args.run == "PPO":
         config.training(
@@ -114,9 +118,9 @@ if __name__ == "__main__":
         episode_reward = 0.0
         reward = 0.0
         action = 0
-        done = False
-        obs = env.reset()
-        while not done:
+        terminated = truncated = False
+        obs, info = env.reset()
+        while not terminated and not truncated:
             # Create a dummy action using the same observation n times,
             # as well as dummy prev-n-actions and prev-n-rewards.
             action, state, logits = algo.compute_single_action(
@@ -128,7 +132,7 @@ if __name__ == "__main__":
                 },
                 full_fetch=True,
             )
-            obs, reward, done, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward
 
         print(f"Episode reward={episode_reward}")

@@ -14,6 +14,8 @@ value per iteration. Ray supports remote generators for two use cases:
 
 Remote generators can be used in both actor and non-actor tasks.
 
+.. _static-generators:
+
 `num_returns` set by the task caller
 ------------------------------------
 
@@ -43,6 +45,8 @@ for this code, which uses a generator function:
 The advantage of doing so is that the generator function does not need to hold all of its return values in memory at once.
 It can yield the arrays one at a time to reduce memory pressure.
 
+.. _dynamic-generators:
+
 `num_returns` set by the task executor
 --------------------------------------
 
@@ -54,8 +58,6 @@ In these cases, we can use a remote generator function that returns a *dynamic* 
 To use this feature, set ``num_returns="dynamic"`` in the ``@ray.remote`` decorator or the remote function's ``.options()``.
 Then, when invoking the remote function, Ray will return a *single* ``ObjectRef`` that will get populated with an ``ObjectRefGenerator`` when the task completes.
 The ``ObjectRefGenerator`` can be used to iterate over a list of ``ObjectRefs`` containing the actual values returned by the task.
-
-.. note:: ``num_returns="dynamic"`` is currently an experimental API in v2.1+.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python
@@ -96,5 +98,3 @@ Limitations
 -----------
 
 Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
-
-``num_returns="dynamic"`` is not yet supported for actor tasks.

@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, Space
+from gymnasium.spaces import Box, Discrete, Space
 import numpy as np
 from typing import List, Optional, Union
 

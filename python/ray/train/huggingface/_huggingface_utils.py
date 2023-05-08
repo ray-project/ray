@@ -7,16 +7,11 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
-from ray.util import get_node_ip_address
-from ray.data.dataset import Dataset
+from ray.data import DataIterator
 from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
-
-# Constants for the sync checkpoint dict. See huggingface_trainer.py
-CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
-NODE_IP_KEY = "node_ip"
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -49,7 +44,7 @@ def wrap_transformers_trainer(
             data_loader = super().get_train_dataloader()
             if isinstance(
                 data_loader.dataset, transformers.trainer.IterableDatasetShard
-            ):
+            ) and getattr(data_loader.dataset.dataset, "_do_not_split", False):
                 # Default Trainer.get_train_dataloader will wrap the dataset in
                 # IterableDatasetShard, which will perform additional sharding on top
                 # of the already sharded dataset. By setting those two attributes,
@@ -64,11 +59,11 @@ def wrap_transformers_trainer(
     return trainer
 
 
-# TODO(ml-team): Replace with a Ray Datasets-HuggingFace integration when available.
+# TODO(ml-team): Replace with a Datastreams-HuggingFace integration when available.
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Ray Dataset."""
+    """HF ExamplesIterable backed by a Datastream."""
 
-    def __init__(self, dataset: Dataset) -> None:
+    def __init__(self, dataset: DataIterator) -> None:
         self.dataset = dataset
         self.generate_examples_fn = self.dataset.iter_rows
 
@@ -77,10 +72,12 @@ class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
 
     def __iter__(self):
         for row in self.generate_examples_fn(**self.kwargs):
-            yield (0, {k: v for k, v in row.as_pydict().items()})
+            yield (0, {k: v for k, v in row.items()})
 
 
-def process_dataset_for_hf(dataset: Dataset) -> "IterableDataset":
+def process_dataset_for_hf(
+    dataset: DataIterator, disable_transformers_splitting: bool = False
+) -> "IterableDataset":
     """Converts a Ray Dataset into a HF IterableDataset."""
     hf_iterable = RayDatasetHFIterable(dataset)
 
@@ -89,21 +86,29 @@ def process_dataset_for_hf(dataset: Dataset) -> "IterableDataset":
     ).with_format("torch")
 
     try:
-        dataset_length = dataset.count()
-    except ValueError:
+        dataset_length = dataset._base_datastream.count()
+    except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None
 
     iterable_dataset = maybe_add_length(iterable_dataset, dataset_length)
+    # Trigger logic in `wrap_transformers_trainer` to disable built-in
+    # HuggingFace splitting, as we have already split the dataset ourselves.
+    iterable_dataset._do_not_split = disable_transformers_splitting
     return iterable_dataset
 
 
 def process_datasets(
-    train_dataset: Dataset,
-    eval_dataset: Dataset,
+    train_dataset: DataIterator,
+    eval_dataset: DataIterator,
 ) -> Tuple["IterableDataset", "IterableDataset"]:
     """Convert Ray train and validation to HF IterableDatasets."""
-    train_torch_dataset = process_dataset_for_hf(train_dataset)
+    if train_dataset:
+        train_torch_dataset = process_dataset_for_hf(
+            train_dataset, disable_transformers_splitting=True
+        )
+    else:
+        train_torch_dataset = None
 
     if eval_dataset:
         eval_torch_dataset = process_dataset_for_hf(eval_dataset)
@@ -153,11 +158,8 @@ class TrainReportCallback(TrainerCallback):
         ).absolute()
         if checkpoint_path:
             # Use HuggingFaceCheckpoint here to avoid a warning in _TrainSession
-            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_dict(
-                {
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                }
+            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_directory(
+                str(checkpoint_path)
             )
 
     def _report(self):

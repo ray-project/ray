@@ -22,7 +22,7 @@ def test_reset():
     envs = init_several_env(max_steps, batch_size, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -72,7 +72,7 @@ def test_step():
     envs = init_several_env(max_steps, batch_size, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -82,7 +82,7 @@ def test_step():
             ]
             for policy_id in env.players_ids
         }
-        obs, reward, done, info = env.step(actions)
+        obs, reward, done, truncated, info = env.step(actions)
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=1)
         assert not done["__all__"]
@@ -94,7 +94,7 @@ def test_multiple_steps():
     envs = init_several_env(max_steps, batch_size, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -105,7 +105,7 @@ def test_multiple_steps():
                 ]
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             check_obs(obs, batch_size, grid_size)
             assert_logger_buffer_size(env, n_steps=step_i)
             assert not done["__all__"]
@@ -117,7 +117,7 @@ def test_multiple_episodes():
     envs = init_several_env(max_steps, batch_size, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -130,12 +130,12 @@ def test_multiple_episodes():
                 ]
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             check_obs(obs, batch_size, grid_size)
             assert_logger_buffer_size(env, n_steps=step_i)
             assert not done["__all__"] or (step_i == max_steps and done["__all__"])
             if done["__all__"]:
-                obs = env.reset()
+                obs, info = env.reset()
                 check_obs(obs, batch_size, grid_size)
                 assert_logger_buffer_size(env, n_steps=0)
                 step_i = 0
@@ -221,7 +221,7 @@ def assert_info(
         }
         step_i += 1
 
-        obs, reward, done, info = env.step(actions)
+        obs, reward, done, truncated, info = env.step(actions)
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=step_i)
         assert not done["__all__"] or (step_i == n_steps_in_epi and done["__all__"])
@@ -239,7 +239,7 @@ def assert_info(
             else:
                 assert info["player_blue"]["pick_own_color"] == blue_own
 
-            obs = env.reset()
+            obs, info = env.reset()
             check_obs(obs, batch_size, grid_size)
             assert_logger_buffer_size(env, n_steps=0)
             step_i = 0
@@ -259,7 +259,7 @@ def test_logged_info_no_picking():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -297,7 +297,7 @@ def test_logged_info__red_pick_red_all_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -335,7 +335,7 @@ def test_logged_info__blue_pick_red_all_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -373,7 +373,7 @@ def test_logged_info__blue_pick_blue_all_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -411,7 +411,7 @@ def test_logged_info__red_pick_blue_all_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -449,7 +449,7 @@ def test_logged_info__red_pick_blue_all_the_time_wt_difference_in_actions():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -487,7 +487,7 @@ def test_logged_info__both_pick_blue_all_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -525,7 +525,7 @@ def test_logged_info__both_pick_red_all_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -563,7 +563,7 @@ def test_logged_info__both_pick_red_half_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -601,7 +601,7 @@ def test_logged_info__both_pick_blue_half_the_time():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -639,7 +639,7 @@ def test_logged_info__both_pick_blue():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -677,7 +677,7 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
@@ -707,7 +707,7 @@ def test_get_and_set_env_state():
     envs = init_several_env(max_steps, batch_size, grid_size)
 
     for env in envs:
-        obs = env.reset()
+        obs, info = env.reset()
         initial_env_state = env._save_env()
         initial_env_state_saved = copy.deepcopy(initial_env_state)
         env_initial = copy.deepcopy(env)
@@ -721,7 +721,7 @@ def test_get_and_set_env_state():
                 ]
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
 
             assert all(
                 v == initial_env_state_saved[k]
@@ -755,7 +755,7 @@ def test_get_and_set_env_state():
             )
 
             if done["__all__"]:
-                _ = env.reset()
+                _, _ = env.reset()
                 step_i = 0
 
 
@@ -797,7 +797,7 @@ def test_observations_are_invariant_to_the_player_trained_wt_step():
     ]
 
     for env_i, env in enumerate(envs):
-        _ = env.reset()
+        _, _ = env.reset()
         step_i = 0
 
         for _ in range(n_steps):
@@ -819,7 +819,7 @@ def test_observations_are_invariant_to_the_player_trained_wt_step():
                     p_blue_act[(step_i + delta) % max_steps] for delta in batch_deltas
                 ],
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
 
             step_i += 1
             # assert observations are symmetrical respective to the actions
@@ -875,7 +875,7 @@ def test_observations_are_invariant_to_the_player_trained_wt_reset():
     ]
 
     for env_i, env in enumerate(envs):
-        obs = env.reset()
+        obs, info = env.reset()
         assert_obs_is_symmetrical(obs, env)
         step_i = 0
 
@@ -898,7 +898,7 @@ def test_observations_are_invariant_to_the_player_trained_wt_reset():
                     p_blue_act[(step_i + delta) % max_steps] for delta in batch_deltas
                 ],
             }
-            _, _, _, _ = env.step(actions)
+            _, _, _, _, _ = env.step(actions)
 
             step_i += 1
 

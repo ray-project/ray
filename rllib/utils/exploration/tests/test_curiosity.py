@@ -1,6 +1,6 @@
 from collections import deque
-import gym
-import gym_minigrid
+import gymnasium as gym
+import minigrid
 import numpy as np
 import sys
 import unittest
@@ -114,8 +114,10 @@ def env_maker(config):
     name = config.get("name", "MiniGrid-Empty-5x5-v0")
     framestack = config.get("framestack", 4)
     env = gym.make(name)
+    # Make it impossible to reach goal by chance.
+    env = gym.wrappers.TimeLimit(env, max_episode_steps=15)
     # Only use image portion of observation (discard goal and direction).
-    env = gym_minigrid.wrappers.ImgObsWrapper(env)
+    env = minigrid.wrappers.ImgObsWrapper(env)
     env = OneHotWrapper(
         env,
         config.vector_index if hasattr(config, "vector_index") else 0,
@@ -138,6 +140,7 @@ class TestCuriosity(unittest.TestCase):
         ray.shutdown()
 
     def test_curiosity_on_frozen_lake(self):
+
         config = (
             ppo.PPOConfig()
             # A very large frozen-lake that's hard for a random policy to solve
@@ -156,14 +159,17 @@ class TestCuriosity(unittest.TestCase):
                         "FFFFFFFG",
                     ],
                     "is_slippery": False,
+                    "max_episode_steps": 16,
                 },
             )
             # Print out observations to see how far we already get inside the Env.
             .callbacks(MyCallBack)
             # Limit horizon to make it really hard for non-curious agent to reach
             # the goal state.
-            .rollouts(horizon=16, num_rollout_workers=0)
-            .training(lr=0.001)
+            .rollouts(num_rollout_workers=0)
+            # TODO (Kourosh): We need to provide examples on how we do curiosity with
+            # RLModule API
+            .training(lr=0.001, _enable_learner_api=False)
             .exploration(
                 exploration_config={
                     "type": "Curiosity",
@@ -179,6 +185,7 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         num_iterations = 10
@@ -226,14 +233,16 @@ class TestCuriosity(unittest.TestCase):
                     "framestack": 1,  # seems to work even w/o framestacking
                 },
             )
-            # Make it impossible to reach goal by chance.
-            .rollouts(horizon=15, num_envs_per_worker=4, num_rollout_workers=0)
+            .rollouts(num_envs_per_worker=4, num_rollout_workers=0)
             .training(
                 model={
                     "fcnet_hiddens": [256, 256],
                     "fcnet_activation": "relu",
                 },
                 num_sgd_iter=8,
+                # TODO (Kourosh): We need to provide examples on how we do curiosity
+                # with RLModule API
+                _enable_learner_api=False,
             )
             .exploration(
                 exploration_config={
@@ -254,6 +263,7 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         min_reward = 0.001
@@ -266,11 +276,13 @@ class TestCuriosity(unittest.TestCase):
             # algo = ppo.PPO(config=config)
             # algo.restore("[checkpoint file]")
             # env = env_maker(config["env_config"])
-            # s = env.reset()
+            # obs, info = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(algo.compute_single_action(s))
-            #     if d:
-            #         s = env.reset()
+            #     obs, reward, done, truncated, info = env.step(
+            #         algo.compute_single_action(s)
+            #     )
+            #     if done:
+            #         obs, info = env.reset()
             #     env.render()
 
             results = tune.Tuner(

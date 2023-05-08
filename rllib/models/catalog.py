@@ -1,6 +1,6 @@
 from functools import partial
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
 import tree  # pip install dm_tree
@@ -8,7 +8,6 @@ from typing import List, Optional, Type, Union
 
 from ray.tune.registry import (
     RLLIB_MODEL,
-    RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     _global_registry,
 )
@@ -32,7 +31,6 @@ from ray.rllib.models.torch.torch_action_dist import (
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
@@ -51,15 +49,6 @@ logger = logging.getLogger(__name__)
 # fmt: off
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
-    # Experimental flag.
-    # If True, try to use a native (tf.keras.Model or torch.Module) default
-    # model instead of our built-in ModelV2 defaults.
-    # If False (default), use "classic" ModelV2 default models.
-    # Note that this currently only works for:
-    # 1) framework != torch AND
-    # 2) fully connected and CNN default networks as well as
-    # auto-wrapped LSTM- and attention nets.
-    "_use_default_native_models": False,
     # Experimental flag.
     # If True, user specified no preprocessor to be created
     # (via config._disable_preprocessor_api=True). If True, observations
@@ -80,7 +69,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "fcnet_activation": "tanh",
 
@@ -92,7 +81,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # observation space.
     "conv_filters": None,
     # Activation function descriptor.
-    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "conv_activation": "relu",
 
@@ -183,9 +172,29 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
 
+    # === Options for ModelConfigs in RLModules ===
+    # The latent dimension to encode into.
+    # Since most RLModules have an encoder and heads, this establishes an agreement
+    # on the dimensionality of the latent space they share.
+    # This has no effect for models outside RLModule.
+    # If None, model_config['fcnet_hiddens'][-1] value will be used to guarantee
+    # backward compatibility to old configs. This yields different models than past
+    # versions of RLlib.
+    "encoder_latent_dim": None,
+    # Whether to always check the inputs and outputs of RLlib's default models for
+    # their specifications. Input specifications are checked on failed forward passes
+    # of the models regardless of this flag. If this flag is set to `True`, inputs and
+    # outputs are checked on every call. This leads to a slow-down and should only be
+    # used for debugging. Note that this flag is only relevant for instances of
+    # RLlib's Model class. These are commonly generated from ModelConfigs in RLModules.
+    "always_check_shapes": False,
+
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
+    # Deprecated in anticipation of RLModules API
+    "_use_default_native_models": DEPRECATED_VALUE,
+
 }
 # __sphinx_doc_end__
 # fmt: on
@@ -488,34 +497,20 @@ class ModelCatalog:
                 if model_config.get("use_lstm") or model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import (
                         AttentionWrapper,
-                        Keras_AttentionWrapper,
                     )
                     from ray.rllib.models.tf.recurrent_net import (
                         LSTMWrapper,
-                        Keras_LSTMWrapper,
                     )
 
                     wrapped_cls = model_cls
-                    # Wrapped (custom) model is itself a keras Model ->
-                    # wrap with keras LSTM/GTrXL (attention) wrappers.
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        model_cls = (
-                            Keras_LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else Keras_AttentionWrapper
-                        )
-                        model_config["wrapped_cls"] = wrapped_cls
-                    # Wrapped (custom) model is ModelV2 ->
-                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
-                    else:
-                        forward = wrapped_cls.forward
-                        model_cls = ModelCatalog._wrap_if_needed(
-                            wrapped_cls,
-                            LSTMWrapper
-                            if model_config.get("use_lstm")
-                            else AttentionWrapper,
-                        )
-                        model_cls._wrapped_forward = forward
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls,
+                        LSTMWrapper
+                        if model_config.get("use_lstm")
+                        else AttentionWrapper,
+                    )
+                    model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
                 # registered. Only still do this, if users do register their
@@ -666,32 +661,20 @@ class ModelCatalog:
 
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
-                    Keras_AttentionWrapper,
                 )
                 from ray.rllib.models.tf.recurrent_net import (
                     LSTMWrapper,
-                    Keras_LSTMWrapper,
                 )
 
                 wrapped_cls = v2_class
                 if model_config.get("use_lstm"):
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_LSTMWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, LSTMWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(wrapped_cls, LSTMWrapper)
+                    v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    if issubclass(wrapped_cls, tf.keras.Model):
-                        v2_class = Keras_AttentionWrapper
-                        model_config["wrapped_cls"] = wrapped_cls
-                    else:
-                        v2_class = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, AttentionWrapper
-                        )
-                        v2_class._wrapped_forward = wrapped_cls.forward
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper
+                    )
+                    v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
@@ -760,24 +743,32 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env: gym.Env, options: Optional[dict] = None) -> Preprocessor:
+    def get_preprocessor(
+        env: gym.Env, options: Optional[dict] = None, include_multi_binary: bool = False
+    ) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
         """
 
-        return ModelCatalog.get_preprocessor_for_space(env.observation_space, options)
+        return ModelCatalog.get_preprocessor_for_space(
+            env.observation_space, options, include_multi_binary
+        )
 
     @staticmethod
     @DeveloperAPI
     def get_preprocessor_for_space(
-        observation_space: gym.Space, options: dict = None
+        observation_space: gym.Space,
+        options: dict = None,
+        include_multi_binary: bool = False,
     ) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
             observation_space: The input observation space.
             options: Options to pass to the preprocessor.
+            include_multi_binary: Whether to include the MultiBinaryPreprocessor in
+                the possible preprocessors returned by this method.
 
         Returns:
             preprocessor: Preprocessor for the observations.
@@ -792,22 +783,10 @@ class ModelCatalog:
                     )
                 )
 
-        if options.get("custom_preprocessor"):
-            preprocessor = options["custom_preprocessor"]
-            logger.info("Using custom preprocessor {}".format(preprocessor))
-            logger.warning(
-                "DeprecationWarning: Custom preprocessors are deprecated, "
-                "since they sometimes conflict with the built-in "
-                "preprocessors for handling complex observation spaces. "
-                "Please use wrapper classes around your environment "
-                "instead of preprocessors."
-            )
-            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                observation_space, options
-            )
-        else:
-            cls = get_preprocessor(observation_space)
-            prep = cls(observation_space, options)
+        cls = get_preprocessor(
+            observation_space, include_multi_binary=include_multi_binary
+        )
+        prep = cls(observation_space, options)
 
         if prep is not None:
             logger.debug(
@@ -816,24 +795,6 @@ class ModelCatalog:
                 )
             )
         return prep
-
-    @staticmethod
-    @Deprecated(error=True)
-    def register_custom_preprocessor(
-        preprocessor_name: str, preprocessor_class: type
-    ) -> None:
-        """Register a custom preprocessor class by name.
-
-        The preprocessor can be later used by specifying
-        {"custom_preprocessor": preprocesor_name} in the model config.
-
-        Args:
-            preprocessor_name: Name to register the preprocessor under.
-            preprocessor_class: Python class of the preprocessor.
-        """
-        _global_registry.register(
-            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
-        )
 
     @staticmethod
     @PublicAPI
@@ -893,17 +854,13 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
-        Keras_FCNet = None
-        Keras_VisionNet = None
 
         if framework in ["tf2", "tf"]:
             from ray.rllib.models.tf.fcnet import (
                 FullyConnectedNetwork as FCNet,
-                Keras_FullyConnectedNetwork as Keras_FCNet,
             )
             from ray.rllib.models.tf.visionnet import (
                 VisionNetwork as VisionNet,
-                Keras_VisionNetwork as Keras_VisionNet,
             )
             from ray.rllib.models.tf.complex_input_net import (
                 ComplexInputNetwork as ComplexNet,
@@ -932,8 +889,6 @@ class ModelCatalog:
         if isinstance(input_space, Box) and len(input_space.shape) == 3:
             if framework == "jax":
                 raise NotImplementedError("No non-FC default net for JAX yet!")
-            elif model_config.get("_use_default_native_models") and Keras_VisionNet:
-                return Keras_VisionNet
             return VisionNet
         # `input_space` is 1D Box -> FCNet.
         elif (
@@ -947,12 +902,7 @@ class ModelCatalog:
                 )
             )
         ):
-            # Keras native requested AND no auto-rnn-wrapping.
-            if model_config.get("_use_default_native_models") and Keras_FCNet:
-                return Keras_FCNet
-            # Classic ModelV2 FCNet.
-            else:
-                return FCNet
+            return FCNet
         # Complex (Dict, Tuple, 2D Box (flatten), Discrete, MultiDiscrete).
         else:
             if framework == "jax":

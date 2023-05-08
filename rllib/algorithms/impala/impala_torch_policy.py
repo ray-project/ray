@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 from typing import Dict, List, Type, Union
@@ -246,7 +246,7 @@ class ImpalaTorchPolicy(
             )
 
         actions = train_batch[SampleBatch.ACTIONS]
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
         behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]

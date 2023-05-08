@@ -1,5 +1,5 @@
 import logging
-from six.moves import queue
+import queue
 import threading
 
 from ray.util.timer import _Timer

@@ -16,7 +16,7 @@ spec:
       block: 'true'
       # Annotate the head pod as having 0 CPU
       # to prevent the head pod from scheduling Ray workloads.
-      num-cpus: 0
+      num-cpus: "0"
     template:
       spec:
         containers:

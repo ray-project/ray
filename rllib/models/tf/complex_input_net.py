@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -57,7 +57,7 @@ class ComplexInputNetwork(TFModelV2):
         concat_size = 0
         for i, component in enumerate(self.flattened_input_space):
             # Image space.
-            if len(component.shape) == 3:
+            if len(component.shape) == 3 and isinstance(component, Box):
                 config = {
                     "conv_filters": model_config["conv_filters"]
                     if "conv_filters" in model_config
@@ -73,7 +73,7 @@ class ComplexInputNetwork(TFModelV2):
                     framework="tf",
                     name="cnn_{}".format(i),
                 )
-                concat_size += self.cnns[i].num_outputs
+                concat_size += int(self.cnns[i].num_outputs)
             # Discrete|MultiDiscrete inputs -> One-hot encode.
             elif isinstance(component, (Discrete, MultiDiscrete)):
                 if isinstance(component, Discrete):
@@ -93,7 +93,7 @@ class ComplexInputNetwork(TFModelV2):
                     framework="tf",
                     name="one_hot_{}".format(i),
                 )
-                concat_size += self.one_hot[i].num_outputs
+                concat_size += int(self.one_hot[i].num_outputs)
             # Everything else (1D Box).
             else:
                 size = int(np.product(component.shape))
@@ -111,7 +111,7 @@ class ComplexInputNetwork(TFModelV2):
                     name="flatten_{}".format(i),
                 )
                 self.flatten_dims[i] = size
-                concat_size += self.flatten[i].num_outputs
+                concat_size += int(self.flatten[i].num_outputs)
 
         # Optional post-concat FC-stack.
         post_fc_stack_config = {

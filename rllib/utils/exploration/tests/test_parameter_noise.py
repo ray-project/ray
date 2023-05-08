@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestParameterNoise(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -20,24 +20,24 @@ class TestParameterNoise(unittest.TestCase):
         self.do_test_parameter_noise_exploration(
             ddpg.DDPG,
             # Switch on complete_episodes mode b/c we are using ParameterNoise.
-            ddpg.DDPGConfig().rollouts(batch_mode="complete_episodes"),
-            "Pendulum-v1",
-            {},
-            np.array([1.0, 0.0, -1.0]),
+            core_config=ddpg.DDPGConfig().rollouts(batch_mode="complete_episodes"),
+            env="Pendulum-v1",
+            env_config={},
+            obs=np.array([1.0, 0.0, -1.0]),
         )
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
             dqn.DQN,
             # Switch on complete_episodes mode b/c we are using ParameterNoise.
-            dqn.DQNConfig().rollouts(batch_mode="complete_episodes"),
-            "FrozenLake-v1",
-            {"is_slippery": False, "map_name": "4x4"},
-            np.array(0),
+            core_config=dqn.DQNConfig().rollouts(batch_mode="complete_episodes"),
+            env="FrozenLake-v1",
+            env_config={"is_slippery": False, "map_name": "4x4"},
+            obs=np.array(0),
         )
 
     def do_test_parameter_noise_exploration(
-        self, algo_cls, core_config, env, env_config, obs
+        self, algo_cls, *, core_config, env, env_config, obs
     ):
         """Tests, whether an Agent works with ParameterNoise."""
         core_config.rollouts(num_rollout_workers=0)  # Run locally.

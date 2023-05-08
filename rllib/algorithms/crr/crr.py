@@ -17,10 +17,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
-    ResultDict,
-)
+from ray.rllib.utils.typing import ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +50,7 @@ class CRRConfig(AlgorithmConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-        # Overriding the trainer config default:
+        # Override the AlgorithmConfig default:
         # Only PyTorch supported thus far. Make this the default framework.
         self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
@@ -63,6 +60,19 @@ class CRRConfig(AlgorithmConfig):
 
         self.td_error_loss_fn = "mse"
         self.categorical_distribution_temperature = 1.0
+
+        # TODO (Artur): CRR should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
 
     def training(
         self,
@@ -169,16 +179,19 @@ class CRRConfig(AlgorithmConfig):
             self.tau = tau
         if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
-            assert self.td_error_loss_fn in [
-                "huber",
-                "mse",
-            ], "td_error_loss_fn must be 'huber' or 'mse'."
         if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )
 
         return self
+
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.td_error_loss_fn not in ["huber", "mse"]:
+            raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
 
 
 NUM_GRADIENT_UPDATES = "num_grad_updates"
@@ -190,7 +203,7 @@ class CRR(Algorithm):
     #  default config. config -> Trainer -> config
     #  defining Config class in the same file for now as a workaround.
 
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         self.target_network_update_freq = self.config.target_network_update_freq

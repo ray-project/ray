@@ -2,7 +2,7 @@ slateq-interest-evolution-recsim-env:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     pass_criteria:
-        episode_reward_mean: 160.0
+        sampler_results/episode_reward_mean: 160.0
         timesteps_total: 300000
     stop:
         time_total_s: 7200

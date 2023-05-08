@@ -20,10 +20,9 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -95,6 +94,15 @@ class MAMLConfig(AlgorithmConfig):
 
         self.batch_mode = "complete_episodes"
         self._disable_execution_plan_api = False
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -309,7 +317,7 @@ class MAML(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfig, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0
@@ -319,19 +327,19 @@ class MAML(Algorithm):
         workers.sync_weights()
 
         # Samples and sets worker tasks
-        use_meta_env = config["use_meta_env"]
+        use_meta_env = config.use_meta_env
         set_worker_tasks(workers, use_meta_env)
 
         # Metric Collector
         metric_collect = CollectMetrics(
             workers,
-            min_history=config["metrics_num_episodes_for_smoothing"],
-            timeout_seconds=config["metrics_episode_collection_timeout_s"],
+            min_history=config.metrics_num_episodes_for_smoothing,
+            timeout_seconds=config.metrics_episode_collection_timeout_s,
         )
 
         # Iterator for Inner Adaptation Data gathering (from pre->post
         # adaptation)
-        inner_steps = config["inner_adaptation_steps"]
+        inner_steps = config.inner_adaptation_steps
 
         def inner_adaptation_steps(itr):
             buf = []
@@ -375,24 +383,7 @@ class MAML(Algorithm):
         # Metaupdate Step
         train_op = rollouts.for_each(
             MetaUpdate(
-                workers, config["maml_optimizer_steps"], metric_collect, use_meta_env
+                workers, config.maml_optimizer_steps, metric_collect, use_meta_env
             )
         )
         return train_op
-
-
-# Deprecated: Use ray.rllib.algorithms.qmix.qmix.QMixConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MAMLConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.maml.maml.MAMLConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

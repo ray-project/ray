@@ -108,11 +108,20 @@ class ESConfig(AlgorithmConfig):
         # (would break ESPolicy's compute_single_action method) and to not do
         # obs-filtering.
         self.evaluation(
-            evaluation_config={
-                "num_envs_per_worker": 1,
-                "observation_filter": "NoFilter",
-            }
+            evaluation_config=AlgorithmConfig.overrides(
+                num_envs_per_worker=1,
+                observation_filter="NoFilter",
+            )
         )
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -605,20 +614,3 @@ class ES(Algorithm):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.es.ESConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ESConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.es.es.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.es.es.ESConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

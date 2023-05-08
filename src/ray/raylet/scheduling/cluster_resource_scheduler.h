@@ -37,7 +37,6 @@ namespace ray {
 
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
-using rpc::HeartbeatTableData;
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
@@ -51,12 +50,14 @@ class ClusterResourceScheduler {
   /// with the local node.
   /// \param is_node_available_fn: Function to determine whether a node is available.
   /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
-  ClusterResourceScheduler(scheduling::NodeID local_node_id,
+  ClusterResourceScheduler(instrumented_io_context &io_service,
+                           scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
+      instrumented_io_context &io_service,
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
@@ -80,7 +81,8 @@ class ClusterResourceScheduler {
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
   ///  \param task_spec: Task/Actor to be scheduled.
-  ///  \param prioritize_local_node: true if we want to try out local node first.
+  ///  \param preferred_node_id: the node where the task is preferred to be placed. An
+  ///  empty `preferred_node_id` (string) means no preferred node.
   ///  \param exclude_local_node: true if we want to avoid local node. This will cancel
   ///  prioritize_local_node if set to true.
   ///  \param requires_object_store_memory: take object store memory usage as part of
@@ -91,7 +93,7 @@ class ClusterResourceScheduler {
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
   scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
-                                            bool prioritize_local_node,
+                                            const std::string &preferred_node_id,
                                             bool exclude_local_node,
                                             bool requires_object_store_memory,
                                             bool *is_infeasible);
@@ -127,7 +129,8 @@ class ClusterResourceScheduler {
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
  private:
-  void Init(const NodeResources &local_node_resources,
+  void Init(instrumented_io_context &io_service,
+            const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity);
 
@@ -160,10 +163,11 @@ class ClusterResourceScheduler {
   ///  \param scheduling_strategy: Strategy about how to schedule this task.
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: True if we want to avoid local node.
-  ///  \param violations: The number of soft constraint violations associated
+  ///  \param preferred_node_id: The node where the task is preferred to be placed.
+  ///  \param violations[out]: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule resource_request is found).
-  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
   ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
@@ -173,6 +177,7 @@ class ClusterResourceScheduler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool actor_creation,
       bool force_spillback,
+      const std::string &preferred_node_id,
       int64_t *violations,
       bool *is_infeasible);
 
@@ -188,6 +193,7 @@ class ClusterResourceScheduler {
       bool requires_object_store_memory,
       bool actor_creation,
       bool force_spillback,
+      const std::string &preferred_node_id,
       int64_t *violations,
       bool *is_infeasible);
 
@@ -217,6 +223,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,

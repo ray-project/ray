@@ -3,8 +3,8 @@ A Guide To Callbacks & Metrics in Tune
 
 .. _tune-callbacks:
 
-How to work with Callbacks?
----------------------------
+How to work with Callbacks in Ray Tune?
+---------------------------------------
 
 Ray Tune supports callbacks that are called during various times of the training process.
 Callbacks can be passed as a parameter to ``air.RunConfig``, taken in by ``Tuner``, and the sub-method you provide will be invoked automatically.
@@ -61,8 +61,8 @@ You can log arbitrary values and metrics in both Function and Class training API
     Note that ``session.report()`` is not meant to transfer large amounts of data, like models or datasets.
     Doing so can incur large overheads and slow down your Tune run significantly.
 
-Which metrics get automatically filled in?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Which Tune metrics get automatically filled in?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Tune has the concept of auto-filled metrics.
 During training, Tune will automatically log the below metrics in addition to any user-provided values.

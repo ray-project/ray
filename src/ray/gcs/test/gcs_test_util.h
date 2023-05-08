@@ -41,6 +41,7 @@ struct Mocker {
       std::unordered_map<std::string, double> required_placement_resources =
           std::unordered_map<std::string, double>()) {
     TaskSpecBuilder builder;
+    static rpc::JobConfig kJobConfig;
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     FunctionDescriptor function_descriptor;
@@ -50,6 +51,7 @@ struct Mocker {
                               Language::PYTHON,
                               function_descriptor,
                               job_id,
+                              kJobConfig,
                               TaskID::Nil(),
                               0,
                               TaskID::Nil(),
@@ -59,7 +61,8 @@ struct Mocker {
                               required_resources,
                               required_placement_resources,
                               "",
-                              0);
+                              0,
+                              TaskID::Nil());
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
     builder.SetActorCreationTaskSpec(actor_id,
@@ -221,13 +224,6 @@ struct Mocker {
     return actor_table_data;
   }
 
-  static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
-      const NodeID &node_id) {
-    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
-    profile_table_data->set_component_id(node_id.Binary());
-    return profile_table_data;
-  }
-
   static std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
     auto error_table_data = std::make_shared<rpc::ErrorTableData>();
     error_table_data->set_job_id(job_id.Binary());
@@ -241,7 +237,9 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id, const std::string &ray_namespace) {
+      const JobID &job_id,
+      const std::string &ray_namespace,
+      const std::optional<std::string> &submission_id = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
@@ -249,9 +247,29 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
 
+    if (submission_id.has_value()) {
+      job_table_data->mutable_config()->mutable_metadata()->insert(
+          {"job_submission_id", submission_id.value()});
+    }
+
     auto add_job_request = std::make_shared<rpc::AddJobRequest>();
     add_job_request->mutable_data()->CopyFrom(*job_table_data);
     return add_job_request;
+  }
+
+  static rpc::TaskEventData GenTaskEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
+      int32_t num_profile_task_events_dropped = 0,
+      int32_t num_status_task_events_dropped = 0) {
+    rpc::TaskEventData data;
+    for (auto &events : task_events) {
+      auto new_events = data.add_events_by_task();
+      new_events->CopyFrom(events);
+    }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    return data;
   }
 };
 

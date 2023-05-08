@@ -1,7 +1,6 @@
-import gym
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
-
-from gym.spaces import Discrete, Box
 
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER

@@ -39,18 +39,18 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
             "policies": {
                 env_config["players_ids"][0]: (
                     None,
-                    AsymCoinGame(env_config).OBSERVATION_SPACE,
-                    AsymCoinGame.ACTION_SPACE,
+                    AsymCoinGame(env_config).observation_space,
+                    AsymCoinGame.action_space,
                     {},
                 ),
                 env_config["players_ids"][1]: (
                     None,
-                    AsymCoinGame(env_config).OBSERVATION_SPACE,
-                    AsymCoinGame.ACTION_SPACE,
+                    AsymCoinGame(env_config).observation_space,
+                    AsymCoinGame.action_space,
                     {},
                 ),
             },
-            "policy_mapping_fn": lambda agent_id, **kwargs: agent_id,
+            "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: agent_id,
         },
         # Size of batches collected from each worker.
         "rollout_fragment_length": 20,

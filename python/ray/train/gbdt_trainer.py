@@ -74,9 +74,6 @@ def _convert_scaling_config_to_ray_params(
             def get_tune_resources(self) -> PlacementGroupFactory:
                 pgf = super().get_tune_resources()
                 placement_options = self.placement_options.copy()
-                # Special case, same as in ScalingConfig.as_placement_group_factory
-                if placement_options.get("_max_cpu_fraction_per_node", None) is None:
-                    placement_options.pop("_max_cpu_fraction_per_node", None)
                 extended_pgf = PlacementGroupFactory(
                     pgf.bundles,
                     **placement_options,
@@ -88,11 +85,16 @@ def _convert_scaling_config_to_ray_params(
     else:
         ray_params_cls_extended = ray_params_cls
 
+    placement_options = {
+        "strategy": scaling_config.placement_strategy,
+    }
+    # Special case, same as in ScalingConfig.as_placement_group_factory
+    if scaling_config._max_cpu_fraction_per_node is not None:
+        placement_options[
+            "_max_cpu_fraction_per_node"
+        ] = scaling_config._max_cpu_fraction_per_node
     ray_params = ray_params_cls_extended(
-        placement_options={
-            "strategy": scaling_config.placement_strategy,
-            "_max_cpu_fraction_per_node": scaling_config._max_cpu_fraction_per_node,
-        },
+        placement_options=placement_options,
         **ray_params_kwargs,
     )
 
@@ -106,7 +108,7 @@ class GBDTTrainer(BaseTrainer):
     Inherited by XGBoostTrainer and LightGBMTrainer.
 
     Args:
-        datasets: Ray Datasets to use for training and validation. Must include a
+        datasets: Datastreams to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -156,8 +158,10 @@ class GBDTTrainer(BaseTrainer):
     ):
         self.label_column = label_column
         self.params = params
-        self.dmatrix_params = dmatrix_params or {}
+
         self.train_kwargs = train_kwargs
+        self.dmatrix_params = dmatrix_params or {}
+
         super().__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -165,6 +169,12 @@ class GBDTTrainer(BaseTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        # Datastreams should always use distributed loading.
+        for dataset_name in self.datasets.keys():
+            dataset_params = self.dmatrix_params.get(dataset_name, {})
+            dataset_params["distributed"] = True
+            self.dmatrix_params[dataset_name] = dataset_params
 
     def _validate_attributes(self):
         super()._validate_attributes()

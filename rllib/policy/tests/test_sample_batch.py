@@ -1,23 +1,29 @@
 import copy
-
-import numpy as np
+import functools
 import os
 import unittest
-import tree
 
+import numpy as np
+import torch
+import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    attempt_count_timesteps,
+    concat_samples,
+)
 from ray.rllib.utils.compression import is_compressed
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
 class TestSampleBatch(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_gpus=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -82,7 +88,7 @@ class TestSampleBatch(unittest.TestCase):
         )
 
     def test_concat(self):
-        """Tests, SampleBatches.concat() and ...concat_samples()."""
+        """Tests, SampleBatches.concat() and concat_samples()."""
         s1 = SampleBatch(
             {
                 "a": np.array([1, 2, 3]),
@@ -95,7 +101,7 @@ class TestSampleBatch(unittest.TestCase):
                 "b": {"c": np.array([5, 6, 7])},
             }
         )
-        concatd = SampleBatch.concat_samples([s1, s2])
+        concatd = concat_samples([s1, s2])
         check(concatd["a"], [1, 2, 3, 2, 3, 4])
         check(concatd["b"]["c"], [4, 5, 6, 5, 6, 7])
         check(next(concatd.rows()), {"a": 1, "b": {"c": 4}})
@@ -127,11 +133,11 @@ class TestSampleBatch(unittest.TestCase):
             }
         )
 
-        concatd = SampleBatch.concat_samples([s1, s2])
+        concatd = concat_samples([s1, s2])
         check(concatd.max_seq_len, s2.max_seq_len)
 
         with self.assertRaises(ValueError):
-            SampleBatch.concat_samples([s1, s2, s3])
+            concat_samples([s1, s2, s3])
 
     def test_rows(self):
         s1 = SampleBatch(
@@ -275,7 +281,7 @@ class TestSampleBatch(unittest.TestCase):
             {
                 "a": np.array([0, 1, 2, 3, 4, 5]),
                 "eps_id": np.array([0, 0, 0, 0, 1, 1]),
-                "dones": np.array([0, 0, 0, 1, 0, 1]),
+                "terminateds": np.array([0, 0, 0, 1, 0, 1]),
             }
         )
         true_split = [np.array([0, 1, 2, 3]), np.array([4, 5])]
@@ -294,16 +300,16 @@ class TestSampleBatch(unittest.TestCase):
 
         # Check that splitting by DONES works correctly
         del s["eps_id"]
-        dones_split = [b["a"] for b in s.split_by_episode()]
-        check(true_split, dones_split)
+        terminateds_split = [b["a"] for b in s.split_by_episode()]
+        check(true_split, terminateds_split)
 
         # Check that splitting without the EPS_ID or DONES key raise an error
-        del s["dones"]
+        del s["terminateds"]
         with self.assertRaises(KeyError):
             s.split_by_episode()
 
         # Check that splitting with DONES always False returns the whole batch
-        s["dones"] = np.array([0, 0, 0, 0, 0, 0])
+        s["terminateds"] = np.array([0, 0, 0, 0, 0, 0])
         batch_split = [b["a"] for b in s.split_by_episode()]
         check(s["a"], batch_split[0])
 
@@ -520,6 +526,41 @@ class TestSampleBatch(unittest.TestCase):
             self.assertEqual(attempt_count_timesteps(copy.deepcopy(input_dict)), length)
             s = SampleBatch(input_dict)
             self.assertEqual(s.count, length)
+
+    def test_interceptors(self):
+        # Tests whether interceptors work as intended
+
+        some_array = np.array([1, 2, 3])
+        batch = SampleBatch({SampleBatch.OBS: some_array})
+
+        device = torch.device("cpu")
+
+        self.assertTrue(batch[SampleBatch.OBS] is some_array)
+
+        batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor, device=device)
+        )
+
+        self.assertTrue(
+            all(convert_to_torch_tensor(some_array) == batch[SampleBatch.OBS])
+        )
+
+        # This test requires a GPU, otherwise we can't test whether we are
+        # moving between devices
+        if not torch.cuda.is_available():
+            raise ValueError("This test can only fail if cuda is available.")
+
+        another_array = np.array([4, 5, 6])
+        another_batch = SampleBatch({SampleBatch.OBS: another_array})
+
+        another_device = torch.device("cuda")
+
+        self.assertTrue(another_batch[SampleBatch.OBS] is another_array)
+        another_batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor, device=another_device)
+        )
+        check(another_batch[SampleBatch.OBS], another_array)
+        self.assertFalse(another_batch[SampleBatch.OBS] is another_array)
 
 
 if __name__ == "__main__":

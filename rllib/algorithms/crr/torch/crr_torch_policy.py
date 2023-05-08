@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from typing import (
@@ -392,7 +392,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             target = (
                 train_batch[SampleBatch.REWARDS]
                 + discount
-                * (1.0 - train_batch[SampleBatch.DONES].float())
+                * (1.0 - train_batch[SampleBatch.TERMINATEDS].float())
                 * target_q_next
             )
 

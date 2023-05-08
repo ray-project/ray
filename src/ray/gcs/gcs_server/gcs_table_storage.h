@@ -32,7 +32,6 @@ using rpc::GcsNodeInfo;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
-using rpc::ProfileTableData;
 using rpc::ResourceMap;
 using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
@@ -230,14 +229,6 @@ class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchDat
   }
 };
 
-class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
- public:
-  explicit GcsProfileTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PROFILE);
-  }
-};
-
 class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
   explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
@@ -272,7 +263,6 @@ class GcsTableStorage {
         std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
     resource_usage_batch_table_ =
         std::make_unique<GcsResourceUsageBatchTable>(store_client_);
-    profile_table_ = std::make_unique<GcsProfileTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
     system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
@@ -312,14 +302,9 @@ class GcsTableStorage {
     return *placement_group_schedule_table_;
   }
 
-  GcsResourceUsageBatchTable &HeartbeatBatchTable() {
+  GcsResourceUsageBatchTable &ResourceUsageBatchTable() {
     RAY_CHECK(resource_usage_batch_table_ != nullptr);
     return *resource_usage_batch_table_;
-  }
-
-  GcsProfileTable &ProfileTable() {
-    RAY_CHECK(profile_table_ != nullptr);
-    return *profile_table_;
   }
 
   GcsWorkerTable &WorkerTable() {
@@ -347,7 +332,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsResourceUsageBatchTable> resource_usage_batch_table_;
-  std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
   std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };

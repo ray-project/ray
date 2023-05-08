@@ -5,7 +5,7 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import gym
+import gymnasium as gym
 import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
@@ -54,8 +54,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-# We need this builder function because we want to share the same
-# custom logics between TF1 dynamic and TF2 eager policies.
+# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
 class APPOTorchPolicy(
     VTraceOptimizer,
     LearningRateSchedule,
@@ -144,7 +143,7 @@ class APPOTorchPolicy(
             )
 
         actions = train_batch[SampleBatch.ACTIONS]
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 

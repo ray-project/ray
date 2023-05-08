@@ -104,7 +104,7 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
 
 def _with_interactive(cmd):
     force_interactive = (
-        f"true && source ~/.bashrc && "
+        f"source ~/.bashrc; "
         f"export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({cmd})"
     )
     return ["bash", "--login", "-c", "-i", quote(force_interactive)]
@@ -317,8 +317,14 @@ class SSHCommandRunner(CommandRunnerInterface):
     ):
         if shutdown_after_run:
             cmd += "; sudo shutdown -h now"
+
         if ssh_options_override_ssh_key:
-            ssh_options = SSHOptions(ssh_options_override_ssh_key)
+            if self.ssh_proxy_command:
+                ssh_options = SSHOptions(
+                    ssh_options_override_ssh_key, ProxyCommand=self.ssh_proxy_command
+                )
+            else:
+                ssh_options = SSHOptions(ssh_options_override_ssh_key)
         else:
             ssh_options = self.ssh_options
 

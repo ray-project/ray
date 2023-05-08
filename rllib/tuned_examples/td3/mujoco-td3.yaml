@@ -16,7 +16,7 @@ mujoco-td3:
         timesteps_total: 1000000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # === Exploration ===
         exploration_config:
             random_timesteps: 10000
