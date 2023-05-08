@@ -11,6 +11,7 @@ from ray_coverage import (
     COVERAGE_FILE_NAME,
     S3_BUCKET_DIR,
     S3_BUCKET_NAME,
+    S3_BUCKET_FILE_PREFIX,
 )
 from typing import List, Set
 
@@ -34,7 +35,10 @@ def main(artifact_dir: str) -> int:
     changed_files = _get_changed_files()
     logger.info(f"Changed files: {changed_files}")
     test_targets = _get_test_targets_for_changed_files(changed_files, artifact_dir)
-    logger.info(test_targets)
+    logger.info(f"Found the following test targets to run: {test_targets}")
+    if not test_targets:
+        logger.info("No test targets found, skipping tests.")
+        return 0
     _run_tests(test_targets)
     return 0
 
@@ -48,11 +52,14 @@ def _run_tests(test_targets: Set[str]) -> None:
     )
 
 
-def _get_test_targets_for_changed_files(changed_files: List[str]) -> Set[str]:
+def _get_test_targets_for_changed_files(
+    changed_files: List[str], 
+    artifact_dir: str,
+) -> Set[str]:
     """
     Get the test target for the changed files.
     """
-    coverage_file = _get_coverage_file()
+    coverage_file = _get_coverage_file(artifact_dir)
     logger = get_logger()
     try:
         subprocess.check_output(
@@ -106,7 +113,7 @@ def _get_coverage_file(artifact_dir: str) -> str:
     s3 = boto3.client("s3")
     files = s3.list_objects_v2(
         Bucket=S3_BUCKET_NAME,
-        Prefix=f"{S3_BUCKET_DIR}/ray-release-",
+        Prefix=f"{S3_BUCKET_DIR}/{S3_BUCKET_FILE_PREFIX}",
     )["Contents"]
     latest_coverage = sorted(files, key=_get_last_modified)[-1]
     coverage_file_name = os.path.join(artifact_dir, COVERAGE_FILE_NAME)
@@ -122,7 +129,8 @@ def _get_changed_files() -> List[str]:
     """
     Get the list of changed files in the current PR.
     """
-    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+#    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    base_branch = 'can-coverage'
     if not base_branch:
         return []
     return (

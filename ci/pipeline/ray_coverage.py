@@ -11,6 +11,7 @@ import boto3
 COVERAGE_FILE_NAME = "ray_release.cov"
 S3_BUCKET_NAME = "ray-test-coverage"
 S3_BUCKET_DIR = "ci"
+S3_BUCKET_FILE_PREFIX = "ray-release-"
 
 
 @click.command()
@@ -52,7 +53,8 @@ def main(
 
 def _upload_coverage_info(coverage_file: str) -> None:
     s3_file_name = (
-        f"{S3_BUCKET_DIR}/ray-release-{date.today().strftime('%Y-%m-%d')}.cov"
+        f"{S3_BUCKET_DIR}/{S3_BUCKET_FILE_PREFIX}"
+        f"{date.today().strftime('%Y-%m-%d')}.cov"
     )
     boto3.client("s3").upload_file(
         coverage_file,
