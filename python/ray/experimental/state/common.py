@@ -182,7 +182,7 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool, detail: bool = False, **kwargs):
+def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
@@ -193,7 +193,7 @@ def state_column(*, filterable: bool, detail: bool = False, **kwargs):
         filterable: If True, the column can be used for filtering.
         kwargs: The same kwargs for the `dataclasses.field` function.
     """
-    m = {"detail": detail, "filterable": filterable}
+    m = {"detail": detail, "filterable": filterable, "format_fn": format_fn}
     # Default for detail field is None since it could be missing.
     if detail and "default" not in kwargs:
         kwargs["default"] = None
@@ -489,17 +489,17 @@ class NodeState(StateSchema):
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
     resources_total: dict = state_column(
-        filterable=False, metadata={"format_fn": Humanify.node_resources}
+        filterable=False, format_fn=Humanify.node_resources
     )
     #: The time when the node (raylet) starts.
     start_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, detail=True, format_fn=Humanify.timestamp
     )
     #: The time when the node exits. The timestamp could be delayed
     #: if the node is dead unexpectedly (could be delayed
     # up to 30 seconds).
     end_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, detail=True, format_fn=Humanify.timestamp
     )
 
 
@@ -560,23 +560,23 @@ class WorkerState(StateSchema):
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
     worker_launch_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, detail=True, format_fn=Humanify.timestamp
     )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, detail=True, format_fn=Humanify.timestamp
     )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
     start_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, detail=True, format_fn=Humanify.timestamp
     )
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
     #: 0 if the value doesn't exist.
     end_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, detail=True, format_fn=Humanify.timestamp
     )
 
 
@@ -646,7 +646,7 @@ class TaskState(StateSchema):
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
     events: Optional[List[dict]] = state_column(
-        detail=True, filterable=False, metadata={"format_fn": Humanify.events}
+        detail=True, filterable=False, format_fn=Humanify.events
     )
     #: The list of profile events of the given task.
     profiling_data: Optional[dict] = state_column(detail=True, filterable=False)
@@ -654,19 +654,19 @@ class TaskState(StateSchema):
     creation_time_ms: Optional[int] = state_column(
         detail=True,
         filterable=False,
-        metadata={"format_fn": Humanify.timestamp},
+        format_fn=Humanify.timestamp,
     )
     #: The time when the task starts to run. A Unix timestamp in ms.
     start_time_ms: Optional[int] = state_column(
         detail=True,
         filterable=False,
-        metadata={"format_fn": Humanify.timestamp},
+        format_fn=Humanify.timestamp,
     )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(
         detail=True,
         filterable=False,
-        metadata={"format_fn": Humanify.timestamp},
+        format_fn=Humanify.timestamp
     )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
@@ -683,7 +683,7 @@ class ObjectState(StateSchema):
     object_id: str = state_column(filterable=True)
     #: The size of the object in mb.
     object_size: int = state_column(
-        filterable=True, metadata={"format_fn": Humanify.memory}
+        filterable=True, format_fn=Humanify.memory
     )
     #: The status of the task that creates the object.
     #:
@@ -744,7 +744,7 @@ class RuntimeEnvState(StateSchema):
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
     creation_time_ms: Optional[float] = state_column(
-        filterable=False, metadata={"format_fn": Humanify.timestamp}
+        filterable=False, format_fn=Humanify.timestamp
     )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
