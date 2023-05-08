@@ -1400,7 +1400,7 @@ def check_supported_spaces(
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
 
-        performs the checks by constructing an rllib algorithm from the config and
+        Performs the checks by constructing an rllib algorithm from the config and
         checking to see that the model inside the policy is the correct one given
         the action and obs spaces. For example if the action space is discrete and
         the obs space is an image, then the model should be a vision network with
