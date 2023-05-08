@@ -11,25 +11,66 @@ Official Releases
 
 From Wheels
 ~~~~~~~~~~~
-You can install the latest official version of Ray from PyPI on Linux, Windows
-and macOS as follows:
+You can install the latest official version of Ray from PyPI on Linux, Windows,
+and macOS by choosing the option that best matches your use case.
 
-.. code-block:: bash
+.. tab-set::
 
-  # Install Ray with support for the dashboard + cluster launcher
-  pip install -U "ray[default]"
+    .. tab-item:: Recommended
 
-  # Install Ray with minimal dependencies
-  # pip install -U ray
+        **For machine learning applications**
 
-To install Ray libraries:
+        .. code-block:: shell
 
-.. code-block:: bash
+          pip install -U "ray[air]"
 
-  pip install -U "ray[air]" # installs Ray + dependencies for Ray AI Runtime
-  pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
-  pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
-  pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
+          # For reinforcement learning support, install RLlib instead.
+          # pip install -U "ray[rllib]"
+
+        **For general Python applications**
+
+        .. code-block:: shell
+
+          pip install -U "ray[default]"
+
+          # If you don't want Ray Dashboard or Cluster Launcher, install Ray with minimal dependencies instead.
+          # pip install -U "ray"
+
+    .. tab-item:: Advanced
+
+        .. list-table::
+          :widths: 2 3
+          :header-rows: 1
+
+          * - Command
+            - Installed components
+          * - `pip install -U "ray"`
+            - Core
+          * - `pip install -U "ray[default]"`
+            - Core, Dashboard, Cluster Launcher
+          * - `pip install -U "ray[data]"`
+            - Core, Data
+          * - `pip install -U "ray[train]"`
+            - Core, Train
+          * - `pip install -U "ray[tune]"`
+            - Core, Tune
+          * - `pip install -U "ray[serve]"`
+            - Core, Dashboard, Cluster Launcher, Serve
+          * - `pip install -U "ray[rllib]"`
+            - Core, Tune, RLlib
+          * - `pip install -U "ray[air]"`
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
+          * - `pip install -U "ray[all]"`
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
+
+        .. tip::
+
+          You can combine installation extras. 
+          For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
+
+          .. code-block:: shell
+
+            pip install -U "ray[default,train]"
 
 .. _install-nightlies:
 
