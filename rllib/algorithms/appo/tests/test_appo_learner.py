@@ -12,7 +12,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 

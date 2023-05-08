@@ -23,11 +23,10 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
 from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
