@@ -563,7 +563,7 @@ class TuneReporterBase(ProgressReporter):
 
     # TODO: Return a more structured type to share code with Jupyter flow.
     def _get_heartbeat(
-        self, trials, *sys_args, force: bool = False
+        self, trials, *sys_args, force_full_output: bool = False
     ) -> Tuple[List[str], _TrialTableData]:
         result = list()
         # Trial status: 1 RUNNING | 7 PENDING
@@ -585,7 +585,9 @@ class TuneReporterBase(ProgressReporter):
 
         all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
 
-        trial_table_data = _get_trial_table_data(trials, all_metrics, all_rows=force)
+        trial_table_data = _get_trial_table_data(
+            trials, all_metrics, all_rows=force_full_output
+        )
         return result, trial_table_data
 
     def _print_heartbeat(self, trials, *sys_args, force: bool = False):
@@ -632,7 +634,9 @@ class TuneTerminalReporter(TuneReporterBase):
     def _print_heartbeat(self, trials, *sys_args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold and not force:
             return
-        heartbeat_strs, table_data = self._get_heartbeat(trials, *sys_args, force=force)
+        heartbeat_strs, table_data = self._get_heartbeat(
+            trials, *sys_args, force_full_output=force
+        )
 
         for s in heartbeat_strs:
             print(s)
@@ -728,7 +732,9 @@ class TuneRichReporter(TuneReporterBase):
                 "be called without `with_live` context manager."
             )
             return
-        heartbeat_strs, table_data = self._get_heartbeat(trials, *args, force=force)
+        heartbeat_strs, table_data = self._get_heartbeat(
+            trials, *args, force_full_output=force
+        )
         self._render_layout(heartbeat_strs, table_data)
 
 
@@ -736,7 +742,7 @@ class TrainReporter(ProgressReporter):
     # the minimal verbosity threshold at which heartbeat starts getting printed.
     _heartbeat_threshold = AirVerbosity.VERBOSE
 
-    def _get_heartbeat(self, trials: List[Trial], force: bool = False):
+    def _get_heartbeat(self, trials: List[Trial], force_full_output: bool = False):
         # Training on iteration 1. Current time: 2023-03-22 15:29:25 (running for 00:00:03.24)  # noqa
         if len(trials) == 0:
             return
@@ -754,7 +760,7 @@ class TrainReporter(ProgressReporter):
         )
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
-        print(self._get_heartbeat(trials, force=force))
+        print(self._get_heartbeat(trials, force_full_output=force))
 
 
 # These keys are blacklisted for printing out training/tuning intermediate/final result!
