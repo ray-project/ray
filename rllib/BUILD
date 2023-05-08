@@ -2458,6 +2458,16 @@ py_test(
     args = ["TestCheckpointRestorePG"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_pg_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePG"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -2467,10 +2477,29 @@ py_test(
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_off_policy_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
     size = "medium",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
