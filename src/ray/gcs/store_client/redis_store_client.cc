@@ -66,6 +66,24 @@ std::string GenKeyRedisMatchPattern(const std::string &external_storage_namespac
                       "*");
 }
 
+std::vector<std::vector<std::string>>
+GenCommandsBatched(const std::string &command,
+                   const std::string &hash_field,
+                   const std::vector<std::string> &keys) {
+  std::vector<std::vector<std::string>> batched_requests;
+  for (auto &key : keys) {
+    // If it's empty or the last batch is full, add a new batch.
+    if (batched_requests.empty() || batched_requests.back().size() - 1 ==
+        RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
+      batched_requests.emplace_back(std::vector<std::string>());
+      batched_requests.back().push_back(command);
+      batched_requests.back().push_back(hash_field);
+    }
+    batched_requests.back().push_back(key);
+  }
+  return commands_by_shards;
+}
+
 std::string GetKeyFromRedisKey(const std::string &external_storage_namespace,
                                const std::string &redis_key,
                                const std::string &table_name) {
@@ -74,80 +92,46 @@ std::string GetKeyFromRedisKey(const std::string &external_storage_namespace,
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 
-absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
-GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
-                    const std::string &command,
-                    const std::string &hash_field,
-                    const std::vector<std::string> &keys,
-                    int *count) {
-  absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
-      commands_by_shards;
-  for (auto &key : keys) {
-    auto shard_context = redis_client->GetShardContext(key).get();
-    auto it = commands_by_shards.find(shard_context);
-    if (it == commands_by_shards.end()) {
-      auto key_vector = commands_by_shards[shard_context].emplace(
-          commands_by_shards[shard_context].begin(), std::vector<std::string>());
-      key_vector->push_back(command);
-      key_vector->push_back(hash_field);
-      key_vector->push_back(key);
-      (*count)++;
-    } else {
-      // If the last batch is full, add a new batch.
-      if (it->second.back().size() - 1 ==
-          RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
-        it->second.emplace_back(std::vector<std::string>());
-        it->second.back().push_back(command);
-        it->second.back().push_back(hash_field);
-        (*count)++;
-      }
-      it->second.back().push_back(key);
-    }
-  }
-  return commands_by_shards;
-}
-
 Status MGetValues(std::shared_ptr<RedisClient> redis_client,
                   const std::string &external_storage_namespace,
                   const std::string &table_name,
                   const std::vector<std::string> &keys,
                   const MapCallback<std::string, std::string> &callback) {
   // The `MGET` command for each shard.
-  int total_count = 0;
-  auto mget_commands_by_shards = GenCommandsByShards(
-      redis_client, "HMGET", external_storage_namespace, keys, &total_count);
+  auto batched_commands = GenCommandsBatched("HMGET", external_storage_namespace, keys);
+  auto total_count = batched_commands.size();
   auto finished_count = std::make_shared<int>(0);
   auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  for (auto &command_list : mget_commands_by_shards) {
-    for (auto &command : command_list.second) {
-      auto mget_keys = std::move(command);
-      auto mget_callback = [table_name,
-                            external_storage_namespace,
-                            finished_count,
-                            total_count,
-                            mget_keys,
-                            callback,
-                            key_value_map](const std::shared_ptr<CallbackReply> &reply) {
-        if (!reply->IsNil()) {
-          auto value = reply->ReadAsStringArray();
-          // The 0 th element of mget_keys is "MGET", so we start from the 1 th
-          // element.
-          for (size_t index = 0; index < value.size(); ++index) {
-            if (value[index].has_value()) {
-              (*key_value_map)[GetKeyFromRedisKey(
-                  external_storage_namespace, mget_keys[index + 2], table_name)] =
-                  *(value[index]);
-            }
+  auto context = redis_client_->GetShardContext("");
+
+  for (auto &command : command_list.second) {
+    auto mget_keys = std::move(command);
+    auto mget_callback = [table_name,
+                          external_storage_namespace,
+                          finished_count,
+                          total_count,
+                          mget_keys,
+                          callback,
+                          key_value_map](const std::shared_ptr<CallbackReply> &reply) {
+      if (!reply->IsNil()) {
+        auto value = reply->ReadAsStringArray();
+        // The 0 th element of mget_keys is "MGET", so we start from the 1 th
+        // element.
+        for (size_t index = 0; index < value.size(); ++index) {
+          if (value[index].has_value()) {
+            (*key_value_map)[GetKeyFromRedisKey(
+                external_storage_namespace, mget_keys[index + 2], table_name)] =
+                *(value[index]);
           }
         }
+      }
 
-        ++(*finished_count);
-        if (*finished_count == total_count) {
-          callback(std::move(*key_value_map));
-        }
-      };
-      RAY_CHECK_OK(command_list.first->RunArgvAsync(mget_keys, mget_callback));
-    }
+      ++(*finished_count);
+      if (*finished_count == total_count) {
+        callback(std::move(*key_value_map));
+      }
+    };
+    RAY_CHECK_OK(context->RunArgvAsync(mget_keys, mget_callback));
   }
   return Status::OK();
 }
@@ -211,19 +195,11 @@ Status RedisStoreClient::AsyncGetAll(
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,
                                      std::function<void(bool)> callback) {
-  RedisCallback delete_callback = nullptr;
-  if (callback) {
-    delete_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-      callback(reply->ReadAsInteger() == 1);
-    };
-  }
-
-  std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
-  // We always replace `DEL` with `UNLINK`.
-  std::vector<std::string> args = {"HDEL", external_storage_namespace_, redis_key};
-
-  auto shard_context = redis_client_->GetShardContext(redis_key);
-  return shard_context->RunArgvAsync(args, delete_callback);
+  return AsyncBatchDelete(table_name, {key}, [callback](int64_t cnt) {
+    if(callback != nullptr) {
+      callback(cnt > 0);
+    }
+  });
 }
 
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
@@ -254,6 +230,101 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
+void RedisStoreClient::NextWrite(const std::string &key) {
+  Request req;
+  {
+    absl::MutexLock lock(&mu_);
+    auto iter = write_ops_.find(key);
+    // If no outstanding requests, we'll send it immediately.
+    // Put an entry there to indicate there is outstanding requests.
+    if(iter == write_ops_.end()) {
+      return;
+    }
+    if(iter->second.empty()) {
+      write_ops_.erase(iter);
+      return;
+    }
+    req = std::move(iter->second.front());
+    iter->second.pop_front();
+  }
+  auto cxt = redis_client_->GetShardContext(key);
+  RAY_CHECK_OK(cxt->RunArgvAsync(
+      std::move(req.first),
+      [this, key, redis_callback = std::move(req.second)] (auto reply) {
+        NextWrite(key);
+        if(redis_callback) {
+          redis_callback(reply);
+        }
+      }));
+}
+
+void RedisStoreClient::ProcessNext(
+    std::string key) {
+  std::function<void()> op;
+  {
+    absl::MutexLock lock(&mu_);
+    auto ops_iter = write_ops_.find(key);
+    auto& queue = ops_iter.second;
+    RAY_CHECK(ops_iter !=  write_ops_.end());
+    while(!queue.empty() && queue.front() == nullptr) {
+      queue.pop_front();
+    }
+    if(queue.empty()) {
+      write_ops_.erase(iter);
+    } else {
+      op = std::move(queue.front());
+      queue.pop_front();
+    }
+  }
+  if(op) {
+    op();
+  }
+}
+
+void RedisStoreClient::DoWrite(
+    std::vector<std::string> keys,
+    std::vector<std::string> args,
+    RedisCallback redis_callback) {
+  RAY_CHECK(!keys.empty());
+  auto send_redis = [this, keys, args = std::move(args), redis_callback = std::move(redis_callback)]() mutable {
+    auto cxt = redis_client_->GetShardContext(key);
+    RAY_CHECK_OK(cxt->RunArgvAsync(
+        std::move(args),
+        [this, keys = std::move(keys), redis_callback= std::move(req.second)](auto reply) {
+          for(const auto& key : keys) {
+            ProcessNext(key);
+            if(redis_callback) {
+              redis_callback(reply);
+            }
+          }
+        }));
+  };
+
+  absl::MutexLock lock(&mu_);
+  bool can_fire = true;
+  {
+    for(const auto& key : keys) {
+      if(auto iter = write_ops_.find(key); iter != write_ops_.end()) {
+        can_fire = false;
+      } else {
+        write_ops_.emplace(key, {});
+      }
+    }
+
+    if(can_fire) {
+      for(size_t i = 0; i < keys.size(); ++i) {
+        if(i == 0) {
+          write_ops_[keys[0]].push_back(std::move(send_redis));
+        } else {
+          write_ops_[keys[i]].push_back(nullptr);
+        }
+      }
+    }
+  }
+  ProcessNext(keys[0]);
+}
+
+
 Status RedisStoreClient::DoPut(const std::string &key,
                                const std::string &data,
                                bool overwrite,
@@ -268,36 +339,32 @@ Status RedisStoreClient::DoPut(const std::string &key,
           callback(added_num != 0);
         };
   }
-
-  auto shard_context = redis_client_->GetShardContext(key);
-  return shard_context->RunArgvAsync(args, write_callback);
+  DoWriteWork({key}, std::move(args), std::move(write_callback));
+  return Status::OK();
 }
+
+
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
                                       std::function<void(int64_t)> callback) {
-  // Delete for each shard.
-  // We always replace `DEL` with `UNLINK`.
-  int total_count = 0;
-  auto del_commands_by_shards = GenCommandsByShards(
-      redis_client_, "HDEL", external_storage_namespace_, keys, &total_count);
-
+  auto del_cmds = GenCommandsBatched("HDEL", external_storage_namespace_, keys);
+  auto total_count = del_cmds.size();
   auto finished_count = std::make_shared<int>(0);
   auto num_deleted = std::make_shared<int64_t>(0);
-
-  for (auto &command_list : del_commands_by_shards) {
-    for (auto &command : command_list.second) {
-      auto delete_callback = [num_deleted, finished_count, total_count, callback](
-                                 const std::shared_ptr<CallbackReply> &reply) {
-        (*num_deleted) += reply->ReadAsInteger();
-        ++(*finished_count);
-        if (*finished_count == total_count) {
-          if (callback) {
-            callback(*num_deleted);
-          }
+  auto context = redis_client_->GetShardContext("");
+  for (auto &command : del_cmds) {
+    std::vector<std::string> partition_keys(keys.begin() + 2, keys.end());
+    auto delete_callback = [num_deleted, finished_count, total_count, callback](
+        const std::shared_ptr<CallbackReply> &reply) {
+      (*num_deleted) += reply->ReadAsInteger();
+      ++(*finished_count);
+      if (*finished_count == total_count) {
+        if (callback) {
+          callback(*num_deleted);
         }
-      };
-      RAY_CHECK_OK(command_list.first->RunArgvAsync(command, delete_callback));
-    }
+      }
+    };
+    DoWrite(std::move(partition_keys), std::move(command), std::move(delete_callback));
   }
   return Status::OK();
 }

@@ -15,6 +15,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -114,8 +115,18 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
+  void DoWrite(std::vector<std::string> keys,
+               std::vector<std::string> args,
+               RedisCallback redis_callback);
+
+  void ProcessNext(std::string key);
+
+
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
+  absl::Mutex mu_;
+  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> write_ops_ GUARDED_BY(mu_);
+
 };
 
 }  // namespace gcs
