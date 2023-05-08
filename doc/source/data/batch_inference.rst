@@ -703,3 +703,11 @@ tutorials and examples:
         .. button-ref:: /ray-air/examples/stablediffusion_batch_prediction
 
             Stable Diffusion Batch Prediction with Ray AIR
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/sbatch_inference_object_detection
+
+            Batch Inference with a PyTorch Object Detection Model
