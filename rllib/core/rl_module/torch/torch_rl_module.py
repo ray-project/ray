@@ -60,12 +60,14 @@ class TorchCompileConfig:
     torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "inductor"
     kwargs: dict = field(default_factory=lambda: dict())
 
-    def compile(self, rl_module: "TorchRLModule") -> "TorchRLModule":
+    def compile(self, rl_module: "TorchRLModule") -> None:
         """Compiles the forward methods of the given RLModule according to this config.
 
         Args:
             rl_module: The RLModule to compile the forward methods of.
         """
+        assert type(rl_module) is TorchRLModule, "Only TorchRLModules can be compiled."
+
         if self.compile_forward_train:
             rl_module.compile_forward_train(
                 backend=self.torch_dynamo_backend, **self.kwargs
@@ -78,8 +80,6 @@ class TorchCompileConfig:
             rl_module.compile_forward_exploration(
                 backend=self.torch_dynamo_backend, **self.kwargs
             )
-
-        return rl_module
 
 
 class TorchRLModule(nn.Module, RLModule):
@@ -124,8 +124,8 @@ class TorchRLModule(nn.Module, RLModule):
             ouptut_specs_inference().
         """
         # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "__compiled_forward_inference"):
-            return self.__compiled_forward_inference(batch, **kwargs)
+        if hasattr(self, "_compiled_forward_inference"):
+            return self._compiled_forward_inference(batch, **kwargs)
         return self._forward_inference(batch, **kwargs)
 
     @check_input_specs("_input_specs_exploration")
@@ -148,8 +148,8 @@ class TorchRLModule(nn.Module, RLModule):
             ouptut_specs_exploration().
         """
         # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "__compiled_forward_exploration"):
-            return self.__compiled_forward_exploration(batch, **kwargs)
+        if hasattr(self, "_compiled_forward_exploration"):
+            return self._compiled_forward_exploration(batch, **kwargs)
         return self._forward_exploration(batch, **kwargs)
 
     @check_input_specs("_input_specs_train")
@@ -168,13 +168,13 @@ class TorchRLModule(nn.Module, RLModule):
             ouptut_specs_train().
         """
         # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "__compiled_forward_train"):
-            return self.__compiled_forward_train(batch, **kwargs)
+        if hasattr(self, "_compiled_forward_train"):
+            return self._compiled_forward_train(batch, **kwargs)
         return self._forward_train(batch, **kwargs)
 
     def compile_forward_train(self, backend="inductor", retrace_on_set_weights=True):
         """Compiles the forward_train method."""
-        self.__compiled_forward_train = torch.compile(
+        self._compiled_forward_train = torch.compile(
             self._forward_train, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
@@ -183,7 +183,7 @@ class TorchRLModule(nn.Module, RLModule):
         self, backend="inductor", retrace_on_set_weights=True
     ):
         """Compiles the forward_inference method."""
-        self.__compiled_forward_inference = torch.compile(
+        self._compiled_forward_inference = torch.compile(
             self._forward_inference, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
@@ -192,7 +192,7 @@ class TorchRLModule(nn.Module, RLModule):
         self, backend="inductor", retrace_on_set_weights=True
     ):
         """Compiles the forward_exploration method."""
-        self.__compiled_forward_exploration = torch.compile(
+        self._compiled_forward_exploration = torch.compile(
             self._forward_exploration, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights

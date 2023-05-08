@@ -91,22 +91,23 @@ class FrameworkHyperparameters:
     eager_tracing: bool = False
     torch_compile_config: Optional[TorchCompileConfig] = TorchCompileConfig()
 
-    def prepare_rl_module(self, rl_module: RLModule) -> RLModule:
-        """Prepares the RL module for training.
+    def prepare_rl_module(self, marl_module: MultiAgentRLModule) -> RLModule:
+        """Prepares the RL modules for training.
 
-        This method is called right after the RL module is created and before it is
-        used for training. This can be used as a callback to prepare the RL module
-        for training, e.g. by torch_compiling some of its forwad methods.
+        This method is called right after the MARL module is created and before it is
+        used for learning. This can be used as a callback to prepare the RL modules
+        for learning, e.g. by torch_compiling some of its forward methods.
 
         Args:
-            rl_module: The RL module to prepare.
+            marl_module: The MARL module to prepare.
 
         Returns:
-            The prepared RL module.
+            The prepared MARL module.
         """
-        if isinstance(rl_module, TorchRLModule):
-            self.torch_compile_config.compile(rl_module)
-        return rl_module
+        for module in marl_module._rl_modules.values():
+            if isinstance(module, TorchRLModule):
+                self.torch_compile_config.compile(module)
+        return marl_module
 
 
 @dataclass
