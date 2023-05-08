@@ -133,7 +133,7 @@ def setup_mlflow(
 
         .. code-block:: python
 
-            from ray.tune.integration.mlflow import setup_mlflow
+            from ray.air.integrations.mlflow import setup_mlflow
 
             def train_fn(config):
                 mlflow = setup_mlflow(config)
