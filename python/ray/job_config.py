@@ -74,7 +74,7 @@ class JobConfig:
 
         Examples:
 
-            ..testcode::
+            .. testcode::
 
                 import ray
                 from ray.job_config import JobConfig
@@ -102,7 +102,7 @@ class JobConfig:
 
         We don't validate the runtime_env by default here because it may go
         through some translation before actually being passed to C++ (e.g.,
-        working_dir translated from a local directory to a URI.
+        working_dir translated from a local directory to a URI).
 
         Args:
 
