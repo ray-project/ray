@@ -159,13 +159,11 @@ def _setup_wandb(
 
     wandb_config = _config.pop("wandb", {}).copy()
 
-    # Deprecate: 2.4
+    # TODO(ml-team): Remove in 2.6.
     if wandb_config:
-        warnings.warn(
-            "Passing a `wandb` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_wandb()` "
-            "instead.",
-            DeprecationWarning,
+        raise DeprecationWarning(
+            "Passing a `wandb` key in the config dict is deprecated."
+            "Please pass the actual arguments to `setup_wandb()` instead."
         )
 
     # If key file is specified, set
