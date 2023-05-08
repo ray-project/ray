@@ -75,8 +75,8 @@ def ensure_notebook_deps(
 
     This decorator is meant to wrap repr methods. If the dependency is not found,
     or a version is specified here and the version of the package is older than the
-    specified version, the wrapped function is not executed and None is returned. If
-    the dependency is missing or the version is old, a log message is displayed.
+    specified version, the original repr is used.
+    If the dependency is missing or the version is old, a log message is displayed.
 
     Args:
         *deps: Iterable of (dependency name, min version (optional))
@@ -90,12 +90,12 @@ def ensure_notebook_deps(
 
     def wrapper(func: F) -> F:
         @wraps(func)
-        def wrapped(*args, **kwargs):
+        def wrapped(self, *args, **kwargs):
             if _has_missing(*deps, message=missing_message) or _has_outdated(
                 *deps, message=outdated_message
             ):
-                return None
-            return func(*args, **kwargs)
+                return {"text/plain": repr(self)}
+            return func(self, *args, **kwargs)
 
         return wrapped
 
