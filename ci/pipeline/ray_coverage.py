@@ -6,34 +6,24 @@ import sys
 import click
 
 _COVERAGE_FILE_NAME = "ray_release.cov"
-def _get_logger():
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
-    )
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    return logger
-logger = _get_logger()
-
 
 @click.command()
 @click.argument("test_target", required=True, type=str)
 @click.option(
     "--artifact-dir",
-    default="artifact-mount",
+    default="/artifact-mount",
     type=str,
     help=(
         "This directory is used to store artifacts, such as coverage information. "
-        "In buildkite CI, this is usually artifact-mount.",
+        "In buildkite CI, this is usually artifact-mount."
     ),
 )
-def main(test_target: str, artifact_dir: str) -> None:
+def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
     """
     This script collects dynamic coverage data for the test target, and upload the
     results to database (S3).
     """
+    logger = _get_logger()
     logger.info(f"Collecting coverage for test target: {test_target}")
     coverage_file = os.path.join(artifact_dir, _COVERAGE_FILE_NAME)
     _run_test(test_target, coverage_file)
@@ -50,7 +40,7 @@ def _run_test(test_target: str, coverage_file: str) -> None:
     file coverage information.
     """
     source_dir = os.path.join(os.getcwd(), "release")
-    subprocess.check(
+    subprocess.check_call(
         [
             "bazel",
             "test",
@@ -63,8 +53,7 @@ def _run_test(test_target: str, coverage_file: str) -> None:
             f"PYTEST_ADDOPTS=--cov-context=test --cov={source_dir} --cov-append",
             "--test_env",
             f"COVERAGE_FILE={coverage_file}",
-            "--cache_test_results",
-            "no",
+            "--cache_test_results=no",
         ]
     )
 
@@ -74,6 +63,15 @@ def _collect_coverage(coverage_file: str) -> str:
         ["coverage", "report", f"--data-file={coverage_file}"]
     ).decode("utf-8")
 
+def _get_logger():
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
+    )
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    return logger
 
 if __name__ == "__main__":
     sys.exit(main())
