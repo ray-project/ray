@@ -664,9 +664,7 @@ class TaskState(StateSchema):
     )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(
-        detail=True,
-        filterable=False,
-        format_fn=Humanify.timestamp
+        detail=True, filterable=False, format_fn=Humanify.timestamp
     )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
@@ -682,9 +680,7 @@ class ObjectState(StateSchema):
     #: The id of the object.
     object_id: str = state_column(filterable=True)
     #: The size of the object in mb.
-    object_size: int = state_column(
-        filterable=True, format_fn=Humanify.memory
-    )
+    object_size: int = state_column(filterable=True, format_fn=Humanify.memory)
     #: The status of the task that creates the object.
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
