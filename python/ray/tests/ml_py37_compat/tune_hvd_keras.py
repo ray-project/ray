@@ -38,7 +38,12 @@ def keras_train_loop(config):
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
         # Model building/compiling need to be within `strategy.scope()`.
-        optimizer = tf.keras.optimizers.SGD(learning_rate=lr * hvd.size())
+        try:
+            # Try legacy optimizer for Keras > 2.11
+            optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=lr * hvd.size())
+        except Exception:
+            optimizer = tf.keras.optimizers.SGD(learning_rate=lr * hvd.size())
+
         optimizer = hvd.DistributedOptimizer(optimizer)
 
         multi_worker_model = create_keras_model(num_features)
