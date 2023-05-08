@@ -1360,8 +1360,31 @@ class ModelChecker:
 
 
 def check_support(
-    alg, config, train=True, check_bounds=False, frameworks=("torch", "tf")
+    alg: str,
+    config: AlgorithmConfig,
+    train: bool = True,
+    check_bounds: bool = False,
+    frameworks: List = None,
+    use_gpu: bool = False,
 ):
+    """Checks whether the given algorithm supports different action and obs spaces.
+
+        performs the checks by constructing an rllib algorithm from the config and
+        checking to see that the model inside the policy is the correct one given
+        the action and obs spaces. For example if the action space is discrete and
+        the obs space is an image, then the model should be a vision network with
+        a categorical action distribution.
+
+    Args:
+        alg: The name of the algorithm to test.
+        config: The config to use for the algorithm.
+        train: Whether to train the algorithm for a few iterations.
+        check_bounds: Whether to check the bounds of the action space.
+        frameworks: The frameworks to test the algorithm with.
+        use_gpu: Whether to check support for training on a gpu.
+
+
+    """
     # do these imports here because otherwise we have circular imports
     from ray.rllib.examples.env.random_env import RandomEnv
     from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as ComplexNet
@@ -1431,7 +1454,6 @@ def check_support(
     config["log_level"] = "ERROR"
     config["env"] = RandomEnv
 
-    @ray.remote
     def _do_check(alg, config, a_name, o_name):
 
         # We need to copy here so that this validation does not affect the actual
@@ -1515,20 +1537,21 @@ def check_support(
             algo.stop()
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
-    # TF2 has to come before TF here otherwise one of those strange errors with mixing
-    # TF1 and TF2 happens
-
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
         frameworks = frameworks.intersection(rlmodule_supported_frameworks)
 
+    if not frameworks:
+        frameworks = ["torch", "tf"]
+    _do_check_remote = ray.remote(_do_check)
+    _do_check_remote.options(num_gpus=1 if use_gpu else 0)
     for _ in framework_iterator(config, frameworks=frameworks):
         # Test all action spaces first.
         for a_name in action_spaces_to_test.keys():
             o_name = default_observation_space
-            ray.get(_do_check.remote(alg, config, a_name, o_name))
+            ray.get(_do_check_remote.remote(alg, config, a_name, o_name))
 
         # Now test all observation spaces.
         for o_name in observation_spaces_to_test.keys():
             a_name = default_action_space
-            ray.get(_do_check.remote(alg, config, a_name, o_name))
+            ray.get(_do_check_remote.remote(alg, config, a_name, o_name))

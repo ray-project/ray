@@ -141,7 +141,11 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         )
 
         check_support(
-            "PPO", config, check_bounds=True, frameworks=("tf2", "torch", "tf")
+            "PPO",
+            config,
+            check_bounds=True,
+            frameworks=("tf2", "torch", "tf"),
+            use_gpu=True,
         )
 
 
