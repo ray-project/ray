@@ -5,7 +5,21 @@ import sys
 
 import click
 
+
+def _get_logger():
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
+    )
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    return logger
+
+
+_logger = _get_logger()
 _COVERAGE_FILE_NAME = "ray_release.cov"
+
 
 @click.command()
 @click.argument("test_target", required=True, type=str)
@@ -23,12 +37,11 @@ def main(test_target: str, artifact_dir: str = "/artifact-mount") -> None:
     This script collects dynamic coverage data for the test target, and upload the
     results to database (S3).
     """
-    logger = _get_logger()
-    logger.info(f"Collecting coverage for test target: {test_target}")
+    _logger.info(f"Collecting coverage for test target: {test_target}")
     coverage_file = os.path.join(artifact_dir, _COVERAGE_FILE_NAME)
     _run_test(test_target, coverage_file)
     coverage_info = _collect_coverage(coverage_file)
-    logger.info(coverage_info)
+    _logger.info(coverage_info)
     return 0
 
 
@@ -63,15 +76,6 @@ def _collect_coverage(coverage_file: str) -> str:
         ["coverage", "report", f"--data-file={coverage_file}"]
     ).decode("utf-8")
 
-def _get_logger():
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s",
-    )
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    return logger
 
 if __name__ == "__main__":
     sys.exit(main())
