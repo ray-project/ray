@@ -9,25 +9,27 @@ This guide gives a quick tour of Ray's features.
 ## Starting a local Ray cluster
 To get started, install, import, and initialize Ray. Most of the examples in this guide are based on Python, and some examples use Ray Core in Java.
 
-````{panels}
-:container: text-center
-:column: col-lg-6 px-2 py-2
-:card:
+````{eval-rst}
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-3
+    
+    .. grid-item-card::
 
-Python
-^^^
-To use Ray in Python, install it with
-```
-pip install ray
-```
+        Python
+        ^^^
+        To use Ray in Python, install it with
+        ```
+        pip install ray
+        ```
+    
+    .. grid-item-card::
 
----
-
-Java
-^^^
-
-To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and
-[ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
+        Java
+        ^^^
+        
+        To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and
+        [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
 
 ````
 
@@ -125,14 +127,16 @@ Use the trained model for batch prediction with a ``BatchPredictor``.
     :start-after: __air_xgb_batchpred_start__
     :end-before: __air_xgb_batchpred_end__
 ```
+
+```{button-ref} air
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray AIR
+```
 `````
 
-
-```{link-button} air
-:type: ref
-:text: Learn more about Ray AIR
-:classes: btn-outline-primary btn-block
-```
 
 ## Ray Libraries Quick Start
 
@@ -182,20 +186,22 @@ Datastreams also supports ``.filter()`` and ``.flat_map()``.
 :end-before: __data_transform_end__
 ```
 
-```{link-button} ../data/data
-:type: ref
-:text: Learn more about Ray Data
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../data/data
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Data
 ```
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
 :animate: fade-in-slide-down
 
 Ray Train abstracts away the complexity of setting up a distributed training
 system. Let's take following simple examples:
 
-````{tab-set}
+`````{tab-set}
 
 ````{tab-item} PyTorch
 
@@ -304,15 +310,20 @@ with 4 workers, and use it to run the new training function!
 :end-before: __tf_trainer_end__
 :dedent: 0
 ```
-````
+
+```{button-ref}  ../train/train
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Train
+```
+
 ````
 
-```{link-button} ../train/train
-:type: ref
-:text: Learn more about Ray Train
-:classes: btn-outline-primary btn-block
-```
 `````
+
+``````
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
@@ -343,10 +354,12 @@ If TensorBoard is installed, automatically visualize all trial results:
 tensorboard --logdir ~/ray_results
 ```
 
-```{link-button} ../tune/index
-:type: ref
-:text: Learn more about Ray Tune
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../tune/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Tune
 ```
 
 `````
@@ -374,11 +387,14 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 As a result you will see `{"result": "versicolor"}`.
 
-```{link-button} ../serve/index
-:type: ref
-:text: Learn more about Ray Serve
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../serve/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Serve
 ```
+
 `````
 
 
@@ -401,10 +417,12 @@ pip install "ray[rllib]" tensorflow  # or torch
 :start-after: __quick_start_begin__
 ```
 
-```{link-button} ../rllib/index
-:type: ref
-:text: Learn more about Ray RLlib
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../rllib/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray RLlib
 ```
 
 `````
@@ -415,10 +433,10 @@ Ray Core provides simple primitives for building and running distributed applica
 Below you find examples that show you how to turn your functions and classes easily into Ray tasks and actors,
 for both Python and Java.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
 
-````{tab-set}
+`````{tab-set}
 
 ````{tab-item} Python
 
@@ -438,8 +456,8 @@ def f(x):
 
 futures = [f.remote(i) for i in range(4)]
 print(ray.get(futures)) # [0, 1, 4, 9]
-
 ```
+
 ````
 
 ````{tab-item} Java
@@ -475,22 +493,26 @@ public class RayDemo {
         System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
     }
 }
-````
-
-````
+```
 
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Learn more about Ray Core
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Core
 ```
+
+````
 
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
+``````
+
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
 :animate: fade-in-slide-down
 
 Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
@@ -498,7 +520,7 @@ When you instantiate a class that is a Ray actor, Ray will start a remote instan
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
-````{tab-set}
+`````{tab-set}
 
 ````{tab-item} Python
 
@@ -572,18 +594,21 @@ public class RayDemo {
         System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
     }
 }
-
-````
-
-````
-
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Learn more about Ray Core
-:classes: btn-outline-primary btn-block
 ```
 
+```{button-ref}  ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Core
+```
+
+````
+
 `````
+
+``````
 
 ## Ray Cluster Quick Start
 
@@ -623,10 +648,12 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-index
-:type: ref
-:text: Learn more about launching Ray Clusters
-:classes: btn-outline-primary btn-block
+```{button-ref}  cluster-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters
 ```
 
 `````
@@ -652,10 +679,12 @@ pip install "ray[default]"
 ```
 ````
 
-```{link-button} ../ray-core/ray-dashboard
-:type: ref
-:text: Learn more about Ray Dashboard.
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-core/ray-dashboard
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Dashboard
 ```
 
 `````
@@ -728,10 +757,12 @@ See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```
 
-```{link-button} ../ray-observability/state/state-api
-:type: ref
-:text: Learn more about Ray State APIs
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-observability/state/state-api
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray State APIs
 ```
 
 `````

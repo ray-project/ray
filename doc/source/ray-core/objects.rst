@@ -98,7 +98,7 @@ If the current node's object store does not contain the object, the object is do
           // Get the values of multiple object refs in parallel.
           List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
           for (int i = 0; i < 3; i++) {
-        objectRefs.add(Ray.put(i));
+            objectRefs.add(Ray.put(i));
           }
           List<Integer> results = Ray.get(objectRefs);
           Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
