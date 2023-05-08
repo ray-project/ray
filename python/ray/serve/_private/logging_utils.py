@@ -55,7 +55,7 @@ def log_to_stderr_filter(record: logging.LogRecord) -> bool:
     return record.log_to_stderr
 
 
-def get_component_logger_file_path_id() -> Optional[str]:
+def get_component_logger_file_path() -> Optional[str]:
     """Returns the relative file path for the Serve logger, if it exists.
 
     If a logger was configured through configure_component_logger() for the Serve

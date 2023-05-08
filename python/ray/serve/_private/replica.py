@@ -34,7 +34,7 @@ from ray.serve._private.http_util import ASGIHTTPSender
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
-    get_component_logger_file_path_id,
+    get_component_logger_file_path,
 )
 from ray.serve._private.router import Query, RequestMetadata
 from ray.serve._private.utils import (
@@ -233,7 +233,7 @@ def create_replica_wrapper(name: str):
                 ray.get_runtime_context().get_actor_id(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
-                get_component_logger_file_path_id(),
+                get_component_logger_file_path(),
             )
 
         async def is_initialized(

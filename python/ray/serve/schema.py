@@ -634,10 +634,10 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "state from the running replica actor."
         )
     )
-    log_file_path_id: Optional[str] = Field(
+    log_file_path: Optional[str] = Field(
         description=(
-            "Path identifier for log file of the replica actor. This is the relative "
-            "path to the log file from the ray logs directory."
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
         )
     )
 
