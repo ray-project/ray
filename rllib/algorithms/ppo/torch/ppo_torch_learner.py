@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
@@ -93,7 +92,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         total_loss = torch.mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
@@ -134,12 +133,5 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         elif sampled_kl < 0.5 * self.hps.kl_target:
             curr_var.data *= 0.5
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
 
         return results
