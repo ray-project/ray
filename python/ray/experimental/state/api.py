@@ -489,6 +489,18 @@ class StateApiClient(SubmissionClient):
             when timeout occurs.
 
         """
+
+        if resource == StateResource.JOBS:
+            # State API will be querying job's endpoint for job details
+            endpoint = "/api/jobs/"
+            r = self._do_request("GET", "/api/jobs/")
+            if r.status_code == 200:
+                jobs_info_json = r.json()
+                jobs_info = [JobState(job_info) for job_info in jobs_info_json]
+                return jobs_info
+            else:
+                self._raise_error(r)
+
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
         list_api_response = self._make_http_get_request(

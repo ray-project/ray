@@ -2,15 +2,16 @@ import json
 import logging
 import sys
 from abc import ABC
-from dataclasses import field, fields
+from dataclasses import asdict, field, fields
 from enum import Enum, unique
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.common import JobInfo
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -237,6 +238,9 @@ class StateSchema(ABC):
         """
         return set(cls.list_columns(detail=True))
 
+    def asdict(self):
+        return asdict(self)
+
     # Allow dict like access on the class directly for backward compatibility.
     def __getitem__(self, key):
         return getattr(self, key)
@@ -437,19 +441,39 @@ class NodeState(StateSchema):
     end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
 
 
-@dataclass(init=True)
-class JobState(JobInfo, StateSchema):
-    """The state of the job that's submitted by Ray's Job APIs"""
+@dataclass
+class JobState(StateSchema, JobDetails):
+    """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
-    job_id: Optional[str] = state_column(filterable=False, default=None)
+    def __init__(self, kwargs):
+        JobDetails.__init__(self, **kwargs)
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"status", "entrypoint", "error_type"}
+        # We are not doing any filtering since filtering is currently done
+        # at the backend.
+        return {}
 
     @classmethod
     def list_columns(cls, detail: bool) -> List[str]:
-        return ["job_id"] + [f.name for f in fields(JobInfo)]
+        if not detail:
+            return [
+                "job_id",
+                "submission_id",
+                "entrypoint",
+                "type",
+                "status",
+                "message",
+                "error_type",
+                "driver_info",
+            ]
+        return [f for f in JobDetails.__fields__]
+
+    def asdict(self):
+        return JobDetails.dict(self)
+
+    def __repr__(self) -> str:
+        return JobDetails.__repr__(self)
 
 
 @dataclass(init=True)
