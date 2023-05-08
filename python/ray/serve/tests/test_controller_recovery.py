@@ -238,10 +238,8 @@ def test_controller_recover_initializing_actor(serve_instance):
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
     # wait for controller is alive again
-    wait_for_condition(
-        lambda: get_actor_info(SERVE_CONTROLLER_NAME) is not None
-        and get_actor_info(SERVE_CONTROLLER_NAME)[1] != controller1_pid
-    )
+    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
+    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())
