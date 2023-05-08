@@ -12,15 +12,6 @@ if TYPE_CHECKING:
 class JobConfig:
     """A class used to store the configurations of a job.
 
-    Examples:
-
-        .. testcode::
-
-            import ray
-            from ray.job_config import JobConfig
-
-            ray.init(job_config=JobConfig(default_actor_lifetime="non_detached"))
-
     Args:
 
         jvm_options: The jvm options for java workers of the job.
@@ -34,6 +25,15 @@ class JobConfig:
             is a logical grouping of jobs and named actors.
         default_actor_lifetime: The default value of actor lifetime,
             can be "detached" or "non_detached".
+
+    Examples:
+
+        .. testcode::
+
+            import ray
+            from ray.job_config import JobConfig
+
+            ray.init(job_config=JobConfig(default_actor_lifetime="non_detached"))
     """
 
     def __init__(
