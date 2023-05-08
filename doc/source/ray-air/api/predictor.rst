@@ -80,6 +80,7 @@ Batch Prediction API
     batch_predictor.BatchPredictor.predict
     batch_predictor.BatchPredictor.predict_pipelined
 
+.. _air_framework_predictors:
 
 Built-in Predictors for Library Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

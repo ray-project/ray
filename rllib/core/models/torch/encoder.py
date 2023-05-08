@@ -25,7 +25,6 @@ from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 
 torch, nn = try_import_torch()
 
@@ -80,13 +79,11 @@ class TorchMLPEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
-        )
+    def _forward(self, inputs: dict, **kwargs) -> dict:
+        return {
+            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+            STATE_OUT: inputs[STATE_IN],
+        }
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
@@ -153,13 +150,11 @@ class TorchCNNEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
-        )
+    def _forward(self, inputs: dict, **kwargs) -> dict:
+        return {
+            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+            STATE_OUT: inputs[STATE_IN],
+        }
 
 
 class TorchGRUEncoder(TorchModel, Encoder):
@@ -229,7 +224,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: dict, **kwargs) -> dict:
         out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
@@ -326,7 +321,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: dict, **kwargs) -> dict:
         out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.

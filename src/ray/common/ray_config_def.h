@@ -799,8 +799,8 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 // Example: RAY_preload_python_modules=tensorflow,pytorch
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
-// By default, raylet send a self liveness check to GCS every 5s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
+// By default, raylet send a self liveness check to GCS every 60s
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks
