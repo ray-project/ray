@@ -66,7 +66,7 @@ class TorchCompileConfig:
         Args:
             rl_module: The RLModule to compile the forward methods of.
         """
-        assert type(rl_module) is TorchRLModule, "Only TorchRLModules can be compiled."
+        assert isinstance(rl_module, TorchRLModule), "Only TorchRLModules can be compiled."
 
         if self.compile_forward_train:
             rl_module.compile_forward_train(
