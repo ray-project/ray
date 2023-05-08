@@ -23,12 +23,12 @@ from uuid import uuid4
 
 import numpy as np
 import ipywidgets
-import tabulate
 
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 import ray.cloudpickle as pickle
-from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -4272,7 +4272,7 @@ class Datastream:
                 schema_data[sname] = getattr(stype, "__name__", str(stype))
 
             schema_repr = Template("scrollableTable.html.j2").render(
-                table=tabulate.tabulate(
+                table=tabulate(
                     tabular_data=schema_data.items(),
                     tablefmt="html",
                     showindex=False,
@@ -4285,7 +4285,7 @@ class Datastream:
         children.append(
             ipywidgets.HTML(
                 Template("scrollableTable.html.j2").render(
-                    table=tabulate.tabulate(
+                    table=tabulate(
                         tabular_data=metadata.items(),
                         tablefmt="html",
                         showindex=False,
