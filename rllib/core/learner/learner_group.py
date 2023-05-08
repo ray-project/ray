@@ -129,11 +129,14 @@ class LearnerGroup:
 
             # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
-            # Use only 1 max in flight request per worker since training workers have to
-            # be synchronously executed.
+
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
-                max_remote_requests_in_flight_per_actor=1,
+                # TODO (sven): This probably works even without any restriction
+                #  (allowing for any arbitrary number of requests in-flight). Test with
+                #  3 first, then with unlimited, and if both show the same behavior on
+                #  an async algo, remove this restriction entirely.
+                max_remote_requests_in_flight_per_actor=3,
             )
             self._in_queue = deque(maxlen=max_queue_len)
 
@@ -278,6 +281,10 @@ class LearnerGroup:
             # we can send in one new batch for sharding and parallel learning.
             if self._worker_manager_ready():
                 count = 0
+                # TODO (sven): This probably works even without any restriction
+                #  (allowing for any arbitrary number of requests in-flight). Test with
+                #  3 first, then with unlimited, and if both show the same behavior on
+                #  an async algo, remove this restriction entirely.
                 while len(self._in_queue) > 0 and count < 3:
                     # Pull a single batch from the queue (from the left side, meaning:
                     # use the oldest one first).

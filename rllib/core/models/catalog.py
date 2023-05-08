@@ -367,7 +367,7 @@ class Catalog:
                 encoder_config = CNNEncoderConfig(
                     input_dims=observation_space.shape,
                     cnn_filter_specifiers=model_config_dict["conv_filters"],
-                    cnn_activation=activation,
+                    cnn_activation=model_config_dict["conv_activation"],
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
