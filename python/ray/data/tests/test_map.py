@@ -375,6 +375,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
 def test_map_batches_extra_args(shutdown_only, tmp_path):
     ray.shutdown()
     ray.init(num_cpus=2)
+    assert DataContext.get_current().new_execution_backend
 
     def put(x):
         # We only support automatic deref in the legacy backend.
@@ -483,6 +484,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     # Test positional.
     class CallableFn:
         def __init__(self, a):
+            1 / 0
             assert a == 1
             self.a = a
 
@@ -875,6 +877,7 @@ def test_random_sample(ray_start_regular_shared):
     ds2 = ray.data.range(2, parallelism=1)
     ds3 = ray.data.range(3, parallelism=1)
     # noinspection PyTypeChecker
+    # needs Union operator implemented to pass w/ optimizer
     ds = ds1.union(ds2).union(ds3)
     ensure_sample_size_close(ds)
     # Small datasets
