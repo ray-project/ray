@@ -228,6 +228,7 @@ assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
 
 
 def test_worker_kv_calls(monkeypatch, shutdown_only):
+    ray.shutdown()
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     ray.init()
 
