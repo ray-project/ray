@@ -104,6 +104,7 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   if (sender_id.empty()) {
     sender_id = request.subscriber_id();
   }
+
   auto iter = sender_to_subscribers_.find(sender_id);
   if (iter == sender_to_subscribers_.end()) {
     iter = sender_to_subscribers_.insert({sender_id, {}}).first;

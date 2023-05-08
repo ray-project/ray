@@ -174,7 +174,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "tf_only", "no_tf_static_graph"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
@@ -599,7 +599,6 @@ py_test(
     args = ["--dir=tuned_examples/ppo"]
 )
 
-# TODO (Sven): Enable tf2 for this test.
 py_test(
     name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
@@ -930,7 +929,7 @@ py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/appo/tests/tf/test_appo_learner.py"]
+    srcs = ["algorithms/appo/tests/test_appo_learner.py"]
 )
 
 # ARS
@@ -2459,6 +2458,16 @@ py_test(
     args = ["TestCheckpointRestorePG"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_pg_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePG"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -2468,10 +2477,29 @@ py_test(
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_off_policy_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
     size = "medium",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]

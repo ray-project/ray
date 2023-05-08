@@ -10,6 +10,7 @@ import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -39,6 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_GRAD_UPDATES_LIFETIME,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
@@ -839,75 +841,81 @@ class EagerTFPolicyV2(Policy):
         # Add default and custom fetches.
         extra_fetches = {}
 
-        # Use Exploration object.
-        with tf.variable_creator_scope(_disallow_var_creation):
-            if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("_enable_rl_module_api", False) is False:
+            scope = tf.variable_creator_scope(_disallow_var_creation)
+            scope.__enter__()
 
-                if explore:
-                    fwd_out = self.model.forward_exploration(input_dict)
-                else:
-                    fwd_out = self.model.forward_inference(input_dict)
+        if self.config.get("_enable_rl_module_api", False):
+            input_dict = NestedDict(input_dict)
+            input_dict[STATE_IN] = state_batches
+            input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
-                action_dist = fwd_out[SampleBatch.ACTION_DIST]
-                if explore:
-                    actions = action_dist.sample()
-                    logp = action_dist.logp(actions)
-                else:
-                    actions = action_dist.sample()
-                    logp = None
-                state_out = fwd_out.get("state_out", {})
-
-                # anything but action_dist and state_out is an extra fetch
-                for k, v in fwd_out.items():
-                    if k not in [SampleBatch.ACTION_DIST, "state_out"]:
-                        extra_fetches[k] = v
-                dist_inputs = None
-
-            elif is_overridden(self.action_sampler_fn):
-                actions, logp, dist_inputs, state_out = self.action_sampler_fn(
-                    self.model,
-                    input_dict[SampleBatch.OBS],
-                    explore=explore,
-                    timestep=timestep,
-                    episodes=episodes,
-                )
+            if explore:
+                fwd_out = self.model.forward_exploration(input_dict)
             else:
-                if is_overridden(self.action_distribution_fn):
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
-                    (
-                        dist_inputs,
-                        self.dist_class,
-                        state_out,
-                    ) = self.action_distribution_fn(
-                        self.model,
-                        obs_batch=input_dict[SampleBatch.OBS],
-                        state_batches=state_batches,
-                        seq_lens=seq_lens,
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False,
-                    )
-                elif isinstance(self.model, tf.keras.Model):
-                    input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
-                    if state_batches and "state_in_0" not in input_dict:
-                        for i, s in enumerate(state_batches):
-                            input_dict[f"state_in_{i}"] = s
-                    self._lazy_tensor_dict(input_dict)
-                    dist_inputs, state_out, extra_fetches = self.model(input_dict)
-                else:
-                    dist_inputs, state_out = self.model(
-                        input_dict, state_batches, seq_lens
-                    )
+                fwd_out = self.model.forward_inference(input_dict)
 
-                action_dist = self.dist_class(dist_inputs, self.model)
+            action_dist = fwd_out[SampleBatch.ACTION_DIST]
+            if explore:
+                actions = action_dist.sample()
+                logp = action_dist.logp(actions)
+            else:
+                actions = action_dist.sample()
+                logp = None
+            state_out = fwd_out.get("state_out", {})
 
-                # Get the exploration action from the forward results.
-                actions, logp = self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
+            # anything but action_dist and state_out is an extra fetch
+            for k, v in fwd_out.items():
+                if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                    extra_fetches[k] = v
+            dist_inputs = None
+
+        elif is_overridden(self.action_sampler_fn):
+            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
+                self.model,
+                input_dict[SampleBatch.OBS],
+                explore=explore,
+                timestep=timestep,
+                episodes=episodes,
+            )
+        else:
+            if is_overridden(self.action_distribution_fn):
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                (
+                    dist_inputs,
+                    self.dist_class,
+                    state_out,
+                ) = self.action_distribution_fn(
+                    self.model,
+                    obs_batch=input_dict[SampleBatch.OBS],
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
                     explore=explore,
+                    timestep=timestep,
+                    is_training=False,
                 )
+            elif isinstance(self.model, tf.keras.Model):
+                input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                if state_batches and "state_in_0" not in input_dict:
+                    for i, s in enumerate(state_batches):
+                        input_dict[f"state_in_{i}"] = s
+                self._lazy_tensor_dict(input_dict)
+                dist_inputs, state_out, extra_fetches = self.model(input_dict)
+            else:
+                dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
+
+            action_dist = self.dist_class(dist_inputs, self.model)
+
+            # Get the exploration action from the forward results.
+            actions, logp = self.exploration.get_exploration_action(
+                action_distribution=action_dist,
+                timestep=timestep,
+                explore=explore,
+            )
+
+        if self.config.get("_enable_rl_module_api", False) is False:
+            scope.__exit__(None, None, None)
 
         # Action-logp and action-prob.
         if logp is not None:

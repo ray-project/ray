@@ -16,6 +16,7 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
+    LEARNER_RESULTS_CURR_LR_KEY,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     ParamType,
@@ -28,7 +29,10 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -84,13 +88,15 @@ class TfLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        lr = self._optimizer_config["lr"]
+        # TODO (sven): Move lr from optimizer config to Learner HPs?
+        #  We might not need optimizer config.
+        lr = self.curr_lr_per_module[module_id]
         optim = tf.keras.optimizers.Adam(learning_rate=lr)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
             optim,
         )
-        # this isn't strictly necessary, but makes it so that if a checkpoint is
+        # This isn't strictly necessary, but makes it so that if a checkpoint is
         # computed before training actually starts, then it will be the same in
         # shape / size as a checkpoint after training starts.
         optim.build(module.trainable_variables)
@@ -475,7 +481,11 @@ class TfLearner(Learner):
                 return results
             return reduce_fn(results)
 
-    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def _do_update_fn(
+        self,
+        batch: MultiAgentBatch,
+        _ray_trace_ctx=None,
+    ) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
             # TODO (Kourosh): We need to go back to NestedDict because that's the
@@ -512,3 +522,37 @@ class TfLearner(Learner):
             }
 
         return self._strategy.run(helper, args=(batch,))
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, *, timestep: int, **kwargs
+    ) -> Mapping[str, Any]:
+        # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        if self.hps.lr_schedule is not None:
+            value = self.lr_schedule_per_module[module_id].value(t=timestep)
+            self.curr_lr_per_module[module_id].assign(value)
+            # Not sure why we need to do this here besides setting the original
+            # tf Variable `self.curr_lr_per_module[module_id]`. When tf creates the
+            # optimizer, maybe it detaches its lr value from the given variable?
+            self._named_optimizers[module_id].lr = value
+        return {
+            LEARNER_RESULTS_CURR_LR_KEY: self._named_optimizers[module_id].lr.numpy()
+        }
+
+    @override(Learner)
+    def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
+        return tf.Variable(
+            value,
+            trainable=trainable,
+            dtype=(
+                dtype
+                or (
+                    tf.float32
+                    if isinstance(value, float)
+                    else tf.int32
+                    if isinstance(value, int)
+                    else None
+                )
+            ),
+        )

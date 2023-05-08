@@ -15,7 +15,8 @@ Each block holds a set of records in an `Arrow table <https://arrow.apache.org/d
 `pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
 Having multiple blocks in a datastream allows for parallel transformation and ingest.
 
-For ML use cases, Datastream also natively supports mixing :ref:`Tensors <data_tensor_support>` and tabular data.
+For ML use cases, Datastream natively supports mixing tensors with tabular data. To
+learn more, read :ref:`Working with tensor data <working_with_tensors>`.
 
 The following figure visualizes a datastream with three blocks, each holding 1000 rows. Note that certain blocks
 may not be computed yet. Normally, callers iterate over datastream blocks in a streaming fashion, so that not all
@@ -100,7 +101,7 @@ Fault tolerance
 
 Datastream performs *lineage reconstruction* to recover data. If an application error or
 system failure occurs, Datastream recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-will restart the actor used for computing the block prior to re-executing the task. 
+restarts the actor used for computing the block prior to re-executing the task.
 
 Fault tolerance is not supported if the original worker process that created the Datastream dies.
 This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Datastream.
