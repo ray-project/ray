@@ -1,4 +1,3 @@
-import abc
 import pathlib
 from typing import Any, List, Mapping, Tuple, Union, Type
 
@@ -20,15 +19,6 @@ class TorchRLModule(nn.Module, RLModule):
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
-
-    @abc.abstractmethod
-    def get_action_dist_cls(self) -> Type[TorchDistribution]:
-        """Returns the action distribution class for this RL Module.
-
-        This class is used to create action distributions from outputs of the forward
-        methods. If the rare case that no action distribution class is needed,
-        this method can return None.
-        """
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.

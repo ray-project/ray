@@ -277,6 +277,13 @@ class RLModule(abc.ABC):
 
     framework: str = None
 
+    # Constants that signify forward pass modes.
+    # These can be used for example to get the appropriate action distribution
+    # from an RL Module
+    TRAIN = "train"
+    EXPLORATION = "exploration"
+    INFERENCE = "inference"
+
     def __init__(self, config: RLModuleConfig):
         self.config = config
         self.setup()
@@ -328,6 +335,28 @@ class RLModule(abc.ABC):
         therefore, the subclass should call super.__init__() in its constructor. This
         abstraction can be used to create any component that your RLModule needs.
         """
+
+    def get_action_dist_cls(self, mode: str) -> Type[Distribution]:
+        """Returns the action distribution class for this RL Module.
+
+        This class is used to create action distributions from outputs of the forward
+        methods. If the case that no action distribution class is needed, this method
+        can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more details.
+
+        Args:
+            mode: The mode for which the action distribution class is needed. This can
+                be one of the following: `RLModule.TRAIN`, `RLModule.EXPLORATION`,
+                `RLModule.INFERENCE`.
+
+        Returns:
+            The action distribution class for the specified mode.
+        """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.

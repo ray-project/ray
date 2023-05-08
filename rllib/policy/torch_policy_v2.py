@@ -1100,9 +1100,10 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = {}
         if isinstance(self.model, RLModule):
-            action_dist_class = self.model.get_action_dist_cls()
-
             if explore:
+                action_dist_class = self.model.get_action_dist_cls(
+                    self.model.EXPLORATION
+                )
                 fwd_out = self.model.forward_exploration(input_dict)
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -1110,6 +1111,7 @@ class TorchPolicyV2(Policy):
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_action_dist_cls(self.model.INFERENCE)
                 fwd_out = self.model.forward_inference(input_dict)
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]

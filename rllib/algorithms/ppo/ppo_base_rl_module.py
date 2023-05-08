@@ -33,7 +33,9 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
         assert isinstance(self.encoder, ActorCriticEncoder)
 
-    def get_action_dist_cls(self) -> Distribution:
+    def get_action_dist_cls(self, mode: str) -> Distribution:
+        # In PPO, we always use the same action distribution class for exploration,
+        # inference and training.
         return self.action_dist_cls
 
     @override(RLModule)

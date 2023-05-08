@@ -851,9 +851,10 @@ class EagerTFPolicyV2(Policy):
             input_dict[STATE_IN] = state_batches
             input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
-            action_dist_class = self.model.get_action_dist_cls()
-
             if explore:
+                action_dist_class = self.model.get_action_dist_cls(
+                    self.model.EXPLORATION
+                )
                 fwd_out = self.model.forward_exploration(input_dict)
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -861,6 +862,7 @@ class EagerTFPolicyV2(Policy):
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_action_dist_cls(self.model.INFERENCE)
                 fwd_out = self.model.forward_inference(input_dict)
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
