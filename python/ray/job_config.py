@@ -1,9 +1,11 @@
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.runtime_env import RuntimeEnv
 
 
 @PublicAPI
@@ -93,9 +95,7 @@ class JobConfig:
 
     def set_runtime_env(
         self,
-        runtime_env: Optional[
-            Union[Dict[str, Any], ray.runtime_env.RuntimeEnv]
-        ],  # noqa: F821
+        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]],
         validate: bool = False,
     ) -> None:
         """Modify the runtime_env of the JobConfig.
