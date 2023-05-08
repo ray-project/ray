@@ -153,11 +153,11 @@ class LearnerGroup:
 
     def update(
         self,
-        batches: List[MultiAgentBatch],
+        batch: MultiAgentBatch,
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
         block: bool = True,
@@ -165,31 +165,29 @@ class LearnerGroup:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
-            batches: The list of data batches to use for the update(s).
+            batch: The data batch to use for the update.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
-            reduce_fn: A function to reduce the results from a list of Learner Actors
-                into a single result. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
-            block: Whether to block until each update is complete.
+            reduce_fn: An optional callable to reduce the results from a list of the
+                Learner actors into a single result. This can be any arbitrary function
+                that takes a list of dictionaries and returns a single dictionary. For
+                example you can either take an average (default) or concatenate the
+                results (for example for metrics) or be more selective about you want to
+                report back to the algorithm's training_step. If None is passed, the
+                results will not get reduced.
+            block: Whether to block until the update is complete.
 
         Returns:
             A list of dictionaries of results from the updates from the Learner(s)
         """
 
-        # Construct multi-agent batch(es) with only the trainable modules.
-        train_batches = []
-        for batch in batches:
-            train_batch = {}
-            for module_id in batch.policy_batches.keys():
-                if self._is_module_trainable(module_id, batch):
-                    train_batch[module_id] = batch.policy_batches[module_id]
-            train_batches.append(MultiAgentBatch(train_batch, batch.count))
+        # Construct a multi-agent batch with only the trainable modules.
+        train_batch = {}
+        for module_id in batch.policy_batches.keys():
+            if self._is_module_trainable(module_id, batch):
+                train_batch[module_id] = batch.policy_batches[module_id]
+        train_batch = MultiAgentBatch(train_batch, batch.count)
 
         if self.is_local:
             if not block:
@@ -203,11 +201,11 @@ class LearnerGroup:
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     reduce_fn=reduce_fn,
-                ) for train_batch in train_batches
+                )
             ]
         else:
             results = self._distributed_update(
-                train_batches,
+                train_batch,
                 minibatch_size=minibatch_size,
                 num_iters=num_iters,
                 reduce_fn=reduce_fn,
@@ -221,7 +219,7 @@ class LearnerGroup:
 
     def _distributed_update(
         self,
-        batches: List[MultiAgentBatch],
+        batch: MultiAgentBatch,
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
@@ -258,22 +256,20 @@ class LearnerGroup:
             )
 
         if block:
-            results = []
-            for batch in batches:
-                results.extend(self._get_results(self._worker_manager.foreach_actor([
-                    partial(_learner_update, minibatch=minibatch)
-                    for minibatch in ShardBatchIterator(batch, len(self._workers))
-                ])))
+            results = self._get_results(self._worker_manager.foreach_actor([
+                partial(_learner_update, minibatch=minibatch)
+                for minibatch in ShardBatchIterator(batch, len(self._workers))
+            ]))
         else:
             # Queue the new batches.
-            if batches:
-                for batch in batches:
-                    # If queue is full, kick out the oldest item (and thus add its
-                    # length to the "dropped ts" counter).
-                    if len(self._in_queue) == self._in_queue.maxlen:
-                        self._in_queue_ts_dropped += len(self._in_queue[0])
+            #if batches:
+            #    for batch in batches:
+            # If queue is full, kick out the oldest item (and thus add its
+            # length to the "dropped ts" counter).
+            if len(self._in_queue) == self._in_queue.maxlen:
+                self._in_queue_ts_dropped += len(self._in_queue[0])
 
-                    self._in_queue.append(batch)
+            self._in_queue.append(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).
             results = self._worker_manager.fetch_ready_async_reqs()

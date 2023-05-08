@@ -938,7 +938,6 @@ class Impala(Algorithm):
             Aggregated results from the learner group after an update is completed.
 
         """
-        result = {}
         # There are batches on the queue -> Send them all to the learner group.
         if self.batches_to_place_on_learner:
             batches = self.batches_to_place_on_learner[:]
@@ -946,28 +945,29 @@ class Impala(Algorithm):
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
-            lg_results = self.learner_group.update(
-                batches=batches,
-                reduce_fn=_reduce_impala_results,
-                block=blocking,
-                num_iters=self.config.num_sgd_iter,
-                minibatch_size=self.config.minibatch_size,
-            )
-        # Nothing on the queue -> Don't send requests to learner group.
-        else:
-            lg_results = None
+            results = []
+            for batch in batches:
+                results.append(self.learner_group.update(
+                    batch,
+                    reduce_fn=_reduce_impala_results,
+                    block=blocking,
+                    num_iters=self.config.num_sgd_iter,
+                    minibatch_size=self.config.minibatch_size,
+                ))
+            results = _reduce_impala_results(results)
 
-        if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
+            self._counters[NUM_ENV_STEPS_TRAINED] += results[ALL_MODULES].pop(
                 NUM_ENV_STEPS_TRAINED
             )
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
+            self._counters[NUM_AGENT_STEPS_TRAINED] += results[ALL_MODULES].pop(
                 NUM_AGENT_STEPS_TRAINED
             )
             self._counters.update(self.learner_group.get_in_queue_stats())
-            result = lg_results
+            return results
 
-        return result
+        # Nothing on the queue -> Don't send requests to learner group.
+        else:
+            return {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.

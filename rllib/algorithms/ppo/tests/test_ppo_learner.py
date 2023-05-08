@@ -108,9 +108,7 @@ class TestPPO(unittest.TestCase):
 
             # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())
-            learner_group.update(
-                batches=[train_batch.as_multi_agent()]
-            )
+            learner_group.update(train_batch.as_multi_agent())
 
             algo.stop()
 

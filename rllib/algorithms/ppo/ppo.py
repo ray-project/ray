@@ -421,7 +421,7 @@ class PPO(Algorithm):
             is_module_trainable = self.workers.local_worker().is_policy_to_train
             self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
-                batches=[train_batch],
+                train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
