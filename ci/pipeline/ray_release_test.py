@@ -1,4 +1,3 @@
-import boto3
 import json
 import os
 import subprocess
@@ -53,7 +52,7 @@ def _run_tests(test_targets: Set[str]) -> None:
 
 
 def _get_test_targets_for_changed_files(
-    changed_files: List[str], 
+    changed_files: List[str],
     artifact_dir: str,
 ) -> Set[str]:
     """
@@ -129,8 +128,8 @@ def _get_changed_files() -> List[str]:
     """
     Get the list of changed files in the current PR.
     """
-#    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    base_branch = 'can-coverage'
+    #    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    base_branch = "can-coverage"
     if not base_branch:
         return []
     return (
