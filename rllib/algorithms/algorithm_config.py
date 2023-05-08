@@ -1,6 +1,7 @@
 import copy
 import logging
 import math
+import sys
 import os
 from typing import (
     Any,
@@ -17,9 +18,9 @@ from typing import (
 )
 
 import ray
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -278,6 +279,19 @@ class AlgorithmConfig(_Config):
             "intra_op_parallelism_threads": 8,
             "inter_op_parallelism_threads": 8,
         }
+        # Torch compile settings
+        self.torch_compile_learner_forward_train = True
+        self.torch_compile_learner_forward_inference = False
+        self.torch_compile_learner_forward_exploration = False
+        self.torch_compile_learner_dynamo_backend = (
+            "aot_eager" if sys.platform == "darwin" else "inductor"
+        )
+        self.torch_compile_worker_forward_train = False
+        self.torch_compile_worker_forward_inference = False
+        self.torch_compile_worker_forward_exploration = False
+        self.torch_compile_worker_dynamo_backend = (
+            "aot_eager" if sys.platform == "darwin" else "inductor"
+        )
 
         # `self.environment()`
         self.env = None
@@ -422,10 +436,6 @@ class AlgorithmConfig(_Config):
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
         self.__prior_exploration_config = None
-        # Separate configs for how to compile instaces of RL Modules used for
-        # learning or sampling.
-        self.torch_compile_learner_config = TorchCompileConfig()
-        self.torch_compile_worker_config = TorchCompileConfig()
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -1208,8 +1218,14 @@ class AlgorithmConfig(_Config):
         eager_max_retraces: Optional[int] = NotProvided,
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
-        torch_compile_learner_config=NotProvided,
-        torch_compile_worker_config=NotProvided,
+        torch_compile_learner_forward_train=NotProvided,
+        torch_compile_learner_forward_exploration=NotProvided,
+        torch_compile_learner_forward_inference=NotProvided,
+        torch_compile_learner_dynamo_backend=NotProvided,
+        torch_compile_worker_forward_train=NotProvided,
+        torch_compile_worker_forward_exploration=NotProvided,
+        torch_compile_worker_forward_inference=NotProvided,
+        torch_compile_worker_dynamo_backend=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1230,12 +1246,32 @@ class AlgorithmConfig(_Config):
             tf_session_args: Configures TF for single-process operation by default.
             local_tf_session_args: Override the following tf session args on the local
                 worker
-            torch_compile_worker_config: The config to use for torch.compile on the
-                workers. If not specified, the default is to not compile forward
-                methods on the workers because retracing can be expensive.
-            torch_compile_learner_config: The config to use for torch.compile on the
-                learner. If not specified, the default is to compile forward methods on
+            torch_compile_learner_forward_train: If True, forward_train methods on
+                TorchRLModules on the learner are compiled. If not specified,
+                the default is to compile forward train on the learner.
+            torch_compile_learner_forward_exploration: If True, forward_exploration
+                methods on TorchRLModules on the learner are compiled. If not
+                specified, the default is not to compile forward exploration on the
+                learner.
+            torch_compile_learner_forward_inference: If True, forward_inference
+                methods on TorchRLModules on the learner are compiled. If not
+                specified, the default is not to compile forward inference on the
+                learner.
+            torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
+            torch_compile_worker_forward_train: If True, forward_train methods on
+                TorchRLModules on the workers are compiled. If not specified, the
+                default is not to compile forward train on the workers.
+            torch_compile_worker_forward_exploration: If True, forward_exploration
+                methods on TorchRLModules on the workers are compiled. If not
+                specified, the default is to not compile forward methods on the
+                workers because retracing can be expensive.
+            torch_compile_worker_forward_inference: If True, forward_inference methods
+                on TorchRLModules on the workers are compiled. If not specified, the
+                default is to not compile forward inference on the workers because
+                retracing can be expensive.
+            torch_compile_worker_dynamo_backend: The torch dynamo backend to use on
+                the workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1257,11 +1293,36 @@ class AlgorithmConfig(_Config):
         if local_tf_session_args is not NotProvided:
             self.local_tf_session_args = local_tf_session_args
 
-        if torch_compile_worker_config is not NotProvided:
-            self.torch_compile_worker_config = torch_compile_worker_config
-
-        if torch_compile_learner_config is not NotProvided:
-            self.torch_compile_learner_config = torch_compile_learner_config
+        if torch_compile_learner_forward_train is not NotProvided:
+            self.torch_compile_learner_forward_train = (
+                torch_compile_learner_forward_train
+            )
+        if torch_compile_learner_forward_exploration is not NotProvided:
+            self.torch_compile_learner_forward_exploration = (
+                torch_compile_learner_forward_exploration
+            )
+        if torch_compile_learner_forward_inference is not NotProvided:
+            self.torch_compile_learner_forward_inference = (
+                torch_compile_learner_forward_inference
+            )
+        if torch_compile_learner_dynamo_backend is not NotProvided:
+            self.torch_compile_learner_dynamo_backend = (
+                torch_compile_learner_dynamo_backend
+            )
+        if torch_compile_worker_forward_train is not NotProvided:
+            self.torch_compile_worker_forward_train = torch_compile_worker_forward_train
+        if torch_compile_worker_forward_exploration is not NotProvided:
+            self.torch_compile_worker_forward_exploration = (
+                torch_compile_worker_forward_exploration
+            )
+        if torch_compile_worker_forward_inference is not NotProvided:
+            self.torch_compile_worker_forward_inference = (
+                torch_compile_worker_forward_inference
+            )
+        if torch_compile_worker_dynamo_backend is not NotProvided:
+            self.torch_compile_worker_dynamo_backend = (
+                torch_compile_worker_dynamo_backend
+            )
 
         return self
 
@@ -2955,6 +3016,24 @@ class AlgorithmConfig(_Config):
                     f"{suggested_rollout_fragment_length}."
                 )
 
+    def get_torch_compile_learner_config(self):
+        """Returns the TorchCompileConfig to use on learners."""
+        return TorchCompileConfig(
+            compile_forward_train=self.torch_compile_learner_forward_train,
+            compile_forward_exploration=self.torch_compile_learner_forward_exploration,
+            compile_forward_inference=self.torch_compile_learner_forward_inference,
+            torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
+        )
+
+    def get_torch_compile_worker_config(self):
+        """Returns the TorchCompileConfig to use on workers."""
+        return TorchCompileConfig(
+            compile_forward_train=self.torch_compile_worker_forward_train,
+            compile_forward_exploration=self.torch_compile_worker_forward_exploration,
+            compile_forward_inference=self.torch_compile_worker_forward_inference,
+            torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
+        )
+
     def get_default_rl_module_spec(self) -> ModuleSpec:
         """Returns the RLModule spec to use for this algorithm.
 
@@ -3176,7 +3255,7 @@ class AlgorithmConfig(_Config):
             )
             .framework(
                 eager_tracing=self.eager_tracing,
-                torch_compile_learner_config=self.torch_compile_learner_config,
+                torch_compile_learner_config=self.get_torch_compile_learner_config(),
             )
         )
 
