@@ -1,6 +1,7 @@
 import uuid
 from typing import Any, Dict, List, Optional, Union
 
+import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import PublicAPI
 
@@ -9,16 +10,28 @@ from ray.util.annotations import PublicAPI
 class JobConfig:
     """A class used to store the configurations of a job.
 
+    Examples:
+
+        .. testcode::
+
+            import ray
+            from ray.job_config import JobConfig
+
+            ray.init(job_config=JobConfig(default_actor_lifetime="non_detached"))
+
     Args:
 
         jvm_options: The jvm options for java workers of the job.
         code_search_path: A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
+            See :ref:`Ray cross-language programming <cross_language>` for more details.
         runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
         metadata: An opaque metadata dictionary.
-        ray_namespace: A namespace is a logical grouping of jobs and named actors.
-        default_actor_lifetime: The default value of actor lifetime.
+        ray_namespace: A :ref:`namespace <namespaces-guide>`
+            is a logical grouping of jobs and named actors.
+        default_actor_lifetime: The default value of actor lifetime,
+            can be "detached" or "non_detached".
     """
 
     def __init__(
@@ -53,15 +66,36 @@ class JobConfig:
         self._py_driver_sys_path = []
 
     def set_metadata(self, key: str, value: str) -> None:
+        """Add key-value pair to the metadata dictionary.
+
+        If the key already exists, the value will be overwritten to the new value.
+
+        Examples:
+
+            ..testcode::
+
+                import ray
+                from ray.job_config import JobConfig
+
+                job_config = JobConfig()
+                job_config.set_metadata("key1", "value1")
+
+        Args:
+
+            key: The key of the metadata.
+            value: The value of the metadata.
+        """
         self.metadata[key] = value
 
-    def serialize(self) -> str:
+    def _serialize(self) -> str:
         """Serialize the struct into protobuf string"""
-        return self.get_proto_job_config().SerializeToString()
+        return self._get_proto_job_config().SerializeToString()
 
     def set_runtime_env(
         self,
-        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]],  # noqa: F821
+        runtime_env: Optional[
+            Union[Dict[str, Any], ray.runtime_env.RuntimeEnv]
+        ],  # noqa: F821
         validate: bool = False,
     ) -> None:
         """Modify the runtime_env of the JobConfig.
@@ -69,6 +103,11 @@ class JobConfig:
         We don't validate the runtime_env by default here because it may go
         through some translation before actually being passed to C++ (e.g.,
         working_dir translated from a local directory to a URI.
+
+        Args:
+
+            runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
+            validate: Whether to validate the runtime env.
         """
         self.runtime_env = runtime_env if runtime_env is not None else {}
         if validate:
@@ -76,11 +115,24 @@ class JobConfig:
         self._cached_pb = None
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
+        """Set Ray :ref:`namespace <namespaces-guide>`.
+
+        Args:
+
+            ray_namespace: The namespace to set.
+        """
+
         if ray_namespace != self.ray_namespace:
             self.ray_namespace = ray_namespace
             self._cached_pb = None
 
     def set_default_actor_lifetime(self, default_actor_lifetime: str) -> None:
+        """Set the default actor lifetime, can be "detached" or "non_detached".
+
+        Args:
+
+            default_actor_lifetime: The default actor lifetime to set.
+        """
         if default_actor_lifetime == "detached":
             self._default_actor_lifetime = gcs_utils.JobConfig.ActorLifetime.DETACHED
         elif default_actor_lifetime == "non_detached":
@@ -102,7 +154,7 @@ class JobConfig:
             return self.runtime_env
         return RuntimeEnv(**self.runtime_env)
 
-    def get_proto_job_config(self):
+    def _get_proto_job_config(self):
         """Return the protobuf structure of JobConfig."""
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
@@ -136,16 +188,16 @@ class JobConfig:
 
         return self._cached_pb
 
-    def runtime_env_has_working_dir(self):
+    def _runtime_env_has_working_dir(self):
         return self._validate_runtime_env().has_working_dir()
 
-    def get_serialized_runtime_env(self) -> str:
+    def _get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._validate_runtime_env().serialize()
 
-    def get_proto_runtime_env_config(self) -> str:
+    def _get_proto_runtime_env_config(self) -> str:
         """Return the JSON-serialized parsed runtime env info"""
-        return self.get_proto_job_config().runtime_env_info.runtime_env_config
+        return self._get_proto_job_config().runtime_env_info.runtime_env_config
 
     @classmethod
     def from_json(cls, job_config_json):
@@ -156,7 +208,13 @@ class JobConfig:
             .. testcode::
 
                 from ray.job_config import JobConfig
-                job_config = JobConfig.from_json({"runtime_env": {"working_dir": "uri://abc"}})
+
+                job_config = JobConfig.from_json(
+                    {"runtime_env": {"working_dir": "uri://abc"}})
+
+        Args:
+
+            job_config_json: The job config json dictionary.
         """
         return cls(
             jvm_options=job_config_json.get("jvm_options", None),

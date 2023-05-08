@@ -2187,13 +2187,13 @@ def connect(
                 code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config._client_job and not job_config.runtime_env_has_working_dir():
+        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.append(current_directory)
         if len(code_paths) != 0:
             job_config._py_driver_sys_path.extend(code_paths)
 
-    serialized_job_config = job_config.serialize()
+    serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():
         # Logging to stderr, so give core worker empty logs directory.
         logs_dir = ""
