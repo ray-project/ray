@@ -70,8 +70,10 @@ class ImportThread:
     def _run(self):
         try:
             if not self.threads_stopped.is_set():
+                print("do importing for the first time")
                 self._do_importing()
             while True:
+                print("looping")
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
                     return
