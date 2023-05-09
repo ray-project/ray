@@ -22,6 +22,7 @@
   if: build.pull_request.id != null
   instance_size: small
   commands:
+    - pip install coverage
     - python ci/pipeline/ray_release_test.py
 
 - label: ":octopus: Tune soft imports test"

@@ -63,7 +63,7 @@ def _get_coverage_file(artifact_dir: str) -> str:
         Bucket=S3_BUCKET_NAME,
         Prefix=f"{S3_BUCKET_DIR}/ray-release-",
     )["Contents"]
-    latest_coverage = list(file for file in sorted(files, key=_get_last_modified))[-1]
+    latest_coverage = sorted(files, key=_get_last_modified)[-1]
     coverage_file_name = os.path.join(artifact_dir, COVERAGE_FILE_NAME)
     s3.download_file(
         Bucket=S3_BUCKET_NAME,
