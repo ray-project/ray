@@ -57,16 +57,7 @@ def generate_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        map_transform_fn: Optional["MapTransformFn"] = ctx.upstream_map_transform_fn
-        upstream_map_fn = None
-        if map_transform_fn:
-            upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731
-
-        shuffle_spec = ShuffleTaskSpec(
-            random_shuffle=False,
-            upstream_map_fn=upstream_map_fn,
-            split_reduce=True,
-        )
+        shuffle_spec = ShuffleTaskSpec(random_shuffle=False)
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs)
 

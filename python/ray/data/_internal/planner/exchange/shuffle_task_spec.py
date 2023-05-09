@@ -21,17 +21,10 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         random_shuffle: bool = False,
         random_seed: Optional[int] = None,
         upstream_map_fn: Optional[MapTransformFn] = None,
-        split_reduce: bool = False,
     ):
-        map_args = [upstream_map_fn, random_shuffle, random_seed]
-        reduce_args = [
-            random_shuffle,
-            random_seed,
-            upstream_map_fn if split_reduce else None,
-        ]
         super().__init__(
-            map_args=map_args,
-            reduce_args=reduce_args,
+            map_args=[upstream_map_fn, random_shuffle, random_seed],
+            reduce_args=[random_shuffle, random_seed],
         )
 
     @staticmethod
@@ -80,15 +73,15 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
     def reduce(
         random_shuffle: bool,
         random_seed: Optional[int],
-        upstream_map_fn: Optional[MapTransformFn],
+        # upstream_map_fn: Optional[MapTransformFn],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
         # TODO: Support fusion with other downstream operators.
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        if upstream_map_fn:
-            mapper_outputs = upstream_map_fn(mapper_outputs)
+        # if upstream_map_fn:
+        #     mapper_outputs = upstream_map_fn(mapper_outputs)
         for block in mapper_outputs:
             builder.add_block(block)
         new_block = builder.build()

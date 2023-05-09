@@ -288,11 +288,12 @@ def test_repartition_e2e(
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatastreamStats = ds._plan.stats()
-        assert ds_stats.base_name == "DoRead->Repartition"
         if shuffle:
+            assert ds_stats.base_name == "DoRead->Repartition"
             assert "DoRead->RepartitionMap" in ds_stats.stages
         else:
-            assert "DoRead->RepartitionSplit" in ds_stats.stages
+            assert ds_stats.base_name == "Repartition"
+            assert "RepartitionSplit" in ds_stats.stages
         assert "RepartitionReduce" in ds_stats.stages
 
     ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
@@ -688,7 +689,14 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.repartition(2, shuffle=shuffle)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "DoRead->MapBatches->Repartition" in ds.stats()
+
+    # Operator fusion is only supported for shuffle repartition.
+    if shuffle:
+        assert "DoRead->MapBatches->Repartition" in ds.stats()
+    else:
+        assert "DoRead->MapBatches->Repartition" not in ds.stats()
+        assert "DoRead->MapBatches" in ds.stats()
+        assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
 

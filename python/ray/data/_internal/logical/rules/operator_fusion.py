@@ -126,10 +126,15 @@ class OperatorFusionRule(Rule):
         # We currently only support fusing for the following cases:
         # - AbstractMap -> AbstractMap
         # - AbstractMap -> RandomShuffle
-        # - AbstractMap -> Repartition
+        # - AbstractMap -> Repartition (shuffle=True)
         if not isinstance(
             down_logical_op, (AbstractMap, RandomShuffle, Repartition)
         ) or not isinstance(up_logical_op, AbstractMap):
+            return False
+
+        # Do not fuse Repartition operator if shuffle is disabled
+        # (i.e. using split shuffle).
+        if isinstance(down_logical_op, Repartition) and not down_logical_op._shuffle:
             return False
 
         # Allow fusing tasks->actors if the resources are compatible (read->map), but
