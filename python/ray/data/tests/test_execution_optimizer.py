@@ -288,10 +288,11 @@ def test_repartition_e2e(
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatastreamStats = ds._plan.stats()
-        assert ds_stats.base_name == "Repartition"
         if shuffle:
-            assert "RepartitionMap" in ds_stats.stages
+            assert ds_stats.base_name == "DoRead->Repartition"
+            assert "DoRead->RepartitionMap" in ds_stats.stages
         else:
+            assert ds_stats.base_name == "Repartition"
             assert "RepartitionSplit" in ds_stats.stages
         assert "RepartitionReduce" in ds_stats.stages
 
@@ -630,7 +631,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
 ):
     # Note: we currently only support fusing MapOperator->AllToAllOperator.
     def fn(batch):
@@ -676,24 +677,26 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
 
+@pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared, enable_optimizer, shuffle, use_push_based_shuffle
 ):
-    # Note: We currently do not fuse MapBatches->Repartition.
-    # This test is to ensure that we don't accidentally fuse them, until
-    # we implement it later.
     def fn(batch):
         return {"id": [x + 1 for x in batch["id"]]}
 
     n = 10
     ds = ray.data.range(n)
     ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.repartition(2)
+    ds = ds.repartition(2, shuffle=shuffle)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Repartition" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
-    assert "Repartition" in ds.stats()
+
+    # Operator fusion is only supported for shuffle repartition.
+    if shuffle:
+        assert "DoRead->MapBatches->Repartition" in ds.stats()
+    else:
+        assert "DoRead->MapBatches->Repartition" not in ds.stats()
+        assert "DoRead->MapBatches" in ds.stats()
+        assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
 
