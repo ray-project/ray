@@ -117,7 +117,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
-      task_execution_service_work_(task_execution_service_) {
+      task_execution_service_work_(task_execution_service_),
+      exiting_detail_(std::nullopt) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -764,7 +765,11 @@ void CoreWorker::Exit(
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
-  exiting_ = true;
+  {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK_NE(detail, "");
+    exiting_detail_ = std::optional<std::string>{detail};
+  }
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
@@ -2535,6 +2540,15 @@ Status CoreWorker::ExecuteTask(
     bool *is_retryable_error,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+
+  // If the worker is exitted via Exit API, we shouldn't execute
+  // tasks anymore.
+  if (IsExiting()) {
+    absl::MutexLock lock(&mutex_);
+    return Status::IntentionalSystemExit(
+        absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
+  }
+
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -2929,6 +2943,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received Handle Push Task "
+                 << TaskID::FromBinary(request.task_spec().task_id());
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -2950,10 +2966,18 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
+        [this,
+         request,
+         reply,
+         send_reply_callback = std::move(send_reply_callback),
+         func_name] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
-          if (exiting_) return;
+          if (IsExiting()) {
+            RAY_LOG(INFO) << "Queued task " << func_name
+                          << " won't be executed because the worker already exited.";
+            return;
+          }
           direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
@@ -2962,10 +2986,14 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     // the task execution service.
     direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
     task_execution_service_.post(
-        [=] {
+        [this, func_name] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
-          if (exiting_) return;
+          if (IsExiting()) {
+            RAY_LOG(INFO) << "Queued task " << func_name
+                          << " won't be executed because the worker already exited.";
+            return;
+          }
           direct_task_receiver_->RunNormalTasksFromQueue();
         },
         "CoreWorker.HandlePushTask");
@@ -3814,7 +3842,10 @@ rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
 
-bool CoreWorker::IsExiting() const { return exiting_; }
+bool CoreWorker::IsExiting() const {
+  absl::MutexLock lock(&mutex_);
+  return exiting_detail_.has_value();
+}
 
 std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
     const {
