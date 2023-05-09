@@ -419,7 +419,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   rpc::Address address;
   address.set_ip_address("10.0.0.1");
   address.set_port(8264);
-  address.set_raylet_id(ClientID::FromRandom().Binary());
+  address.set_raylet_id(NodeID::FromRandom().Binary());
   add_job_request->mutable_data()->mutable_driver_address()->CopyFrom(address);
 
   add_job_request->mutable_data()->set_driver_pid(8264);
