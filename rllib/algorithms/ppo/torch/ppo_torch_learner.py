@@ -39,14 +39,18 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
+        action_dist_class = self.module[module_id].action_dist_cls
+        curr_action_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        #action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
         prev_action_dist = action_dist_class.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
+        curr_logp = curr_action_dist.logp(batch[SampleBatch.ACTIONS])
 
         logp_ratio = torch.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
+            curr_logp - batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -67,7 +71,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()#fwd_out["entropy"]
         mean_entropy = torch.mean(curr_entropy)
 
         surrogate_loss = torch.min(
@@ -92,7 +96,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         total_loss = torch.mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * mean_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),

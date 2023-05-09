@@ -483,14 +483,20 @@ class EagerTFPolicyV2(Policy):
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-        ret = self._compute_actions_helper(
-            input_dict,
-            state_batches,
-            # TODO: Passing episodes into a traced method does not work.
-            None if self.config["eager_tracing"] else episodes,
-            explore,
-            timestep,
-        )
+        if self.config.get("_enable_rl_module_api"):
+            if explore:
+                ret = self._compute_actions_helper_rl_module_explore(input_dict)
+            else:
+                ret = self._compute_actions_helper_rl_module_inference(input_dict)
+        else:
+            ret = self._compute_actions_helper(
+                input_dict,
+                state_batches,
+                # TODO: Passing episodes into a traced method does not work.
+                None if self.config["eager_tracing"] else episodes,
+                explore,
+                timestep,
+            )
         # Update our global timestep by the batch size.
         self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
         return convert_to_numpy(ret)
@@ -813,9 +819,79 @@ class EagerTFPolicyV2(Policy):
         return self._loss_initialized
 
     # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
-    #  AlphaStar w/ framework=tf2; eager_tracing=True on the policy learner actors.
+    #  eager_tracing=True.
     #  It seems there may be a clash between the traced-by-tf function and the
     #  traced-by-ray functions (for making the policy class a ray actor).
+    @with_lock
+    def _compute_actions_helper_rl_module_explore(
+        self, input_dict, _ray_trace_ctx=None
+    ):
+        # Increase the tracing counter to make sure we don't re-trace too
+        # often. If eager_tracing=True, this counter should only get
+        # incremented during the @tf.function trace operations, never when
+        # calling the already traced function after that.
+        self._re_trace_counter += 1
+
+        # Add models `forward_explore` extra fetches.
+        extra_fetches = {}
+
+        input_dict = NestedDict(input_dict)
+        input_dict[STATE_IN] = None
+        input_dict[SampleBatch.SEQ_LENS] = None
+
+        fwd_out = self.model.forward_exploration(input_dict)
+        actions = fwd_out[SampleBatch.ACTIONS]
+
+        # Anything but action_dist and state_out is an extra fetch
+        for k, v in fwd_out.items():
+            if k not in [SampleBatch.ACTIONS, "state_out"]:
+                extra_fetches[k] = v
+
+        # Action-logp and action-prob.
+        if fwd_out[SampleBatch.ACTION_LOGP] is not None:
+            extra_fetches[SampleBatch.ACTION_PROB] = (
+                tf.exp(fwd_out[SampleBatch.ACTION_LOGP])
+            )
+
+        return actions, {}, extra_fetches
+
+    # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
+    #  eager_tracing=True.
+    #  It seems there may be a clash between the traced-by-tf function and the
+    #  traced-by-ray functions (for making the policy class a ray actor).
+    @with_lock
+    def _compute_actions_helper_rl_module_inference(
+        self, input_dict, _ray_trace_ctx=None
+    ):
+        # Increase the tracing counter to make sure we don't re-trace too
+        # often. If eager_tracing=True, this counter should only get
+        # incremented during the @tf.function trace operations, never when
+        # calling the already traced function after that.
+        self._re_trace_counter += 1
+
+        # Add models `forward_explore` extra fetches.
+        extra_fetches = {}
+
+        input_dict = NestedDict(input_dict)
+        input_dict[STATE_IN] = None
+        input_dict[SampleBatch.SEQ_LENS] = None
+
+        fwd_out = self.model.forward_inference(input_dict)
+        actions = fwd_out[SampleBatch.ACTIONS]
+
+        # Anything but action_dist and state_out is an extra fetch
+        for k, v in fwd_out.items():
+            if k not in [SampleBatch.ACTIONS, "state_out"]:
+                extra_fetches[k] = v
+
+        # Action-logp and action-prob.
+        if fwd_out[SampleBatch.ACTION_LOGP] is not None:
+            extra_fetches[SampleBatch.ACTION_PROB] = (
+                tf.exp(fwd_out[SampleBatch.ACTION_LOGP])
+            )
+
+        return actions, {}, extra_fetches
+
     @with_lock
     def _compute_actions_helper(
         self,

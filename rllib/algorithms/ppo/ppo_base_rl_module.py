@@ -49,8 +49,10 @@ class PPORLModuleBase(RLModule, abc.ABC):
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
         return [
+            SampleBatch.ACTIONS,
+            #SampleBatch.ACTION_LOGP,
+            #SampleBatch.ACTION_DIST_INPUTS,
             SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST_INPUTS,
         ]
 
     @override(RLModule)
@@ -66,9 +68,9 @@ class PPORLModuleBase(RLModule, abc.ABC):
         spec = SpecDict(
             {
                 SampleBatch.ACTION_DIST_INPUTS: None,
-                SampleBatch.ACTION_LOGP: TensorSpec("b", framework=self.framework),
+                #SampleBatch.ACTION_LOGP: TensorSpec("b", framework=self.framework),
                 SampleBatch.VF_PREDS: TensorSpec("b", framework=self.framework),
-                "entropy": TensorSpec("b", framework=self.framework),
+                #"entropy": TensorSpec("b", framework=self.framework),
             }
         )
         return spec

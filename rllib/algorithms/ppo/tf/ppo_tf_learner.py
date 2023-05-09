@@ -39,17 +39,16 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        action_dist_class = self.module[module_id].action_dist_class
+        action_dist_class = self.module[module_id].action_dist_cls
         curr_action_dist = action_dist_class.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
+        curr_logp = curr_action_dist.logp(batch[SampleBatch.ACTIONS])
 
-        logp_ratio = tf.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
-        )
+        logp_ratio = tf.exp(curr_logp - batch[SampleBatch.ACTION_LOGP])
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if self.hps.kl_coeff > 0.0:
@@ -69,7 +68,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()#fwd_out["entropy"]
         mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(
@@ -98,7 +97,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * mean_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),

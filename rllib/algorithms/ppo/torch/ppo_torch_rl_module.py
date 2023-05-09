@@ -41,7 +41,7 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_dist = self.action_dist_cls.from_logits(action_logits)
-        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
+        output[SampleBatch.ACTIONS] = action_dist.to_deterministic().sample()
 
         return output
 
@@ -77,9 +77,15 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
 
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
+        action_dist = self.action_dist_cls.from_logits(
             logits=action_logits
         )
+        actions = action_dist.sample()
+        #output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
+        #    logits=action_logits
+        #)
+        output[SampleBatch.ACTIONS] = actions
+        output[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
         return output
 
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -105,15 +111,14 @@ class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
         output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head
-        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_logits = pi_out
-        action_dist = self.action_dist_cls.from_logits(logits=action_logits)
-        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
-        entropy = action_dist.entropy()
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        #action_dist = self.action_dist_cls.from_logits(logits=action_logits)
+        #logp = action_dist.logp(batch[SampleBatch.ACTIONS])
+        #entropy = action_dist.entropy()
 
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.ACTION_DIST] = action_dist
-        output[SampleBatch.ACTION_LOGP] = logp
-        output["entropy"] = entropy
+        #output[SampleBatch.ACTION_DIST] = action_dist
+        #output[SampleBatch.ACTION_LOGP] = logp
+        #output["entropy"] = entropy
 
         return output

@@ -180,13 +180,37 @@ def _traced_eager_policy(eager_policy_cls):
                 self._traced_compute_actions_helper is False
                 and not self._no_tracing
             ):
-                self._compute_actions_helper = _convert_eager_inputs(
-                    tf.function(
-                        super(TracedEagerPolicy, self)._compute_actions_helper,
-                        autograph=self.config.get("_enable_rl_module_api", False),
-                        reduce_retracing=True,
+                if self.config.get("_enable_rl_module_api"):
+                    self._compute_actions_helper_rl_module_explore = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_explore,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
                     )
-                )
+                    self._compute_actions_helper_rl_module_inference = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_inference,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
+                    )
+                else:
+                    self._compute_actions_helper = _convert_eager_inputs(
+                        tf.function(
+                            super(TracedEagerPolicy, self)._compute_actions_helper,
+                            autograph=False,
+                            reduce_retracing=True,
+                        )
+                    )
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's

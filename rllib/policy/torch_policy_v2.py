@@ -1114,14 +1114,16 @@ class TorchPolicyV2(Policy):
             else:
                 fwd_out = self.model.forward_inference(input_dict)
             # anything but action_dist and state_out is an extra fetch
-            action_dist = fwd_out.pop("action_dist")
+            #action_dist = fwd_out.pop("action_dist")
 
-            if explore:
-                actions = action_dist.sample()
-                logp = action_dist.logp(actions)
-            else:
-                actions = action_dist.sample()
-                logp = None
+            #if explore:
+            #    actions = action_dist.sample()
+            #    logp = action_dist.logp(actions)
+            #else:
+            #    actions = action_dist.sample()
+            #    logp = None
+            logp = fwd_out.get(SampleBatch.ACTION_LOGP)
+            actions = fwd_out.pop(SampleBatch.ACTIONS)
             state_out = fwd_out.pop("state_out", {})
             extra_fetches = fwd_out
             dist_inputs = None
@@ -1169,7 +1171,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if extra_fetches is None:
+        if extra_fetches is None and not isinstance(self.model, RLModule):
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )
