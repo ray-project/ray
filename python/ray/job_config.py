@@ -13,7 +13,6 @@ class JobConfig:
     """A class used to store the configurations of a job.
 
     Args:
-
         jvm_options: The jvm options for java workers of the job.
         code_search_path: A list of directories or jar files that
             specify the search path for user code. This will be used as
@@ -80,10 +79,9 @@ class JobConfig:
                 from ray.job_config import JobConfig
 
                 job_config = JobConfig()
-                job_config.set_metadata("key1", "value1")
+                job_config.set_metadata("submitter", "foo")
 
         Args:
-
             key: The key of the metadata.
             value: The value of the metadata.
         """
@@ -105,7 +103,6 @@ class JobConfig:
         working_dir translated from a local directory to a URI).
 
         Args:
-
             runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
             validate: Whether to validate the runtime env.
         """
@@ -118,7 +115,6 @@ class JobConfig:
         """Set Ray :ref:`namespace <namespaces-guide>`.
 
         Args:
-
             ray_namespace: The namespace to set.
         """
 
@@ -130,7 +126,6 @@ class JobConfig:
         """Set the default actor lifetime, can be "detached" or "non_detached".
 
         Args:
-
             default_actor_lifetime: The default actor lifetime to set.
         """
         if default_actor_lifetime == "detached":
@@ -213,7 +208,6 @@ class JobConfig:
                     {"runtime_env": {"working_dir": "uri://abc"}})
 
         Args:
-
             job_config_json: The job config json dictionary.
         """
         return cls(
