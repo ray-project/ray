@@ -103,8 +103,8 @@ trainer = TensorflowTrainer(
     preprocessor=preprocessor,
 )
 
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 8.997025489807129, ...}
 # __air_tf_train_end__
 

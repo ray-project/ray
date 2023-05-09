@@ -43,11 +43,6 @@
 #
 #  # Run configuration for the test
 #  run:
-#    # Type of test. Can be [anyscale_job]
-#    # Uses either Ray jobs, anyscale jobs or anyscale SDK commands
-#    # run the actual release test.
-#    type: anyscale_job
-#
 #    # If you want to wait for nodes to be ready, you can specify this here:
 #    wait_for_nodes:
 #      # Number of nodes
@@ -952,8 +947,6 @@
 #     wait_for_nodes:
 #       num_nodes: 4
 
-#     type: anyscale_job
-
 #   alert: xgboost_tests
 
 - name: xgboost_train_moderate
@@ -1214,8 +1207,6 @@
 #     script: python workloads/train_small.py
 #     wait_for_nodes:
 #       num_nodes: 4
-
-#     type: anyscale_job
 
 #   alert: default
 
@@ -2111,7 +2102,6 @@
       run:
         timeout: 600
         script: python workloads/test_result_throughput_single_node.py
-        type: anyscale_job
 
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
@@ -2942,8 +2932,6 @@
 #     script: python workloads/rte_ray_client.py
 #     wait_for_nodes:
 #       num_nodes: 1
-
-#     type: anyscale_job
 
 #   alert: default
 
@@ -4898,8 +4886,6 @@
 #    wait_for_nodes:
 #      num_nodes: 251
 #
-#    type: anyscale_job
-#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test

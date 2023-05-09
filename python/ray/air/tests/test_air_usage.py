@@ -1,12 +1,15 @@
 """Unit tests for AIR telemetry."""
 
 import json
+import os
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import ray
+from ray import air, tune
 from ray._private.usage.usage_lib import TagKey
+from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.integrations import wandb, mlflow, comet
 from ray.tune.callback import Callback
@@ -34,6 +37,15 @@ def mock_record(monkeypatch):
     import ray.air._internal.usage
 
     yield _mock_record_from_module(ray.air._internal.usage, monkeypatch=monkeypatch)
+
+
+def train_fn(config):
+    session.report({"score": 1})
+
+
+@pytest.fixture
+def tuner(tmp_path):
+    yield tune.Tuner(train_fn, run_config=air.RunConfig(storage_path=str(tmp_path)))
 
 
 @pytest.fixture(scope="module")
@@ -114,6 +126,22 @@ def test_tag_callbacks(mock_record, callback_classes_expected):
     callback_usage_str = mock_record.pop(TagKey.AIR_CALLBACKS, None)
     callback_counts = json.loads(callback_usage_str) if callback_usage_str else None
     assert callback_counts == expected
+
+
+def test_tag_env_vars(ray_start_2_cpus, mock_record, tuner):
+    """Test that env vars are recorded properly, and arbitrary user environment
+    variables are ignored."""
+    env_vars_to_record = {
+        "RAY_AIR_LOCAL_CACHE_DIR": "~/ray_results",
+        "TUNE_DISABLE_AUTO_CALLBACK_SYNCER": "1",
+    }
+    untracked_env_vars = {"RANDOM_USER_ENV_VAR": "asdf"}
+
+    with patch.dict(os.environ, {**env_vars_to_record, **untracked_env_vars}):
+        tuner.fit()
+
+    recorded_env_vars = json.loads(mock_record[TagKey.AIR_ENV_VARS])
+    assert sorted(env_vars_to_record) == sorted(recorded_env_vars)
 
 
 if __name__ == "__main__":
