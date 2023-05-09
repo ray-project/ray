@@ -181,10 +181,9 @@ if __name__ == "__main__":
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif re.match("rllib_contrib/", changed_file) and not changed_file.endswith(
-                ".md"
-            ):
-                RAY_CI_RLLIB_CONTRIB_AFFECTED = 1
+            elif re.match("rllib_contrib/", changed_file):
+                if not changed_file.endswith(".md"):
+                    RAY_CI_RLLIB_CONTRIB_AFFECTED = 1
             elif changed_file.startswith("python/ray/serve"):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
