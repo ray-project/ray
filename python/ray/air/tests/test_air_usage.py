@@ -51,25 +51,19 @@ class _CustomCallback(Callback):
     pass
 
 
-def test_tag_setup_wandb(monkeypatch):
+def test_tag_setup_wandb(mock_record, monkeypatch):
     from ray.air.integrations.wandb import _setup_wandb
 
-    recorded = _mock_record_from_module(
-        ray.air.integrations.wandb, monkeypatch=monkeypatch
-    )
     _setup_wandb(trial_id="a", trial_name="b", config={}, _wandb=MagicMock())
-    assert recorded[TagKey.AIR_SETUP_WANDB_INTEGRATION_USED] == "1"
+    assert mock_record[TagKey.AIR_SETUP_WANDB_INTEGRATION_USED] == "1"
 
 
-def test_tag_setup_mlflow(monkeypatch):
+def test_tag_setup_mlflow(mock_record, monkeypatch):
     from ray.air.integrations.mlflow import setup_mlflow
 
-    recorded = _mock_record_from_module(
-        ray.air.integrations.mlflow, monkeypatch=monkeypatch
-    )
     monkeypatch.setattr(ray.air.integrations.mlflow, "_MLflowLoggerUtil", MagicMock())
     setup_mlflow()
-    assert recorded[TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED] == "1"
+    assert mock_record[TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED] == "1"
 
 
 @pytest.mark.parametrize(

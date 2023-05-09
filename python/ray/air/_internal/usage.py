@@ -121,6 +121,14 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
 
 
+def tag_setup_wandb():
+    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
+
+
+def tag_setup_mlflow():
+    record_extra_usage_tag(TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED, "1")
+
+
 def _count_callbacks(callbacks: Optional[List["Callback"]]) -> Dict[str, int]:
     """Creates a map of callback class name -> count given a list of callbacks."""
     from ray.tune import Callback

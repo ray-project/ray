@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
@@ -21,7 +22,6 @@ from ray.tune.experiment import Trial
 from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
@@ -210,7 +210,8 @@ def _setup_wandb(
     _run_wandb_process_run_info_hook(run)
 
     # Record `setup_wandb` usage when everything has setup successfully.
-    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
+    air_usage.tag_setup_wandb()
+
     return run
 
 
