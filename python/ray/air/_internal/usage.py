@@ -167,8 +167,6 @@ def tag_ray_air_storage_config(
         storage_config_tag = "nfs"
     else:
         # Local
-        storage_config_tag = (
-            "local+no_sync" if sync_config.syncer is None else "local+sync"
-        )
+        storage_config_tag = "local" if sync_config.syncer is None else "driver"
 
     record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
