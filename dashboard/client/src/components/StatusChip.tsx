@@ -5,7 +5,6 @@ import {
   cyan,
   green,
   grey,
-  orange,
   red,
   yellow,
 } from "@material-ui/core/colors";
@@ -13,6 +12,7 @@ import { CSSProperties } from "@material-ui/core/styles/withStyles";
 import classNames from "classnames";
 import React, { ReactNode } from "react";
 import { ActorEnum } from "../type/actor";
+import { JobStatus } from "../type/job";
 import { PlacementGroupState } from "../type/placementGroup";
 import {
   ServeApplicationStatus,
@@ -21,6 +21,7 @@ import {
 } from "../type/serve";
 import { TypeTaskStatus } from "../type/task";
 
+const orange = "#DB6D00";
 const colorMap = {
   node: {
     ALIVE: green,
@@ -46,12 +47,12 @@ const colorMap = {
     [TypeTaskStatus.PENDING_ARGS_AVAIL]: orange,
     [TypeTaskStatus.NIL]: grey,
   },
-  job: {
-    PENDING: orange,
-    RUNNING: blue,
-    STOPPED: grey,
-    SUCCEEDED: green,
-    FAILED: red,
+  jobStatus: {
+    [JobStatus.PENDING]: orange,
+    [JobStatus.RUNNING]: blue,
+    [JobStatus.STOPPED]: grey,
+    [JobStatus.SUCCEEDED]: green,
+    [JobStatus.FAILED]: red,
   },
   placementGroup: {
     [PlacementGroupState.PENDING]: orange,

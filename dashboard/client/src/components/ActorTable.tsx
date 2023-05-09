@@ -41,17 +41,20 @@ export type ActorTableProps = {
 };
 
 const SEQUENCE = {
-  FIRST: 0,
-  MIDDLE: 1,
-  LAST: 2,
+  FIRST: 1,
+  MIDDLE: 2,
+  LAST: 3,
 };
 
 type StateOrder = {
   [key in ActorEnum]: number;
 };
 
-const stateOrder: Partial<StateOrder> = {
+const stateOrder: StateOrder = {
   [ActorEnum.ALIVE]: SEQUENCE.FIRST,
+  [ActorEnum.DEPENDENCIES_UNREADY]: SEQUENCE.MIDDLE,
+  [ActorEnum.PENDING_CREATION]: SEQUENCE.MIDDLE,
+  [ActorEnum.RESTARTING]: SEQUENCE.MIDDLE,
   [ActorEnum.DEAD]: SEQUENCE.LAST,
 };
 //type predicate for ActorEnum
@@ -63,9 +66,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 export const sortActors = (actorList: Actor[]) => {
   const sortedActors = [...actorList];
   return _.sortBy(sortedActors, (actor) => {
-    const actorOrder = isActorEnum(actor.state)
-      ? stateOrder[actor.state]
-      : SEQUENCE.MIDDLE;
+    const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
     const actorTime = actor.startTime || 0;
     return [actorOrder, actorTime];
   });
