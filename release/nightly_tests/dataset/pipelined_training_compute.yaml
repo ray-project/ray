@@ -18,7 +18,7 @@ head_node_type:
 
 worker_node_types:
     - name: memory_node
-      instance_type: i3.8xlarge
+      instance_type: m6i.16xlarge
       min_workers: 10
       max_workers: 10
       use_spot: false
