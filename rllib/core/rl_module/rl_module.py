@@ -44,7 +44,7 @@ ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
-RLMODULE_STATE_DIR_NAME = "module_state_path"
+RLMODULE_STATE_DIR_NAME = "module_state_dir"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
@@ -136,7 +136,7 @@ class SingleAgentRLModuleSpec:
             load_state_path = copy_state_from_remote_node_if_necessary(
                 self.load_state_path, self._load_state_ip_addr
             )
-            module.load_state(load_state_path)
+            module.load_state(pathlib.Path(load_state_path) / RLMODULE_STATE_DIR_NAME)
         return module
 
     @classmethod
@@ -503,20 +503,20 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Saves the weights of this RLModule to path.
+    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to the directory dir.
 
         Args:
-            path: The file path to save the checkpoint to.
+            dir: The directory to save the checkpoint to.
 
         """
         raise NotImplementedError
 
-    def load_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLModule from path.
+    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLModule from the directory dir.
 
         Args:
-            path: The directory to load the checkpoint from.
+            dir: The directory to load the checkpoint from.
         """
         raise NotImplementedError
 
@@ -626,7 +626,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir)
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -650,8 +650,7 @@ class RLModule(abc.ABC):
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        state_path = module_state_dir / module._module_state_file_name()
-        module.load_state(state_path)
+        module.load_state(module_state_dir)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":

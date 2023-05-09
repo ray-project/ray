@@ -321,10 +321,7 @@ class MultiAgentRLModule(RLModule):
                     f"Submodule {submodule_id}'s module state directory: "
                     f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
-            submodule_weights_path = (
-                submodule_weights_dir / submodule._module_state_file_name()
-            )
-            submodule.load_state(submodule_weights_path)
+            submodule.load_state(submodule_weights_dir)
 
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:

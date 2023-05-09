@@ -284,9 +284,6 @@ class TestRLModuleSpecs(unittest.TestCase):
             self.assertIsInstance(module, module_class)
             with tempfile.TemporaryDirectory() as checkpoint_path:
                 module.save_to_checkpoint(checkpoint_path)
-                import ipdb
-
-                ipdb.set_trace()
 
                 spec_with_load_path = SingleAgentRLModuleSpec(
                     module_class=module_class,
@@ -296,7 +293,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                     load_state_path=checkpoint_path,
                 )
                 module_from_checkpoint = spec_with_load_path.build()
-                check(module.get_weights(), module_from_checkpoint.get_weights())
+                check(module.get_state(), module_from_checkpoint.get_state())
 
 
 if __name__ == "__main__":
