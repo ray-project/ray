@@ -54,8 +54,8 @@ _StorageTestConfig = namedtuple(
 
 _storage_test_configs = [
     # Local
-    _StorageTestConfig(False, None, False, "local+sync"),
-    _StorageTestConfig(False, None, True, "local+no_sync"),
+    _StorageTestConfig(False, None, False, "driver"),
+    _StorageTestConfig(False, None, True, "local"),
     # Remote
     _StorageTestConfig(False, "s3://mock/bucket?param=1", False, "s3"),
     _StorageTestConfig(False, "gs://mock/bucket?param=1", False, "gs"),
