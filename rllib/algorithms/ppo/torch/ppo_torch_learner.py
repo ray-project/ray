@@ -43,15 +43,12 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         curr_action_dist = action_dist_class.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-        #action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
         prev_action_dist = action_dist_class.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
         curr_logp = curr_action_dist.logp(batch[SampleBatch.ACTIONS])
 
-        logp_ratio = torch.exp(
-            curr_logp - batch[SampleBatch.ACTION_LOGP]
-        )
+        logp_ratio = torch.exp(curr_logp - batch[SampleBatch.ACTION_LOGP])
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if self.hps.kl_coeff > 0.0:
@@ -71,7 +68,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
-        curr_entropy = curr_action_dist.entropy()#fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = torch.mean(curr_entropy)
 
         surrogate_loss = torch.min(

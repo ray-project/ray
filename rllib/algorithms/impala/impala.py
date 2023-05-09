@@ -952,7 +952,8 @@ class Impala(Algorithm):
                     block=blocking,
                     num_iters=self.config.num_sgd_iter,
                     minibatch_size=self.config.minibatch_size,
-                ) for batch in batches
+                )
+                for batch in batches
             ]
             results = _reduce_impala_results(results)
 

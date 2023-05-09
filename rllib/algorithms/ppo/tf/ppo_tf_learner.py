@@ -68,7 +68,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 
-        curr_entropy = curr_action_dist.entropy()#fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(

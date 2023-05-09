@@ -176,10 +176,7 @@ def _traced_eager_policy(eager_policy_cls):
             """Traced version of Policy.compute_actions_from_input_dict."""
 
             # Create a traced version of `self._compute_actions_helper`.
-            if (
-                self._traced_compute_actions_helper is False
-                and not self._no_tracing
-            ):
+            if self._traced_compute_actions_helper is False and not self._no_tracing:
                 if self.config.get("_enable_rl_module_api"):
                     self._compute_actions_helper_rl_module_explore = (
                         _convert_eager_inputs(

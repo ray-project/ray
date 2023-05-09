@@ -38,7 +38,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModuleBase for
+    for the policy and value function. See implementations of PPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -107,7 +107,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the encoder from the encoder_config.
         This can be overridden to build a custom ActorCriticEncoder as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -132,7 +132,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a PPORLModuleBase implementation.
+        the behavior of a PPORLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -157,7 +157,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the vf_head_config.
         This can be overridden to build a custom value function head as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".

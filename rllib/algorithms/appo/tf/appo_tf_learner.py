@@ -28,9 +28,12 @@ class APPOTfLearner(AppoLearner, TfLearner):
         values = fwd_out[SampleBatch.VF_PREDS]
         action_dist_class = self.module[module_id].action_dist_cls
 
-        #target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
-        target_policy_dist = action_dist_class.from_logits(fwd_out[SampleBatch.ACTION_DIST_INPUTS])
-        old_target_policy_dist = action_dist_class.from_logits(fwd_out[OLD_ACTION_DIST_LOGITS_KEY])
+        target_policy_dist = action_dist_class.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        old_target_policy_dist = action_dist_class.from_logits(
+            fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
+        )
 
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
@@ -131,7 +134,10 @@ class APPOTfLearner(AppoLearner, TfLearner):
         total_loss = (
             mean_pi_loss
             + (mean_vf_loss * self.hps.vf_loss_coeff)
-            + (mean_entropy_loss * self.entropy_coeff_scheduler.get_current_value(module_id))
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_scheduler.get_current_value(module_id)
+            )
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 

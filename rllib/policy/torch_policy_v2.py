@@ -1113,19 +1113,11 @@ class TorchPolicyV2(Policy):
                 fwd_out = self.model.forward_exploration(input_dict)
             else:
                 fwd_out = self.model.forward_inference(input_dict)
-            # anything but action_dist and state_out is an extra fetch
-            #action_dist = fwd_out.pop("action_dist")
-
-            #if explore:
-            #    actions = action_dist.sample()
-            #    logp = action_dist.logp(actions)
-            #else:
-            #    actions = action_dist.sample()
-            #    logp = None
-            logp = fwd_out.get(SampleBatch.ACTION_LOGP)
+            # Anything but actions and state_out is an extra fetch.
             actions = fwd_out.pop(SampleBatch.ACTIONS)
             state_out = fwd_out.pop("state_out", {})
             extra_fetches = fwd_out
+            logp = fwd_out.get(SampleBatch.ACTION_LOGP)
             dist_inputs = None
         elif is_overridden(self.action_sampler_fn):
             action_dist = None

@@ -849,8 +849,8 @@ class EagerTFPolicyV2(Policy):
 
         # Action-logp and action-prob.
         if fwd_out[SampleBatch.ACTION_LOGP] is not None:
-            extra_fetches[SampleBatch.ACTION_PROB] = (
-                tf.exp(fwd_out[SampleBatch.ACTION_LOGP])
+            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(
+                fwd_out[SampleBatch.ACTION_LOGP]
             )
 
         return actions, {}, extra_fetches
@@ -886,8 +886,8 @@ class EagerTFPolicyV2(Policy):
 
         # Action-logp and action-prob.
         if fwd_out[SampleBatch.ACTION_LOGP] is not None:
-            extra_fetches[SampleBatch.ACTION_PROB] = (
-                tf.exp(fwd_out[SampleBatch.ACTION_LOGP])
+            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(
+                fwd_out[SampleBatch.ACTION_LOGP]
             )
 
         return actions, {}, extra_fetches
@@ -915,84 +915,51 @@ class EagerTFPolicyV2(Policy):
         # Add default and custom fetches.
         extra_fetches = {}
 
-        if self.config.get("_enable_rl_module_api", False) is False:
-            scope = tf.variable_creator_scope(_disallow_var_creation)
-            scope.__enter__()
+        with tf.variable_creator_scope(_disallow_var_creation):
 
-        if self.config.get("_enable_rl_module_api", False):
-            input_dict = NestedDict(input_dict)
-            input_dict[STATE_IN] = state_batches
-            input_dict[SampleBatch.SEQ_LENS] = seq_lens
-
-            #if explore:
-            fwd_out = self.model.forward_exploration(input_dict)
-            #else:
-            #    fwd_out = self.model.forward_inference(input_dict)
-
-            actions = fwd_out[SampleBatch.ACTIONS]
-            logp = fwd_out[SampleBatch.ACTION_LOGP]
-
-            #action_dist = fwd_out[SampleBatch.ACTION_DIST]
-            #if explore:
-            #    actions = action_dist.sample()
-            #    logp = action_dist.logp(actions)
-            #else:
-            #    actions = action_dist.sample()
-            #    logp = None
-            state_out = fwd_out.get("state_out", {})
-
-            # anything but action_dist and state_out is an extra fetch
-            for k, v in fwd_out.items():
-                if k not in [SampleBatch.ACTION_DIST, "state_out"]:
-                    extra_fetches[k] = v
-            dist_inputs = None
-
-        elif is_overridden(self.action_sampler_fn):
-            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
-                self.model,
-                input_dict[SampleBatch.OBS],
-                explore=explore,
-                timestep=timestep,
-                episodes=episodes,
-            )
-        else:
-            if is_overridden(self.action_distribution_fn):
-                # Try new action_distribution_fn signature, supporting
-                # state_batches and seq_lens.
-                (
-                    dist_inputs,
-                    self.dist_class,
-                    state_out,
-                ) = self.action_distribution_fn(
+            if is_overridden(self.action_sampler_fn):
+                actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
-                    obs_batch=input_dict[SampleBatch.OBS],
-                    state_batches=state_batches,
-                    seq_lens=seq_lens,
+                    input_dict[SampleBatch.OBS],
                     explore=explore,
                     timestep=timestep,
-                    is_training=False,
+                    episodes=episodes,
                 )
-            elif isinstance(self.model, tf.keras.Model):
-                input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
-                if state_batches and "state_in_0" not in input_dict:
-                    for i, s in enumerate(state_batches):
-                        input_dict[f"state_in_{i}"] = s
-                self._lazy_tensor_dict(input_dict)
-                dist_inputs, state_out, extra_fetches = self.model(input_dict)
             else:
-                dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
+                if is_overridden(self.action_distribution_fn):
+                    # Try new action_distribution_fn signature, supporting
+                    # state_batches and seq_lens.
+                    (
+                        dist_inputs,
+                        self.dist_class,
+                        state_out,
+                    ) = self.action_distribution_fn(
+                        self.model,
+                        obs_batch=input_dict[SampleBatch.OBS],
+                        state_batches=state_batches,
+                        seq_lens=seq_lens,
+                        explore=explore,
+                        timestep=timestep,
+                        is_training=False,
+                    )
+                elif isinstance(self.model, tf.keras.Model):
+                    input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                    if state_batches and "state_in_0" not in input_dict:
+                        for i, s in enumerate(state_batches):
+                            input_dict[f"state_in_{i}"] = s
+                    self._lazy_tensor_dict(input_dict)
+                    dist_inputs, state_out, extra_fetches = self.model(input_dict)
+                else:
+                    dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
 
-            action_dist = self.dist_class(dist_inputs, self.model)
+                action_dist = self.dist_class(dist_inputs, self.model)
 
-            # Get the exploration action from the forward results.
-            actions, logp = self.exploration.get_exploration_action(
-                action_distribution=action_dist,
-                timestep=timestep,
-                explore=explore,
-            )
-
-        if self.config.get("_enable_rl_module_api", False) is False:
-            scope.__exit__(None, None, None)
+                # Get the exploration action from the forward results.
+                actions, logp = self.exploration.get_exploration_action(
+                    action_distribution=action_dist,
+                    timestep=timestep,
+                    explore=explore,
+                )
 
         # Action-logp and action-prob.
         if logp is not None:

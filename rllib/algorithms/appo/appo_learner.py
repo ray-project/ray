@@ -1,7 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping
+from typing import Any, Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,

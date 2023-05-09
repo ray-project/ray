@@ -256,14 +256,16 @@ class LearnerGroup:
             )
 
         if block:
-            results = self._get_results(self._worker_manager.foreach_actor([
-                partial(_learner_update, minibatch=minibatch)
-                for minibatch in ShardBatchIterator(batch, len(self._workers))
-            ]))
+            results = self._get_results(
+                self._worker_manager.foreach_actor(
+                    [
+                        partial(_learner_update, minibatch=minibatch)
+                        for minibatch in ShardBatchIterator(batch, len(self._workers))
+                    ]
+                )
+            )
         else:
             # Queue the new batches.
-            #if batches:
-            #    for batch in batches:
             # If queue is full, kick out the oldest item (and thus add its
             # length to the "dropped ts" counter).
             if len(self._in_queue) == self._in_queue.maxlen:
@@ -285,10 +287,14 @@ class LearnerGroup:
                     # Pull a single batch from the queue (from the left side, meaning:
                     # use the oldest one first).
                     batch = self._in_queue.popleft()
-                    self._worker_manager.foreach_actor_async([
-                        partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ])
+                    self._worker_manager.foreach_actor_async(
+                        [
+                            partial(_learner_update, minibatch=minibatch)
+                            for minibatch in ShardBatchIterator(
+                                batch, len(self._workers)
+                            )
+                        ]
+                    )
                     count += 1
 
             results = self._get_results(results)
