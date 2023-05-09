@@ -16,6 +16,7 @@ S3_BUCKET_FILE_PREFIX = "ray-release-"
 
 @click.command()
 @click.argument("test_target", required=True, type=str)
+@click.argument("source_dir", required=True, type=str)
 @click.option(
     "--artifact-dir",
     default="/artifact-mount",
@@ -34,6 +35,7 @@ S3_BUCKET_FILE_PREFIX = "ray-release-"
 )
 def main(
     test_target: str,
+    source_dir: str,
     artifact_dir: str = "/artifact-mount",
     upload: bool = False,
 ) -> None:
@@ -43,7 +45,7 @@ def main(
     """
     logger.info(f"Collecting coverage for test target: {test_target}")
     coverage_file = os.path.join(artifact_dir, COVERAGE_FILE_NAME)
-    _run_test(test_target, coverage_file)
+    _run_test(test_target, coverage_file, source_dir)
     coverage_info = _collect_coverage(coverage_file)
     logger.info(coverage_info)
     if upload:
@@ -65,21 +67,19 @@ def _upload_coverage_info(coverage_file: str) -> None:
     logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
 
 
-def _run_test(test_target: str, coverage_file: str) -> None:
+def _run_test(test_target: str, coverage_file: str, source_dir: str) -> None:
     """
     Run test target serially using bazel and compute coverage data using pycov.
     We need to run tests serially to avoid data races when pytest creates the initial
     coverage DB per test run. Also use 'test' dynamic context so we can store
     file coverage information.
     """
-    source_dir = os.path.join(os.getcwd(), "release")
+    source_dir = os.path.join(os.getcwd(), source_dir)
     subprocess.check_call(
         [
             "bazel",
             "test",
             test_target,
-            "--test_tag_filters",
-            "release_unit",
             "--jobs",
             "1",
             "--test_env",
