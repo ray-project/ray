@@ -1,7 +1,6 @@
 from typing import List
 
 from ray.rllib.algorithms.appo.appo_learner import (
-    OLD_ACTION_DIST_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
