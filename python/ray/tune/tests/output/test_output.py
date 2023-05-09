@@ -179,9 +179,9 @@ def test_get_trial_table_data_more_than_20():
     assert len(table_data) == 3  # only the running category
     for i in range(3):
         assert len(table_data[i].trial_infos) == 5
-    assert table_data[0].more_info == "... and 5 more RUNNING ..."
-    assert table_data[1].more_info == "... and 5 more TERMINATED ..."
-    assert table_data[2].more_info == "... and 5 more PENDING ..."
+    assert table_data[0].more_info == "5 more RUNNING"
+    assert table_data[1].more_info == "5 more TERMINATED"
+    assert table_data[2].more_info == "5 more PENDING"
 
 
 def test_result_table_no_divison():
