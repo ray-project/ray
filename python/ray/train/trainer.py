@@ -97,7 +97,9 @@ class TrainingIterator:
 
         # Session has started. Set current cloud checkpoint dir if necessary.
         if self._checkpoint_strategy._checkpoint_upload_from_workers:
-            self._backend_executor._set_checkpoint_uri(self.__get_cloud_checkpoint_dir())
+            self._backend_executor._set_checkpoint_uri(
+                self.__get_cloud_checkpoint_dir()
+            )
 
     def _run_with_error_handling(self, func: Callable):
         try:
