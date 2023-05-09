@@ -87,7 +87,9 @@ class RemoteFunction:
         function_descriptor,
         task_options,
     ):
-        if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(function):
+        if inspect.iscoroutinefunction(function) or inspect.isasyncgenfunction(
+            function
+        ):
             raise ValueError(
                 "'async def' should not be used for remote tasks. You can wrap the "
                 "async function with `asyncio.run(f())`. See more at:"

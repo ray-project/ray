@@ -5,39 +5,50 @@ import numpy as np
 
 import ray
 
-
 ray.init()
+
 
 @ray.remote
 def g():
     for i in range(10):
         yield i
+
+
 for i in g.options(num_returns="dynamic").remote():
     print(ray.get(i))
+
 
 @ray.remote
 def f():
     for _ in range(5):
         import time
+
         yield np.random.rand(5 * 1024 * 1024)
         time.sleep(1)
+
 
 @ray.remote
 class A:
     def f(self):
         for _ in range(5):
             import time
+
             time.sleep(1)
             print("Executed..")
             # yield np.random.rand(5 * 1024 * 1024)
             yield np.random.rand(5 * 1024 * 1024)
             print("Done...")
 
+
 for _ in range(5):
     g = f.options(num_returns="dynamic").remote()
+
     def _check_refcounts():
-        actual = ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+        actual = (
+            ray._private.worker.global_worker.core_worker.get_all_reference_counts()
+        )
         print(actual)
+
     for i in g:
         print("1")
         print(ray.get(i))
@@ -51,7 +62,6 @@ for _ in range(5):
 #     print(ray.get(i))
 #     del i
 # print("Actor succeeded!")
-
 
 
 def test_generator_dist_chain():

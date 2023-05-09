@@ -48,6 +48,7 @@ def test_generator_oom(ray_start_regular):
         large_values_generator.options(num_returns=num_returns).remote(num_returns)[0]
     )
 
+
 def test_generator_basic(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -56,7 +57,7 @@ def test_generator_basic(shutdown_only):
     def f():
         for i in range(5):
             yield i
-    
+
     gen = f.options(num_returns="dynamic").remote()
     i = 0
     for ref in gen:
@@ -66,13 +67,14 @@ def test_generator_basic(shutdown_only):
         i += 1
 
     """Exceptions"""
+
     @ray.remote
     def f():
         for i in range(5):
             if i == 2:
                 raise ValueError
             yield i
-    
+
     gen = f.options(num_returns="dynamic").remote()
     ray.get(next(gen))
     ray.get(next(gen))
@@ -85,18 +87,21 @@ def test_generator_basic(shutdown_only):
         ray.get(next(gen))
 
     """Generator Task failure"""
+
     @ray.remote
     class A:
         def getpid(self):
             import os
+
             return os.getpid()
-    
+
         def f(self):
             for i in range(5):
                 import time
+
                 time.sleep(0.1)
                 yield i
-        
+
     a = A.remote()
     i = 0
     gen = a.f.options(num_returns="dynamic").remote()
@@ -107,7 +112,9 @@ def test_generator_basic(shutdown_only):
         if i == 3:
             with pytest.raises(ray.exceptions.RayActorError) as e:
                 ray.get(ref)
-            assert "The actor is dead because it was killed by `ray.kill`" in str(e.value)
+            assert "The actor is dead because it was killed by `ray.kill`" in str(
+                e.value
+            )
             break
         assert i == ray.get(ref)
         del ref
@@ -125,7 +132,7 @@ def test_generator_basic(shutdown_only):
 
         def should_kill(self):
             return self.should_kill
-    
+
         async def set(self, wait_s):
             await asyncio.sleep(wait_s)
             self.should_kill = False
@@ -137,6 +144,7 @@ def test_generator_basic(shutdown_only):
             if i == 3 and should_kill:
                 raise ValueError
             yield i
+
     a = Actor.remote()
     gen = f.options(num_returns="dynamic").remote(a)
     assert ray.get(next(gen)) == 0
@@ -149,6 +157,7 @@ def test_generator_basic(shutdown_only):
         ray.get(next(gen))
 
     """Cancel"""
+
     @ray.remote
     def f():
         for i in range(5):
@@ -206,8 +215,10 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         print(ray.get(ref))
         del ref
         from ray.experimental.state.api import list_objects
+
         wait_for_condition(
-            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0)
+            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
+        )
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -595,12 +606,11 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     ray.kill(failure_signal)
     refs = list(gen)
     if too_many_returns:
-        for ref in refs:
-            ray.get(ref)
+        for i, ref in enumerate(refs):
+            assert np.array_equal(np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            for ref in refs:
-                ray.get(ref)
+        for i, ref in enumerate(refs):
+            assert np.array_equal(np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref))
     # TODO(swang): If the re-executed task returns a different number of
     # objects, we should throw an error for every return value.
     # for ref in refs:
@@ -825,7 +835,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
         # Verify it works with for.
         generator = a.f.options(num_returns="dynamic").remote(ray.put(3))
         for index, ref in enumerate(generator):
-            assert index == ray.get(ref) 
+            assert index == ray.get(ref)
 
     def verify_async_task_executor():
         # Verify it works with next.
@@ -859,9 +869,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             expected += 1
 
     async def verify_async_task_async_generator():
-        async_generator = a.async_f.options(num_returns="dynamic").remote(
-            ray.put(arr)
-        )
+        async_generator = a.async_f.options(num_returns="dynamic").remote(ray.put(arr))
         assert isinstance(async_generator, StreamingObjectRefGeneratorV2)
         for expected in range(3):
             ref = await async_generator.__anext__()
@@ -870,9 +878,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             await async_generator.__anext__()
 
         # Verify async for.
-        async_generator = a.async_f.options(num_returns="dynamic").remote(
-            ray.put(arr)
-        )
+        async_generator = a.async_f.options(num_returns="dynamic").remote(ray.put(arr))
         expected = 0
         async for value in async_generator:
             value = await ref
@@ -979,9 +985,7 @@ def test_generator_dist_chain(ray_start_cluster):
                     time.sleep(0.1)
                     yield np.ones(5 * 1024 * 1024)
             else:
-                for data in self.child.get_data.options(
-                    num_returns="dynamic"
-                ).remote():
+                for data in self.child.get_data.options(num_returns="dynamic").remote():
                     yield ray.get(data)
 
     chain_actor = ChainActor.remote()

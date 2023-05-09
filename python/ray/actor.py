@@ -751,15 +751,12 @@ class ActorClass:
         if kwargs is None:
             kwargs = {}
         meta = self.__ray_metadata__
+
         def is_async(o):
             return inspect.iscoroutinefunction(o) or inspect.isasyncgenfunction(o)
+
         actor_has_async_methods = (
-            len(
-                inspect.getmembers(
-                    meta.modified_class, predicate=is_async
-                )
-            )
-            > 0
+            len(inspect.getmembers(meta.modified_class, predicate=is_async)) > 0
         )
         is_asyncio = actor_has_async_methods
 

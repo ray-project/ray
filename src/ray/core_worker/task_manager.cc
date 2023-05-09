@@ -322,7 +322,8 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
   RAY_CHECK(object_id_out != nullptr);
   auto it = dynamic_ids_from_generator_.find(generator_id);
   if (it == dynamic_ids_from_generator_.end()) {
-    RAY_LOG(DEBUG) << "SANG-TODO Generator already GC'ed " << *object_id_out << " generator id: " << generator_id;
+    RAY_LOG(DEBUG) << "SANG-TODO Generator already GC'ed " << *object_id_out
+                   << " generator id: " << generator_id;
     *object_id_out = ObjectID::Nil();
     return Status::OK();
   }
@@ -339,7 +340,8 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
     reader.curr += 1;
     RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out;
   } else {
-    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << reader.curr << " last: " << reader.last;
+    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << reader.curr
+                   << " last: " << reader.last;
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
@@ -351,7 +353,8 @@ void TaskManager::HandleIntermediateResult(
   const auto &task_id = generator_id.TaskId();
   int64_t idx = request.idx();
   // Every generated object has the same task id.
-  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << request.idx() << " generator_id: " << generator_id; 
+  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << request.idx()
+                 << " generator_id: " << generator_id;
 
   {
     absl::MutexLock lock(&mu_);

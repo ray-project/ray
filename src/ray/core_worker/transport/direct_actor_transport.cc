@@ -159,11 +159,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       //   if (num_dynamic_returns_expected > 0) {
       //     RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
       //         << "Expected " << num_dynamic_returns_expected
-      //         << " dynamic returns, but task generated " << dynamic_return_objects.size();
+      //         << " dynamic returns, but task generated " <<
+      //         dynamic_return_objects.size();
       //   }
       // } else {
       //   RAY_CHECK(dynamic_return_objects.size() == 0)
-      //       << "Task with static num_returns returned " << dynamic_return_objects.size()
+      //       << "Task with static num_returns returned " <<
+      //       dynamic_return_objects.size()
       //       << " objects dynamically";
       // }
       // for (const auto &dynamic_return : dynamic_return_objects) {

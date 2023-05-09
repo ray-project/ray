@@ -2739,7 +2739,7 @@ def wait(
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = [], []
-        
+
         if len(refs) > 0:
             ready_ids, remaining_ids = worker.core_worker.wait(
                 refs,
@@ -2749,8 +2749,8 @@ def wait(
                 fetch_local,
             )
         if num_returns > len(ready_ids):
-            ready_ids.extend(gen[:num_returns - len(ready_ids)])
-        remaining_ids.extend(gen[num_returns - len(ready_ids) + 1:])
+            ready_ids.extend(gen[: num_returns - len(ready_ids)])
+        remaining_ids.extend(gen[num_returns - len(ready_ids) + 1 :])
         return ready_ids, remaining_ids
 
 

@@ -1688,7 +1688,8 @@ Status CoreWorker::ObjectRefStreamWrite(
     const rpc::Address &caller_address,
     int64_t idx,
     bool finished) {
-  RAY_LOG(DEBUG) << "SANG-TODO Write the object ref stream, index: " << idx << " finished: " << finished << ", id: " << dynamic_return_object.first;
+  RAY_LOG(DEBUG) << "SANG-TODO Write the object ref stream, index: " << idx
+                 << " finished: " << finished << ", id: " << dynamic_return_object.first;
   rpc::WriteObjectRefStreamRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_idx(idx);
@@ -2654,7 +2655,7 @@ Status CoreWorker::ExecuteTask(
           dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
     }
     // SANG-TODO Hack. Remove it and properly support this.
-    std::reverse(dynamic_return_objects->begin(),dynamic_return_objects->end());
+    std::reverse(dynamic_return_objects->begin(), dynamic_return_objects->end());
   }
 
   Status status;
@@ -2875,8 +2876,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &caller_address)
   const auto return_id =
       ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
-  reference_counter_->AddBorrowedObject(
-      return_id, ObjectID::Nil(), caller_address);
+  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), caller_address);
   return return_id;
 }
 
