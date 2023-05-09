@@ -48,6 +48,7 @@ class ImportThread:
         self._thread_spawn_lock = threading.Lock()
         # Try to load all FunctionsToRun so that these functions will be
         # run before accepting tasks.
+        print("RRRR first time")
         self._do_importing()
 
     def start(self):
@@ -70,7 +71,7 @@ class ImportThread:
     def _run(self):
         try:
             if not self.threads_stopped.is_set():
-                print("do importing for the first time")
+                print("RRRR second time")
                 self._do_importing()
             while True:
                 print("looping")
@@ -82,6 +83,7 @@ class ImportThread:
                 if key is None:
                     # subscriber has closed.
                     break
+                print("RRRR thirs time")
                 self._do_importing()
         except (OSError, self.exception_type) as e:
             logger.error(f"ImportThread: {e}")
