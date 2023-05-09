@@ -706,6 +706,9 @@ class ServeController:
                 host=http_config.host,
                 port=http_config.port,
             ),
+            http_proxies=self.http_state.get_http_proxy_details()
+            if self.http_state
+            else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
