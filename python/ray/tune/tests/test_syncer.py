@@ -1109,7 +1109,9 @@ def test_distributed_checkpointing_to_s3(
             # 2 checkpoints in local trial folder.
             assert checkpoint_dir in local_trial_data
             local_checkpoint_1_data = os.listdir(
-                os.path.join(local_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir)
+                os.path.join(
+                    local_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
+                )
             )
             # Local folder has 2 index files.
             assert ".RANK_0.files" in local_checkpoint_1_data

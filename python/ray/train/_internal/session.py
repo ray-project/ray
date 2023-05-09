@@ -372,10 +372,12 @@ class _TrainSession:
             checkpoint = str(checkpoint._local_path)
 
         # Save the rank of the worker that created this checkpoint.
-        metadata.update({
-            CHECKPOINT_RANK_KEY: self.world_rank,
-            CHECKPOINT_DISTRIBUTED_KEY: upload_from_workers,
-        })
+        metadata.update(
+            {
+                CHECKPOINT_RANK_KEY: self.world_rank,
+                CHECKPOINT_DISTRIBUTED_KEY: upload_from_workers,
+            }
+        )
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,

@@ -151,9 +151,7 @@ class CheckpointManager(CommonCheckpointManager):
         else:
             # Get checkpoint from first worker.
             tracked_checkpoints = [
-                self._process_checkpoint(
-                    checkpoint_results[0], decode_checkpoint_fn
-                )
+                self._process_checkpoint(checkpoint_results[0], decode_checkpoint_fn)
             ]
         self.register_checkpoints(checkpoints=tracked_checkpoints)
 
