@@ -18,7 +18,6 @@ from ray.air._internal.uri_utils import URI
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import _detect_checkpoint_function
-from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
