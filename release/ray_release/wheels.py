@@ -34,6 +34,7 @@ INIT_URL_TPL = (
 
 DEFAULT_REPO = REPO_URL_TPL.format(owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
 
+#
 # Modules to be reloaded after installing a new local ray version
 RELOAD_MODULES = ["ray", "ray.job_submission"]
 
