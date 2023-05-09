@@ -74,12 +74,14 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
          :start-after: __map_begin__
          :end-before: __map_end__
 
-Configuring resources
-=====================
+Configuring CPUs and GPUs
+=========================
 
 By default, each task used for  (e.g., `map` or `map_batches`) requests 1 CPU from Ray.
 To increase the resources reserved per task, you can increase the CPU request by specifying
-``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task:
+``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task.
+Increasing the CPUs per task can help with avoiding out of memory (OOM) errors
+for resource intensive tasks.
 
 .. code-block:: python
 
@@ -273,7 +275,7 @@ Note that Ray Data currently only supports grouping by a single column. In order
 Map Groups
 ==========
 
-Arbitrary processing can be applied to each group of records using :meth:`ds.groupby().map_groups() <ray.data.GroupedData.map_groups>`. For example, this could be used to implement custom aggregations, train a model per group, etc.
+Custom processing can be applied to each group of records using :meth:`ds.groupby().map_groups() <ray.data.GroupedData.map_groups>`. For example, this could be used to implement custom aggregations, train a model per group, etc.
 
 .. literalinclude:: ./doc_code/transforming_data.py
   :language: python
