@@ -36,7 +36,7 @@ typing_extensions; python_version < '3.8'
 uvicorn
 py-spy>=0.2.0
 rich
-urllib3
+urllib3<1.27
 scikit-image
 scipy
 aiohttp>=3.7
