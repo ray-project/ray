@@ -223,7 +223,7 @@ class ActorPoolStrategy(ComputeStrategy):
         if legacy_min_size is not None or legacy_max_size is not None:
             if ctx.strict_mode:
                 raise StrictModeError(
-                    "In strict mode, ActorPoolStrategy requires min_size and "
+                    "In Ray 2.5, ActorPoolStrategy requires min_size and "
                     "max_size to be explicit kwargs."
                 )
             else:
@@ -503,7 +503,7 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
     ):
         raise StrictModeError(
-            "In strict mode, the compute spec must be either "
+            "In Ray 2.5, the compute spec must be either "
             f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
         )
     elif not compute_spec or compute_spec == "tasks":

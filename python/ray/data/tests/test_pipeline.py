@@ -22,19 +22,19 @@ class MockLogger:
         self.infos = []
 
     def warning(self, msg):
-        if "strict mode" in msg:
+        if "STRICT_MODE" in msg:
             return
         self.warnings.append(msg)
         print("warning:", msg)
 
     def info(self, msg):
-        if "strict mode" in msg:
+        if "STRICT_MODE" in msg:
             return
         self.infos.append(msg)
         print("info:", msg)
 
     def debug(self, msg):
-        if "strict mode" in msg:
+        if "STRICT_MODE" in msg:
             return
         print("debug:", msg)
 

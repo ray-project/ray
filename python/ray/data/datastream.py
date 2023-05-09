@@ -2609,7 +2609,7 @@ class Datastream:
         context = DataContext.get_current()
         if context.strict_mode and not column:
             raise StrictModeError(
-                "In strict mode, the column must be specified "
+                "In Ray 2.5, the column must be specified "
                 "(e.g., `write_numpy(column='data')`)."
             )
         column = column or TENSOR_COLUMN_NAME
@@ -4116,9 +4116,7 @@ class Datastream:
     def default_batch_format(self) -> Type:
         context = DataContext.get_current()
         if context.strict_mode:
-            raise StrictModeError(
-                "default_batch_format() is not allowed in strict mode"
-            )
+            raise StrictModeError("default_batch_format() is not allowed in Ray 2.5")
 
         import pandas as pd
         import pyarrow as pa
@@ -4138,7 +4136,7 @@ class Datastream:
     def dataset_format(self) -> BlockFormat:
         context = DataContext.get_current()
         if context.strict_mode:
-            raise StrictModeError("dataset_format() is not allowed in strict mode")
+            raise StrictModeError("dataset_format() is not allowed in Ray 2.5")
 
         if context.use_streaming_executor:
             raise DeprecationWarning(

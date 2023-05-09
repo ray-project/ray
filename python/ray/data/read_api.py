@@ -245,9 +245,7 @@ def range(n: int, *, parallelism: int = -1) -> Datastream:
 def range_table(n: int, *, parallelism: int = -1) -> Datastream:
     ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
-        raise DeprecationWarning(
-            "In strict mode, use range() instead of range_table()."
-        )
+        raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
