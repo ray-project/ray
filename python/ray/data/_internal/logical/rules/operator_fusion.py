@@ -1,4 +1,5 @@
 from typing import Iterator, List, Tuple
+from ray.data._internal.logical.operators.all_to_all_operator import Repartition
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
@@ -107,8 +108,8 @@ class OperatorFusionRule(Rule):
 
         # We currently only support fusing for the following cases:
         # - MapOperator -> MapOperator
-        # - MapOperator -> AllToAllOperator (only RandomShuffle
-        # LogicalOperator is currently supported)
+        # - MapOperator -> AllToAllOperator
+        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
         if not isinstance(down_op, (MapOperator, AllToAllOperator)) or not isinstance(
             up_op, MapOperator
         ):
@@ -125,8 +126,9 @@ class OperatorFusionRule(Rule):
         # We currently only support fusing for the following cases:
         # - AbstractMap -> AbstractMap
         # - AbstractMap -> RandomShuffle
+        # - AbstractMap -> Repartition
         if not isinstance(
-            down_logical_op, (AbstractMap, RandomShuffle)
+            down_logical_op, (AbstractMap, RandomShuffle, Repartition)
         ) or not isinstance(up_logical_op, AbstractMap):
             return False
 
@@ -306,7 +308,18 @@ class OperatorFusionRule(Rule):
         # Bottom out at the source logical op (e.g. Read()).
         input_op = up_logical_op
 
-        logical_op = RandomShuffle(input_op, name=name, ray_remote_args=ray_remote_args)
+        if isinstance(down_logical_op, RandomShuffle):
+            logical_op = RandomShuffle(
+                input_op,
+                name=name,
+                ray_remote_args=ray_remote_args,
+            )
+        elif isinstance(down_logical_op, Repartition):
+            logical_op = Repartition(
+                input_op,
+                num_outputs=down_logical_op._num_outputs,
+                shuffle=down_logical_op._shuffle,
+            )
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
