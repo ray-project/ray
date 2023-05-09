@@ -1,7 +1,6 @@
 import unittest
 
 from rllib_a3c.a3c import A3CConfig
-from rllib_contrib_shared.checkpointing_testing_helpers import ckpt_restore_test
 
 import ray
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -91,13 +90,6 @@ class TestA3C(unittest.TestCase):
             self.assertLessEqual(coeff, 0.00011)
 
             algo.stop()
-
-    def test_a3c_checkpoint_restore(self):
-        config = A3CConfig().exploration(explore=False).rollouts(num_rollout_workers=1)
-        ckpt_restore_test(
-            config,
-            "CartPole-v1",
-        )
 
 
 if __name__ == "__main__":

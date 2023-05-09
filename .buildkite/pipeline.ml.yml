@@ -547,6 +547,11 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
+    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    - mkdir /root/.mujoco
+    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
+    - cd /root/.mujoco
+    - tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz
     - cd rllib_contrib/maml
     - pip install -r requirements.txt
     - pip install -e .
