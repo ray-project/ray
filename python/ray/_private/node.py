@@ -333,7 +333,7 @@ class Node:
         return True
 
     def _should_start_api_server(self):
-        if self.head and self._ray_params.start_gcs is False:
+        if self.head and not self._ray_params.start_gcs:
             return True
         if self._ray_params.include_dashboard is True:
             return True
@@ -1239,6 +1239,8 @@ class Node:
                 include_dashboard=include_dashboard,
                 raise_on_failure=raise_on_api_server_failure,
             )
+        else:
+            print("Won't start api server")
 
     def _kill_process_type(
         self,

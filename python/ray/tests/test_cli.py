@@ -127,14 +127,17 @@ def _unlink_test_ssh_key():
 
 
 def _start_ray_and_block(
-    runner, child_conn: multiprocessing.connection.Connection, as_head: bool
+    runner,
+    child_conn: multiprocessing.connection.Connection,
+    as_head: bool,
+    other_flags=[],
 ):
     """Utility function to start a CLI command with `ray start --block`
 
     This function is expected to be run in another process, where `child_conn` is used
     for IPC with the parent.
     """
-    args = ["--block"]
+    args = other_flags + ["--block"]
     if as_head:
         args.append("--head")
     else:
@@ -145,7 +148,6 @@ def _start_ray_and_block(
         scripts.start,
         args,
     )
-
     # Should be blocked until stopped by signals (SIGTERM)
     child_conn.send(result.output)
 
@@ -972,6 +974,105 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         )
 
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
+
+
+def fetch_ray_processes(pid):
+    assert pid is not None
+    proc_names = set()
+    children = psutil.Process(pid).children()
+    for c in children:
+        if c.name() == "python":
+            cmd = c.cmdline()
+            if cmd[1] == "-m":
+                if cmd[2] == "ray.util.client.server":
+                    proc_names.add(ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER)
+            elif cmd[1] == "-u":
+                proc_names.add(cmd[2].split(".")[-2].split("/")[-1])
+            else:
+                proc_names.add(cmd[1].split(".")[-2].split("/")[-1])
+        else:
+            proc_names.add(c.name())
+    print(">>", pid, len(children), proc_names)
+    return (len(children), proc_names)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="path and psutil")
+def test_ray_start_without_raylet(cleanup_ray):
+    # Start the head node without raylet
+
+    try:
+        head_parent_conn, head_child_conn = mp.Pipe()
+
+        head_proc = mp.Process(
+            target=_start_ray_and_block,
+            kwargs={
+                "runner": CliRunner(),
+                "child_conn": head_child_conn,
+                "as_head": True,
+                "other_flags": ["--start-gcs", "--no-monitor"],
+            },
+        )
+
+        # Run
+        head_proc.start()
+        wait_for_condition(
+            lambda: fetch_ray_processes(head_proc.pid)
+            == (1, {ray_constants.PROCESS_TYPE_GCS_SERVER})
+        )
+
+        # Start the worker nodes with dashboard
+        worker1_parent_conn, worker1_child_conn = mp.Pipe()
+        worker1_proc = mp.Process(
+            target=_start_ray_and_block,
+            kwargs={
+                "runner": CliRunner(),
+                "child_conn": worker1_child_conn,
+                "as_head": False,
+                "other_flags": ["--include-dashboard=true"],
+            },
+        )
+        worker1_proc.start()
+        wait_for_condition(
+            lambda: fetch_ray_processes(worker1_proc.pid)
+            == (
+                3,
+                {
+                    ray_constants.PROCESS_TYPE_RAYLET,
+                    ray_constants.PROCESS_TYPE_LOG_MONITOR,
+                    ray_constants.PROCESS_TYPE_DASHBOARD,
+                },
+            )
+        )
+
+        # Start the worker nodes with client server
+        worker2_parent_conn, worker2_child_conn = mp.Pipe()
+        worker2_proc = mp.Process(
+            target=_start_ray_and_block,
+            kwargs={
+                "runner": CliRunner(),
+                "child_conn": worker2_child_conn,
+                "as_head": False,
+                "other_flags": ["--ray-client-server-port=10001"],
+            },
+        )
+
+        worker2_proc.start()
+        wait_for_condition(
+            lambda: fetch_ray_processes(worker2_proc.pid)
+            == (
+                3,
+                {
+                    ray_constants.PROCESS_TYPE_RAYLET,
+                    ray_constants.PROCESS_TYPE_LOG_MONITOR,
+                    ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
+                },
+            )
+        )
+
+    finally:
+        head_proc.kill()
+        worker1_proc.kill()
+        worker2_proc.kill()
 
 
 if __name__ == "__main__":
