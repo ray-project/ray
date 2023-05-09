@@ -94,6 +94,7 @@ def ensure_notebook_deps(
             if _has_missing(*deps, message=missing_message) or _has_outdated(
                 *deps, message=outdated_message
             ):
+                # Fallback to plaintext repr if dependencies are missing.
                 return {"text/plain": repr(self)}
             return func(self, *args, **kwargs)
 

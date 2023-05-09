@@ -17,11 +17,12 @@ def test_ensure_notebook_dep_missing(mock_import_module, caplog):
     mock_import_module.return_value = MockDep()
     mock_import_module.side_effect = raise_import_error
 
-    @ensure_notebook_deps(["somedep", "8"])
-    def dummy_ipython_display():
-        return
+    class DummyObject:
+        @ensure_notebook_deps(["somedep", "8"])
+        def dummy_ipython_display(self):
+            return
 
-    dummy_ipython_display()
+    DummyObject().dummy_ipython_display()
 
     assert "Missing packages:" in caplog.records[-1].msg
 
@@ -35,11 +36,12 @@ def test_ensure_notebook_dep_outdated(mock_import_module, caplog):
 
     mock_import_module.return_value = MockDep()
 
-    @ensure_notebook_deps(["somedep", "8"])
-    def dummy_ipython_display():
-        return
+    class DummyObject:
+        @ensure_notebook_deps(["somedep", "8"])
+        def dummy_ipython_display():
+            return
 
-    dummy_ipython_display()
+    DummyObject().dummy_ipython_display()
 
     assert "Outdated packages:" in caplog.records[-1].msg
 
@@ -53,11 +55,12 @@ def test_ensure_notebook_valid(mock_import_module, caplog):
 
     mock_import_module.return_value = MockDep()
 
-    @ensure_notebook_deps(["somedep", "8"])
-    def dummy_ipython_display():
-        return
+    class DummyObject:
+        @ensure_notebook_deps(["somedep", "8"])
+        def dummy_ipython_display(self):
+            return
 
-    dummy_ipython_display()
+    DummyObject().dummy_ipython_display()
 
     assert len(caplog.records) == 0
 
