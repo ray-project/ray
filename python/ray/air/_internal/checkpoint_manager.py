@@ -337,7 +337,7 @@ class _CheckpointManager:
             else:
                 persisted_checkpoint = checkpoint
 
-            if persisted_checkpoint and self._checkpoint_strategy.num_to_keep > 0:
+            if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
                 self._process_persistent_checkpoint(persisted_checkpoint)
 
         self._latest_checkpoint_id += 1
