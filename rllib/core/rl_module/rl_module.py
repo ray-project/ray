@@ -50,6 +50,33 @@ RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 
 
+def copy_state_from_remote_node_if_necessary(load_state_path: str, load_state_ip_addr: str) -> str:
+        """Creates a copy of the module state directory dir on the current node.
+
+        A copy of the module state is only created if the the node that self.build() is
+        being called from is different from the ip address of the node that contains
+        self.load_state_path.
+
+        Returns:
+            The path to the module state directory on the current node.
+
+        """
+        current_node_ip_addr = socket.gethostbyname(socket.gethostname())
+
+        # If the current node is different from the node that contains the module state
+        # then copy the module state to the current node.
+        if current_node_ip_addr != load_state_ip_addr:
+            new_dir = tempfile.mkdtemp()
+            sync_dir_between_nodes(
+                load_state_ip_addr,
+                load_state_path,
+                current_node_ip_addr,
+                new_dir,
+            )
+            return new_dir
+        return load_state_path
+
+
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:
@@ -77,7 +104,7 @@ class SingleAgentRLModuleSpec:
 
     def __post_init__(self):
         if self.load_state_path:
-            self._load_state_ip_addr = self._get_curr_node_ip_addr()
+            self._load_state_ip_addr = socket.gethostbyname(socket.gethostname())
         else:
             self._load_state_ip_addr = None
 
@@ -103,7 +130,7 @@ class SingleAgentRLModuleSpec:
 
         module_config = self.get_rl_module_config()
         module = self.module_class(module_config)
-        load_state_path = self._copy_state_from_remote_node_if_necessary()
+        load_state_path = copy_state_from_remote_node_if_necessary(self.load_state_path, self._load_state_ip_addr)
         module.load_state(load_state_path)
         return module
 
@@ -130,6 +157,8 @@ class SingleAgentRLModuleSpec:
         return {
             "module_class": serialize_type(self.module_class),
             "module_config": self.get_rl_module_config().to_dict(),
+            "load_state_path": self.load_state_path,
+            "load_state_ip_addr": self._load_state_ip_addr,
         }
 
     @classmethod
@@ -142,19 +171,29 @@ class SingleAgentRLModuleSpec:
         action_space = module_config.action_space
         model_config_dict = module_config.model_config_dict
         catalog_class = module_config.catalog_class
+        load_state_path = d["load_state_path"]
+        load_state_ip_addr = d["load_state_ip_addr"]
 
-        return SingleAgentRLModuleSpec(
+
+        spec = SingleAgentRLModuleSpec(
             module_class=module_class,
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,
             catalog_class=catalog_class,
         )
+        spec.load_state_path = load_state_path
+        spec._load_state_ip_addr = load_state_ip_addr
+        return spec
 
     def update(self, other) -> None:
         """Updates this spec with the given other spec. Works like dict.update()."""
         if not isinstance(other, SingleAgentRLModuleSpec):
             raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
+        if self.load_state_path:
+            raise ValueError(
+                "Cannot update a spec that already has a load_state_path set."
+            )
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
@@ -163,36 +202,6 @@ class SingleAgentRLModuleSpec:
         self.action_space = other.action_space or self.action_space
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
-
-    def _get_curr_node_ip_addr(self):
-        """Returns the current node's ip address."""
-        return socket.gethostbyname(socket.gethostname())
-
-    def _copy_state_from_remote_node_if_necessary(self) -> str:
-        """Creates a copy of the module state directory dir on the current node.
-
-        A copy of the module state is only created if the the node that self.build() is
-        being called from is different from the ip address of the node that contains
-        self.load_state_path.
-
-        Returns:
-            The path to the module state directory on the current node.
-
-        """
-        current_node_ip_addr = self._get_curr_node_ip_addr()
-
-        # If the current node is different from the node that contains the module state
-        # then copy the module state to the current node.
-        if current_node_ip_addr != self._load_state_ip_addr:
-            new_dir = tempfile.mkdtemp()
-            sync_dir_between_nodes(
-                self._load_state_ip_addr,
-                self.load_state_path,
-                current_node_ip_addr,
-                new_dir,
-            )
-            return new_dir
-        return self.load_state_path
 
 
 @ExperimentalAPI

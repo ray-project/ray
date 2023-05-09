@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 import pathlib
 import pprint
+import socket
 from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
 
 from ray.util.annotations import PublicAPI
@@ -14,6 +15,7 @@ from ray.rllib.core.rl_module.rl_module import (
     RLMODULE_METADATA_FILE_NAME,
     RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
+    copy_state_from_remote_node_if_necessary
 )
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
@@ -409,6 +411,7 @@ class MultiAgentRLModuleSpec:
     module_specs: Union[
         SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
     ] = None
+    load_state_path: Optional[str] = None
 
     def __post_init__(self):
         if self.module_specs is None:
@@ -417,6 +420,10 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpec or a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
+        if self.load_state_path:
+            self._load_state_ip_addr = self._get_curr_node_ip_addr()
+        else:
+            self._load_state_ip_addr = None
 
     def get_marl_config(self) -> "MultiAgentRLModuleConfig":
         """Returns the MultiAgentRLModuleConfig for this spec."""
@@ -442,7 +449,7 @@ class MultiAgentRLModuleSpec:
         Returns:
             The built module. If module_id is None, it returns the multi-agent module.
         """
-
+        copy_state_from_remote_node_if_necessary
         self._check_before_build()
 
         if module_id:
