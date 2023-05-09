@@ -77,7 +77,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_o
     # Do random sampling.
     for _ in range(200):
         ref = random.choice(replay_buffer)
-        sample = ray.get(ref, timeout=0)
+        sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, arr)
 
     # After all, make sure all objects are killed without race condition.
@@ -126,7 +126,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
             # Do random sampling.
             for _ in range(200):
                 ref = random.choice(self.replay_buffer)
-                sample = ray.get(ref, timeout=0)
+                sample = ray.get(ref, timeout=None)
                 assert np.array_equal(sample, arr)
 
     a = Actor.remote()
@@ -288,7 +288,7 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
-        sample = ray.get(ref, timeout=0)
+        sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
 
     is_test_passing = False
