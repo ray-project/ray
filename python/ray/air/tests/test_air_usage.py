@@ -51,6 +51,17 @@ class _CustomCallback(Callback):
     pass
 
 
+_TEST_CALLBACKS = [
+    wandb.WandbLoggerCallback,
+    mlflow.MLflowLoggerCallback,
+    comet.CometLoggerCallback,
+    AimLoggerCallback,
+    _CustomLoggerCallback,
+    _CustomLoggerCallback,
+    _CustomCallback,
+]
+
+
 def test_tag_setup_wandb(mock_record, monkeypatch):
     from ray.air.integrations.wandb import _setup_wandb
 
@@ -67,22 +78,30 @@ def test_tag_setup_mlflow(mock_record, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "callback_classes",
+    "callback_classes_expected",
     [
-        None,
-        [],
-        [lambda: None],
-        DEFAULT_CALLBACK_CLASSES,
-        [
-            wandb.WandbLoggerCallback,
-            mlflow.MLflowLoggerCallback,
-            comet.CometLoggerCallback,
-            AimLoggerCallback,
-        ]
-        + [_CustomLoggerCallback, _CustomCallback] * 2,
+        (None, None),
+        ([], None),
+        ([lambda: None], None),
+        (
+            DEFAULT_CALLBACK_CLASSES,
+            {cls.__name__: 1 for cls in DEFAULT_CALLBACK_CLASSES},
+        ),
+        (
+            _TEST_CALLBACKS,
+            {
+                "WandbLoggerCallback": 1,
+                "MLflowLoggerCallback": 1,
+                "CometLoggerCallback": 1,
+                "AimLoggerCallback": 1,
+                "CustomLoggerCallback": 2,
+                "CustomCallback": 1,
+            },
+        ),
     ],
 )
-def test_tag_callbacks(mock_record, callback_classes):
+def test_tag_callbacks(mock_record, callback_classes_expected):
+    callback_classes, expected = callback_classes_expected
 
     callbacks = (
         [callback_cls() for callback_cls in callback_classes]
@@ -90,17 +109,11 @@ def test_tag_callbacks(mock_record, callback_classes):
         else None
     )
 
-    recorded = air_usage.tag_callbacks(callbacks)
-    expected_callback_counts = air_usage._count_callbacks(callbacks)
+    air_usage.tag_callbacks(callbacks)
 
-    if not callbacks or not expected_callback_counts:
-        # Handles: None, [], [None]
-        assert not recorded and not mock_record
-    else:
-        callback_usage_str = mock_record[TagKey.AIR_CALLBACKS]
-        callback_counts = json.loads(callback_usage_str)
-        assert callback_counts == expected_callback_counts
-        assert sum(callback_counts.values()) == len(callbacks)
+    callback_usage_str = mock_record.pop(TagKey.AIR_CALLBACKS, None)
+    callback_counts = json.loads(callback_usage_str) if callback_usage_str else None
+    assert callback_counts == expected
 
 
 if __name__ == "__main__":
