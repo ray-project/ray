@@ -578,7 +578,10 @@ class BaseTrainer(abc.ABC):
             )
         else:
             tuner = Tuner(
-                trainable=trainable, param_space=param_space, run_config=self.run_config
+                trainable=trainable,
+                param_space=param_space,
+                run_config=self.run_config,
+                _trainer_api=True,
             )
 
         experiment_path = Path(
