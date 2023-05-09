@@ -287,16 +287,13 @@ Ray Data doesn't perform query optimization, so some manual performance
 tuning may be necessary depending on your use case and data scale. Please see our
 :ref:`performance tuning guide <data_performance_tips>` for more information.
 
-What is strict mode?
-====================
+Migrating to strict mode
+========================
 
 In Ray 2.5, Ray Data by default always requires data schemas, dropping support for
 standalone Python objects. In addition to unification and simplicity benefits, this
 aligns the Ray Data API closer to industry-standard distributed data APIs like Apache
 Spark and also emerging standards for machine learning datasets like HuggingFace.
-
-Migrating to strict mode
-~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can disable strict mode temporarily by setting the environment variable
 ``RAY_DATA_STRICT_MODE=0`` on all cluster processes. Strict mode will not be

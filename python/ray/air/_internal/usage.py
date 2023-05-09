@@ -1,3 +1,5 @@
+import json
+import os
 from typing import TYPE_CHECKING, Optional, Set, Union
 import urllib.parse
 
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 AIR_TRAINERS = {
     "AccelerateTrainer",
     "HorovodTrainer",
-    "HuggingFaceTrainer",
+    "TransformersTrainer",
     "LightGBMTrainer",
     "LightningTrainer",
     "MosaicTrainer",
@@ -170,3 +172,35 @@ def tag_ray_air_storage_config(
         storage_config_tag = "local" if sync_config.syncer is None else "driver"
 
     record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
+
+
+def tag_ray_air_env_vars() -> bool:
+    """Records usage of environment variables exposed by the Ray AIR libraries.
+
+    NOTE: This does not track the values of the environment variables, nor
+    does this track environment variables not explicitly included in the
+    `all_ray_air_env_vars` allow-list.
+
+    Returns:
+        bool: True if at least one environment var is supplied by the user.
+    """
+    from ray.air.constants import AIR_ENV_VARS
+    from ray.tune.constants import TUNE_ENV_VARS
+    from ray.train.constants import TRAIN_ENV_VARS
+
+    all_ray_air_env_vars = sorted(
+        set().union(AIR_ENV_VARS, TUNE_ENV_VARS, TRAIN_ENV_VARS)
+    )
+
+    user_supplied_env_vars = []
+
+    for env_var in all_ray_air_env_vars:
+        if env_var in os.environ:
+            user_supplied_env_vars.append(env_var)
+
+    if user_supplied_env_vars:
+        env_vars_str = json.dumps(user_supplied_env_vars)
+        record_extra_usage_tag(TagKey.AIR_ENV_VARS, env_vars_str)
+        return True
+
+    return False

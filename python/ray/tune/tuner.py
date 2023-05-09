@@ -145,6 +145,7 @@ class Tuner:
         # TODO(xwjiang): Remove this later.
         _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
+        _trainer_api: bool = False,
     ):
         """Configure and construct a tune run."""
         kwargs = locals().copy()
