@@ -626,9 +626,10 @@ def start(
         temp_dir = None
     if with_gcs and not head:
         cli_logger.error(
-            "{} and can be be used with {}.", cf.bold("--with-gcs"), cf.bold("--head"))
+            "{} and can be be used with {}.", cf.bold("--with-gcs"), cf.bold("--head")
+        )
 
-    node_services=[]
+    node_services = []
     if with_gcs:
         node_services.append(ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER)
 
