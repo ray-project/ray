@@ -1,7 +1,7 @@
 .. _ray-core-internal-profiling:
 
-Profiling (internal)
-====================
+Profiling
+=========
 
 This document details, for Ray developers, how to analyze Ray performance.
 
