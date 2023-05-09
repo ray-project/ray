@@ -58,7 +58,7 @@ export type JobDetail = {
 
 export type JobListRsp = UnifiedJob[];
 
-export enum JobStatus {
+declare enum JobStatus {
   PENDING = "PENDING",
   RUNNING = "RUNNING",
   STOPPED = "STOPPED",

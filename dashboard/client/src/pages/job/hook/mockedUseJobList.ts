@@ -1,11 +1,29 @@
-const JOB_LIST = [
-  { id: 1, name: "Data analysis", status: "PENDING", color: "orange" },
-  { id: 2, name: "Model training", status: "RUNNING", color: "blue" },
-  { id: 3, name: "Deployment", status: "SUCCEEDED", color: "green" },
-  { id: 4, name: "Testing", status: "STOPPED", color: "grey" },
-  { id: 5, name: "Data cleaning", status: "FAILED", color: "red" },
-];
+import { JobStatus } from "../../../type/job";
 
-export const mockedUseJobList = () => {
-  return JOB_LIST;
-};
+export const JOB_LIST = [
+  {
+    job_id: "01000000",
+    submission_id: "raysubmit_12345",
+    status: JobStatus.PENDING,
+  },
+  {
+    job_id: "02000000",
+    submission_id: null,
+    status: JobStatus.FAILED,
+  },
+  {
+    job_id: null,
+    submission_id: "raysubmit_23456",
+    status: JobStatus.RUNNING,
+  },
+  {
+    job_id: "04000000",
+    submission_id: "raysubmit_34567",
+    status: JobStatus.STOPPED,
+  },
+  {
+    job_id: "05000000",
+    submission_id: "raysubmit_45678",
+    status: JobStatus.SUCCEEDED,
+  },
+] as any;
