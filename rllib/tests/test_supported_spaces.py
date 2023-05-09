@@ -217,6 +217,8 @@ class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
             ARSConfig()
             .rollouts(num_rollout_workers=1)
             .training(noise_size=1500000, num_rollouts=1, rollouts_used=1),
+            # framework=None corresponds to numpy since ARS uses a numpy policy
+            frameworks=[None],
         )
 
     def test_es(self):
@@ -225,6 +227,8 @@ class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
             ESConfig()
             .rollouts(num_rollout_workers=1)
             .training(noise_size=1500000, episodes_per_batch=1, train_batch_size=1),
+            # framework=None corresponds to numpy since ES uses a numpy policy
+            frameworks=[None],
         )
 
 
