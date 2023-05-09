@@ -1,5 +1,5 @@
+import atexit
 import logging
-import uuid
 from functools import partial
 from types import FunctionType
 from typing import Callable, Optional, Type, Union
@@ -10,6 +10,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
+    _internal_kv_del,
 )
 from ray.tune.error import TuneError
 from ray.util.annotations import DeveloperAPI
@@ -111,6 +112,10 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
+def _unregister_trainables():
+    _global_registry.unregister_all(TRAINABLE_CLASS)
+
+
 @DeveloperAPI
 def register_env(name: str, env_creator: Callable):
     """Register a custom environment for use with RLlib.
@@ -128,6 +133,10 @@ def register_env(name: str, env_creator: Callable):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
+def _unregister_envs():
+    _global_registry.unregister_all(ENV_CREATOR)
+
+
 @DeveloperAPI
 def register_input(name: str, input_creator: Callable):
     """Register a custom input api for RLlib.
@@ -142,6 +151,10 @@ def register_input(name: str, input_creator: Callable):
     _global_registry.register(RLLIB_INPUT, name, input_creator)
 
 
+def _unregister_inputs():
+    _global_registry.unregister_all(RLLIB_INPUT)
+
+
 @DeveloperAPI
 def registry_contains_input(name: str) -> bool:
     return _global_registry.contains(RLLIB_INPUT, name)
@@ -150,6 +163,12 @@ def registry_contains_input(name: str) -> bool:
 @DeveloperAPI
 def registry_get_input(name: str) -> Callable:
     return _global_registry.get(RLLIB_INPUT, name)
+
+
+def _unregister_all():
+    _unregister_inputs()
+    _unregister_envs()
+    _unregister_trainables()
 
 
 def _check_serializability(key, value):
@@ -179,8 +198,29 @@ def _make_key(prefix: str, category: str, key: str):
 
 class _Registry:
     def __init__(self, prefix: Optional[str] = None):
+        """If no prefix is given, use runtime context job ID."""
         self._to_flush = {}
-        self._prefix = prefix or uuid.uuid4().hex[:8]
+        self._prefix = prefix
+        self._registered = set()
+        self._atexit_handler_registered = False
+
+    @property
+    def prefix(self):
+        if not self._prefix:
+            self._prefix = ray.get_runtime_context().get_job_id()
+        return self._prefix
+
+    def _register_atexit(self):
+        if self._atexit_handler_registered:
+            # Already registered
+            return
+
+        if ray._private.worker.global_worker.mode != ray.SCRIPT_MODE:
+            # Only cleanup on the driver
+            return
+
+        atexit.register(_unregister_all)
+        self._atexit_handler_registered = True
 
     def register(self, category, key, value):
         """Registers the value with the global registry.
@@ -198,16 +238,31 @@ class _Registry:
         if _internal_kv_initialized():
             self.flush_values()
 
+    def unregister(self, category, key):
+        if _internal_kv_initialized():
+            _internal_kv_del(_make_key(self.prefix, category, key))
+        else:
+            self._to_flush.pop((category, key), None)
+
+    def unregister_all(self, category: Optional[str] = None):
+        remaining = set()
+        for (cat, key) in self._registered:
+            if category and category == cat:
+                self.unregister(cat, key)
+            else:
+                remaining.add((cat, key))
+        self._registered = remaining
+
     def contains(self, category, key):
         if _internal_kv_initialized():
-            value = _internal_kv_get(_make_key(self._prefix, category, key))
+            value = _internal_kv_get(_make_key(self.prefix, category, key))
             return value is not None
         else:
             return (category, key) in self._to_flush
 
     def get(self, category, key):
         if _internal_kv_initialized():
-            value = _internal_kv_get(_make_key(self._prefix, category, key))
+            value = _internal_kv_get(_make_key(self.prefix, category, key))
             if value is None:
                 raise ValueError(
                     "Registry value for {}/{} doesn't exist.".format(category, key)
@@ -217,14 +272,16 @@ class _Registry:
             return pickle.loads(self._to_flush[(category, key)])
 
     def flush_values(self):
+        self._register_atexit()
         for (category, key), value in self._to_flush.items():
             _internal_kv_put(
-                _make_key(self._prefix, category, key), value, overwrite=True
+                _make_key(self.prefix, category, key), value, overwrite=True
             )
+            self._registered.add((category, key))
         self._to_flush.clear()
 
 
-_global_registry = _Registry(prefix="global")
+_global_registry = _Registry()
 ray._private.worker._post_init_hooks.append(_global_registry.flush_values)
 
 

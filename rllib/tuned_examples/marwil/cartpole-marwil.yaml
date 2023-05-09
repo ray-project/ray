@@ -9,7 +9,7 @@ cartpole-marwil:
         timesteps_total: 500000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # In order to evaluate on an actual environment, use these following
         # settings:
         evaluation_num_workers: 1

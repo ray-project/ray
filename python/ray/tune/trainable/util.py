@@ -14,9 +14,9 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
+from ray.air._internal.uri_utils import URI
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
-from ray.tune.resources import Resources
 from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -94,9 +94,10 @@ class TrainableUtil:
         `checkpoint_path`.
         For example, returns `checkpoint00000`.
         """
-        assert checkpoint_path.startswith(
-            logdir
-        ), "expecting `logdir` to be a prefix of `checkpoint_path`"
+        assert checkpoint_path.startswith(logdir), (
+            f"expecting `logdir` to be a prefix of `checkpoint_path`, got "
+            f"{checkpoint_path} (not in {logdir})"
+        )
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
         return os.path.join(tokens[0])
@@ -148,9 +149,10 @@ class TrainableUtil:
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
+            basename = os.path.basename(chkpt_dir)
 
             # Skip temporary checkpoints
-            if os.path.basename(chkpt_dir).startswith("checkpoint_tmp"):
+            if basename.startswith("checkpoint_tmp"):
                 continue
 
             metadata_file = glob.glob(
@@ -162,9 +164,21 @@ class TrainableUtil:
                 os.path.join(glob.escape(chkpt_dir), _TUNE_METADATA_FILENAME)
             )
             metadata_file = list(set(metadata_file))  # avoid duplication
-            if len(metadata_file) != 1:
+            if len(metadata_file) == 0:
+                logger.warning(
+                    f"The checkpoint {basename} does not have a metadata file. "
+                    f"This usually means that the training process was interrupted "
+                    f"while the checkpoint was being written. The checkpoint will be "
+                    f"excluded from analysis. Consider deleting the directory. "
+                    f"Full path: {chkpt_dir}"
+                )
+                continue
+            elif len(metadata_file) > 1:
                 raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(chkpt_dir)
+                    f"The checkpoint {basename} contains more than one metadata file. "
+                    f"If this happened without manual intervention, please file an "
+                    f"issue at https://github.com/ray-project/ray/issues. "
+                    f"Full path: {chkpt_dir}"
                 )
 
             metadata_file = metadata_file[0]
@@ -187,14 +201,21 @@ class TrainableUtil:
 
     @staticmethod
     def get_remote_storage_path(
-        local_path: str, logdir: str, remote_checkpoint_dir: str
+        local_path: str, local_path_prefix: str, remote_path_prefix: str
     ) -> str:
         """Converts a ``local_path`` to be based off of
-        ``remote_checkpoint_dir`` instead of ``logdir``.
+        ``remote_path_prefix`` instead of ``local_path_prefix``.
 
-        ``logdir`` is assumed to be a prefix of ``local_path``."""
-        rel_local_path = os.path.relpath(local_path, logdir)
-        return os.path.join(remote_checkpoint_dir, rel_local_path)
+        ``local_path_prefix`` is assumed to be a prefix of ``local_path``.
+
+        Example:
+
+            >>> TrainableUtil.get_remote_storage_path("/a/b/c", "/a", "s3://bucket/")
+            's3://bucket/b/c'
+        """
+        rel_local_path = os.path.relpath(local_path, local_path_prefix)
+        uri = URI(remote_path_prefix)
+        return str(uri / rel_local_path)
 
 
 @DeveloperAPI
@@ -317,34 +338,6 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             tune.with_parameters(MyTrainable, data=data),
             # ...
         )
-
-    .. note::
-        When restoring a Tune experiment, you need to re-specify the trainable
-        wrapped with ``tune.with_parameters``.
-        The reasoning behind this is as follows:
-
-        1. ``tune.with_parameters`` stores parameters in the object store and
-        attaches object references to the trainable, but the objects they point to
-        may not exist anymore upon restore.
-
-        2. The attached objects could be arbitrarily large, so Tune does not save the
-        object data along with the trainable.
-
-        To restore, Tune allows the trainable to be re-specified in
-        :meth:`Tuner.restore(overwrite_trainable=...) <ray.tune.tuner.Tuner.restore>`.
-        Continuing from the previous examples, here's an example of restoration:
-
-        .. code-block:: python
-
-            from ray.tune import Tuner
-
-            data = HugeDataset(download=True)
-
-            tuner = Tuner.restore(
-                "/path/to/experiment/",
-                overwrite_trainable=tune.with_parameters(MyTrainable, data=data)
-            )
-
     """
     from ray.tune.trainable import Trainable
 
@@ -415,9 +408,6 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             trainable_with_params._resources = trainable._resources
 
     trainable_with_params.__name__ = trainable_name
-
-    # Mark this trainable as being wrapped by saving the attached parameter names
-    trainable_with_params._attached_param_names = keys
     return trainable_with_params
 
 
@@ -522,7 +512,7 @@ def with_resources(
             @classmethod
             def default_resource_request(
                 cls, config: Dict[str, Any]
-            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            ) -> Optional[PlacementGroupFactory]:
                 if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
                     return pgf(config)
                 return pgf

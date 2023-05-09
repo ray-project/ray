@@ -130,6 +130,7 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
       int64_t depth,
+      const TaskID &submitter_task_id,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -142,6 +143,7 @@ class TaskSpecBuilder {
     }
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
+    message_->set_submitter_task_id(submitter_task_id.Binary());
     message_->set_parent_counter(parent_counter);
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
@@ -182,12 +184,14 @@ class TaskSpecBuilder {
                                      const JobID &job_id,
                                      const TaskID &parent_task_id,
                                      const TaskID &caller_id,
-                                     const rpc::Address &caller_address) {
+                                     const rpc::Address &caller_address,
+                                     const TaskID &submitter_task_id) {
     message_->set_type(TaskType::DRIVER_TASK);
     message_->set_language(language);
     message_->set_job_id(job_id.Binary());
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
+    message_->set_submitter_task_id(submitter_task_id.Binary());
     message_->set_parent_counter(0);
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);

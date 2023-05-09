@@ -12,12 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/asio/instrumented_io_context.h"
+
 namespace ray {
 namespace gcs {
-
+static instrumented_io_context __mock_io_context_;
+static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
+  explicit MockGcsResourceManager()
+      : GcsResourceManager(__mock_io_context_,
+                           __mock_cluster_resource_manager_,
+                           NodeID::FromRandom(),
+                           nullptr) {}
+  explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager)
+      : GcsResourceManager(
+            __mock_io_context_, cluster_resource_manager, NodeID::FromRandom(), nullptr) {
+  }
+
   MOCK_METHOD(void,
               HandleGetResources,
               (rpc::GetResourcesRequest request,

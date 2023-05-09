@@ -7,7 +7,7 @@ Monitoring Ray States
 
 Ray state APIs allow users to conveniently access the current state (snapshot) of Ray through CLI or Python SDK.
 
-.. note:: 
+.. note::
 
     APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires the dashboard component to be available. The dashboard component needs to be included when starting the ray cluster, which is the default behavior for ``ray start`` and ``ray.init()``. For more in-depth debugging, you could check the dashboard log at ``<RAY_LOG_DIR>/dashboard.log``, which is usually ``/tmp/ray/session_latest/logs/dashboard.log``.
 
@@ -27,12 +27,12 @@ Run any workload. In this example, you will use the following script that runs 2
     def task_running_300_seconds():
         print("Start!")
         time.sleep(300)
-    
+
     @ray.remote
     class Actor:
         def __init__(self):
             print("Actor created")
-    
+
     # Create 2 tasks
     tasks = [task_running_300_seconds.remote() for _ in range(2)]
 
@@ -43,18 +43,20 @@ Run any workload. In this example, you will use the following script that runs 2
 
 Now, let's see the summarized states of tasks. If it doesn't return the output immediately, retry the command.
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray summary tasks
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray summary tasks
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import summarize_tasks
-        print(summarize_tasks())
+        .. code-block:: python
+
+            from ray.experimental.state.api import summarize_tasks
+            print(summarize_tasks())
 
 .. code-block:: text
 
@@ -74,18 +76,20 @@ Now, let's see the summarized states of tasks. If it doesn't return the output i
 
 Let's list all actors.
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list actors
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list actors
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_actors 
-        print(list_actors())
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_actors
+            print(list_actors())
 
 .. code-block:: text
 
@@ -100,22 +104,24 @@ Let's list all actors.
     0  31405554844820381c2f0f8501000000  Actor                 96956  ALIVE
     1  f36758a9f8871a9ca993b1d201000000  Actor                 96955  ALIVE
 
-You can get the state of a single task using the get API. 
+You can get the state of a single task using the get API.
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        # In this case, 31405554844820381c2f0f8501000000
-        ray get actors <ACTOR_ID> 
-    
-.. tabbed:: Python SDK
+        .. code-block:: bash
 
-    .. code-block:: python
+            # In this case, 31405554844820381c2f0f8501000000
+            ray get actors <ACTOR_ID>
 
-        from ray.experimental.state.api import get_actor
-        # In this case, 31405554844820381c2f0f8501000000
-        print(get_actor(id=<ACTOR_ID>))
+    .. group-tab:: Python SDK
+
+        .. code-block:: python
+
+            from ray.experimental.state.api import get_actor
+            # In this case, 31405554844820381c2f0f8501000000
+            print(get_actor(id=<ACTOR_ID>))
 
 
 .. code-block:: text
@@ -133,23 +139,25 @@ You can get the state of a single task using the get API.
 
 You can also access logs through ``ray logs`` API.
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list actors
-        # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
-        ray logs actor --id <ACTOR_ID> 
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list actors
+            # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
+            ray logs actor --id <ACTOR_ID>
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import get_log
+        .. code-block:: python
 
-        # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
-        for line in get_log(actor_id=<ACTOR_ID>):
-            print(line)
+            from ray.experimental.state.api import get_log
+
+            # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
+            for line in get_log(actor_id=<ACTOR_ID>):
+                print(line)
 
 .. code-block:: text
 
@@ -164,13 +172,13 @@ Key Concepts
 Ray state APIs allow you to access **states** of **resources** through **summary**, **list**, and **get** APIs. It also supports **logs** API to access logs.
 
 - **states**: The state of the cluster of corresponding resources. States consist of immutable metadata (e.g., actor's name) and mutable states (e.g., actor's scheduling state or pid).
-- **resources**: Resources created by Ray. E.g., actors, tasks, objects, placement groups, and etc. 
+- **resources**: Resources created by Ray. E.g., actors, tasks, objects, placement groups, and etc.
 - **summary**: API to return the summarized view of resources.
 - **list**: API to return every individual entity of resources.
 - **get**: API to return a single entity of resources in detail.
 - **logs**: API to access the log of actors, tasks, workers, or system log files.
 
-Summary 
+Summary
 -------
 Return the summarized information of the given Ray resource (objects, actors, tasks).
 It is recommended to start monitoring states through summary APIs first. When you find anomalies
@@ -180,36 +188,40 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 E.g., Summarize all actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray summary actors
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray summary actors
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import summarize_actors
-        print(summarize_actors())
+        .. code-block:: python
 
-E.g., Summarize all tasks  
+            from ray.experimental.state.api import summarize_actors
+            print(summarize_actors())
+
+E.g., Summarize all tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray summary tasks
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray summary tasks
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import summarize_tasks
-        print(summarize_tasks())
+        .. code-block:: python
 
-E.g., Summarize all objects  
+            from ray.experimental.state.api import summarize_tasks
+            print(summarize_tasks())
+
+E.g., Summarize all objects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note::
@@ -218,166 +230,183 @@ E.g., Summarize all objects
     To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the ray cluster
     RAY_record_ref_creation_sites=1 ray start --head
 
+.. tabs::
 
-.. tabbed:: CLI
+    .. group-tab:: CLI
 
-    .. code-block:: bash
+        .. code-block:: bash
 
-        ray summary objects 
+            ray summary objects
 
-.. tabbed:: Python SDK
+    .. group-tab:: Python SDK
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from ray.experimental.state.api import summarize_objects
-        print(summarize_objects())
+            from ray.experimental.state.api import summarize_objects
+            print(summarize_objects())
 
 List
 ----
 
-Get a list of resources, possible resources include: 
+Get a list of resources, possible resources include:
 
-- :ref:`Actors <actor-guide>`, e.g., actor id, state, pid, death_cause. (:ref:`output schema <state-api-schema-actor>`)
-- :ref:`Tasks <ray-remote-functions>`, e.g., name, scheduling state, type, runtime env info (:ref:`output schema <state-api-schema-task>`)
-- :ref:`Objects <objects-in-ray>`, e.g., object id, callsites, reference types. (:ref:`output schema <state-api-schema-obj>`)
-- :ref:`Jobs <jobs-overview>`, e.g., start/end time, entrypoint, status. (:ref:`output schema <state-api-schema-job>`)
-- :ref:`Placement Groups <ray-placement-group-doc-ref>`, e.g., name, bundles, stats. (:ref:`output schema <state-api-schema-pg>`)
-- Nodes (Ray worker nodes), e.g., node id, node ip, node state. (:ref:`output schema <state-api-schema-node>`)
-- Workers (Ray worker processes), e.g., worker id, type, exit type and details. (:ref:`output schema <state-api-schema-worker>`)
-- :ref:`Runtime environments <runtime-environments>`, e.g., runtime envs, creation time, nodes (:ref:`output schema <state-api-schema-runtime-env>`)
+- :ref:`Actors <actor-guide>`, e.g., actor id, state, pid, death_cause. (:class:`output schema <ray.experimental.state.common.ActorState>`)
+- :ref:`Tasks <ray-remote-functions>`, e.g., name, scheduling state, type, runtime env info (:class:`output schema <ray.experimental.state.common.TaskState>`)
+- :ref:`Objects <objects-in-ray>`, e.g., object id, callsites, reference types. (:class:`output schema <ray.experimental.state.common.ObjectState>`)
+- :ref:`Jobs <jobs-overview>`, e.g., start/end time, entrypoint, status. (:class:`output schema <ray.experimental.state.common.JobState>`)
+- :ref:`Placement Groups <ray-placement-group-doc-ref>`, e.g., name, bundles, stats. (:class:`output schema <ray.experimental.state.common.PlacementGroupState>`)
+- Nodes (Ray worker nodes), e.g., node id, node ip, node state. (:class:`output schema <ray.experimental.state.common.NodeState>`)
+- Workers (Ray worker processes), e.g., worker id, type, exit type and details. (:class:`output schema <ray.experimental.state.common.WorkerState>`)
+- :ref:`Runtime environments <runtime-environments>`, e.g., runtime envs, creation time, nodes (:class:`output schema <ray.experimental.state.common.RuntimeEnvState>`)
 
-E.g., List all nodes 
+E.g., List all nodes
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list nodes 
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list nodes
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_nodes() 
-        list_nodes()
+        .. code-block:: python
 
-E.g., List all placement groups 
+            from ray.experimental.state.api import list_nodes()
+            list_nodes()
+
+E.g., List all placement groups
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list placement-groups
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list placement-groups
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_placement_groups 
-        list_placement_groups()
+        .. code-block:: python
 
- 
+            from ray.experimental.state.api import list_placement_groups
+            list_placement_groups()
+
+
 E.g., List local referenced objects created by a process
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tip:: You can list resources with one or multiple filters: using `--filter` or `-f`
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list objects -f pid=<PID> -f reference_type=LOCAL_REFERENCE
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list objects -f pid=<PID> -f reference_type=LOCAL_REFERENCE
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_objects 
-        list_objects(filters=[("pid", "=", <PID>), ("reference_type", "=", "LOCAL_REFERENCE")])
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_objects
+            list_objects(filters=[("pid", "=", <PID>), ("reference_type", "=", "LOCAL_REFERENCE")])
 
 E.g., List alive actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list actors -f state=ALIVE
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list actors -f state=ALIVE
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_actors 
-        list_actors(filters=[("state", "=", "ALIVE")])
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_actors
+            list_actors(filters=[("state", "=", "ALIVE")])
 
 E.g., List running tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list tasks -f state=RUNNING
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list tasks -f state=RUNNING
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_tasks 
-        list_tasks(filters=[("state", "=", "RUNNING")])
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_tasks
+            list_tasks(filters=[("state", "=", "RUNNING")])
 
 E.g., List non-running tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list tasks -f state!=RUNNING
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list tasks -f state!=RUNNING
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_tasks 
-        list_tasks(filters=[("state", "!=", "RUNNING")])
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_tasks
+            list_tasks(filters=[("state", "!=", "RUNNING")])
 
 E.g., List running tasks that have a name func
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list tasks -f state=RUNNING -f name="task_running_300_seconds()"
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list tasks -f state=RUNNING -f name="task_running_300_seconds()"
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_tasks 
-        list_tasks(filters=[("state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_tasks
+            list_tasks(filters=[("state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
 
 E.g., List tasks with more details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tip:: When ``--detail`` is specified, the API can query more data sources to obtain state information in details.
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray list tasks --detail
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray list tasks --detail
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import list_tasks 
-        list_tasks(detail=True)
+        .. code-block:: python
+
+            from ray.experimental.state.api import list_tasks
+            list_tasks(detail=True)
 
 Get
 ---
@@ -385,34 +414,38 @@ Get
 E.g., Get a task info
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray get tasks <TASK_ID> 
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray get tasks <TASK_ID>
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import get_task 
-        get_task(id=<TASK_ID>)
+        .. code-block:: python
+
+            from ray.experimental.state.api import get_task
+            get_task(id=<TASK_ID>)
 
 E.g., Get a node info
 ~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray get nodes <NODE_ID> 
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray get nodes <NODE_ID>
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import get_node 
-        get_node(id=<NODE_ID>)
+        .. code-block:: python
+
+            from ray.experimental.state.api import get_node
+            get_node(id=<NODE_ID>)
 
 Logs
 ----
@@ -425,110 +458,120 @@ By default, the API prints log from a head node.
 E.g., Get all retrievable log file names from a head node in a cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray logs cluster
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray logs cluster
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        # You could get the node id / node ip from `ray list nodes` 
-        from ray.experimental.state.api import list_logs 
-        # `ray logs` by default print logs from a head node. 
-        # So in order to list the same logs, you should provide the head node id. 
-        # You could get the node id / node ip from `ray list nodes` 
-        list_logs(node_id=<HEAD_NODE_ID>)
+        .. code-block:: python
+
+            # You could get the node id / node ip from `ray list nodes`
+            from ray.experimental.state.api import list_logs
+            # `ray logs` by default print logs from a head node.
+            # So in order to list the same logs, you should provide the head node id.
+            # You could get the node id / node ip from `ray list nodes`
+            list_logs(node_id=<HEAD_NODE_ID>)
 
 E.g., Get a particular log file from a node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        # You could get the node id / node ip from `ray list nodes`
-        ray logs cluster gcs_server.out --node-id <NODE_ID>
-        # `ray logs cluster` is alias to `ray logs` when querying with globs.
-        ray logs gcs_server.out --node-id <NODE_ID> 
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            # You could get the node id / node ip from `ray list nodes`
+            ray logs cluster gcs_server.out --node-id <NODE_ID>
+            # `ray logs cluster` is alias to `ray logs` when querying with globs.
+            ray logs gcs_server.out --node-id <NODE_ID>
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import get_log 
+        .. code-block:: python
 
-        # Node IP could be retrieved from list_nodes() or ray.nodes()
-        for line in get_log(filename="gcs_server.out", node_id=<NODE_ID>):
-            print(line)
+            from ray.experimental.state.api import get_log
+
+            # Node IP could be retrieved from list_nodes() or ray.nodes()
+            for line in get_log(filename="gcs_server.out", node_id=<NODE_ID>):
+                print(line)
 
 E.g., Stream a log file from a node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        # You could get the node id / node ip from `ray list nodes` 
-        ray logs raylet.out --node-ip <NODE_IP> --follow
-        # Or,
-        ray logs cluster raylet.out --node-ip <NODE_IP> --follow
+        .. code-block:: bash
+
+            # You could get the node id / node ip from `ray list nodes`
+            ray logs raylet.out --node-ip <NODE_IP> --follow
+            # Or,
+            ray logs cluster raylet.out --node-ip <NODE_IP> --follow
 
 
-.. tabbed:: Python SDK
+    .. group-tab:: Python SDK
 
-    .. code-block:: python
+        .. code-block:: python
 
-        from ray.experimental.state.api import get_log 
+            from ray.experimental.state.api import get_log
 
-        # Node IP could be retrieved from list_nodes() or ray.nodes()
-        # The loop will block with `follow=True`
-        for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
-            print(line)
+            # Node IP could be retrieved from list_nodes() or ray.nodes()
+            # The loop will block with `follow=True`
+            for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
+                print(line)
 
 E.g., Stream log from an actor with actor id
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray logs actor --id=<ACTOR_ID> --follow
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray logs actor --id=<ACTOR_ID> --follow
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import get_log
+        .. code-block:: python
 
-        # You could get the actor's ID from the output of `ray list actors`.
-        # The loop will block with `follow=True`
-        for line in get_log(actor_id=<ACTOR_ID>, follow=True):
-            print(line)
+            from ray.experimental.state.api import get_log
 
-E.g., Stream log from a pid 
+            # You could get the actor's ID from the output of `ray list actors`.
+            # The loop will block with `follow=True`
+            for line in get_log(actor_id=<ACTOR_ID>, follow=True):
+                print(line)
+
+E.g., Stream log from a pid
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tabbed:: CLI
+.. tabs::
 
-    .. code-block:: bash
+    .. group-tab:: CLI
 
-        ray logs worker --pid=<PID> --follow
+        .. code-block:: bash
 
-.. tabbed:: Python SDK
+            ray logs worker --pid=<PID> --follow
 
-    .. code-block:: python
+    .. group-tab:: Python SDK
 
-        from ray.experimental.state.api import get_log 
+        .. code-block:: python
 
-        # Node IP could be retrieved from list_nodes() or ray.nodes()
-        # You could get the pid of the worker running the actor easily when output
-        # of worker being directed to the driver (default)
-        # The loop will block with `follow=True`
-        for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
-            print(line)
+            from ray.experimental.state.api import get_log
+
+            # Node IP could be retrieved from list_nodes() or ray.nodes()
+            # You could get the pid of the worker running the actor easily when output
+            # of worker being directed to the driver (default)
+            # The loop will block with `follow=True`
+            for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
+                print(line)
 
 Failure Semantics
 -----------------

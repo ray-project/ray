@@ -130,6 +130,9 @@ class JobInfo:
     def to_json(self) -> Dict[str, Any]:
         """Convert this object to a JSON-serializable dictionary.
 
+        Note that the runtime_env field is converted to a JSON-serialized string
+        and the field is renamed to runtime_env_json.
+
         Returns:
             A JSON-serializable dictionary representing the JobInfo object.
         """
@@ -140,8 +143,10 @@ class JobInfo:
         json_dict["status"] = str(json_dict["status"])
 
         # Convert runtime_env to a JSON-serialized string.
-        if json_dict["runtime_env"] is not None:
-            json_dict["runtime_env"] = json.dumps(json_dict["runtime_env"])
+        if "runtime_env" in json_dict:
+            if json_dict["runtime_env"] is not None:
+                json_dict["runtime_env_json"] = json.dumps(json_dict["runtime_env"])
+            del json_dict["runtime_env"]
 
         # Assert that the dictionary is JSON-serializable.
         json.dumps(json_dict)
@@ -152,6 +157,9 @@ class JobInfo:
     def from_json(cls, json_dict: Dict[str, Any]) -> None:
         """Initialize this object from a JSON dictionary.
 
+        Note that the runtime_env_json field is converted to a dictionary and
+        the field is renamed to runtime_env.
+
         Args:
             json_dict: A JSON dictionary to use to initialize the JobInfo object.
         """
@@ -159,8 +167,10 @@ class JobInfo:
         json_dict["status"] = JobStatus(json_dict["status"])
 
         # Convert runtime_env from a JSON-serialized string to a dictionary.
-        if json_dict["runtime_env"] is not None:
-            json_dict["runtime_env"] = json.loads(json_dict["runtime_env"])
+        if "runtime_env_json" in json_dict:
+            if json_dict["runtime_env_json"] is not None:
+                json_dict["runtime_env"] = json.loads(json_dict["runtime_env_json"])
+            del json_dict["runtime_env_json"]
 
         return cls(**json_dict)
 
@@ -170,6 +180,8 @@ class JobInfoStorageClient:
     Interface to put and get job data from the Internal KV store.
     """
 
+    # Please keep this format in sync with JobDataKey()
+    # in src/ray/gcs/gcs_server/gcs_job_manager.h.
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
@@ -177,13 +189,26 @@ class JobInfoStorageClient:
         self._gcs_aio_client = gcs_aio_client
         assert _internal_kv_initialized()
 
-    async def put_info(self, job_id: str, job_info: JobInfo):
-        await self._gcs_aio_client.internal_kv_put(
+    async def put_info(
+        self, job_id: str, job_info: JobInfo, overwrite: bool = True
+    ) -> bool:
+        """Put job info to the internal kv store.
+
+        Args:
+            job_id: The job id.
+            job_info: The job info.
+            overwrite: Whether to overwrite the existing job info.
+
+        Returns:
+            True if a new key is added.
+        """
+        added_num = await self._gcs_aio_client.internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             json.dumps(job_info.to_json()).encode(),
-            True,
+            overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
+        return added_num == 1
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(

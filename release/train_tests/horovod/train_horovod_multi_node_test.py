@@ -7,7 +7,7 @@ from ray.air import ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
-from ray.train.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 
 if __name__ == "__main__":

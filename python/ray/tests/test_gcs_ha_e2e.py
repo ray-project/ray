@@ -8,6 +8,29 @@ from pytest_docker_tools import wrappers
 from http.client import HTTPConnection
 
 
+# If you need to debug these tests, comment in the volume
+# mounts in the head node and worker node containers below and use
+# the repro-ci.py script to spin up an instance. The test
+# setup is a little intricate, as it uses docker-in-docker.
+# You need to ssh into the host machine, find the
+# docker-in-docker container with
+#
+# docker ps
+#
+# Log into the container with
+#
+# docker exec -it <dind-daemon container id> sh
+#
+# And run
+#
+# mkdir -p /tmp/ray
+# chmod 777 /tmp/ray
+#
+# Now you can re-run the test and the logs will show
+# up in /tmp/ray in the docker-in-docker container.
+# Good luck!
+
+
 class Container(wrappers.Container):
     def ready(self):
         self._container.reload()
@@ -68,6 +91,9 @@ head_node = container(
     ports={
         "8000/tcp": None,
     },
+    # volumes={
+    #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
+    # },
 )
 
 worker_node = container(
@@ -89,6 +115,9 @@ worker_node = container(
     ports={
         "8000/tcp": None,
     },
+    # volumes={
+    #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
+    # },
 )
 
 
@@ -171,7 +200,7 @@ def test_ray_server_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
-    assert b"Adding 1 replica to deployment 'Counter'." in output.output
+    assert b"Adding 1 replica to deployment Counter." in output.output
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))

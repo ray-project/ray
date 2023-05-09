@@ -2,6 +2,7 @@
 # Original code:
 # https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 import argparse
+from filelock import FileLock
 import json
 import os
 
@@ -10,12 +11,13 @@ from ray.air.result import Result
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowTrainer
-from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.air.config import ScalingConfig
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:
-    (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
+    with FileLock(os.path.expanduser("~/.mnist_lock")):
+        (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
     # The `x` arrays are in uint8 and have values in the [0, 255] range.
     # You need to convert them to float32 with values in the [0, 1] range.
     x_train = x_train / np.float32(255)
@@ -70,7 +72,7 @@ def train_func(config: dict):
         multi_worker_dataset,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
-        callbacks=[TrainCheckpointReportCallback()],
+        callbacks=[ReportCheckpointCallback()],
     )
     results = history.history
     return results

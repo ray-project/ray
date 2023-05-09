@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import unittest
+import gymnasium as gym
 
 import ray
 from ray.rllib.algorithms.appo.appo import APPOConfig
@@ -89,6 +90,43 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
                 policy_state=policy.get_state(),
             )
         )
+
+    def test_restore_checkpoint_with_nested_obs_space(self):
+        from ray.rllib.algorithms.ppo.ppo import PPOConfig
+
+        obs_space = gym.spaces.Box(low=0, high=1, shape=(4,))
+        # create 10 levels of nested observation space
+        space = obs_space
+        for i in range(10):
+            space.original_space = gym.spaces.Discrete(2)
+            space = space.original_space
+
+        # TODO(Artur): Construct a PPO policy here without the algorithm once we are
+        #  able to do that with RLModules.
+        policy = (
+            PPOConfig()
+            .environment(
+                observation_space=obs_space, action_space=gym.spaces.Discrete(2)
+            )
+            # Note (Artur): We have to choose num_rollout_workers=0 here, because
+            # otherwise RolloutWorker will be health-checked without an env which
+            # raises an error. You could also disable the health-check here.
+            .rollouts(num_rollout_workers=0)
+            .build()
+            .get_policy()
+        )
+
+        ckpt_dir = "/tmp/test_ckpt"
+        policy.export_checkpoint(ckpt_dir)
+
+        # Create a new policy from the checkpoint.
+        new_policy = Policy.from_checkpoint(ckpt_dir)
+
+        # check that the new policy has the same nested observation space
+        space = new_policy.observation_space
+        for i in range(10):
+            self.assertEqual(space.original_space, gym.spaces.Discrete(2))
+            space = space.original_space
 
 
 if __name__ == "__main__":

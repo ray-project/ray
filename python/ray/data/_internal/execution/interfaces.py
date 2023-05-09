@@ -1,13 +1,20 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Tuple
+from dataclasses import dataclass, field
+import os
+from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
+from ray.util.annotations import DeveloperAPI
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetStats, StatsDict
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.stats import DatastreamStats, StatsDict
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+# Node id string returned by `ray.get_runtime_context().get_node_id()`.
+NodeIdStr = str
 
 
 @dataclass
@@ -33,6 +40,13 @@ class RefBundle:
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
+
+    # This attribute is used by the split() operator to assign bundles to logical
+    # output splits. It is otherwise None.
+    output_split_idx: Optional[int] = None
+
+    # Cached location, used for get_cached_location().
+    _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
         for b in self.blocks:
@@ -65,10 +79,38 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        should_free = self.owns_blocks and DatasetContext.get_current().eager_free
+        should_free = self.owns_blocks and DataContext.get_current().eager_free
         for b in self.blocks:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
+
+    def get_cached_location(self) -> Optional[NodeIdStr]:
+        """Return a location for this bundle's data, if possible.
+
+        Caches the resolved location so multiple calls to this are efficient.
+        """
+        if self._cached_location is None:
+            # Only consider the first block in the bundle for now. TODO(ekl) consider
+            # taking into account other blocks.
+            ref = self.blocks[0][0]
+            # This call is pretty fast for owned objects (~5k/s), so we don't need to
+            # batch it for now.
+            locs = ray.experimental.get_object_locations([ref])
+            nodes = locs[ref]["node_ids"]
+            if nodes:
+                self._cached_location = nodes[0]
+            else:
+                self._cached_location = ""
+        if self._cached_location:
+            return self._cached_location
+        else:
+            return None  # Return None if cached location is "".
+
+    def __eq__(self, other) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return id(self)
 
 
 @dataclass
@@ -91,10 +133,8 @@ class ExecutionResources:
         """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
             return "None"
-        elif self.object_store_memory >= 1024 * 1024 * 1024:
-            return f"{round(self.object_store_memory / (1024 * 1024 * 1024), 2)} GiB"
         else:
-            return f"{round(self.object_store_memory / (1024 * 1024), 2)} MiB"
+            return memory_string(self.object_store_memory)
 
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources.
@@ -134,25 +174,77 @@ class ExecutionResources:
             return False
         return True
 
+    def scale(self, f: float) -> "ExecutionResources":
+        """Return copy with all set values scaled by `f`."""
+        return ExecutionResources(
+            cpu=self.cpu * f if self.cpu is not None else None,
+            gpu=self.gpu * f if self.gpu is not None else None,
+            object_store_memory=self.object_store_memory * f
+            if self.object_store_memory is not None
+            else None,
+        )
 
+
+@DeveloperAPI
 @dataclass
 class ExecutionOptions:
     """Common options for execution.
 
     Some options may not be supported on all executors (e.g., resource limits).
+
+    Attributes:
+        resource_limits: Set a soft limit on the resource usage during execution.
+            This is not supported in bulk execution mode. Autodetected by default.
+        locality_with_output: Set this to prefer running tasks on the same node as the
+            output node (node driving the execution). It can also be set to a list of
+            node ids to spread the outputs across those nodes. Off by default.
+        preserve_order: Set this to preserve the ordering between blocks processed by
+            operators under the streaming executor. The bulk executor always preserves
+            order. Off by default.
+        actor_locality_enabled: Whether to enable locality-aware task dispatch to
+            actors (on by default). This applies to both ActorPoolStrategy map and
+            streaming_split operations.
+        verbose_progress: Whether to report progress individually per operator. By
+            default, only AllToAll operators and global progress is reported. This
+            option is useful for performance debugging. Off by default.
     """
 
-    # Set a soft limit on the resource usage during execution. This is not supported
-    # in bulk execution mode.
-    resource_limits: ExecutionResources = ExecutionResources()
+    resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
-    # Set this to prefer running tasks on the same node as the output
-    # node (node driving the execution).
-    locality_with_output: bool = False
+    locality_with_output: Union[bool, List[NodeIdStr]] = False
 
-    # Always preserve ordering of blocks, even if using operators that
-    # don't require it.
-    preserve_order: bool = True
+    preserve_order: bool = False
+
+    actor_locality_enabled: bool = True
+
+    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
+
+
+@dataclass
+class TaskContext:
+    """This describes the information of a task running block transform."""
+
+    # The index of task. Each task has a unique task index within the same
+    # operator.
+    task_idx: int
+
+    # The dictionary of sub progress bar to update. The key is name of sub progress
+    # bar. Note this is only used on driver side.
+    # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
+    sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+
+    # The underlying function called in a MapOperator; this is used when fusing
+    # an AllToAllOperator with an upstream MapOperator.
+    upstream_map_transform_fn: Optional["MapTransformFn"] = None
+
+
+# Block transform function applied by task and actor pools in MapOperator.
+MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+
+# Block transform function applied in AllToAllOperator.
+AllToAllTransformFn = Callable[
+    [List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]
+]
 
 
 class PhysicalOperator(Operator):
@@ -162,7 +254,7 @@ class PhysicalOperator(Operator):
     output stream of RefBundles.
 
     Physical operators are stateful and non-serializable; they live on the driver side
-    of the Dataset only.
+    of the Datastream only.
 
     Here's a simple example of implementing a basic "Map" operator:
 
@@ -193,21 +285,27 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
 
     def completed(self) -> bool:
-        """Return True when this operator is done and all outputs are taken."""
+        """Return True when this operator is completed.
+
+        An operator is completed if any of the following conditions are met:
+        - All upstream operators are completed and all outputs are taken.
+        - All downstream operators are completed.
+        """
         return (
             self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
-        )
+        ) or self._dependents_complete
 
     def get_stats(self) -> StatsDict:
-        """Return recorded execution stats for use with DatasetStats."""
+        """Return recorded execution stats for use with DatastreamStats."""
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
@@ -217,6 +315,13 @@ class PhysicalOperator(Operator):
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
+
+    def get_transformation_fn(self) -> Callable:
+        """Returns the underlying transformation function for this operator.
+
+        This is used by the physical plan optimizer for e.g. operator fusion.
+        """
+        raise NotImplementedError
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -242,6 +347,21 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
+    def should_add_input(self) -> bool:
+        """Return whether it is desirable to add input to this operator right now.
+
+        Operators can customize the implementation of this method to apply additional
+        backpressure (e.g., waiting for internal actors to be created).
+        """
+        return True
+
+    def need_more_inputs(self) -> bool:
+        """Return true if the operator still needs more inputs.
+
+        Once this return false, it should never return true again.
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -263,6 +383,13 @@ class PhysicalOperator(Operator):
         via `add_input` for any input index.
         """
         self._inputs_complete = True
+
+    def all_dependents_complete(self) -> None:
+        """Called when all downstream operators have completed().
+
+        After this is called, the operator is marked as completed.
+        """
+        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
@@ -286,12 +413,28 @@ class PhysicalOperator(Operator):
         """
         return []
 
+    def throttling_disabled(self) -> bool:
+        """Whether to disable resource throttling for this operator.
+
+        This should return True for operators that only manipulate bundle metadata
+        (e.g., the OutputSplitter operator). This hints to the execution engine that
+        these operators should not be throttled based on resource usage.
+        """
+        return False
+
     def num_active_work_refs(self) -> int:
         """Return the number of active work refs.
 
         Subclasses can override this as a performance optimization.
         """
         return len(self.get_work_refs())
+
+    def internal_queue_size(self) -> int:
+        """If the operator has an internal input queue, return its size.
+
+        This is used to report tasks pending submission to actor pools.
+        """
+        return 0
 
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
         """Executor calls this when the given work is completed and local.
@@ -334,6 +477,48 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        """Called periodically by the executor.
+
+        Args:
+            input_queue_size: The number of inputs queued outside this operator.
+            under_resource_limits: Whether this operator is under resource limits.
+        """
+        pass
+
+
+class OutputIterator(Iterator[RefBundle]):
+    """Iterator used to access the output of an Executor execution.
+
+    This is a blocking iterator. Datastreams guarantees that all its iterators are
+    thread-safe (i.e., multiple threads can block on them at the same time).
+    """
+
+    def __init__(self, base: Iterable[RefBundle]):
+        self._it = iter(base)
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        """Can be used to pull outputs by a specified output index.
+
+        This is used to support the streaming_split() API, where the output of a
+        streaming execution is to be consumed by multiple processes.
+
+        Args:
+            output_split_idx: The output split index to get results for. This arg is
+                only allowed for iterators created by `Datastream.streaming_split()`.
+
+        Raises:
+            StopIteration if there are no more outputs to return.
+        """
+        if output_split_idx is not None:
+            raise NotImplementedError()
+        return next(self._it)
+
+    def __next__(self) -> RefBundle:
+        return self.get_next()
+
 
 class Executor:
     """Abstract class for executors, which implement physical operator execution.
@@ -348,18 +533,25 @@ class Executor:
         self._options = options
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterable[RefBundle]:
+        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
+    ) -> OutputIterator:
         """Start execution.
 
         Args:
             dag: The operator graph to execute.
-            initial_stats: The DatasetStats to prepend to the stats returned by the
+            initial_stats: The DatastreamStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
         """
         raise NotImplementedError
 
-    def get_stats(self) -> DatasetStats:
+    def shutdown(self):
+        """Shutdown an executor, which may still be running.
+
+        This should interrupt execution and clean up any used resources.
+        """
+        pass
+
+    def get_stats(self) -> DatastreamStats:
         """Return stats for the execution so far.
 
         This is generally called after `execute` has completed, but may be called

@@ -10,13 +10,12 @@ import torch
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY, PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import (
-    convert_pandas_to_batch_type,
-    convert_batch_type_to_pandas,
+    _convert_pandas_to_batch_type,
+    _convert_batch_type_to_pandas,
 )
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
-
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
@@ -89,9 +88,9 @@ def test_predict(batch_type):
     predictor = TorchPredictor(model=DummyModelMultiInput())
 
     raw_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 2.0, 3.0]})
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     raw_predictions = predictor.predict(data_batch, dtype=torch.float)
-    predictions = convert_batch_type_to_pandas(raw_predictions)
+    predictions = _convert_batch_type_to_pandas(raw_predictions)
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
@@ -279,6 +278,23 @@ def test_multi_modal_real_model(use_gpu):
         assert not next(
             predictor.model.parameters()
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
+
+
+def test_predictor_w_ckpt_from_uri(mock_s3_bucket_uri):
+    def create_model():
+        return torch.nn.Sequential(
+            torch.nn.Linear(1, 1),
+            torch.nn.Sigmoid(),
+        )
+
+    model = create_model()
+    saved_checkpoint = TorchCheckpoint.from_model(model=model)
+    saved_checkpoint.to_uri(mock_s3_bucket_uri)
+    loaded_checkpoint = TorchCheckpoint.from_uri(mock_s3_bucket_uri)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        checkpoint=loaded_checkpoint, predictor_cls=TorchPredictor
+    )
+    batch_predictor.predict(ray.data.from_numpy(np.array([1])), dtype=torch.float)
 
 
 if __name__ == "__main__":

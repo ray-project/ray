@@ -56,7 +56,7 @@ class TorchTrainer(DataParallelTrainer):
             # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Session returns the Ray Dataset shard for the given key.
+            # Session returns the Datastream shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
@@ -142,6 +142,9 @@ class TorchTrainer(DataParallelTrainer):
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
 
+            # If using GPUs, set this to True.
+            use_gpu = False
+
             # Define NN layers archicture, epochs, and number of workers
             input_size = 1
             layer_size = 32
@@ -210,9 +213,7 @@ class TorchTrainer(DataParallelTrainer):
             )
 
             # Define scaling and run configs
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
-            scaling_config = ScalingConfig(num_workers=num_workers)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             trainer = TorchTrainer(
@@ -226,7 +227,7 @@ class TorchTrainer(DataParallelTrainer):
             best_checkpoint_loss = result.metrics['loss']
 
             # Assert loss is less 0.09
-            assert best_checkpoint_loss <= 0.09
+            assert best_checkpoint_loss <= 0.09   # doctest: +SKIP
 
     .. testoutput::
         :hide:
@@ -246,7 +247,7 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datastreams to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed

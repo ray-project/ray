@@ -1,4 +1,3 @@
-import json
 import os
 import ray
 import ray._private.test_utils as test_utils
@@ -6,6 +5,7 @@ import time
 import tqdm
 
 from dashboard_test import DashboardTestAtScale
+from ray._private.state_api_test_utils import summarize_worker_startup_time
 
 is_smoke_test = True
 if "SMOKE_TEST" in os.environ:
@@ -58,28 +58,32 @@ del monitor_actor
 test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
+try:
+    summarize_worker_startup_time()
+except Exception as e:
+    print("Failed to summarize worker startup time.")
+    print(e)
+
 print(
     f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
     f"{end_time - start_time}s. ({rate} actors/s)"
 )
 
-if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "actors_per_second": rate,
-        "num_actors": MAX_ACTORS_IN_CLUSTER,
-        "time": end_time - start_time,
-        "success": "1",
-        "_peak_memory": round(used_gb, 2),
-        "_peak_process_memory": usage,
-    }
-    if not is_smoke_test:
-        results["perf_metrics"] = [
-            {
-                "perf_metric_name": "actors_per_second",
-                "perf_metric_value": rate,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        ]
-    dashboard_test.update_release_test_result(results)
-    json.dump(results, out_file)
+results = {
+    "actors_per_second": rate,
+    "num_actors": MAX_ACTORS_IN_CLUSTER,
+    "time": end_time - start_time,
+    "success": "1",
+    "_peak_memory": round(used_gb, 2),
+    "_peak_process_memory": usage,
+}
+if not is_smoke_test:
+    results["perf_metrics"] = [
+        {
+            "perf_metric_name": "actors_per_second",
+            "perf_metric_value": rate,
+            "perf_metric_type": "THROUGHPUT",
+        }
+    ]
+dashboard_test.update_release_test_result(results)
+test_utils.safe_write_to_results_json(results)

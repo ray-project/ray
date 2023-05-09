@@ -45,6 +45,8 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 - The predictions will be outputted by ``predict`` in the same type as the original input.
 
 
+.. _batch-prediction:
+
 Batch Prediction
 ----------------
 
@@ -75,6 +77,68 @@ Additionally, you can compute metrics from the predictions. Do this by:
     :start-after: __compute_accuracy_start__
     :end-before: __compute_accuracy_end__
 
+
+Configuring Batch Prediction
+----------------------------
+To configure the computation resources for your `BatchPredictor`, you have to set the following parameters in `predict()`:
+
+- `min_scoring_workers` and `max_scoring_workers`
+
+  - The BatchPredictor will internally create an actor pool to autoscale the number of workers from [min, max] to execute your transforms.
+
+  - If not set, the auto-scaling range will be set to [1, inf) by default.
+
+- `num_gpus_per_worker`:
+
+  - If you want to use GPU for batch prediction, please set this parameter explicitly.
+
+  - If not specified, the BatchPredictor will perform inference on CPUs by default.
+
+- `num_cpus_per_worker`:
+
+  - Set the number of CPUs for a worker.
+
+- `separate_gpu_stage`:
+
+  - If using GPUs, whether to use separate stages for GPU inference and data preprocessing.
+
+  - Enabled by default to avoid excessive preprocessing workload on GPU workers. You may disable it if your preprocessor is very lightweight.
+
+Here are some examples:
+
+**1. Use multiple CPUs for Batch Prediction:**
+
+- If `num_gpus_per_worker` not specified, use CPUs for batch prediction by default.
+
+- Two workers with 3 CPUs each.
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_cpu_only_start__
+    :end-before: __configure_batch_predictor_cpu_only_end__
+
+**2. Use multiple GPUs for Batch prediction:**
+
+- Two workers, each with 1 GPU and 1 CPU (by default).
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_gpu_only_start__
+    :end-before: __configure_batch_predictor_gpu_only_end__
+
+**3. Configure Auto-scaling:**
+
+- Scale from 1 to 4 workers, depending on your dataset size and cluster resources.
+
+- If no min/max values are provided, `BatchPredictor` will scale from 1 to inf workers by default.
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __configure_batch_predictor_scaling_start__
+    :end-before: __configure_batch_predictor_scaling_end__
+
+
+
 Batch Inference Examples
 ------------------------
 Below, we provide examples of using common frameworks to do batch inference for different data types:
@@ -82,34 +146,37 @@ Below, we provide examples of using common frameworks to do batch inference for 
 Tabular
 ~~~~~~~
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_batch_prediction.py
-        :language: python
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_batch_prediction.py
+            :language: python
 
-    .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
-        :language: python
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
+            :language: python
 
-    .. literalinclude:: examples/tf_tabular_batch_prediction.py
-        :language: python
+    .. tab-item:: Tensorflow
 
+        .. literalinclude:: examples/tf_tabular_batch_prediction.py
+            :language: python
 
 Image
 ~~~~~
 
-.. tabbed:: Pytorch
+.. tab-set::
 
-    .. literalinclude:: examples/torch_image_batch_pretrained.py
-        :language: python
+    .. tab-item:: Pytorch
+
+        .. literalinclude:: examples/torch_image_batch_pretrained.py
+            :language: python
 
 
-.. tabbed:: Tensorflow
+    .. tab-item:: Tensorflow
 
-    Coming soon!
+        Coming soon!
 
 Text
 ~~~~
@@ -340,7 +407,7 @@ Implement `_predict_numpy` or `_predict_pandas`
         batch of NumPy data. It accepts a ``np.ndarray`` or ``dict[str, np.ndarray]`` as
         input and returns a ``np.ndarray`` or ``dict[str, np.ndarray]`` as output.
 
-        The input type is determined by the type of :class:`~ray.data.Dataset` passed to
+        The input type is determined by the type of :class:`~ray.data.Datastream` passed to
         :meth:`BatchPredictor.predict <ray.train.batch_predictor.BatchPredictor.predict>`.
         If your dataset has columns, the input is a ``dict``; otherwise, the input is a
         ``np.ndarray``.
@@ -376,12 +443,12 @@ Perform inference
 
         To perform inference with the completed ``MXNetPredictor``:
 
-        1. Create a :class:`~ray.data.preprocessor.Preprocessor` and set it in the 
-           :class:`~ray.air.checkpoint.Checkpoint`. 
+        1. Create a :class:`~ray.data.preprocessor.Preprocessor` and set it in the
+           :class:`~ray.air.checkpoint.Checkpoint`.
            You can also use any of the out-of-the-box preprocessors instead of implementing your own: :ref:`air-preprocessor-ref`.
         2. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
            checkpoint.
-        3. Read sample images into a :class:`~ray.data.Dataset`.
+        3. Read sample images into a :class:`~ray.data.Datastream`.
         4. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to classify
            the images in the dataset.
 
@@ -397,7 +464,7 @@ Perform inference
 
         1. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
            checkpoint.
-        2. Read the Guerry dataset into a :class:`~ray.data.Dataset`.
+        2. Read the Guerry dataset into a :class:`~ray.data.Datastream`.
         3. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to perform
            regression on the samples in the dataset.
 

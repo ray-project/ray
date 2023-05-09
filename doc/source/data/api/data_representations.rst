@@ -1,7 +1,7 @@
 .. _data-representations:
 
-Data Representations
-====================
+Data Representations (internal)
+===============================
 
 .. currentmodule:: ray.data
 
@@ -23,7 +23,7 @@ Batch API
 
 .. autosummary::
    :toctree: doc/
-   
+
    block.DataBatch
 
 Row API
@@ -34,13 +34,19 @@ Row API
 
    row.TableRow
 
-.. _dataset-tensor-extension-api:
+.. _datastream-tensor-extension-api:
 
 Tensor Column Extension API
 ---------------------------
 
 .. autosummary::
    :toctree: doc/
+
+   extensions.tensor_extension.create_ragged_ndarray
+
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    extensions.tensor_extension.TensorDtype
    extensions.tensor_extension.TensorArray

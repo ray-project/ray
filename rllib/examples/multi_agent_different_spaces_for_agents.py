@@ -18,7 +18,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.tune.registry import get_trainable_cls
 
 
 class BasicMultiAgentMultiSpaces(MultiAgentEnv):
@@ -69,7 +69,7 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
             truncated[i] = False
             info[i] = {}
         terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncteds) == len(self.agents)
+        truncated["__all__"] = len(self.truncateds) == len(self.agents)
         return obs, rew, terminated, truncated, info
 
 
@@ -85,7 +85,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument("--eager-tracing", action="store_true")
@@ -126,14 +126,17 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
+    # TODO (Artur): in PPORLModule vf_share_layers = True is broken in tf2. fix it.
+    vf_share_layers = not bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
     config = (
-        AlgorithmConfig()
+        get_trainable_cls(args.run)
+        .get_default_config()
         .environment(env=BasicMultiAgentMultiSpaces)
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         )
-        .training(train_batch_size=1024)
+        .training(train_batch_size=1024, model={"vf_share_layers": vf_share_layers})
         .rollouts(num_rollout_workers=1, rollout_fragment_length="auto")
         .framework(args.framework, eager_tracing=args.eager_tracing)
         .multi_agent(
@@ -150,10 +153,16 @@ if __name__ == "__main__":
         )
     )
 
-    tune.Tuner(
+    results = tune.Tuner(
         args.run,
         run_config=air.RunConfig(
             stop=stop,
         ),
         param_space=config,
     ).fit()
+
+    if not results:
+        raise ValueError(
+            "No results returned from tune.run(). Something must have gone wrong."
+        )
+    ray.shutdown()

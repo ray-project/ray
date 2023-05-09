@@ -7,9 +7,9 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.data import Dataset, DatasetPipeline, Preprocessor
-from ray.data.context import DatasetContext
+from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data import Datastream, DatasetPipeline, Preprocessor
+from ray.data.context import DataContext
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -21,7 +21,7 @@ class BatchPredictor:
     """Batch predictor class.
 
     Takes a predictor class and a checkpoint and provides an interface to run
-    batch scoring on Ray datasets.
+    batch scoring on Datastreams.
 
     This batch predictor wraps around a predictor class and executes it
     in a distributed way when calling ``predict()``.
@@ -36,6 +36,7 @@ class BatchPredictor:
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
+        self._override_preprocessor_set = False
 
     def __repr__(self):
         return (
@@ -47,6 +48,29 @@ class BatchPredictor:
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs
     ) -> "BatchPredictor":
+        """Create a :class:`BatchPredictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Example:
+
+            .. testcode::
+
+                from torchvision import models
+
+                from ray.train.batch_predictor import BatchPredictor
+                from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+                model = models.resnet50(pretrained=True)
+                checkpoint = TorchCheckpoint.from_model(model)
+                predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+
+        Args:
+            checkpoint: A :class:`~ray.air.checkpoint.Checkpoint` containing model state
+                and optionally a preprocessor.
+            predictor_cls: The type of predictor to use.
+            **kwargs: Optional arguments to pass the ``predictor_cls`` constructor.
+        """
+
         return cls(checkpoint=checkpoint, predictor_cls=predictor_cls, **kwargs)
 
     @classmethod
@@ -75,7 +99,7 @@ class BatchPredictor:
 
     def get_preprocessor(self) -> Preprocessor:
         """Get the preprocessor to use prior to executing predictions."""
-        if self._override_preprocessor:
+        if self._override_preprocessor_set:
             return self._override_preprocessor
 
         return self._checkpoint.get_preprocessor()
@@ -83,10 +107,11 @@ class BatchPredictor:
     def set_preprocessor(self, preprocessor: Preprocessor) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._override_preprocessor = preprocessor
+        self._override_preprocessor_set = True
 
     def predict(
         self,
-        data: Union[ray.data.Dataset, ray.data.DatasetPipeline],
+        data: Union[ray.data.Datastream, ray.data.DatasetPipeline],
         *,
         feature_columns: Optional[List[str]] = None,
         keep_columns: Optional[List[str]] = None,
@@ -98,11 +123,14 @@ class BatchPredictor:
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
-        """Run batch scoring on a Dataset.
+    ) -> Union[ray.data.Datastream, ray.data.DatasetPipeline]:
+        """Run batch scoring on a Datastream.
+
+        .. note::
+            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datastream consumption APIs, such as iterating through the output, to trigger the execution of prediction.
 
         Args:
-            data: Ray dataset or pipeline to run batch prediction on.
+            data: Datastream or pipeline to run batch prediction on.
             feature_columns: List of columns in the preprocessed dataset to use for
                 prediction. Columns not specified will be dropped
                 from `data` before being passed to the predictor.
@@ -116,7 +144,10 @@ class BatchPredictor:
             min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
+                Set to 1 by default.
             num_gpus_per_worker: Number of GPUs to allocate per scoring worker.
+                Set to 0 by default. If you want to use GPUs for inference, please
+                specify this parameter.
             separate_gpu_stage: If using GPUs, specifies whether to execute GPU
                 processing in a separate stage (enabled by default). This avoids
                 running expensive preprocessing steps on GPU workers.
@@ -126,7 +157,7 @@ class BatchPredictor:
                 ``predict()`` method.
 
         Returns:
-            Dataset containing scoring results.
+            Datastream containing scoring results.
 
         Examples:
 
@@ -158,9 +189,10 @@ class BatchPredictor:
 
             .. testoutput::
 
-                Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
+                MapBatches(ScoringWrapper)
+                +- Datastream(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
-        """
+        """  # noqa: E501
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
         if num_cpus_per_worker is None:
@@ -200,7 +232,7 @@ class BatchPredictor:
         predict_stage_batch_format: BatchFormat = (
             self._predictor_cls._batch_format_to_use()
         )
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:
@@ -265,7 +297,7 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
-                # TODO: Delegate separate_gpu_stage flag to Datasets.
+                # TODO: Delegate separate_gpu_stage flag to Datastream.
                 if self.override_prep:
                     # Apply preprocessing before selecting feature columns.
                     input_batch = self.override_prep.transform_batch(input_batch)
@@ -298,18 +330,18 @@ class BatchPredictor:
         preprocessor = self.get_preprocessor()
         override_prep = None
         if preprocessor:
-            # TODO: Delegate separate_gpu_stage flag to Datasets.
+            # TODO: Delegate separate_gpu_stage flag to Datastream.
             if not separate_gpu_stage and num_gpus_per_worker > 0:
                 override_prep = preprocessor
             else:
                 # In batch prediction, preprocessing is always done in a separate stage.
                 # We should not in-line it with prediction, unless separate_gpu_stage is
                 # False.
-                # Dataset optimizer will fuse preprocessing+prediction stage as
+                # Datastream optimizer will fuse preprocessing+prediction stage as
                 # necessary.
 
-                if isinstance(data, Dataset):
-                    # Dataset is lazy by default so this transform
+                if isinstance(data, Datastream):
+                    # Datastream is lazy by default so this transform
                     # will not trigger execution.
                     data = preprocessor.transform(data)
                 elif isinstance(data, DatasetPipeline):
@@ -322,20 +354,15 @@ class BatchPredictor:
             if override_prep is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
-            prefetch_batches=int(num_gpus_per_worker > 0),
             fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )
-
-        if isinstance(prediction_results, ray.data.Dataset):
-            # Force execution because Dataset uses lazy execution by default.
-            prediction_results.fully_executed()
 
         return prediction_results
 
     def predict_pipelined(
         self,
-        data: ray.data.Dataset,
+        data: ray.data.Datastream,
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
@@ -356,11 +383,11 @@ class BatchPredictor:
         Unlike `predict()`, this generates a DatasetPipeline object and does not
         perform execution. Execution can be triggered by pulling from the pipeline.
 
-        This is a convenience wrapper around calling `.window()` on the Dataset prior
+        This is a convenience wrapper around calling `.window()` on the Datastream prior
         to passing it `BatchPredictor.predict()`.
 
         Args:
-            data: Ray dataset to run batch prediction on.
+            data: Datastream to run batch prediction on.
             blocks_per_window: The window size (parallelism) in blocks.
                 Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
@@ -441,7 +468,7 @@ class BatchPredictor:
         )
 
     def _determine_preprocessor_batch_format(
-        self, ds: Union[ray.data.Dataset, ray.data.DatasetPipeline]
+        self, ds: Union[ray.data.Datastream, ray.data.DatasetPipeline]
     ) -> BatchFormat:
         """Determine batch format we use for the first preprocessor.
 
@@ -450,23 +477,17 @@ class BatchPredictor:
         transform type to avoid unnecessary data conversion.
 
         Args:
-            ds (Union[ray.data.Dataset, ray.data.DatasetPipeline]): Input
+            ds (Union[ray.data.Datastream, ray.data.DatasetPipeline]): Input
                 dataset or dataset pipeline.
 
         Returns:
             BatchFormat: Batch format to use for the preprocessor.
         """
         preprocessor = self.get_preprocessor()
-        dataset_block_format = ds.dataset_format()
-        if dataset_block_format == BlockFormat.SIMPLE:
-            # Naive case that we cast to pandas for compatibility.
-            # TODO: Revisit
-            return BatchFormat.PANDAS
-
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
 
+        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
         # Use same batch format as first preprocessor to minimize data copies.
-        return preprocessor._determine_transform_to_use(dataset_block_format)
+        return preprocessor._determine_transform_to_use()

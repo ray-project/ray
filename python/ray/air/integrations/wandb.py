@@ -13,13 +13,14 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
+from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
-from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
@@ -30,7 +31,6 @@ try:
     from wandb.sdk.lib.disabled import RunDisabled
     from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
 
@@ -542,8 +542,14 @@ class WandbLoggerCallback(LoggerCallback):
         log_config: bool = False,
         upload_checkpoints: bool = False,
         save_checkpoints: bool = False,
+        upload_timeout: int = DEFAULT_SYNC_TIMEOUT,
         **kwargs,
     ):
+        if not wandb:
+            raise RuntimeError(
+                "Wandb was not found - please install with `pip install wandb`"
+            )
+
         if save_checkpoints:
             warnings.warn(
                 "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",
@@ -558,6 +564,7 @@ class WandbLoggerCallback(LoggerCallback):
         self.excludes = excludes or []
         self.log_config = log_config
         self.upload_checkpoints = upload_checkpoints
+        self._upload_timeout = upload_timeout
         self.kwargs = kwargs
 
         self._remote_logger_class = None
@@ -566,6 +573,7 @@ class WandbLoggerCallback(LoggerCallback):
             "Trial", ray.actor.ActorHandle[_WandbLoggingActor]
         ] = {}
         self._trial_logging_futures: Dict["Trial", ray.ObjectRef] = {}
+        self._logging_future_to_trial: Dict[ray.ObjectRef, "Trial"] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self, *args, **kwargs):
@@ -645,27 +653,18 @@ class WandbLoggerCallback(LoggerCallback):
             actor_options={"num_cpus": 0, **_force_on_current_node()}
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
-            logdir=trial.logdir,
+            logdir=trial.local_path,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self.AUTO_CONFIG_KEYS,
             **wandb_init_kwargs,
         )
-        self._trial_logging_futures[trial] = self._trial_logging_actors[
-            trial
-        ].run.remote()
+        logging_future = self._trial_logging_actors[trial].run.remote()
+        self._trial_logging_futures[trial] = logging_future
+        self._logging_future_to_trial[logging_future] = trial
 
-    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
+    def _signal_logging_actor_stop(self, trial: "Trial"):
         self._trial_queues[trial].put((_QueueItem.END, None))
-
-        try:
-            ray.get(self._trial_logging_futures[trial], timeout=timeout)
-        except TimeoutError:
-            ray.kill(self._trial_logging_actors[trial])
-
-        del self._trial_queues[trial]
-        del self._trial_logging_actors[trial]
-        del self._trial_logging_futures[trial]
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         if trial not in self._trial_logging_actors:
@@ -681,12 +680,52 @@ class WandbLoggerCallback(LoggerCallback):
             )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        self._stop_logging_actor(trial=trial, timeout=10)
+        self._signal_logging_actor_stop(trial=trial)
+        self._cleanup_logging_actors()
+
+    def _cleanup_logging_actor(self, trial: "Trial"):
+        del self._trial_queues[trial]
+        del self._trial_logging_futures[trial]
+        ray.kill(self._trial_logging_actors[trial])
+        del self._trial_logging_actors[trial]
+
+    def _cleanup_logging_actors(self, timeout: int = 0, kill_on_timeout: bool = False):
+        """Clean up logging actors that have finished uploading to wandb.
+        Waits for `timeout` seconds to collect finished logging actors.
+
+        Args:
+            timeout: The number of seconds to wait. Defaults to 0 to clean up
+                any immediate logging actors during the run.
+                This is set to a timeout threshold to wait for pending uploads
+                on experiment end.
+            kill_on_timeout: Whether or not to kill and cleanup the logging actor if
+                it hasn't finished within the timeout.
+        """
+
+        futures = list(self._trial_logging_futures.values())
+        done, remaining = ray.wait(futures, num_returns=len(futures), timeout=timeout)
+        for ready_future in done:
+            finished_trial = self._logging_future_to_trial.pop(ready_future)
+            self._cleanup_logging_actor(finished_trial)
+
+        if kill_on_timeout:
+            for remaining_future in remaining:
+                trial = self._logging_future_to_trial.pop(remaining_future)
+                self._cleanup_logging_actor(trial)
+
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Wait for the actors to finish their call to `wandb.finish`.
+        This includes uploading all logs + artifacts to wandb."""
+        self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):
-        for trial in list(self._trial_logging_actors):
-            self._stop_logging_actor(trial=trial, timeout=2)
+        if ray.is_initialized():
+            for trial in list(self._trial_logging_actors):
+                self._signal_logging_actor_stop(trial=trial)
+
+            self._cleanup_logging_actors(timeout=2, kill_on_timeout=True)
 
         self._trial_logging_actors = {}
         self._trial_logging_futures = {}
+        self._logging_future_to_trial = {}
         self._trial_queues = {}

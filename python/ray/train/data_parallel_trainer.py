@@ -2,7 +2,7 @@ import inspect
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-from tabulate import tabulate
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
 from ray import tune
@@ -21,7 +21,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -99,7 +99,7 @@ class DataParallelTrainer(BaseTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Datastream shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -210,7 +210,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datastreams to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -258,9 +258,6 @@ class DataParallelTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not ray.is_initialized():
-            ray.init()
-
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
@@ -281,6 +278,47 @@ class DataParallelTrainer(BaseTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+    @classmethod
+    def restore(
+        cls: Type["DataParallelTrainer"],
+        path: str,
+        train_loop_per_worker: Optional[
+            Union[Callable[[], None], Callable[[Dict], None]]
+        ] = None,
+        train_loop_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "DataParallelTrainer":
+        """Restores a DataParallelTrainer from a previously interrupted/failed run.
+
+        Args:
+            train_loop_per_worker: Optionally re-specified train loop function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g., it holds onto outdated
+                object references). This should be the same training loop
+                that was passed to the original trainer constructor.
+            train_loop_config: Optionally re-specified train config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
+            subclass that is calling this method.
+        """
+        return super(DataParallelTrainer, cls).restore(
+            path=path,
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
         )
 
     def _validate_attributes(self):
@@ -409,6 +447,7 @@ class DataParallelTrainer(BaseTrainer):
         ["tabulate", None],
         ["ipywidgets", "8"],
     )
+    @fallback_if_colab
     def _ipython_display_(self):
         from ipywidgets import HTML, VBox, Tab, Layout
         from IPython.display import display

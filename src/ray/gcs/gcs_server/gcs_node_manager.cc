@@ -76,7 +76,6 @@ void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
     const auto &node_drain_request = request.drain_node_data(i);
     const auto node_id = NodeID::FromBinary(node_drain_request.node_id());
 
-    RAY_LOG(INFO) << "Draining node info, node id = " << node_id;
     DrainNode(node_id);
     auto drain_node_status = reply->add_drain_node_status();
     drain_node_status->set_node_id(node_id.Binary());
@@ -86,6 +85,7 @@ void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
 }
 
 void GcsNodeManager::DrainNode(const NodeID &node_id) {
+  RAY_LOG(INFO) << "Draining node info, node id = " << node_id;
   auto node = RemoveNode(node_id, /* is_intended = */ true);
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";

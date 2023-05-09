@@ -9,6 +9,7 @@ import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
+from ray._private import ray_constants
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -16,6 +17,11 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
+from ray._private.gcs_pubsub import (
+    GcsPublisher,
+    GcsErrorSubscriber,
+)
+from ray.core.generated.gcs_pb2 import ErrorTableData
 
 import psutil
 
@@ -393,7 +399,7 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(
+    gcs_client = ray._raylet.GcsClient(
         address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
     )
 
@@ -424,7 +430,7 @@ def test_gcs_aio_client_reconnect(
     ray_start_regular_with_external_redis, auto_reconnect
 ):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(address=gcs_address)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address)
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -648,6 +654,45 @@ def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
         ray.get_actor("A")
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+@pytest.mark.skip(
+    reason="python publisher and subscriber doesn't handle gcs server failover"
+)
+def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis):
+    address_info = ray_start_regular_with_external_redis
+    gcs_server_addr = address_info["gcs_address"]
+
+    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
+
+    publisher = GcsPublisher(address=gcs_server_addr)
+    err1 = ErrorTableData(error_message="test error message 1")
+    err2 = ErrorTableData(error_message="test error message 2")
+    print("sending error message 1")
+    publisher.publish_error(b"aaa_id", err1)
+
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    print("sending error message 2")
+    publisher.publish_error(b"bbb_id", err2)
+    print("done")
+
+    assert subscriber.poll() == (b"bbb_id", err2)
+
+    subscriber.close()
+
+
 @pytest.fixture
 def redis_replicas(monkeypatch):
     monkeypatch.setenv("TEST_EXTERNAL_REDIS_REPLICAS", "3")
@@ -763,6 +808,55 @@ assert ray.get(c.r.remote(10)) == 10
     # GCS should exit in this case
     print(">>> Waiting gcs server to exit", gcs_server_pid)
     wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+            raylet_liveness_self_check_interval_ms=3000,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
+    @ray.remote
+    def create_actor():
+        @ray.remote
+        class A:
+            def pid(self):
+                return os.getpid()
+
+        a = A.options(lifetime="detached", name="A").remote()
+        ray.get(a.pid.remote())
+
+    ray.get(create_actor.remote())
+
+    ray._private.worker._global_node.kill_gcs_server()
+    # Delete redis
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    import redis
+
+    ip, port = redis_addr.split(":")
+    cli = redis.Redis(ip, port)
+    cli.flushall()
+    raylet_proc = ray._private.worker._global_node.all_processes[
+        ray_constants.PROCESS_TYPE_RAYLET
+    ][0].process
+
+    def check_raylet_healthy():
+        return raylet_proc.poll() is None
+
+    wait_for_condition(lambda: check_raylet_healthy())
+
+    # Start GCS
+    ray._private.worker._global_node.start_gcs_server()
+
+    # Waiting for raylet to become unhealthy
+    wait_for_condition(lambda: not check_raylet_healthy())
 
 
 if __name__ == "__main__":

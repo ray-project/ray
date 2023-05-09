@@ -1,5 +1,10 @@
+import copy
+import logging
+import os
+import warnings
 from collections import defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,9 +17,12 @@ from typing import (
     Tuple,
 )
 
+from ray._private.storage import _get_storage_uri
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -34,6 +42,9 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
@@ -326,6 +337,11 @@ class DatasetConfig:
             The main purpose of this is to prevent data fetching hotspots in the
             cluster when running many parallel workers / trials on the same data.
             We recommend enabling it always. True by default.
+        per_epoch_preprocessor [Experimental]: A preprocessor to re-apply on
+            each pass of the dataset. The main use case for this is to apply a
+            random transform on a training dataset on each epoch. The
+            per-epoch preprocessor will be applied *after* all other
+            preprocessors and in parallel with the dataset consumer.
         use_stream_api: Deprecated. Use max_object_store_memory_fraction instead.
         stream_window_size: Deprecated. Use max_object_store_memory_fraction instead.
     """
@@ -340,6 +356,7 @@ class DatasetConfig:
     max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    per_epoch_preprocessor: Optional["Preprocessor"] = None
     # Deprecated.
     use_stream_api: Optional[int] = None
     stream_window_size: Optional[int] = None
@@ -377,6 +394,7 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if self.randomize_block_order is not None
             else True,
+            per_epoch_preprocessor=self.per_epoch_preprocessor,
         )
 
     @staticmethod
@@ -405,12 +423,13 @@ class DatasetConfig:
 
     @staticmethod
     def validated(
-        config: Dict[str, "DatasetConfig"], datasets: Dict[str, "Dataset"]
+        config: Dict[str, "DatasetConfig"], datasets: Optional[Dict[str, "Dataset"]]
     ) -> Dict[str, "DatasetConfig"]:
         """Validate the given config and datasets are usable.
 
         Returns dict of validated configs with defaults filled out.
         """
+        datasets = datasets or {}
         has_wildcard = WILDCARD_KEY in config
         fittable = set()
         result = {k: v.fill_defaults() for k, v in config.items()}
@@ -444,6 +463,20 @@ class DatasetConfig:
                     "must be None or a float with value -1 or >=0, but got "
                     f"{v.max_object_store_memory_fraction}."
                 )
+            if v.per_epoch_preprocessor is not None:
+                if not isinstance(v.per_epoch_preprocessor, Preprocessor):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
+                        f"but got {v.per_epoch_preprocessor}."
+                    )
+                if (
+                    v.per_epoch_preprocessor.fit_status()
+                    != Preprocessor.FitStatus.NOT_FITTABLE
+                ):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` currently does not support "
+                        "fittable ray.data.Preprocessors."
+                    )
 
         if len(fittable) > 1:
             raise ValueError(
@@ -474,6 +507,9 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if other.randomize_block_order is None
             else other.randomize_block_order,
+            per_epoch_preprocessor=self.per_epoch_preprocessor
+            if other.per_epoch_preprocessor is None
+            else other.per_epoch_preprocessor,
         )
         return new_config
 
@@ -515,14 +551,6 @@ class FailureConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self):
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {
@@ -603,14 +631,6 @@ class CheckpointConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         if self.num_to_keep is None:
             num_to_keep_repr = "All"
         else:
@@ -677,8 +697,10 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to store results at. Can be a local directory or
+            a destination on cloud storage. If Ray storage is set up,
+            defaults to the storage location. Otherwise, this defaults to
+            the local ``~/ray_results`` directory.
         stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
             for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
@@ -709,7 +731,7 @@ class RunConfig:
     """
 
     name: Optional[str] = None
-    local_dir: Optional[str] = None
+    storage_path: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
@@ -719,8 +741,12 @@ class RunConfig:
     verbose: Union[int, "Verbosity"] = 3
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
+    # Deprecated
+    local_dir: Optional[str] = None
+
     def __post_init__(self):
-        from ray.tune.syncer import SyncConfig
+        from ray.tune.syncer import SyncConfig, Syncer
+        from ray.tune.utils.util import _resolve_storage_path
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -730,6 +756,61 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        # Convert Paths to strings
+        if isinstance(self.local_dir, Path):
+            self.local_dir = str(self.local_dir)
+
+        if isinstance(self.storage_path, Path):
+            self.storage_path = str(self.storage_path)
+
+        local_path, remote_path = _resolve_storage_path(
+            self.storage_path, self.local_dir, self.sync_config.upload_dir
+        )
+
+        if self.sync_config.upload_dir:
+            assert remote_path == self.sync_config.upload_dir
+            warnings.warn(
+                "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+                "in the future. Pass `RunConfig.storage_path` instead."
+            )
+            # Set upload_dir to None to avoid further downstream resolution.
+            # Copy object first to not alter user input.
+            self.sync_config = copy.copy(self.sync_config)
+            self.sync_config.upload_dir = None
+
+        if self.local_dir:
+            assert local_path == self.local_dir
+            warnings.warn(
+                "Setting a `RunConfig.local_dir` is deprecated and will be removed "
+                "in the future. If you are not using remote storage,"
+                "set the `RunConfig.storage_path` instead. Otherwise, set the"
+                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
+                "the local cache location."
+            )
+            self.local_dir = None
+
+        if not remote_path:
+            remote_path = _get_storage_uri()
+            if remote_path:
+                logger.info(
+                    "Using configured Ray storage URI as storage path: "
+                    f"{remote_path}"
+                )
+
+        if remote_path:
+            self.storage_path = remote_path
+            if local_path:
+                # If storage_path is a remote path set by SyncConfig.upload_dir,
+                # this may not have been set in the previous if clause.
+                os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+        elif local_path:
+            self.storage_path = local_path
+
+        if isinstance(self.sync_config.syncer, Syncer) and not remote_path:
+            raise ValueError(
+                "Must specify a remote `storage_path` to use a custom `syncer`."
+            )
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig
@@ -744,14 +825,6 @@ class RunConfig:
         )
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         reprs = []
         if self.failure_config is not None:
             reprs.append(

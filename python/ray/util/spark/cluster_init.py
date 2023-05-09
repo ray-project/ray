@@ -100,11 +100,6 @@ class RayClusterOnSpark:
     def wait_until_ready(self):
         import ray
 
-        if self.background_job_exception is not None:
-            raise RuntimeError(
-                "Ray workers has exited."
-            ) from self.background_job_exception
-
         if self.is_shutdown:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
@@ -115,6 +110,15 @@ class RayClusterOnSpark:
             webui_url = ray_ctx.address_info.get("webui_url", None)
             if webui_url:
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
+            else:
+                try:
+                    __import__("ray.dashboard.optional_deps")
+                except ModuleNotFoundError:
+                    _logger.warning(
+                        "Dependencies to launch the optional dashboard API "
+                        "server cannot be found. They can be installed with "
+                        "pip install ray[default]."
+                    )
 
         except Exception:
             self.shutdown()
@@ -125,6 +129,16 @@ class RayClusterOnSpark:
             last_progress_move_time = time.time()
             while True:
                 time.sleep(_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL)
+
+                # Inside the waiting ready loop,
+                # checking `self.background_job_exception`, if it is not None,
+                # it means the background spark job has failed,
+                # in this case, raise error directly.
+                if self.background_job_exception is not None:
+                    raise RuntimeError(
+                        "Ray workers failed to start."
+                    ) from self.background_job_exception
+
                 cur_alive_worker_count = (
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
@@ -144,12 +158,17 @@ class RayClusterOnSpark:
                         time.time() - last_progress_move_time
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
+                        if cur_alive_worker_count == 0:
+                            raise RuntimeError(
+                                "Current spark cluster has no resources to launch "
+                                "Ray worker nodes."
+                            )
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. "
                             "Started / Total requested: "
                             f"({cur_alive_worker_count} / {self.num_worker_nodes}). "
-                            "Please check ray logs to see why some ray workers "
-                            "failed to start."
+                            "Current spark cluster does not have sufficient resources "
+                            "to launch requested number of Ray worker nodes."
                         )
                         return
         finally:
@@ -203,7 +222,12 @@ def _convert_ray_node_option_key(key):
 
 
 def _convert_ray_node_options(options):
-    return [f"{_convert_ray_node_option_key(k)}={str(v)}" for k, v in options.items()]
+    return [
+        f"{_convert_ray_node_option_key(k)}"
+        if v is None
+        else f"{_convert_ray_node_option_key(k)}={str(v)}"
+        for k, v in options.items()
+    ]
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
@@ -396,6 +420,8 @@ def _setup_ray_cluster(
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
 
+    # Make a copy for head_node_options to avoid changing original dict in user code.
+    head_node_options = head_node_options.copy()
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
@@ -613,7 +639,6 @@ def _setup_ray_cluster(
     )
 
     def background_job_thread_fn():
-
         try:
             spark.sparkContext.setJobGroup(
                 spark_job_group_id,
@@ -678,7 +703,7 @@ def _setup_ray_cluster(
         ).start()
 
         # Call hook immediately after spark job started.
-        start_hook.on_spark_background_job_created(spark_job_group_id)
+        start_hook.on_cluster_created(ray_cluster_handler)
 
         # wait background spark task starting.
         for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
@@ -699,6 +724,7 @@ def _setup_ray_cluster(
 
 
 _active_ray_cluster = None
+_active_ray_cluster_rwlock = threading.RLock()
 
 
 def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
@@ -720,8 +746,6 @@ _head_node_option_block_keys = {
     "port": None,
     "num_cpus": None,
     "num_gpus": None,
-    "memory": None,
-    "object_store_memory": None,
     "dashboard_host": None,
     "dashboard_agent_listen_port": None,
 }
@@ -752,19 +776,17 @@ def _verify_node_options(node_options, block_keys, node_type):
 
         if key in block_keys:
             common_err_msg = (
-                f"Setting option {_convert_ray_node_options(key)} for {node_type} "
-                "is not allowed."
+                f"Setting the option '{key}' for {node_type} nodes is not allowed."
             )
             replacement_arg = block_keys[key]
             if replacement_arg:
                 raise ValueError(
-                    f"{common_err_msg} You should set '{replacement_arg}' argument "
+                    f"{common_err_msg} You should set the '{replacement_arg}' option "
                     "instead."
                 )
             else:
                 raise ValueError(
-                    f"{common_err_msg} The option is controlled by Ray on Spark "
-                    "routine."
+                    f"{common_err_msg} This option is controlled by Ray on Spark."
                 )
 
 
@@ -822,10 +844,16 @@ def setup_ray_cluster(
         head_node_options: A dict representing Ray head node extra options, these
             options will be passed to `ray start` script. Note you need to convert
             `ray start` options key from `--foo-bar` format to `foo_bar` format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
         worker_node_options: A dict representing Ray worker node extra options,
             these options will be passed to `ray start` script. Note you need to
             convert `ray start` options key from `--foo-bar` format to `foo_bar`
             format.
+            For flag options (e.g. '--disable-usage-stats'), you should set the value
+            to None in the option dict, like `{"disable_usage_stats": None}`.
+            Note: Short name options (e.g. '-v') are not supported.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
             created cluster will create a subdirectory
             "ray-{head_port}-{random_suffix}" beneath this path.
@@ -840,7 +868,7 @@ def setup_ray_cluster(
             collect their logs to the specified path. On Databricks Runtime, we
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
-            after databricks spark cluster terminated.
+            after Databricks spark cluster terminated.
 
     Returns:
         The address of the initiated Ray cluster on spark.
@@ -879,15 +907,22 @@ def setup_ray_cluster(
     spark = get_spark_session()
 
     spark_master = spark.sparkContext.master
+
+    is_spark_local_mode = spark_master == "local" or spark_master.startswith("local[")
+
     if not (
-        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
+        spark_master.startswith("spark://")
+        or spark_master.startswith("local-cluster[")
+        or is_spark_local_mode
     ):
         raise RuntimeError(
-            "Ray on Spark only supports spark cluster in standalone mode or "
-            "local-cluster mode"
+            "Ray on Spark only supports spark cluster in standalone mode, "
+            "local-cluster mode or spark local mode."
         )
 
-    if (
+    if is_spark_local_mode:
+        support_stage_scheduling = False
+    elif (
         is_in_databricks_runtime()
         and Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
     ):
@@ -937,7 +972,7 @@ def setup_ray_cluster(
                 "and number of 'spark.task.resource.gpu.amount' "
                 f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
                 "scheduling, you need to upgrade spark to 3.4 version or use "
-                "Databricks Runtime 12.x."
+                "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
     else:
         using_stage_scheduling = False
@@ -1007,23 +1042,24 @@ def setup_ray_cluster(
         else:
             _logger.warning("\n".join(insufficient_resources))
 
-    cluster = _setup_ray_cluster(
-        num_worker_nodes=num_worker_nodes,
-        num_cpus_per_node=num_cpus_per_node,
-        num_gpus_per_node=num_gpus_per_node,
-        using_stage_scheduling=using_stage_scheduling,
-        heap_memory_per_node=ray_worker_node_heap_mem_bytes,
-        object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
-        head_node_options=head_node_options,
-        worker_node_options=worker_node_options,
-        ray_temp_root_dir=ray_temp_root_dir,
-        collect_log_to_path=collect_log_to_path,
-    )
-    cluster.wait_until_ready()  # NB: this line might raise error.
+    with _active_ray_cluster_rwlock:
+        cluster = _setup_ray_cluster(
+            num_worker_nodes=num_worker_nodes,
+            num_cpus_per_node=num_cpus_per_node,
+            num_gpus_per_node=num_gpus_per_node,
+            using_stage_scheduling=using_stage_scheduling,
+            heap_memory_per_node=ray_worker_node_heap_mem_bytes,
+            object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
+            head_node_options=head_node_options,
+            worker_node_options=worker_node_options,
+            ray_temp_root_dir=ray_temp_root_dir,
+            collect_log_to_path=collect_log_to_path,
+        )
+        cluster.wait_until_ready()  # NB: this line might raise error.
 
-    # If connect cluster successfully, set global _active_ray_cluster to be the started
-    # cluster.
-    _active_ray_cluster = cluster
+        # If connect cluster successfully, set global _active_ray_cluster to be the
+        # started cluster.
+        _active_ray_cluster = cluster
     return cluster.address
 
 
@@ -1033,8 +1069,10 @@ def shutdown_ray_cluster() -> None:
     Shut down the active ray cluster.
     """
     global _active_ray_cluster
-    if _active_ray_cluster is None:
-        raise RuntimeError("No active ray cluster to shut down.")
 
-    _active_ray_cluster.shutdown()
-    _active_ray_cluster = None
+    with _active_ray_cluster_rwlock:
+        if _active_ray_cluster is None:
+            raise RuntimeError("No active ray cluster to shut down.")
+
+        _active_ray_cluster.shutdown()
+        _active_ray_cluster = None

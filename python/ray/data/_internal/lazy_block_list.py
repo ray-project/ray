@@ -2,14 +2,13 @@ import math
 import uuid
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
-import numpy as np
-
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.data._internal.stats import DatastreamStats, _get_or_create_stats_actor
+from ray.data._internal.util import _split_list
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -18,7 +17,7 @@ from ray.data.block import (
     BlockPartitionMetadata,
     MaybeBlockPartition,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource import ReadTask
 from ray.types import ObjectRef
 
@@ -27,13 +26,14 @@ class LazyBlockList(BlockList):
     """A BlockList that submits tasks lazily on-demand.
 
     This BlockList is used for implementing read operations (e.g., to avoid
-    needing to read all files of a Dataset when the user is just wanting to
+    needing to read all files of a Datastream when the user is just wanting to
     .take() the first few rows or view the schema).
     """
 
     def __init__(
         self,
         tasks: List[ReadTask],
+        read_stage_name: Optional[str] = None,
         block_partition_refs: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
         block_partition_meta_refs: Optional[List[ObjectRef[BlockMetadata]]] = None,
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
@@ -46,6 +46,8 @@ class LazyBlockList(BlockList):
 
         Args:
             tasks: The read tasks that will produce the blocks of this lazy block list.
+            read_stage_name: An optional name for the read stage, derived from the
+                underlying Datasource
             block_partition_refs: An optional list of already submitted read task
                 futures (i.e. block partition refs). This should be the same length as
                 the tasks argument.
@@ -56,10 +58,11 @@ class LazyBlockList(BlockList):
                 in cached_metadata represents the list of output blocks metadata per
                 the read task. One task can produce multiple output blocks.
             ray_remote_args: Ray remote arguments for the read tasks.
-            stats_uuid: UUID for the dataset stats, used to group and fetch read task
+            stats_uuid: UUID for the datastream stats, used to group and fetch read task
                 stats. If not provided, a new UUID will be created.
         """
         self._tasks = tasks
+        self._read_stage_name = read_stage_name
         self._num_blocks = len(self._tasks)
         if stats_uuid is None:
             stats_uuid = uuid.uuid4()
@@ -116,11 +119,11 @@ class LazyBlockList(BlockList):
             _, metadata = self._get_blocks_with_metadata()
         return metadata
 
-    def stats(self) -> DatasetStats:
-        """Create DatasetStats for this LazyBlockList."""
-        return DatasetStats(
-            # Make a copy of metadata, as the DatasetStats may mutate it in-place.
-            stages={"read": self.get_metadata(fetch_if_missing=False).copy()},
+    def stats(self) -> DatastreamStats:
+        """Create DatastreamStats for this LazyBlockList."""
+        return DatastreamStats(
+            # Make a copy of metadata, as the DatastreamStats may mutate it in-place.
+            stages={"Read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
             stats_uuid=self._stats_uuid,
@@ -129,6 +132,7 @@ class LazyBlockList(BlockList):
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(
             self._tasks.copy(),
+            read_stage_name=self._read_stage_name,
             block_partition_refs=self._block_partition_refs.copy(),
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),
             cached_metadata=self._cached_metadata,
@@ -157,22 +161,22 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
         num_splits = math.ceil(len(self._tasks) / split_size)
-        tasks = np.array_split(self._tasks, num_splits)
-        block_partition_refs = np.array_split(self._block_partition_refs, num_splits)
-        block_partition_meta_refs = np.array_split(
+        tasks = _split_list(self._tasks, num_splits)
+        block_partition_refs = _split_list(self._block_partition_refs, num_splits)
+        block_partition_meta_refs = _split_list(
             self._block_partition_meta_refs, num_splits
         )
-        cached_metadata = np.array_split(self._cached_metadata, num_splits)
+        cached_metadata = _split_list(self._cached_metadata, num_splits)
         output = []
         for t, b, m, c in zip(
             tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
         ):
             output.append(
                 LazyBlockList(
-                    t.tolist(),
-                    b.tolist(),
-                    m.tolist(),
-                    c.tolist(),
+                    t,
+                    b,
+                    m,
+                    c,
                     owned_by_consumer=self._owned_by_consumer,
                 )
             )
@@ -303,7 +307,7 @@ class LazyBlockList(BlockList):
         This will block on the completion of the underlying read tasks and will fetch
         all block metadata outputted by those tasks.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         block_refs, meta_refs = [], []
         for block_ref, meta_ref in self._iter_block_partition_refs():
             block_refs.append(block_ref)
@@ -311,7 +315,7 @@ class LazyBlockList(BlockList):
         if context.block_splitting_enabled:
             # If block splitting is enabled, fetch the partitions through generator.
             read_progress_bar = ProgressBar("Read progress", total=len(block_refs))
-            # Handle duplicates (e.g. due to unioning the same dataset).
+            # Handle duplicates (e.g. due to unioning the same datastream).
             unique_refs = list(set(block_refs))
             generators = read_progress_bar.fetch_until_complete(unique_refs)
 
@@ -337,7 +341,7 @@ class LazyBlockList(BlockList):
             return [], []
         read_progress_bar = ProgressBar("Read progress", total=len(meta_refs))
         # Fetch the metadata in bulk.
-        # Handle duplicates (e.g. due to unioning the same dataset).
+        # Handle duplicates (e.g. due to unioning the same datastream).
         unique_meta_refs = set(meta_refs)
         metadata = read_progress_bar.fetch_until_complete(list(unique_meta_refs))
         ref_to_data = {
@@ -355,7 +359,7 @@ class LazyBlockList(BlockList):
         """Kick off computation for the first block in the list.
 
         This is useful if looking to support rapid lightweight interaction with a small
-        amount of the dataset.
+        amount of the datastream.
         """
         if self._tasks:
             self._get_or_compute(0)
@@ -381,11 +385,11 @@ class LazyBlockList(BlockList):
         try:
             block_partition_ref, metadata_ref = next(self._iter_block_partition_refs())
         except (StopIteration, ValueError):
-            # Dataset is empty (no blocks) or was manually cleared.
+            # Datastream is empty (no blocks) or was manually cleared.
             pass
         else:
             # This blocks until the underlying read task is finished.
-            if DatasetContext.get_current().block_splitting_enabled:
+            if DataContext.get_current().block_splitting_enabled:
                 # If block splitting is enabled, get metadata as the last element
                 # in generator.
                 generator = ray.get(block_partition_ref)
@@ -442,7 +446,7 @@ class LazyBlockList(BlockList):
         Returns:
             An iterator of block references and the corresponding block metadata.
         """
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         outer = self
 
         class Iter:
@@ -564,7 +568,7 @@ class LazyBlockList(BlockList):
                         self._block_partition_meta_refs[j],
                     ) = self._submit_task(j)
             assert self._block_partition_refs[i], self._block_partition_refs
-            if not DatasetContext.get_current().block_splitting_enabled:
+            if not DataContext.get_current().block_splitting_enabled:
                 # Only check block metadata object reference if dynamic block
                 # splitting is off.
                 assert self._block_partition_meta_refs[
@@ -592,7 +596,7 @@ class LazyBlockList(BlockList):
             stats_actor.record_start.remote(self._stats_uuid)
             self._execution_started = True
         task = self._tasks[task_idx]
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         if context.block_splitting_enabled:
             return (
                 cached_remote_fn(_execute_read_task_split)
@@ -600,7 +604,7 @@ class LazyBlockList(BlockList):
                 .remote(
                     i=task_idx,
                     task=task,
-                    context=DatasetContext.get_current(),
+                    context=DataContext.get_current(),
                     stats_uuid=self._stats_uuid,
                     stats_actor=stats_actor,
                 ),
@@ -613,7 +617,7 @@ class LazyBlockList(BlockList):
                 .remote(
                     i=task_idx,
                     task=task,
-                    context=DatasetContext.get_current(),
+                    context=DataContext.get_current(),
                     stats_uuid=self._stats_uuid,
                     stats_actor=stats_actor,
                 )
@@ -640,11 +644,11 @@ class LazyBlockList(BlockList):
 def _execute_read_task_nosplit(
     i: int,
     task: ReadTask,
-    context: DatasetContext,
+    context: DataContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
 ) -> Tuple[Block, BlockMetadata]:
-    DatasetContext._set_current(context)
+    DataContext._set_current(context)
     stats = BlockExecStats.builder()
 
     # Execute the task. Expect only one block returned when dynamic block splitting is
@@ -664,7 +668,7 @@ def _execute_read_task_nosplit(
 def _execute_read_task_split(
     i: int,
     task: ReadTask,
-    context: DatasetContext,
+    context: DataContext,
     stats_uuid: str,
     stats_actor: ray.actor.ActorHandle,
 ) -> Iterable[Union[Block, List[BlockMetadata]]]:
@@ -674,7 +678,7 @@ def _execute_read_task_split(
     Example of return value for 3 blocks:
     (Block1, Block2, Block3, [BlockMetadata1, BlockMetadata2, BlockMetadata3])
     """
-    DatasetContext._set_current(context)
+    DataContext._set_current(context)
 
     # Execute the task.
     blocks = task()

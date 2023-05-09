@@ -77,8 +77,8 @@ struct NodeManagerConfig {
   std::vector<int> worker_ports;
   /// The soft limit of the number of workers.
   int num_workers_soft_limit;
-  /// Number of initial Python workers for the first job.
-  int num_initial_python_workers_for_first_job;
+  /// Number of initial Python workers to start when raylet starts.
+  int num_prestart_python_workers;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
@@ -654,13 +654,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<WorkerInterface> &worker,
       const NodeID &node_id,
       const MemorySnapshot &system_memory,
-      float usage_threshold,
-      bool should_retry) const;
+      float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
   const std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker) const;
+      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
@@ -827,9 +826,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
-
-  /// Resource message updated
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resource_message_udpated_;
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
