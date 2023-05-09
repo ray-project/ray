@@ -4,6 +4,8 @@ import datetime
 import gymnasium as gym
 import json
 import pathlib
+import socket
+import tempfile
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
@@ -35,6 +37,7 @@ from ray.rllib.utils.serialization import (
     serialize_type,
     deserialize_type,
 )
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
 
 
 ModuleID = str
@@ -61,6 +64,8 @@ class SingleAgentRLModuleSpec:
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
+        load_state_path: The path to the module state to load from. NOTE: This must be
+            an absolute path.
     """
 
     module_class: Optional[Type["RLModule"]] = None
@@ -68,6 +73,13 @@ class SingleAgentRLModuleSpec:
     action_space: Optional[gym.Space] = None
     model_config_dict: Optional[Mapping[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
+    load_state_path: Optional[str] = None
+
+    def __post_init__(self):
+        if self.load_state_path:
+            self._load_state_ip_addr = self._get_curr_node_ip_addr()
+        else:
+            self._load_state_ip_addr = None
 
     def get_rl_module_config(self) -> "RLModuleConfig":
         """Returns the RLModule config for this spec."""
@@ -90,7 +102,10 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Model config is not set.")
 
         module_config = self.get_rl_module_config()
-        return self.module_class(module_config)
+        module = self.module_class(module_config)
+        load_state_path = self._copy_state_from_remote_node_if_necessary()
+        module.load_state(load_state_path)
+        return module
 
     @classmethod
     def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
@@ -148,6 +163,36 @@ class SingleAgentRLModuleSpec:
         self.action_space = other.action_space or self.action_space
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
+
+    def _get_curr_node_ip_addr(self):
+        """Returns the current node's ip address."""
+        return socket.gethostbyname(socket.gethostname())
+
+    def _copy_state_from_remote_node_if_necessary(self) -> str:
+        """Creates a copy of the module state directory dir on the current node.
+
+        A copy of the module state is only created if the the node that self.build() is
+        being called from is different from the ip address of the node that contains
+        self.load_state_path.
+
+        Returns:
+            The path to the module state directory on the current node.
+
+        """
+        current_node_ip_addr = self._get_curr_node_ip_addr()
+
+        # If the current node is different from the node that contains the module state
+        # then copy the module state to the current node.
+        if current_node_ip_addr != self._load_state_ip_addr:
+            new_dir = tempfile.mkdtemp()
+            sync_dir_between_nodes(
+                self._load_state_ip_addr,
+                self.load_state_path,
+                current_node_ip_addr,
+                new_dir,
+            )
+            return new_dir
+        return self.load_state_path
 
 
 @ExperimentalAPI
