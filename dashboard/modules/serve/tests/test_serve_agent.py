@@ -549,6 +549,14 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         assert proxy.status == HTTPProxyStatus.HEALTHY
         assert os.path.exists("/tmp/ray/session_latest/logs" + proxy.log_file_path)
     print("Checked HTTP Proxy details.")
+    # Check controller info
+    assert serve_details.controller_info.actor_id
+    assert serve_details.controller_info.actor_name
+    assert serve_details.controller_info.node_id
+    assert serve_details.controller_info.node_ip
+    assert os.path.exists(
+        "/tmp/ray/session_latest/logs" + serve_details.controller_info.log_file_path
+    )
 
     app_details = serve_details.applications
     # CHECK: application details
