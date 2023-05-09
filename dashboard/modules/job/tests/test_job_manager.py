@@ -465,6 +465,19 @@ class TestRuntimeEnv:
         )
         assert job_manager.get_job_logs(job_id) == "233\n"
 
+    async def test_niceness(self, job_manager):
+        job_id = await job_manager.submit_job(
+            entrypoint=f"python {_driver_script_path('check_niceness.py')}",
+        )
+
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+        logs = job_manager.get_job_logs(job_id)
+        assert "driver 0" in logs
+        assert "worker 15" in logs
+
     async def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
         job_id_1 = await job_manager.submit_job(

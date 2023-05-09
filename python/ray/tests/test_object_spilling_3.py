@@ -315,7 +315,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
         if random.randint(0, 9) < 5:
             for _ in range(5):
                 ref = random.choice(replay_buffer)
-                sample = ray.get(ref, timeout=0)
+                sample = ray.get(ref, timeout=None)
                 assert np.array_equal(sample, arr)
     assert_no_thrashing(address["address"])
 
