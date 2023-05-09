@@ -10,7 +10,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
-    is_mounted,
+    _is_network_mount,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
@@ -216,19 +216,23 @@ def test_get_fs_and_path():
         assert find_error
 
 
-def test_is_mounted(tmp_path):
-    """Test `is_mounted` storage utility."""
-    # /dev is technically a mounted filesystem -- just using it for this test
-    assert is_mounted("/dev")
-    assert is_mounted("/dev/a/b/c")
+def test_is_network_mount(tmp_path, monkeypatch):
+    """Test `_is_network_mount` storage utility."""
+
+    with monkeypatch.context() as m:
+        import ray.air._internal.remote_storage
+
+        m.setattr(
+            ray.air._internal.remote_storage,
+            "_get_network_mounts",
+            lambda: [str(tmp_path)]
+        )
+        assert _is_network_mount(str(tmp_path / "a/b/c"))
 
     # Local paths should return False
-    assert not is_mounted(str(tmp_path / "ray_results"))
-    assert not is_mounted("~/ray_results")
-    assert not is_mounted("")  # cwd
-
-    # Exclude /, which is trivially a mounted local filesystem
-    assert not is_mounted("/")
+    assert not _is_network_mount(str(tmp_path / "ray_results"))
+    assert not _is_network_mount("~/ray_results")
+    assert not _is_network_mount("")  # cwd
 
 
 if __name__ == "__main__":

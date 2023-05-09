@@ -5,6 +5,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
+import psutil
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -136,34 +137,29 @@ def is_non_local_path_uri(uri: str) -> bool:
 _cached_fs = {}
 
 
-def is_mounted(path: str) -> bool:
-    """Checks if a path is within a mounted filesystem.
+def _get_network_mounts() -> List[str]:
+    """Get the mounted network filesystems.
 
-    This will return True for paths within NFS mounts, which is the main usage.
-
-    Example: /efs/a/b/c -> True
-    1. /nfs/a/b/c -> False
-    2. /nfs/a/b   -> False
-    3. /nfs/a     -> False
-    4. /nfs       -> True
-
-    Example: / -> False
-
-    Example: ~/ray_results -> False
-    1. /users/name/ray_results  -> False
-    2. /users/name              -> False
-    3. /users                   -> False
+    Network file system (NFS), server message block (SMB) and
+    common internet file system (CIFS) are all file access storage protocols,
+    used to access files on remote servers and storage servers (such as NAS storage)
+    as if they were local files.
     """
+    partitions = psutil.disk_partitions(all=True)
+    network_fstypes = ("nfs", "smbfs", "cifs")
+    return [p.mountpoint for p in partitions if p.fstype in network_fstypes]
+
+
+def _is_network_mount(path: str) -> bool:
+    """Checks if a path is within a mounted network filesystem."""
     resolved_path = Path(path).expanduser().resolve()
-    parents = list(resolved_path.parents)
-    if not parents:
-        return False
 
-    if resolved_path.is_mount():
-        return True
+    network_mounts = _get_network_mounts()
+    for network_mount in network_mounts:
+        if Path(network_mount) in resolved_path.parents:
+            return True
 
-    parents.pop()  # / is always a mounted filesystem, so ignore that
-    return any(parent.is_mount() for parent in parents)
+    return False
 
 
 def is_local_path(path: str) -> bool:

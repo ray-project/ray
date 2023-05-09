@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional, Set, Union
 import urllib.parse
 
-from ray.air._internal.remote_storage import is_mounted
+from ray.air._internal.remote_storage import _is_network_mount
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
@@ -162,7 +162,7 @@ def tag_ray_air_storage_config(
     if remote_path:
         # HDFS or cloud storage
         storage_config_tag = _get_tag_for_remote_path(remote_path)
-    elif is_mounted(local_path):
+    elif _is_network_mount(local_path):
         # NFS
         storage_config_tag = "nfs"
     else:
