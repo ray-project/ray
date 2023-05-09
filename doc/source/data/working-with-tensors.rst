@@ -33,40 +33,51 @@ Batches of fixed-shape tensors
 
 If your tensors have a fixed shape, Ray Data represents batches as regular ndarrays.
 
-.. doctest::
+.. testcode::
 
-    >>> import ray
-    >>> ds = ray.data.read_images("s3://anonymous@air-example-data/digits")
-    >>> batch = ds.take_batch(batch_size=32)
-    >>> batch["image"].shape
-    (32, 28, 28)
-    >>> batch["image"].dtype
+    import ray
+    ds = ray.data.read_images("s3://anonymous@air-example-data/digits")
+    batch = ds.take_batch(batch_size=32)
+    batch["image"].shape
+    batch["image"].dtype
     dtype('uint8')
+
+.. testoutput::
+
+    (32, 28, 28)
+    dtype('uint8')
+
 
 Batches of variable-shape tensors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your tensors vary in shape, Ray Data represents batches as ragged arrays.
 
-.. doctest::
+.. testcode::
 
-    >>> import ray
-    >>> ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
-    >>> batch = ds.take_batch(batch_size=32)
-    >>> batch["image"].shape
+    import ray
+    ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
+    batch = ds.take_batch(batch_size=32)
+    batch["image"].shape
+    batch["image"].dtype
+
+.. testoutput::
+
     (32,)
-    >>> batch["image"].dtype
     dtype('O')
 
 Elements of ragged arrays are regular ndarrays.
 
-.. doctest::
+.. testcode::
 
-    >>> batch["image"][0].dtype
+    batch["image"][0].dtype
     dtype('uint8')
-    >>> batch["image"][0].shape  # doctest: +SKIP
+    batch["image"][0].shape  # doctest: +SKIP
+    batch["image"][3].shape  # doctest: +SKIP
+
+.. testoutput::
+
     (375, 500, 3)
-    >>> batch["image"][3].shape  # doctest: +SKIP
     (333, 465, 3)
 
 
