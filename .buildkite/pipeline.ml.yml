@@ -530,7 +530,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials,-timeseries_libs,-gpu,-py37,-post_wheel_build doc/...
 
 
-- label: ":tv: :brain: RLlib Contrib: A3C Tests"
+- label: ":exploding_death_star: RLlib Contrib: A3C Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -540,3 +540,14 @@
     - pip install -r requirements.txt
     - pip install -e .
     - pytest tests/test_a3c.py
+  
+  - label: ":exploding_death_star: RLlib Contrib: MAML Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - cd rllib_contrib/maml
+    - pip install -r requirements.txt
+    - pip install -e .
+    - pytest tests/test_maml.py
