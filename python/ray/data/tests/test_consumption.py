@@ -1294,11 +1294,8 @@ def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
     expected_str = (
-        "MaterializedDataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
-        "   schema={1: float64, a: float64}\n"
-        ")"
+        "MaterializedDataset(num_blocks=1, num_rows=10, "
+        "schema={1: float64, a: float64})"
     )
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
