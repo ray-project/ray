@@ -817,7 +817,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"deploy_mode": "UNSET", "applications": {}}
+        return {"deploy_mode": "UNSET", "controller_info": {}, "applications": {}}
 
 
 @PublicAPI(stability="beta")
