@@ -105,8 +105,7 @@ class TestSupportedSpacesPPO(unittest.TestCase):
 class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        # ray.init(num_gpus=1)
-        ray.init()
+        ray.init(num_gpus=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
