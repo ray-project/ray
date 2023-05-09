@@ -348,6 +348,31 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
     assert sync_id == async_id
 
 
+def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_shared):
+    # It is a regression test.
+    # https://github.com/ray-project/ray/issues/32376
+    # Make sure the core worker doesn't crash when
+    # exit_actor is used when async & regular actor tasks
+    # are executed.
+    @ray.remote
+    class A:
+        async def f(self):
+            await asyncio.sleep(1)
+            ray.actor.exit_actor()
+
+        def ping(self):
+            pass
+
+    a = A.remote()
+    a.f.remote()
+
+    with pytest.raises(
+        ray.exceptions.RayActorError,
+        match=("exit_actor"),
+    ):
+        ray.get([a.ping.remote() for _ in range(10000)])
+
+
 if __name__ == "__main__":
     import pytest
 
