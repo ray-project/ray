@@ -660,14 +660,6 @@ tutorials and examples:
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
-
-            Scalable Batch Inference with Ray for Semantic Segmentation
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
         .. button-ref:: /data/examples/nyc_taxi_basic_processing
 
             Batch Inference on NYC taxi data using Ray Data
