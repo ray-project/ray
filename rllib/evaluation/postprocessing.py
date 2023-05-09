@@ -2,12 +2,15 @@ import numpy as np
 import scipy.signal
 from typing import Dict, Optional
 
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import AgentID
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import AgentID
 
 
 @DeveloperAPI
@@ -197,15 +200,18 @@ def compute_gae_for_sample_batch(
             # correct? Does this mean that I need to preserve the trajectory
             # information during training and compute the advantages inside the loss
             # function?
-            # TODO (Kourosh)
-            # Another thing I need to figure out is which end point to call here?
-            # forward_exploration? what if this method is getting called inside the
-            # learner loop? or via another abstraction like
-            # RLSampler.postprocess_trajectory() which is non-batched cpu/gpu task
-            # running across different processes for different trajectories?
-            # This implementation right now will compute even the action_dist which
-            # will not be needed but takes time to compute.
-            input_dict = policy._lazy_tensor_dict(input_dict)
+            # TODO (Kourosh): Another thing we need to figure out is which end point
+            #  to call here (why forward_exploration)? What if this method is getting
+            #  called inside the learner loop or via another abstraction like
+            #  RLSampler.postprocess_trajectory() which is non-batched cpu/gpu task
+            #  running across different processes for different trajectories?
+            #  This implementation right now will compute even the action_dist which
+            #  will not be needed but takes time to compute.
+            if policy.framework == "torch":
+                input_dict = convert_to_torch_tensor(input_dict)
+            # TODO (sven): Fix this once we support RNNs on the new stack.
+            input_dict[STATE_IN] = input_dict[SampleBatch.SEQ_LENS] = None
+            input_dict = NestedDict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
             last_r = fwd_out[SampleBatch.VF_PREDS][-1]
         else:

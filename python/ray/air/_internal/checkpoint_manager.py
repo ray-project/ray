@@ -55,11 +55,6 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
-        local_dir_to_remote_uri_fn: Function that takes in this checkpoint's local
-            directory path and returns the corresponding remote URI in the cloud.
-            This should only be specified if the data was synced to cloud.
-            Only applied during conversion to AIR checkpoint and only
-            if ``dir_or_data`` is or resolves to a directory path.
     """
 
     def __init__(
@@ -69,16 +64,12 @@ class _TrackedCheckpoint:
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
-        local_to_remote_path_fn: Optional[Callable[[str], str]] = None,
     ):
         from ray.tune.result import NODE_IP
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
-        # This is a function because dir_or_data may be an object ref
-        # and we need to wait until its resolved first.
-        self.local_to_remote_path_fn = local_to_remote_path_fn
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
@@ -142,7 +133,31 @@ class _TrackedCheckpoint:
         except Exception as e:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
-    def to_air_checkpoint(self) -> Optional[Checkpoint]:
+    def to_air_checkpoint(
+        self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
+    ) -> Optional[Checkpoint]:
+        """Converter from a `_TrackedCheckpoint` to a `ray.air.Checkpoint`.
+
+        This method Resolves the checkpoint data if it is an object reference.
+
+        This method handles multiple types of checkpoint data:
+        - If the data is a string (local checkpoint path), this returns a
+          directory-backed checkpoint.
+            - If a `local_to_remote_path_fn` is provided, this converts
+              local path to a remote URI, then returns a URI-backed checkpoint.
+        - If the data is bytes or a dictionary, it returns an in-memory
+          bytes/dict-backed checkpoint.
+
+        Args:
+            local_to_remote_path_fn: Function that takes in this checkpoint's local
+                directory path and returns the corresponding remote URI in the cloud.
+                This should only be specified if the data was synced to cloud.
+                Only applied during conversion to AIR checkpoint and only
+                if ``dir_or_data`` is or resolves to a directory path.
+
+        Returns:
+            Checkpoint: The AIR checkpoint backed by the resolved data.
+        """
         from ray.tune.trainable.util import TrainableUtil
 
         checkpoint_data = self.dir_or_data
@@ -158,9 +173,9 @@ class _TrackedCheckpoint:
 
         if isinstance(checkpoint_data, str):
             # Prefer cloud checkpoints
-            if self.local_to_remote_path_fn:
+            if local_to_remote_path_fn:
                 checkpoint = Checkpoint.from_uri(
-                    self.local_to_remote_path_fn(checkpoint_data)
+                    local_to_remote_path_fn(checkpoint_data)
                 )
             else:
                 try:

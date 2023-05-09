@@ -1,7 +1,7 @@
 .. _data-representations:
 
-Data Representations
-====================
+Data Representations (internal)
+===============================
 
 .. currentmodule:: ray.data
 
@@ -34,7 +34,7 @@ Row API
 
    row.TableRow
 
-.. _dataset-tensor-extension-api:
+.. _datastream-tensor-extension-api:
 
 Tensor Column Extension API
 ---------------------------

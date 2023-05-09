@@ -11,10 +11,12 @@ from ray.serve._private.common import (
     DeploymentInfo,
     ReplicaState,
     ServeDeployMode,
+    HTTPProxyStatus,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def _route_prefix_format(cls, v):
@@ -304,9 +306,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     """
 
     name: str = Field(
-        # TODO(cindy): eventually we should set the default app name to a non-empty
-        # string and forbid empty app names.
-        default="",
+        default=SERVE_DEFAULT_APP_NAME,
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -320,6 +320,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
+        ...,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -357,7 +358,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     deployments: List[DeploymentSchema] = Field(
         default=[],
-        description=("Deployment options that override options specified in the code."),
+        description="Deployment options that override options specified in the code.",
+    )
+    args: Dict = Field(
+        default={},
+        description="Arguments that will be passed to the application builder.",
     )
 
     @validator("runtime_env")
@@ -532,8 +537,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
-        default=[],
-        description=("The set of Serve applications to run on the Ray cluster."),
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")
@@ -629,6 +633,12 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "The time at which the replica actor was started. If the controller dies, "
             "this is the time at which the controller recovers and retrieves replica "
             "state from the running replica actor."
+        )
+    )
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
         )
     )
 
@@ -756,6 +766,23 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
+class HTTPProxyDetails(BaseModel):
+    node_id: str = Field(description="ID of the node that the HTTP Proxy is running on")
+    node_ip: str = Field(
+        description="IP address of the node that the HTTP Proxy is running on."
+    )
+    actor_id: str = Field(description="ID of the HTTP Proxy actor.")
+    actor_name: str = Field(description="Name of the HTTP Proxy actor.")
+    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
     Serve metadata with system-level info and details on all applications deployed to
@@ -773,6 +800,11 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    http_proxies: Optional[Dict[str, HTTPProxyDetails]] = Field(
+        description=(
+            "Mapping from node_id to details about the HTTP Proxy running on that node."
+        )
+    )
     deploy_mode: ServeDeployMode = Field(
         description=(
             "Whether a single-app config of format ServeApplicationSchema or multi-app "

@@ -45,8 +45,8 @@ trainer = XGBoostTrainer(
     datasets={"train": train_dataset, "valid": valid_dataset},
     preprocessor=preprocessor,
 )
-result = trainer.fit()
-print(result.metrics)
+best_result = trainer.fit()
+print(best_result.metrics)
 # __air_xgb_train_end__
 
 # __air_xgb_tuner_start__

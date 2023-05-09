@@ -21,6 +21,9 @@
 				"stable": {
 					"type": "boolean"
 				},
+				"jailed": {
+					"type": "boolean"
+				},
 				"python": {
 					"type": "string",
 					"enum": [
@@ -107,14 +110,6 @@
 						"job",
 						"client",
 						"anyscale_job"
-					]
-				},
-				"file_manager": {
-					"type": "string",
-					"enum": [
-						"sdk",
-						"client",
-						"job"
 					]
 				},
 				"wait_for_nodes": {

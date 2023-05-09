@@ -32,9 +32,14 @@ namespace rpc {
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
-/// For testing
-/// Drain the executor and reset it.
-void DrainAndResetServerCallExecutor();
+/// Drain the executor.
+void DrainServerCallExecutor();
+
+/// Reset the server call executor.
+/// Testing only. After you drain the executor
+/// you need to regenerate the executor
+/// because they are global.
+void ResetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
@@ -198,6 +203,14 @@ class ServerCallImpl : public ServerCall {
       // set. So that the it can be populated by the completion queue in the background if
       // a new request comes in.
       factory.CreateCall();
+    }
+    // TODO(jjyao) Remove after debugging is done.
+    if (call_name_ == "NodeManagerService.grpc_server.UpdateResourceUsage") {
+      static std::string gcs_address = "";
+      if (gcs_address == "" || gcs_address != context_.peer()) {
+        gcs_address = context_.peer();
+        RAY_LOG(INFO) << "Handle " << call_name_ << " request from " << context_.peer();
+      }
     }
     (service_handler_.*handle_request_function_)(
         std::move(request_),

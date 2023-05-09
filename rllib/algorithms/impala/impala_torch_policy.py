@@ -201,13 +201,18 @@ class ImpalaTorchPolicy(
             ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
         )
 
-        VTraceOptimizer.__init__(self)
-        # Need to initialize learning rate variable before calling
-        # TorchPolicyV2.__init__.
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-        EntropyCoeffSchedule.__init__(
-            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-        )
+        # If Learner API is used, we don't need any loss-specific mixins.
+        # However, we also would like to avoid creating special Policy-subclasses
+        # for this as the entire Policy concept will soon not be used anymore with
+        # the new Learner- and RLModule APIs.
+        if not config.get("_enable_learner_api"):
+            VTraceOptimizer.__init__(self)
+            # Need to initialize learning rate variable before calling
+            # TorchPolicyV2.__init__.
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
 
         TorchPolicyV2.__init__(
             self,
@@ -217,7 +222,6 @@ class ImpalaTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicyV2)

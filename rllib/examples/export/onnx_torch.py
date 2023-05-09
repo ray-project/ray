@@ -1,8 +1,4 @@
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
+from packaging.version import Version
 import numpy as np
 import ray
 import ray.rllib.algorithms.ppo as ppo

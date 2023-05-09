@@ -61,6 +61,7 @@
       }
     ]
   },
+  "rayMeta": ["excludesSystemRoutes"],
   "time": {
     "from": "now-30m",
     "to": "now"
