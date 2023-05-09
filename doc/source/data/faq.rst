@@ -295,9 +295,6 @@ standalone Python objects. In addition to unification and simplicity benefits, t
 aligns the Ray Data API closer to industry-standard distributed data APIs like Apache
 Spark and also emerging standards for machine learning datasets like HuggingFace.
 
-Migrating to Ray 2.5
-~~~~~~~~~~~~~~~~~~~~
-
 You can disable strict mode temporarily by setting the environment variable
 ``RAY_DATA_STRICT_MODE=0`` on all cluster processes. Strict mode will not be
 possible to disable in future releases.
