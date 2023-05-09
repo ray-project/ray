@@ -116,7 +116,7 @@ Reading image data
             :dedent:
 
 
-For more information on creating datastreams, see :ref:`Loading Data <creating_datastreams>`.
+For more information on creating datastreams, see :ref:`Loading Data <loading_data>`.
 
 
 Transforming images
@@ -157,7 +157,7 @@ standard way to preprocess data with Ray.
 
 For more information on transforming data, see
 :ref:`Using Preprocessors <air-preprocessors>` and
-:ref:`Transforming Data <transforming_datastreams>`.
+:ref:`Transforming Data <transforming_data>`.
 
 Training vision models
 ----------------------
