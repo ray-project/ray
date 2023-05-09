@@ -46,6 +46,9 @@ class CallbackReply {
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
 
+  /// Whether an error happened;
+  bool IsError() const;
+
   /// Read this reply data as an integer.
   int64_t ReadAsInteger() const;
 
@@ -114,12 +117,17 @@ class RedisCallbackManager {
   }
 
   struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
-    CallbackItem() = default;
-
+    CallbackItem()
+        : pending_retries_(RayConfig::instance().num_redis_request_retries()) {}
     CallbackItem(const RedisCallback &callback,
+                 std::function<void()> retry_fn,
                  int64_t start_time,
                  instrumented_io_context &io_service)
-        : callback_(callback), start_time_(start_time), io_service_(&io_service) {}
+        : pending_retries_(RayConfig::instance().num_redis_request_retries()),
+          retry_fn_(std::move(retry_fn)),
+          callback_(callback),
+          start_time_(start_time),
+          io_service_(&io_service) {}
 
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
@@ -129,17 +137,27 @@ class RedisCallbackManager {
       }
     }
 
+    bool Retry() {
+      if(pending_retries_ == 0) {
+        return false;
+      }
+      --pending_retries_;
+      retry_fn_();
+      return true;
+    }
+
+    size_t pending_retries_;
+    std::function<void()> retry_fn_;
+
     RedisCallback callback_;
     int64_t start_time_;
     instrumented_io_context *io_service_;
   };
 
-  /// Allocate an index at which we can add a callback later on.
-  int64_t AllocateCallbackIndex();
-
   /// Add a callback at an optionally specified index.
-  int64_t AddCallback(const RedisCallback &function,
-                      instrumented_io_context &io_service,
+  int64_t AddCallback(instrumented_io_context &io_service,
+                      const RedisCallback &function,
+                      std::function<void()> retry,
                       int64_t callback_index = -1);
 
   /// Remove a callback.

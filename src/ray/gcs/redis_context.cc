@@ -39,16 +39,19 @@ void ProcessCallback(int64_t callback_index,
                                  << "but it actually is " << callback_index;
   auto callback_item =
       ray::gcs::RedisCallbackManager::instance().GetCallback(callback_index);
+  if(callback_reply->IsError() && callback_item->Retry()) {
+    RAY_LOG(WARNING) << "Redis request failed, retry the request.";
+  } else {
+    // Record the redis latency
+    auto end_time = absl::GetCurrentTimeNanos() / 1000;
+    ray::stats::GcsLatency().Record(end_time - callback_item->start_time_);
 
-  // Record the redis latency
-  auto end_time = absl::GetCurrentTimeNanos() / 1000;
-  ray::stats::GcsLatency().Record(end_time - callback_item->start_time_);
+    // Dispatch the callback.
+    callback_item->Dispatch(callback_reply);
 
-  // Dispatch the callback.
-  callback_item->Dispatch(callback_reply);
-
-  // Delete the callback
-  ray::gcs::RedisCallbackManager::instance().RemoveCallback(callback_index);
+    // Delete the callback
+    ray::gcs::RedisCallbackManager::instance().RemoveCallback(callback_index);
+  }
 }
 
 }  // namespace
@@ -97,6 +100,10 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     RAY_LOG(ERROR) << "Encountered unexpected redis reply type: " << reply_type_;
   }
   }
+}
+
+bool CallbackReply::IsError() const {
+  return reply_type_ == REDIS_REPLY_ERROR;
 }
 
 void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
@@ -184,13 +191,9 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   ProcessCallback(callback_index, std::make_shared<CallbackReply>(reply));
 }
 
-int64_t RedisCallbackManager::AllocateCallbackIndex() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return num_callbacks_++;
-}
-
-int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
-                                          instrumented_io_context &io_service,
+int64_t RedisCallbackManager::AddCallback(instrumented_io_context &io_service,
+                                          const RedisCallback &function,
+                                          std::function<void()> retry,
                                           int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
@@ -201,7 +204,7 @@ int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
     num_callbacks_++;
   }
   callback_items_.emplace(
-      callback_index, std::make_shared<CallbackItem>(function, start_time, io_service));
+      callback_index, std::make_shared<CallbackItem>(function, std::move(retry), start_time, io_service));
   return callback_index;
 }
 
@@ -560,6 +563,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
     argv.push_back(args[i].data());
     argc.push_back(args[i].size());
   }
+
   int64_t callback_index =
       RedisCallbackManager::instance().AddCallback(redis_callback, io_service_);
   // Run the Redis command.
