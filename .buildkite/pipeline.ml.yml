@@ -544,7 +544,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
     # Install mujoco necessary for the testing environments
-    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 -y
+    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
     - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
     - mkdir /root/.mujoco
     - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
