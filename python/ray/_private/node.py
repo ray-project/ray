@@ -344,6 +344,13 @@ class Node:
             return
         ray._private.utils.check_version_info(cluster_metadata)
 
+    def _should_start_api_server(self):
+        if self.head and len(self._ray_params.node_services) == 0:
+            return True
+        if self._ray_params.include_dashboard is True:
+            return True
+        return False
+
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
         # as we're already in the exit procedure.
@@ -1163,25 +1170,6 @@ class Node:
         if not self._ray_params.no_monitor:
             self.start_monitor()
 
-        if self._ray_params.ray_client_server_port:
-            self.start_ray_client_server()
-
-        if self._ray_params.include_dashboard is None:
-            # Default
-            include_dashboard = True
-            raise_on_api_server_failure = False
-        elif self._ray_params.include_dashboard is False:
-            include_dashboard = False
-            raise_on_api_server_failure = False
-        else:
-            include_dashboard = True
-            raise_on_api_server_failure = True
-
-        self.start_api_server(
-            include_dashboard=include_dashboard,
-            raise_on_failure=raise_on_api_server_failure,
-        )
-
     def start_ray_processes(self):
         """Start all of the processes on the node."""
         logger.debug(
@@ -1222,6 +1210,24 @@ class Node:
         self.start_raylet(plasma_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
+        if self._ray_params.ray_client_server_port:
+            self.start_ray_client_server()
+        if self._should_start_api_server():
+            if self._ray_params.include_dashboard is None:
+                # Default
+                include_dashboard = True
+                raise_on_api_server_failure = False
+            elif self._ray_params.include_dashboard is False:
+                include_dashboard = False
+                raise_on_api_server_failure = False
+            else:
+                include_dashboard = True
+                raise_on_api_server_failure = True
+
+            self.start_api_server(
+                include_dashboard=include_dashboard,
+                raise_on_failure=raise_on_api_server_failure,
+            )
 
     def _kill_process_type(
         self,
