@@ -132,7 +132,6 @@ def get_owner_info(node_ids):
 
 
 def test_node_object_metrics(ray_start_cluster, monkeypatch):
-    monkeypatch.setenv("RAY_lineage_pinning_enabled", "0")
     NUM_NODES = 3
     cluster = ray_start_cluster
     for i in range(NUM_NODES):
