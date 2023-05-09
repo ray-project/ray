@@ -132,6 +132,5 @@ enum TagKey {
   TUNE_SCHEDULER = 502;
 
   // Storage configuration for distributed AIR experiment
-  // One of: {"local+no_sync", "local+sync", "s3", "gs", "nfs", "hdfs", "Custom"}
-  AIR_STORAGE_CONFIGURATION = 506;
+  AIR_STORAGE_CONFIGURATION = 507;
 }
