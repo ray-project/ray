@@ -289,24 +289,6 @@ class Node:
 
         if not connect_only:
             self.start_ray_processes()
-            # we should update the address info after the node has been started
-            try:
-                ray._private.services.wait_for_node(
-                    self.gcs_address,
-                    self._plasma_store_socket_name,
-                )
-            except TimeoutError as te:
-                raise Exception(
-                    "The current node timed out during startup. This "
-                    "could happen because some of the Ray processes "
-                    "failed to startup."
-                ) from te
-            node_info = ray._private.services.get_node_to_connect_for_driver(
-                self.gcs_address,
-                self._raylet_ip_address,
-            )
-            if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info["node_manager_port"]
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -1204,21 +1186,42 @@ class Node:
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
-        resource_spec = self.get_resource_spec()
-        (
-            plasma_directory,
-            object_store_memory,
-        ) = ray._private.services.determine_plasma_store_config(
-            resource_spec.object_store_memory,
-            plasma_directory=self._ray_params.plasma_directory,
-            huge_pages=self._ray_params.huge_pages,
-        )
-        self.start_raylet(plasma_directory, object_store_memory)
-        if self._ray_params.include_log_monitor:
-            self.start_log_monitor()
+        if self._should_start_raylet():
+            resource_spec = self.get_resource_spec()
+            (
+                plasma_directory,
+                object_store_memory,
+            ) = ray._private.services.determine_plasma_store_config(
+                resource_spec.object_store_memory,
+                plasma_directory=self._ray_params.plasma_directory,
+                huge_pages=self._ray_params.huge_pages,
+            )
+            self.start_raylet(plasma_directory, object_store_memory)
+            if self._ray_params.include_log_monitor:
+                self.start_log_monitor()
 
-        if self._ray_params.ray_client_server_port:
-            self.start_ray_client_server()
+            # we should update the address info after the node has been started
+            try:
+                ray._private.services.wait_for_node(
+                    self.gcs_address,
+                    self._plasma_store_socket_name,
+                )
+            except TimeoutError as te:
+                raise Exception(
+                    "The current node timed out during startup. This "
+                    "could happen because some of the Ray processes "
+                    "failed to startup."
+                ) from te
+
+            node_info = ray._private.services.get_node_to_connect_for_driver(
+                self.gcs_address,
+                self._raylet_ip_address,
+            )
+            if self._ray_params.node_manager_port == 0:
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
+
+            if self._ray_params.ray_client_server_port:
+                self.start_ray_client_server()
 
         if self._should_start_api_server():
             if self._ray_params.include_dashboard is None:
