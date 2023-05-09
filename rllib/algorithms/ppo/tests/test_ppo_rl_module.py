@@ -81,6 +81,7 @@ def dummy_tf_ppo_loss(module, batch, fwd_out):
     Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
 
     Args:
+        module: PPOTfRLModule
         batch: SampleBatch used for training.
         fwd_out: Forward output of the model.
 
