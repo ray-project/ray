@@ -5,7 +5,6 @@ import pandas  # noqa
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
-from ray.data.dataset import Dataset
 from ray.data.dataset import Dataset, Schema
 from ray.data.context import DatasetContext, DataContext
 from ray.data.iterator import DatasetIterator, DataIterator
@@ -55,7 +54,6 @@ _cached_cls = None
 __all__ = [
     "ActorPoolStrategy",
     "Dataset",
-    "Dataset",  # Backwards compatibility alias.
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",
