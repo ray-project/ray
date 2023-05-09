@@ -76,14 +76,14 @@ def _validate_key_fn(
 ) -> None:
     """Check the key function is valid on the given schema."""
     if schema is None:
-        # Datastream is empty/cleared, validation not possible.
+        # Dataset is empty/cleared, validation not possible.
         return
     ctx = ray.data.DataContext.get_current()
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
             raise ValueError(
-                "String key '{}' requires datastream format to be "
+                "String key '{}' requires dataset format to be "
                 "'arrow' or 'pandas', was 'simple'.".format(key)
             )
         if len(schema.names) > 0 and key not in schema.names:
@@ -96,13 +96,13 @@ def _validate_key_fn(
     elif key is None:
         if not is_simple_format:
             raise ValueError(
-                "The `None` key '{}' requires datastream format to be "
+                "The `None` key '{}' requires dataset format to be "
                 "'simple'.".format(key)
             )
     elif callable(key):
         if not is_simple_format:
             raise ValueError(
-                "Callable key '{}' requires datastream format to be "
+                "Callable key '{}' requires dataset format to be "
                 "'simple'".format(key)
             )
     else:
@@ -472,7 +472,7 @@ class BlockAccessor:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(block)}: "
                     "Standalone Python objects are not "
-                    "allowed in strict mode. To use Python objects in a datastream, "
+                    "allowed in strict mode. To use Python objects in a dataset, "
                     "wrap them in a dict of numpy arrays, e.g., "
                     "return `{'item': np.array(batch)}` instead of just `batch`."
                 )

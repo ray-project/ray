@@ -1,4 +1,4 @@
-from ray.data.datastream import Datastream
+from ray.data.dataset import Dataset
 
 # Backwards compatibility alias.
-Dataset = Datastream
+Dataset = Dataset
