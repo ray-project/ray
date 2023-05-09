@@ -208,7 +208,11 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
-    job_table_data->set_driver_ip_address("127.0.0.1");
+    rpc::Address address;
+    address.set_ip_address("127.0.0.1");
+    address.set_port(1234);
+    address.set_raylet_id(UniqueID::FromRandom().Binary());
+    job_table_data->mutable_driver_address()->CopyFrom(address);
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }

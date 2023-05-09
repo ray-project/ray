@@ -415,7 +415,13 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
   auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
-  add_job_request->mutable_data()->set_driver_ip_address("10.0.0.1");
+
+  rpc::Address address;
+  address.set_ip_address("10.0.0.1");
+  address.set_port(8264);
+  address.set_raylet_id(ClientID::FromRandom().Binary());
+  add_job_request->mutable_data()->mutable_driver_address()->CopyFrom(address);
+
   add_job_request->mutable_data()->set_driver_pid(8264);
 
   rpc::AddJobReply empty_reply;
@@ -457,7 +463,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
   rpc::JobTableData data = all_job_info_reply.job_info_list().Get(0);
-  ASSERT_EQ(data.driver_ip_address(), "10.0.0.1");
+  ASSERT_EQ(data.driver_address().ip_address(), "10.0.0.1");
   ASSERT_EQ(data.driver_pid(), 8264);
 }
 

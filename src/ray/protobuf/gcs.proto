@@ -367,8 +367,8 @@ message JobTableData {
   bool is_dead = 2;
   // The UNIX timestamp corresponding to this event (job added or removed).
   int64 timestamp = 3;
-  // IP address of the driver that started this job.
-  string driver_ip_address = 4;
+  // Address of the driver that started this job.
+  Address driver_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
   // The config of this job.

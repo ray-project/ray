@@ -605,7 +605,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
                 << job_data.driver_pid() << " is dead: " << job_data.is_dead()
-                << " driver address: " << job_data.driver_ip_address();
+                << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -1374,8 +1374,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                send_reply_callback = std::move(send_reply_callback)](const Status &status,
                                                                      int assigned_port) {
       if (status.ok()) {
+        rpc::Address driver_address;
+        // Assume raylet ID is the same as the node ID.
+        driver_address.set_raylet_id(self_node_id_.Binary());
+        driver_address.set_ip_address(worker_ip_address);
+        driver_address.set_port(assigned_port);
         auto job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, worker_ip_address, pid, entrypoint, job_config);
+            job_id, /*is_dead*/ false, driver_address, pid, entrypoint, job_config);
+
         RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
             job_data_ptr,
             [send_reply_callback = std::move(send_reply_callback), assigned_port](
