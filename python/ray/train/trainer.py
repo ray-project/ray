@@ -116,8 +116,7 @@ class TrainingIterator:
                 self._run_dir,
                 self._dataset_spec,
                 self._checkpoint_manager.latest_checkpoint,
-                self._checkpoint_strategy,
-                latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
+                self._checkpoint_manager.latest_checkpoint_id,
             )
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:

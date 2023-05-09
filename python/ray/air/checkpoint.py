@@ -577,6 +577,7 @@ class Checkpoint:
                         shutil.copytree(
                             str(local_path_pathlib.absolute()),
                             str(path_pathlib.absolute()),
+                            dirs_exist_ok=True,
                         )
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
