@@ -397,10 +397,10 @@ def debug(address):
     help="provide this argument for the head node",
 )
 @click.option(
-    "--with-gcs",
-    is_flag=True,
+    "--start-gcs",
+    is_flag=False,
     default=False,
-    help="Start GCS on the head node",
+    help="Only start GCS on the head node",
 )
 @click.option(
     "--include-dashboard",
@@ -560,7 +560,7 @@ def start(
     num_gpus,
     resources,
     head,
-    with_gcs,
+    start_gcs,
     include_dashboard,
     dashboard_host,
     dashboard_port,
@@ -624,14 +624,10 @@ def start(
             "All the worker nodes will use the same temp_dir as a head node. "
         )
         temp_dir = None
-    if with_gcs and not head:
+    if start_gcs is True and not head:
         cli_logger.error(
-            "{} and can be be used with {}.", cf.bold("--with-gcs"), cf.bold("--head")
+            "{} and can be be used with {}.", cf.bold("--start-gcs"), cf.bold("--head")
         )
-
-    node_services = []
-    if with_gcs:
-        node_services.append(ray._private.ray_constants.PROCESS_TYPE_GCS_SERVER)
 
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
@@ -669,7 +665,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        node_services=node_services,
+        start_gcs=start_gcs,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -677,7 +673,6 @@ def start(
 
     if head:
         # Start head node.
-
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
         usage_lib.show_usage_stats_prompt(cli=True)

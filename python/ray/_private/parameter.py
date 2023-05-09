@@ -180,7 +180,7 @@ class RayParams:
         env_vars: Optional[Dict[str, str]] = None,
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
-        node_services: List = [],
+        start_gcs: bool = False,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -237,7 +237,7 @@ class RayParams:
         self.env_vars = env_vars
         self.session_name = session_name
         self.webui = webui
-        self.node_services = node_services
+        self.start_gcs = start_gcs
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()

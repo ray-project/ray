@@ -344,8 +344,13 @@ class Node:
             return
         ray._private.utils.check_version_info(cluster_metadata)
 
+    def _should_start_raylet(self):
+        if self.head:
+            return self._ray_params.start_gcs is False
+        return True
+
     def _should_start_api_server(self):
-        if self.head and len(self._ray_params.node_services) == 0:
+        if self.head and self._ray_params.start_gcs is False:
             return True
         if self._ray_params.include_dashboard is True:
             return True
@@ -1212,6 +1217,7 @@ class Node:
             self.start_log_monitor()
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
+
         if self._should_start_api_server():
             if self._ray_params.include_dashboard is None:
                 # Default
