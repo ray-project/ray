@@ -25,7 +25,7 @@ RLlib is already used in production by industry leaders in many different vertic
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
 
-You can also read about `RLlib Key Concepts. <https://docs.ray.io/en/master/rllib/core-concepts.html>`_
+You can also read about `RLlib Key Concepts. <https://docs.ray.io/en/master/rllib/key-concepts.html>`_
 
 
 Installation and Setup
