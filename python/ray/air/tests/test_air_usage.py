@@ -61,10 +61,19 @@ _storage_test_configs = [
     _storage_test_configs,
     ids=[str(config) for config in _storage_test_configs],
 )
-def test_tag_ray_air_storage_config(tmp_path, storage_test_config, mock_record):
-    local_path = (
-        "/dev/a/b/c" if storage_test_config.nfs else str(tmp_path / "local_path")
-    )
+def test_tag_ray_air_storage_config(
+    tmp_path, storage_test_config, mock_record, monkeypatch
+):
+    if storage_test_config.nfs:
+        import ray.air._internal.remote_storage
+
+        monkeypatch.setattr(
+            ray.air._internal.remote_storage,
+            "_get_network_mounts",
+            lambda: [str(tmp_path)],
+        )
+
+    local_path = str(tmp_path / "local_path")
     sync_config = (
         tune.SyncConfig(syncer=None)
         if storage_test_config.syncing_disabled
