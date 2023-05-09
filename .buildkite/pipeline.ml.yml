@@ -539,3 +539,4 @@
     - cd rllib_contrib/a3c
     - pip install -r requirements.txt
     - pip install -e .
+    - pytest tests/test_a3c.py
