@@ -667,7 +667,7 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
     reconstructable_owned_objects_index_.erase(index_it);
   }
   freed_objects_.erase(it->first);
-  if(it->second.owned_by_us) {
+  if (it->second.owned_by_us) {
     num_objects_owned_by_us_--;
   }
   object_id_refs_.erase(it);
@@ -814,7 +814,6 @@ size_t ReferenceCounter::NumObjectIDsInScope() const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.size();
 }
-
 
 size_t ReferenceCounter::NumObjectOwnedByUs() const {
   absl::MutexLock lock(&mutex_);
