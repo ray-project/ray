@@ -68,14 +68,19 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         shuffle_reduce_out = [
-            shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2,).remote(
+            shuffle_reduce.options(
+                **reduce_ray_remote_args,
+                num_returns=2,
+            ).remote(
                 *self._exchange_spec._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
             )
             for j in range(output_num_blocks)
         ]
 
-        new_blocks, new_metadata = zip(*shuffle_reduce_out)
+        new_blocks, new_metadata = [], []
+        if shuffle_reduce_out:
+            new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
         reduce_bar.close()
 

@@ -221,6 +221,7 @@ def test_cache_dataset(ray_start_regular_shared):
 
 
 def test_schema(ray_start_regular_shared):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     ds2 = ray.data.range(10, parallelism=10)
     ds3 = ds2.repartition(5)
     ds3 = ds3.materialize()
@@ -1122,6 +1123,7 @@ def test_block_builder_for_block(ray_start_regular_shared):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_min with: {seed}")
     random.seed(seed)
@@ -1163,6 +1165,7 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_max with: {seed}")
     random.seed(seed)
@@ -1204,6 +1207,7 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_mean with: {seed}")
     random.seed(seed)
@@ -1389,7 +1393,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
     # Test Arrow-native creation APIs.
     # Test range_table.
     try:
-        ray.data.range(10).take_all()
+        ray.data.range(10).materialize()
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
@@ -1401,7 +1405,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
 
     # Test read_parquet.
     try:
-        ray.data.read_parquet("example://iris.parquet").take_all()
+        ray.data.read_parquet("example://iris.parquet").materialize()
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
@@ -1574,7 +1578,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
             parallelism=1,
             paths=path1,
             ray_remote_args={"retry_exceptions": False},
-        ).take()
+        ).materialize()
 
 
 def test_datasource(ray_start_regular):

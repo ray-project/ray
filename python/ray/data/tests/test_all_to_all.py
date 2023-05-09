@@ -253,6 +253,7 @@ def test_agg_errors(ray_start_regular_shared):
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     xs = list(range(100))
     grouped_ds = (
         ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
@@ -288,6 +289,7 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 def test_groupby_tabular_count(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in count aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
@@ -318,6 +320,7 @@ def test_groupby_tabular_sum(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
     # Test built-in sum aggregation
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
     random.seed(seed)
@@ -390,6 +393,7 @@ def test_groupby_tabular_sum(
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_sum with: {seed}")
     random.seed(seed)
@@ -431,6 +435,7 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in min aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_min with: {seed}")
@@ -505,6 +510,7 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in max aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_max with: {seed}")
@@ -579,6 +585,7 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in mean aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_mean with: {seed}")
@@ -1078,10 +1085,12 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
     ds = ray.data.from_items(list(range(100)))
+    # TODO(scott_optimizer): fix GroupBy on None
     mapped = (
         ds.repartition(num_parts)
         .groupby(None)
         .map_groups(lambda x: {"out": np.array([min(x["item"]) + max(x["item"])])})
+        .materialize()
     )
     assert mapped.count() == 1
     assert mapped.take_all() == named_values("out", [99])
@@ -1105,7 +1114,7 @@ def test_groupby_map_groups_perf(ray_start_regular_shared):
     data_list = [x % 100 for x in range(5000000)]
     ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
     start = time.perf_counter()
-    ds.groupby("A").map_groups(lambda df: df)
+    ds.groupby("A").map_groups(lambda df: df).materialize()
     end = time.perf_counter()
     # On a t3.2xlarge instance, it ran in about 5 seconds, so expecting it has to
     # finish within about 10x of that time, unless something went wrong.
@@ -1730,7 +1739,8 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_random_shuffle_with_custom_resource(ray_start_cluster):
+def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_shuffle):
+    # TODO(scott_optimizer): fix random shuffle using custom resourcing
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
     cluster.add_node(
@@ -1746,13 +1756,14 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
         "example://parquet_images_mini",
         parallelism=2,
         ray_remote_args={"resources": {"bar": 1}},
-    )
+    ).materialize()
     ds = ds.random_shuffle(resources={"bar": 1}).materialize()
     assert "1 nodes used" in ds.stats()
     assert "2 nodes used" not in ds.stats()
 
 
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
+    # TODO(scott_optimizer): fix random shuffle using custom resourcing
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -1771,7 +1782,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    ds = ray.data.range(100, parallelism=2).random_shuffle().materialize()
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
