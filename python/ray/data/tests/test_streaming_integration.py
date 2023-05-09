@@ -483,6 +483,7 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
 
 
 def test_e2e_with_unbounded_max_actors(restore_data_context):
+    """Tests that execution does not stall if """
     ray.shutdown()
     ray.init(num_cpus=10, num_gpus=3)
     DataContext.get_current().new_execution_backend = True
