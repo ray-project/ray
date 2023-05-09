@@ -957,7 +957,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// decides at task invocation time how many returns the task should have.
   ///
   /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &caller_address);
+  ObjectID AllocateDynamicReturnId(const rpc::Address &caller_address,
+                                   const TaskID &task_id,
+                                   uint32_t index);
 
   /// Get a handle to an actor.
   ///

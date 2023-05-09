@@ -2515,19 +2515,27 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        is_individual_id = isinstance(object_refs, ray.ObjectRef)
+        is_individual_id = isinstance(object_refs, ray.ObjectRef) or isinstance(
+            object_refs, ray.ray._raylet.StreamingObjectRefGeneratorV2
+        )
         if is_individual_id:
             object_refs = [object_refs]
 
-        if isinstance(object_refs, ray._raylet.StreamingObjectRefGeneratorV2):
-            return object_refs
         if not isinstance(object_refs, list):
             raise ValueError(
                 "'object_refs' must either be an ObjectRef or a list of ObjectRefs."
             )
 
+        refs = []
+        result = [None for _ in range(len(object_refs))]
+        for i, ref in enumerate(object_refs):
+            if isinstance(ref, ray._raylet.StreamingObjectRefGeneratorV2):
+                result[i] = ref
+            else:
+                refs.append(ref)
+
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 if isinstance(value, ray.exceptions.ObjectLostError):
@@ -2537,8 +2545,19 @@ def get(
                 else:
                     raise value
 
+        # reconstruct
+        next_index = 0
+        for value in values:
+            while True:
+                curr_index = next_index
+                next_index += 1
+                next_result = result[curr_index]
+                if next_result is None:
+                    result[curr_index] = value
+                    break
+
         if is_individual_id:
-            values = values[0]
+            result = result[0]
 
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
@@ -2554,7 +2573,7 @@ def get(
             )
             rdb.set_trace(frame=frame)
 
-        return values
+        return result
 
 
 @PublicAPI

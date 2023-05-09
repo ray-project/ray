@@ -934,31 +934,43 @@ def test_threaded_actor_generator(shutdown_only):
     @ray.remote(max_concurrency=10)
     class Actor:
         def f(self):
-            for _ in range(30):
+            for i in range(30):
                 time.sleep(0.1)
-                yield np.ones(1024 * 1024)
+                yield np.ones(1024 * 1024) * i
 
-    @ray.remote(max_concurrency=10)
+    @ray.remote(max_concurrency=20)
     class AsyncActor:
         async def f(self):
-            for _ in range(30):
+            for i in range(30):
                 await asyncio.sleep(0.1)
-                yield np.ones(1024 * 1024)
+                yield np.ones(1024 * 1024) * i
 
     async def main():
         a = Actor.remote()
         asy = AsyncActor.remote()
 
         async def run():
-            async for i in a.f.options(num_returns="dynamic").remote():
-                print(i)
+            i = 0
+            async for ref in a.f.options(num_returns="dynamic").remote():
+                val = ray.get(ref)
+                print(val)
+                print(ref)
+                assert np.array_equal(val, np.ones(1024 * 1024) * i)
+                i += 1
+                del ref
 
         async def run2():
-            async for i in asy.f.options(num_returns="dynamic").remote():
-                print(i)
+            i = 0
+            async for ref in asy.f.options(num_returns="dynamic").remote():
+                val = await ref
+                print(ref)
+                print(val)
+                assert np.array_equal(val, np.ones(1024 * 1024) * i), ref
+                i += 1
+                del ref
 
         coroutines = [run() for _ in range(10)]
-        coroutines += [run2() for _ in range(10)]
+        coroutines = [run2() for _ in range(20)]
 
         await asyncio.gather(*coroutines)
 

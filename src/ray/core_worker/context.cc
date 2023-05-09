@@ -49,7 +49,10 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
-    return num_returns + ++put_counter_;
+    RAY_LOG(INFO) << "SANG-TODO Put counter: " << put_counter_;
+    uint32_t ret = num_returns + ++put_counter_;
+    RAY_LOG(INFO) << "SANG-TODO Put counter after: " << put_counter_;
+    return ret;
   }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }

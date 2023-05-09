@@ -330,7 +330,7 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
 
   auto &reader = dynamic_ids_from_generator_[generator_id];
   if (reader.last != -1 && reader.curr >= reader.last) {
-    RAY_LOG(DEBUG) << "SANG-TODO Generator has no more objects " << *object_id_out;
+    RAY_LOG(DEBUG) << "SANG-TODO Generator has no more objects " << generator_id;
     return Status::KeyError("Finished");
   }
   auto reader_it = reader.idx_to_refs.find(reader.curr);
@@ -338,10 +338,11 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
     *object_id_out = reader_it->second;
     reader.idx_to_refs.erase(reader.curr);
     reader.curr += 1;
-    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out;
+    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out
+                   << " generator id: " << generator_id;
   } else {
     RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << reader.curr
-                   << " last: " << reader.last;
+                   << " last: " << reader.last << " generator id: " << generator_id;
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
@@ -371,10 +372,12 @@ void TaskManager::HandleIntermediateResult(
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     RAY_LOG(DEBUG) << "SANG-TODO Add an object " << object_id;
+    int64_t curr;
     {
       absl::MutexLock lock(&mu_);
       auto &reader = dynamic_ids_from_generator_[generator_id];
-      if (idx >= reader.curr) {
+      curr = reader.curr;
+      if (idx >= curr) {
         reader.idx_to_refs.emplace(idx, object_id);
         auto it = submissible_tasks_.find(task_id);
         if (it != submissible_tasks_.end()) {
@@ -386,8 +389,11 @@ void TaskManager::HandleIntermediateResult(
           spec.AddDynamicReturnId(object_id);
           it->second.reconstructable_return_ids.insert(object_id);
         }
-        reference_counter_->AddDynamicReturn(object_id, generator_id);
       }
+    }
+    // If we call this method while holding a lock, it can deadlock.
+    if (idx >= curr) {
+      reference_counter_->AddDynamicReturn(object_id, generator_id);
     }
     HandleTaskReturn(object_id,
                      return_object,

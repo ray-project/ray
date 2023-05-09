@@ -2646,6 +2646,9 @@ Status CoreWorker::ExecuteTask(
     dynamic_return_objects = NULL;
   } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      // Increase the put index so that when the generator creates a new obj
+      // the object id won't conflict.
+      worker_context_.GetNextPutIndex();
       dynamic_return_objects->push_back(
           std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
@@ -2871,10 +2874,34 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &caller_address) {
+ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &caller_address,
+                                             const TaskID &task_id,
+                                             uint32_t index) {
   const auto &task_spec = worker_context_.GetCurrentTask();
-  const auto return_id =
-      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
+  TaskID current_task_id;
+  uint32_t put_index;
+
+  if (task_id.IsNil()) {
+    current_task_id = task_spec->TaskId();
+    put_index = worker_context_.GetNextPutIndex();
+  } else {
+    // It is an async actor.
+    // Async actor has a problem where the task id & put index
+    // cannot be correctly set.
+    // To get around the issue, we manually specify task_id and put index.
+    // Currently, async actors are running in a separate thread that
+    // uses a random task ID + never reset put index.
+    // https://github.com/ray-project/ray/issues/10324
+    // That said, we can guarantee the put_index is not incremented
+    // when it is outside the event loop thread (main thread).
+    // TODO(sang): Fix the hack.
+    current_task_id = task_id;
+    // The first index is for the return value (the generator task ref).
+    put_index = index + 2;
+  }
+
+  const auto return_id = ObjectID::FromIndex(current_task_id, put_index);
+  RAY_LOG(DEBUG) << "SANG-TODO Generate a new return id: " << return_id;
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), caller_address);
   return return_id;

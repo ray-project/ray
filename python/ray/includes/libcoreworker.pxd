@@ -2,7 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
@@ -149,7 +149,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         )
         void DelGenerator(const CObjectID &generator_id) 
         CRayStatus GetNextObjectRef(const CObjectID &generator_id, CObjectReference *object_ref_out) 
-        CObjectID AllocateDynamicReturnId(const CAddress &caller_address)
+        CObjectID AllocateDynamicReturnId(const CAddress &caller_address, const CTaskID &task_id, uint32_t index)
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()

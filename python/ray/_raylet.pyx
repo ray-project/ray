@@ -768,27 +768,42 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         const CAddress &caller_address,
         actor,
         actor_id,
-        name_of_concurrency_group_to_execute):
+        name_of_concurrency_group_to_execute,
+        TaskID task_id):
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] dynamic_returns_temp
+        CTaskID c_task_id = task_id.native()
 
     i = 0
+    is_sync = inspect.isgenerator(generator)
+    is_async = inspect.isasyncgen(generator)
+    assert is_sync or is_async
+
+    # This is the hack to get around the async actor task id
+    # not correctly configured.
+    if is_sync:
+        c_task_id = CTaskID.Nil()
+
     while True:
         try:
-            if inspect.isgenerator(generator):
+            if is_sync:
                 output = next(generator)
-            elif inspect.isasyncgen(generator):
+            else:
                 output = core_worker.run_async_func_or_coro_in_event_loop(
                     generator.__anext__(),
                     function_descriptor,
                     name_of_concurrency_group_to_execute)
-            else:
-                assert False
             # Run the generator and report the intermediate result.
             if dynamic_returns[0].size() > 0:
                 dynamic_returns_temp.push_back(dynamic_returns[0].back())
+            else:
+                return_id = (CCoreWorkerProcess.GetCoreWorker()
+                             .AllocateDynamicReturnId(caller_address, c_task_id, i))
+                dynamic_returns_temp.push_back(
+                        c_pair[CObjectID, shared_ptr[CRayObject]](
+                            return_id, shared_ptr[CRayObject]()))
 
             core_worker.store_task_outputs(
                 worker, [output],
@@ -797,6 +812,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 generator_id)
             # print("SANG-TODO Writes an index ", i)
             assert dynamic_returns_temp.size() == 1
+            
             CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
                 dynamic_returns_temp.back(), generator_id, caller_address, i, False)
             if dynamic_returns[0].size() > 0:
@@ -843,7 +859,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 # generate one additional ObjectRef. This last
                 # ObjectRef will contain the error.
                 error_id = (CCoreWorkerProcess.GetCoreWorker()
-                            .AllocateDynamicReturnId(caller_address))
+                            .AllocateDynamicReturnId(caller_address, c_task_id, i))
                 dynamic_returns_temp.push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             error_id, shared_ptr[CRayObject]()))
@@ -1095,7 +1111,8 @@ cdef void execute_task(
                                     caller_address,
                                     actor,
                                     actor_id,
-                                    name_of_concurrency_group_to_execute)
+                                    name_of_concurrency_group_to_execute,
+                                    task_id)
                             # The regular output is not used for generator.
                             outputs = None
                         next_breakpoint = (
@@ -2928,12 +2945,6 @@ cdef class CoreWorker:
                 raise ValueError(
                     "Task returned more than num_returns={} objects.".format(
                         num_returns))
-            while i >= returns[0].size():
-                return_id = (CCoreWorkerProcess.GetCoreWorker()
-                             .AllocateDynamicReturnId(caller_address))
-                returns[0].push_back(
-                        c_pair[CObjectID, shared_ptr[CRayObject]](
-                            return_id, shared_ptr[CRayObject]()))
             assert i < returns[0].size()
             return_id = returns[0][i].first
             if returns[0][i].second == nullptr:
@@ -3222,6 +3233,7 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
+
         check_status(CCoreWorkerProcess.GetCoreWorker().GetNextObjectRef(c_generator_id, &c_object_ref))
         return ObjectRef(
             c_object_ref.object_id(),
