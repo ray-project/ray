@@ -77,7 +77,8 @@ _TEST_CALLBACKS = [
 def test_tag_setup_wandb(mock_record):
     from ray.air.integrations.wandb import _setup_wandb
 
-    _setup_wandb(trial_id="a", trial_name="b", config={}, _wandb=MagicMock())
+    with patch.dict(os.environ, {wandb.WANDB_MODE_ENV_VAR: "disabled"}):
+        _setup_wandb(trial_id="a", trial_name="b", config={}, _wandb=MagicMock())
     assert mock_record[TagKey.AIR_SETUP_WANDB_INTEGRATION_USED] == "1"
 
 
