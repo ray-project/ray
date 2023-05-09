@@ -22,7 +22,7 @@
   if: build.pull_request.id != null
   instance_size: small
   commands:
-    - python ci/test/ray_release_test.py
+    - python ci/pipeline/ray_release_test.py
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
