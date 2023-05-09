@@ -219,9 +219,9 @@ class TestPPO(unittest.TestCase):
                 # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
-                _action = fwd_out["action_dist"].sample()
+                _action = fwd_out[SampleBatch.ACTIONS]
                 action = convert_to_numpy(_action[0])
-                action_logp = convert_to_numpy(fwd_out["action_dist"].logp(_action)[0])
+                action_logp = convert_to_numpy(fwd_out[SampleBatch.ACTION_LOGP][0])
                 new_obs, reward, terminated, truncated, _ = env.step(action)
                 new_obs = preprocessor.transform(new_obs)
                 output_batch = {

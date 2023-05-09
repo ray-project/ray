@@ -945,30 +945,31 @@ class Impala(Algorithm):
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
-            results = [
-                self.learner_group.update(
+            results = []
+            for batch in batches:
+                result = self.learner_group.update(
                     batch,
                     reduce_fn=_reduce_impala_results,
                     block=blocking,
                     num_iters=self.config.num_sgd_iter,
                     minibatch_size=self.config.minibatch_size,
                 )
-                for batch in batches
-            ]
-            results = _reduce_impala_results(results)
-
-            self._counters[NUM_ENV_STEPS_TRAINED] += results[ALL_MODULES].pop(
-                NUM_ENV_STEPS_TRAINED
-            )
-            self._counters[NUM_AGENT_STEPS_TRAINED] += results[ALL_MODULES].pop(
-                NUM_AGENT_STEPS_TRAINED
-            )
+                if result:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                        NUM_ENV_STEPS_TRAINED
+                    )
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                        NUM_AGENT_STEPS_TRAINED
+                    )
+                    results.append(result)
             self._counters.update(self.learner_group.get_in_queue_stats())
-            return results
+            if results:
+                return _reduce_impala_results(results)
 
-        # Nothing on the queue -> Don't send requests to learner group.
-        else:
-            return {}
+        # Nothing on the queue -> Don't send requests to learner group
+        # or no results ready (from previous `self.learner_group.update()` calls) for
+        # reducing.
+        return {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.

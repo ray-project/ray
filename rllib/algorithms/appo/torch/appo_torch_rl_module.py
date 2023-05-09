@@ -35,9 +35,9 @@ class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTorchRLModule)
     def output_specs_train(self) -> List[str]:
         return [
-            SampleBatch.ACTION_DIST,
+            SampleBatch.ACTION_DIST_INPUTS,
+            OLD_ACTION_DIST_LOGITS_KEY,
             SampleBatch.VF_PREDS,
-            OLD_ACTION_DIST_KEY,
         ]
 
     @override(PPOTorchRLModule)
@@ -45,7 +45,5 @@ class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
         outs = super()._forward_train(batch)
         old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
         old_action_dist_logits = self.old_pi(old_pi_inputs_encoded)
-        old_action_dist = self.action_dist_cls.from_logits(old_action_dist_logits)
-        outs[OLD_ACTION_DIST_KEY] = old_action_dist
         outs[OLD_ACTION_DIST_LOGITS_KEY] = old_action_dist_logits
         return outs

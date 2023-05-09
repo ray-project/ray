@@ -213,8 +213,14 @@ class LearnerGroup:
             )
 
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        if reduce_fn is None or not results:
+        # No reduce function -> Return list of mappings.
+        if reduce_fn is None:
             return results
+        # If results are empty, don't run them through reduce_fn, but return empty dict.
+        elif not results:
+            return {}
+        # Run results (list of result dicts from our n learner actors) through
+        # reduction function and return single mapping.
         return reduce_fn(results)
 
     def _distributed_update(
