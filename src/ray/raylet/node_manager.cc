@@ -1804,7 +1804,7 @@ void NodeManager::HandleRequestResourceReport(
     rpc::RequestResourceReportReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
-  FillResourceReport(*resources_data);
+  FillResourceReport(*resources_data); 
   resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2505,7 +2505,6 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
   local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
-
   // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
