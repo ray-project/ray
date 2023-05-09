@@ -19,6 +19,9 @@ from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
 from ray.data import Datastream, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
+    CHECKPOINT_DISTRIBUTED_KEY,
+    CHECKPOINT_METADATA_KEY,
+    CHECKPOINT_RANK_KEY,
     DETAILED_AUTOFILLED_KEYS,
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
@@ -26,8 +29,6 @@ from ray.train.constants import (
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
-    CHECKPOINT_METADATA_KEY,
-    CHECKPOINT_RANK_KEY,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 from ray.train.error import SessionMisuseError
@@ -336,11 +337,12 @@ class _TrainSession:
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
-        if (
+        upload_from_workers = (
             checkpoint._local_path
             and self.checkpoint_upload_from_workers
             and self.checkpoint_uri
-        ):
+        )
+        if upload_from_workers:
             self._create_checkpoint_file_list(checkpoint)
             # We want to upload the files directly to cloud storage,
             # so that they won't need to be shipped to the driver node
@@ -370,7 +372,10 @@ class _TrainSession:
             checkpoint = str(checkpoint._local_path)
 
         # Save the rank of the worker that created this checkpoint.
-        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
+        metadata.update({
+            CHECKPOINT_RANK_KEY: self.world_rank,
+            CHECKPOINT_DISTRIBUTED_KEY: upload_from_workers,
+        })
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
