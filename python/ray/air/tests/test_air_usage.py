@@ -74,7 +74,7 @@ _TEST_CALLBACKS = [
 ]
 
 
-def test_tag_setup_wandb(mock_record, monkeypatch):
+def test_tag_setup_wandb(mock_record):
     from ray.air.integrations.wandb import _setup_wandb
 
     _setup_wandb(trial_id="a", trial_name="b", config={}, _wandb=MagicMock())
