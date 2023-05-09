@@ -567,9 +567,11 @@ def test_calculate_topology_usage():
 def test_execution_allowed_downstream_aware_memory_throttling():
     op = InputDataBuffer([])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    op_state = MagicMock()
     # Below global.
     assert _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},
@@ -579,6 +581,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
     # Above global.
     assert not _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},
@@ -588,6 +591,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
     # Above global, but below downstream quota of 50%.
     assert _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(0.5, 400)},
@@ -597,6 +601,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
     # Above global, and above downstream quota of 50%.
     assert not _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(0.5, 600)},
@@ -608,9 +613,11 @@ def test_execution_allowed_downstream_aware_memory_throttling():
 def test_execution_allowed_nothrottle():
     op = InputDataBuffer([])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    op_state = MagicMock()
     # Above global.
     assert not _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},
@@ -622,6 +629,7 @@ def test_execution_allowed_nothrottle():
     op.throttling_disabled = MagicMock(return_value=True)
     assert _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},

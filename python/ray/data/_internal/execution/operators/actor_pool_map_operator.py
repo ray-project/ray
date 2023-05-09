@@ -117,6 +117,9 @@ class ActorPoolMapOperator(MapOperator):
         )
         ray.get(refs)
 
+        for ref in refs:
+            self._actor_pool.pending_to_running(ref)
+
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
 
@@ -468,7 +471,7 @@ class AutoscalingPolicy:
         Args:
             num_total_workers: Total number of workers in actor pool.
             num_free_slots: Number of free slots for existing actors in the pool.
-            num_inputs: The number of inputs this operator needs to execute.
+            num_inputs: The number of inputs for this operator to execute.
 
         Returns:
             Whether the actor pool should be scaled up by one actor.
