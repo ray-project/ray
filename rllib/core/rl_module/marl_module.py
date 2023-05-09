@@ -15,7 +15,7 @@ from ray.rllib.core.rl_module.rl_module import (
     RLMODULE_METADATA_FILE_NAME,
     RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
-    copy_state_from_remote_node_if_necessary
+    copy_state_from_remote_node_if_necessary,
 )
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
@@ -405,6 +405,13 @@ class MultiAgentRLModuleSpec:
         module_specs: The module specs for each individual module. It can be either a
             SingleAgentRLModuleSpec used for all module_ids or a dictionary mapping
             from module IDs to SingleAgentRLModuleSpecs for each individual module.
+        load_state_path: The path to the module state to load from. NOTE: This must be
+            an absolute path. NOTE: If the load_state_path of this spec is set, and
+            the load_state_path of one of the SingleAgentRLModuleSpecs' is also set,
+            the weights of that RL Module will be loaded from the path specified in
+            the SingleAgentRLModuleSpec. This is useful if you want to load the weights
+            of a MARL module and also manually load the weights of some of the RL
+            modules within that MARL module from other checkpoints.
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
@@ -421,7 +428,7 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpecs for each individual module."
             )
         if self.load_state_path:
-            self._load_state_ip_addr = self._get_curr_node_ip_addr()
+            self._load_state_ip_addr = socket.gethostbyname(socket.gethostname())
         else:
             self._load_state_ip_addr = None
 
@@ -456,7 +463,22 @@ class MultiAgentRLModuleSpec:
             return self.module_specs[module_id].build()
 
         module_config = self.get_marl_config()
-        return self.marl_module_class(module_config)
+        module = self.marl_module_class(module_config)
+        if self.load_state_path:
+            load_state_path = copy_state_from_remote_node_if_necessary(
+                self.load_state_path, self._load_state_ip_addr
+            )
+            modules_to_load = {}
+            # This applies to the case where a user wants to load the weights of a MARL
+            # module and also manually load the weights of some of the RL modules within
+            # that MARL module from other checkpoints. In this case, we should respect
+            # the RL Module weights that the user wants to load and not load the weights
+            # of those RL Modules from the MARL checkpoint.
+            for module_id in module_config.modules.keys():
+                if not module_config[module_id].load_state_path:
+                    modules_to_load.add(module_id)
+            module.load_state(load_state_path, modules_to_load)
+        return module
 
     def add_modules(
         self,
@@ -543,6 +565,11 @@ class MultiAgentRLModuleSpec:
                 exist. If False, they will be updated only.
         """
         assert type(other) is MultiAgentRLModuleSpec
+
+        if self.load_state_path:
+            raise ValueError(
+                "Cannot update a spec that already has a load_state_path set."
+            )
 
         if isinstance(other.module_specs, dict):
             self.add_modules(other.module_specs, overwrite=overwrite)

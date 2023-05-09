@@ -1,6 +1,7 @@
-import unittest
 import gymnasium as gym
+import tempfile
 import torch
+import unittest
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
@@ -17,6 +18,7 @@ from ray.rllib.core.testing.tf.bc_module import (
     BCTfRLModuleWithSharedGlobalEncoder,
     BCTfMultiAgentModuleWithSharedEncoder,
 )
+from ray.rllib.utils.test_utils import check
 
 MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 CUSTOM_MODULES = {
@@ -267,6 +269,34 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(
             marl_spec_1.module_specs["agent_2"].model_config_dict, "I'm new!"
         )
+
+    def test_single_agent_module_spec_load_from_checkpoint(self):
+        env = gym.make("CartPole-v1")
+        for module_class in MODULES:
+            spec = SingleAgentRLModuleSpec(
+                module_class=module_class,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [64]},
+            )
+
+            module = spec.build()
+            self.assertIsInstance(module, module_class)
+            with tempfile.TemporaryDirectory() as checkpoint_path:
+                module.save_to_checkpoint(checkpoint_path)
+                import ipdb
+
+                ipdb.set_trace()
+
+                spec_with_load_path = SingleAgentRLModuleSpec(
+                    module_class=module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [64]},
+                    load_state_path=checkpoint_path,
+                )
+                module_from_checkpoint = spec_with_load_path.build()
+                check(module.get_weights(), module_from_checkpoint.get_weights())
 
 
 if __name__ == "__main__":
