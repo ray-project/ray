@@ -97,7 +97,7 @@ class TrainingIterator:
 
         # Session has started. Set current cloud checkpoint dir if necessary.
         if self._checkpoint_strategy._checkpoint_upload_from_workers:
-            self._backend_executor.set_checkpoint_uri(self.__get_cloud_checkpoint_dir())
+            self._backend_executor._set_checkpoint_uri(self.__get_cloud_checkpoint_dir())
 
     def _run_with_error_handling(self, func: Callable):
         try:
@@ -193,7 +193,7 @@ class TrainingIterator:
                 # to sync the current cloud checkpointing directory between
                 # Tuner, Trainable, and Trainers.
                 if self._checkpoint_strategy._checkpoint_upload_from_workers:
-                    self._backend_executor.set_checkpoint_uri(
+                    self._backend_executor._set_checkpoint_uri(
                         self.__get_cloud_checkpoint_dir()
                     )
                 # Iterate until next REPORT call or training has finished.
@@ -217,7 +217,7 @@ class TrainingIterator:
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
                 if self._checkpoint_strategy._checkpoint_upload_from_workers:
-                    self._backend_executor.set_checkpoint_uri(
+                    self._backend_executor._set_checkpoint_uri(
                         self.__get_cloud_checkpoint_dir()
                     )
 
@@ -284,9 +284,9 @@ class TrainingIterator:
             return None
 
         base_dir = URI(self._storage_path)
-        trial_dir_parts = session.get_trial_dir().rstrip("/").split("/")
-        trial_dir_name = trial_dir_parts.pop()
-        exp_dir_name = trial_dir_parts.pop()
+        path = Path(session.get_trial_dir())
+        trial_dir_name = path.name
+        exp_dir_name = path.parent.name
         checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
             self._checkpoint_manager._latest_checkpoint_id
         )

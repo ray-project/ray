@@ -502,12 +502,12 @@ class BackendExecutor:
 
         return results
 
-    def set_checkpoint_uri(self, uri: str):
+    def _set_checkpoint_uri(self, uri: str):
         """Tell remote sessions where to upload the chekcpoint."""
 
         def set_uri():
-            session = _get_session("set_checkpoint_uri")
-            session.set_checkpoint_uri(uri)
+            session = _get_session("_set_checkpoint_uri")
+            session._set_checkpoint_uri(uri)
 
         futures = self.worker_group.execute_async(set_uri)
         self.get_with_failure_handling(futures)

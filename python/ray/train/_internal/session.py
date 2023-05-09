@@ -392,7 +392,7 @@ class _TrainSession:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    def set_checkpoint_uri(self, uri: str):
+    def _set_checkpoint_uri(self, uri: str):
         """Tell session where to save the next directory checkpoint on the cloud.
 
         Args:
