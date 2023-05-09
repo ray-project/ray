@@ -14,10 +14,10 @@ aws:
 
 head_node_type:
     name: head_node
-    instance_type: i3.8xlarge
+    instance_type: m6i.16xlarge
 
 worker_node_types:
-    - name: memory_node 
+    - name: memory_node
       instance_type: i3.8xlarge
       min_workers: 10
       max_workers: 10
