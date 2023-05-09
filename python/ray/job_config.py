@@ -32,6 +32,7 @@ class JobConfig:
             is a logical grouping of jobs and named actors.
         default_actor_lifetime: The default value of actor lifetime,
             can be "detached" or "non_detached".
+            See :ref:`actor lifetimes <actor-lifetimes>` for more details.
     """
 
     def __init__(
@@ -68,7 +69,7 @@ class JobConfig:
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
 
-        If the key already exists, the value will be overwritten to the new value.
+        If the key already exists, the value is overwritten to the new value.
 
         Examples:
             .. testcode::
@@ -121,7 +122,9 @@ class JobConfig:
             self._cached_pb = None
 
     def set_default_actor_lifetime(self, default_actor_lifetime: str) -> None:
-        """Set the default actor lifetime, can be "detached" or "non_detached".
+        """Set the default actor lifetime, which can be "detached" or "non_detached".
+
+        See :ref:`actor lifetimes <actor-lifetimes>` for more details.
 
         Args:
             default_actor_lifetime: The default actor lifetime to set.

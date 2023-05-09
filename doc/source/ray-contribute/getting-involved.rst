@@ -149,7 +149,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
         Examples:
             .. doctest::
 
-                >>> # Provide code examples as possible.
+                >>> # Provide code examples for key use cases, as possible.
                 >>> ray_canonical_doc_style(41, "hello")
                 True
 
@@ -159,7 +159,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
 
         Args:
             param1: The first parameter. Do not include the types in the
-                docstring (they should be defined only in the signature).
+                docstring. They should be defined only in the signature.
                 Multi-line parameter docs should be indented by four spaces.
             param2: The second parameter.
 
@@ -187,7 +187,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
 
         Args:
             param1: The first parameter. Do not include the types in the
-                docstring (they should be defined only in the signature).
+                docstring. They should be defined only in the signature.
                 Multi-line parameter docs should be indented by four spaces.
             param2: The second parameter.
         """
