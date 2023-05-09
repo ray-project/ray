@@ -9,7 +9,7 @@ Custom Datasources
   This MongoDatasource guide below is for education only. For production use of MongoDB
   in Ray Data, see :ref:`Creating Datastream from MongoDB <datastream_mongo_db>`.
 
-Ray Data supports multiple ways to :ref:`create a datastream <creating_datastreams>`, 
+Ray Data supports multiple ways to :ref:`create a datastream <loading_data>`,
 allowing you to easily ingest data of common formats from popular sources. However, if the 
 datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
