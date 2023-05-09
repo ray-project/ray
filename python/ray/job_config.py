@@ -26,7 +26,6 @@ class JobConfig:
             can be "detached" or "non_detached".
 
     Examples:
-
         .. testcode::
 
             import ray
@@ -72,7 +71,6 @@ class JobConfig:
         If the key already exists, the value will be overwritten to the new value.
 
         Examples:
-
             .. testcode::
 
                 import ray
@@ -199,7 +197,6 @@ class JobConfig:
         """Generates a JobConfig object from json.
 
         Examples:
-
             .. testcode::
 
                 from ray.job_config import JobConfig
