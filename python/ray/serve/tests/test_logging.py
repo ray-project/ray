@@ -14,6 +14,7 @@ from ray import serve
 import re
 from ray.serve._private.logging_utils import ServeJSONFormatter
 from ray.serve._private.common import ServeComponentType
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.fixture
@@ -28,7 +29,6 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
 
-"""
 def test_log_rotation_config(monkeypatch, ray_shutdown):
     # This test should be executed before any test that uses
     # the shared serve_instance, as environment variables
@@ -164,7 +164,6 @@ def test_disable_access_log(serve_instance):
         for _ in range(10):
             time.sleep(0.1)
             assert replica_tag not in f.getvalue()
-"""
 
 
 @pytest.mark.parametrize("json_log_format", [False, True])
