@@ -19,21 +19,20 @@ GiB = 1024 * 1024 * 1024
 class ConsumingActor:
     def __init__(self, rank):
         self._rank = rank
-        self._use_gpu = use_gpu
 
     def consume(
         self,
         split,
         expected_total_read_bytes,
         use_gpu=False,
-        early_stop_when_read_bytes=None,
+        max_bytes_to_read=None,
     ):
         do_consume(
             split,
             self._rank,
             expected_total_read_bytes,
             use_gpu,
-            early_stop_when_read_bytes,
+            max_bytes_to_read,
         )
 
     def get_location(self):
@@ -45,7 +44,7 @@ def do_consume(
     rank,
     expected_total_read_bytes,
     use_gpu=False,
-    early_stop_when_read_bytes=None,
+    max_bytes_to_read=None,
 ):
     prefetch_batches = 1
     batch_size = 4096
@@ -105,8 +104,8 @@ def do_consume(
                 # the object pointers if list of non-primitive types.
                 bytes_read += sys.getsizeof(batch)
             batch_start = time.perf_counter()
-            if early_stop_when_read_bytes is not None:
-                if bytes_read >= early_stop_when_read_bytes:
+            if max_bytes_to_read is not None:
+                if bytes_read >= max_bytes_to_read:
                     break
     delta = time.perf_counter() - start
 
@@ -154,9 +153,9 @@ def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu, early_stop):
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
     expected_total_read_bytes = dataset_size_gb * GiB
-    early_stop_when_read_bytes = None
+    max_bytes_to_read = None
     if early_stop:
-        early_stop_when_read_bytes = expected_total_read_bytes // 2
+        max_bytes_to_read = expected_total_read_bytes // 2
         expected_total_read_bytes //= 2
     # Early stop when we've read half the dataset.
     future = [
@@ -164,7 +163,7 @@ def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu, early_stop):
             s,
             expected_total_read_bytes,
             use_gpu,
-            early_stop_when_read_bytes,
+            max_bytes_to_read,
         )
         for i, s in enumerate(splits)
     ]
