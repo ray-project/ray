@@ -16,7 +16,7 @@ from typing import List
 @click.command()
 @click.option(
     "--artifact-dir",
-    default="/tmp/artifacts",
+    default="/artifact-mount",
     type=str,
     help=(
         "This directory is used to store artifacts, such as coverage information. "
