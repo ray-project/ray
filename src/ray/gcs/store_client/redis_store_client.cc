@@ -236,11 +236,9 @@ void RedisStoreClient::ProcessNext(std::string key) {
   {
     absl::MutexLock lock(&mu_);
     auto ops_iter = write_ops_.find(key);
-    auto &queue = ops_iter->second;
     RAY_CHECK(ops_iter != write_ops_.end());
-    while (!queue.empty() && queue.front() == nullptr) {
-      queue.pop();
-    }
+    auto &queue = ops_iter->second;
+    // All write operations have been consumed.
     if (queue.empty()) {
       write_ops_.erase(ops_iter);
     } else {
@@ -261,6 +259,18 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
                      keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
+    // keys[0] is where send_redis stored. It'll be evicted in ProcessNext
+    {
+      absl::MutexLock lock(&mu_);
+      for (size_t i = 1; i < keys.size(); ++i) {
+        auto ops_iter = write_ops_.find(keys[i]);
+        RAY_CHECK(ops_iter != write_ops_.end());
+        auto &queue = ops_iter->second;
+        RAY_CHECK(!queue.empty());
+        RAY_CHECK(queue.front() == nullptr);
+        queue.pop();
+      }
+    }
     auto cxt = redis_client_->GetShardContext("");
     RAY_CHECK_OK(cxt->RunArgvAsync(
         std::move(args),
@@ -286,17 +296,17 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
       }
     }
 
-    if (can_fire) {
-      for (size_t i = 0; i < keys.size(); ++i) {
-        if (i == 0) {
-          write_ops_[keys[0]].push(std::move(send_redis));
-        } else {
-          write_ops_[keys[i]].push(nullptr);
-        }
+    for (size_t i = 0; i < keys.size(); ++i) {
+      if (i == 0) {
+        write_ops_[keys[0]].push(std::move(send_redis));
+      } else {
+        write_ops_[keys[i]].push(nullptr);
       }
     }
   }
-  ProcessNext(keys[0]);
+  if (can_fire) {
+    ProcessNext(keys[0]);
+  }
 }
 
 Status RedisStoreClient::DoPut(const std::string &key,
