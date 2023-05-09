@@ -196,7 +196,7 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-multi_gpu
+      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: RLModule tests"
