@@ -20,7 +20,7 @@ To get started, install, import, and initialize Ray. Most of the examples in thi
         ^^^
         To use Ray in Python, install it with
         ```
-        pip install ray
+        pip install -U ray[air]
         ```
     
     .. grid-item-card::
@@ -38,7 +38,7 @@ To get started, install, import, and initialize Ray. Most of the examples in thi
 ```{raw} html
 
 <div class="termynal" data-termynal>
-    <span data-ty="input">pip install ray</span>
+    <span data-ty="input">pip install -U "ray[air]"</span>
     <span data-ty="progress"></span>
     <span data-ty>Successfully installed ray</span>
     <span data-ty="input">python</span>
