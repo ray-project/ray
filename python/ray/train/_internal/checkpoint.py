@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Type, Union
 
 from ray.air import Checkpoint, CheckpointConfig, session
 from ray.air._internal.checkpoint_manager import CheckpointStorage
