@@ -32,7 +32,11 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.logging_utils import (
+    access_log_msg,
+    configure_component_logger,
+    get_component_logger_file_path,
+)
 
 from ray.serve._private.utils import get_random_letters
 
@@ -511,7 +515,7 @@ class HTTPProxyActor:
 
         # Return log filepath, or re-throw the exception from self.running_task.
         if self.setup_complete.is_set():
-            return f"/serve/http_proxy_{ray.util.get_node_ip_address()}.log"
+            return get_component_logger_file_path()
 
         return await done_set.pop()
 
