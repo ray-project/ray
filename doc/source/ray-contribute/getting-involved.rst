@@ -179,17 +179,17 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
 
         All the public methods and attributes should have docstrings.
 
-        Args:
-            param1: The first parameter. Do not include the types in the
-                docstring (they should be defined only in the signature).
-                Multi-line parameter docs should be indented by four spaces.
-            param2: The second parameter.
-
         Examples:
             .. testcode::
 
                 obj = RayClass(12, "world")
                 obj.increment_attr1()
+
+        Args:
+            param1: The first parameter. Do not include the types in the
+                docstring (they should be defined only in the signature).
+                Multi-line parameter docs should be indented by four spaces.
+            param2: The second parameter.
         """
 
         def __init__(self, param1: int, param2: str):
