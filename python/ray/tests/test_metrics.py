@@ -184,10 +184,10 @@ def test_node_object_metrics(ray_start_cluster, monkeypatch):
 
     # nest_ref is owned by node_0
     # nest_ref is stored in memory (no primary copy)
-    nest_ref = nest_task.remote(1) # noqa: F841
+    nest_ref = nest_task.remote(1)  # noqa: F841
     wait_for_condition(lambda: get_owner_info(node_ids) == ([3, 2, 0], [1, 1, 0]))
 
-    big_nest = nest_task.remote(1024 * 1024 * 10) # noqa: F841
+    big_nest = nest_task.remote(1024 * 1024 * 10)  # noqa: F841
 
     wait_for_condition(lambda: get_owner_info(node_ids) == ([4, 3, 0], [1, 1, 1]))
 
