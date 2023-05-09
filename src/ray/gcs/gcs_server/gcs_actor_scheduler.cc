@@ -454,7 +454,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   }
   request->mutable_resource_mapping()->CopyFrom(resources);
 
-  auto client = core_worker_clients_.GetOrConnect(worker->GetAddress());
+  auto client = core_worker_clients_.GetOrConnect(
+      worker->GetAddress());
   client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {

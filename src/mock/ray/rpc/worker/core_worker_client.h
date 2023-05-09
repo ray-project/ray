@@ -41,6 +41,11 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<PushTaskReply> &callback),
               (override));
   MOCK_METHOD(void,
+              NumPendingTasks,
+              (std::unique_ptr<NumPendingTasksRequest> request,
+               const ClientCallback<NumPendingTasksReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               DirectActorCallArgWaitComplete,
               (const DirectActorCallArgWaitCompleteRequest &request,
                const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback),
