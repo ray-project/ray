@@ -462,7 +462,7 @@ class BaseTrainer(abc.ABC):
         """Sync down trainer state from remote storage.
 
         Returns:
-            local_dir of the synced trainer state
+            str: Local directory containing the trainer state
         """
         if not is_non_local_path_uri(restore_path):
             return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
@@ -578,7 +578,10 @@ class BaseTrainer(abc.ABC):
             )
         else:
             tuner = Tuner(
-                trainable=trainable, param_space=param_space, run_config=self.run_config
+                trainable=trainable,
+                param_space=param_space,
+                run_config=self.run_config,
+                _trainer_api=True,
             )
 
         experiment_path = Path(

@@ -362,6 +362,25 @@ def test_invalid_arguments():
     ray.remote(_metadata={"data": 1})(f)
     ray.remote(_metadata={"data": 1})(A)
 
+    # Check invalid resource quantity
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The precision of the fractional quantity of resource num_gpus"
+            " cannot go beyond 0.0001"
+        ),
+    ):
+        ray.remote(num_gpus=0.0000001)(f)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The precision of the fractional quantity of resource custom_resource"
+            " cannot go beyond 0.0001"
+        ),
+    ):
+        ray.remote(resources={"custom_resource": 0.0000001})(f)
+
 
 def test_options():
     """General test of option keywords in Ray."""

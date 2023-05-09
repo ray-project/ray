@@ -63,41 +63,43 @@ can use Ray Tune to tune hyperparameters of your reinforcement learning algorith
 The following example shows three equivalent ways of interacting with ``PPO``,
 which implements the proximal policy optimization algorithm in RLlib.
 
-.. tabbed:: Basic RLlib Algorithm
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: Basic RLlib Algorithm
 
-        # Configure.
-        from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+        .. code-block:: python
 
-        # Build.
-        algo = config.build()
+            # Configure.
+            from ray.rllib.algorithms.ppo import PPOConfig
+            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
 
-        # Train.
-        while True:
-            print(algo.train())
+            # Build.
+            algo = config.build()
 
-
-.. tabbed:: RLlib Algorithms and Tune
-
-    .. code-block:: python
-
-        from ray import tune
-
-        # Configure.
-        from ray.rllib.algorithms.ppo import PPOConfig
-        config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
-
-        # Train via Ray Tune.
-        tune.run("PPO", config=config)
+            # Train.
+            while True:
+                print(algo.train())
 
 
-.. tabbed:: RLlib Command Line
+    .. tab-item:: RLlib Algorithms and Tune
 
-    .. code-block:: bash
+        .. code-block:: python
 
-        rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
+            from ray import tune
+
+            # Configure.
+            from ray.rllib.algorithms.ppo import PPOConfig
+            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+
+            # Train via Ray Tune.
+            tune.run("PPO", config=config)
+
+
+    .. tab-item:: RLlib Command Line
+
+        .. code-block:: bash
+
+            rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.

@@ -19,21 +19,23 @@ Clone the repository
 
 To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
 
-.. tab-item:: Git SSH
+.. tab-set::
 
-    To clone the repository using Git with SSH (the default) run:
+    .. tab-item:: Git SSH
 
-    .. code-block:: shell
+        To clone the repository using Git with SSH (the default) run:
 
-        git clone git@github.com:[your username]/ray.git
+        .. code-block:: shell
 
-.. tab-item:: Git HTTPS
+            git clone git@github.com:[your username]/ray.git
 
-    To clone the repository using Git with HTTPS run:
+    .. tab-item:: Git HTTPS
 
-    .. code-block:: shell
+        To clone the repository using Git with HTTPS run:
 
-        git clone https://github.com/[your username]/ray.git
+        .. code-block:: shell
+
+            git clone https://github.com/[your username]/ray.git
 
 Then you can enter into the Ray git repository directory:
 
