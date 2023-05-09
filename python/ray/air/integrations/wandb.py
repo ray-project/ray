@@ -104,10 +104,10 @@ def setup_wandb(
 
         .. code-block: python
 
-            from ray.air.integrations.wandb import wandb_setup
+            from ray.air.integrations.wandb import setup_wandb
 
             def training_loop(config):
-                wandb = wandb_setup(config)
+                wandb = setup_wandb(config)
                 # ...
                 wandb.log({"loss": 0.123})
 
