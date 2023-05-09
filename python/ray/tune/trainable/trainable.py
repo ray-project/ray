@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Union, Type
 import warnings
 
 import ray
@@ -53,8 +53,8 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
-from ray.tune.logger import Logger, NoopLogger
+from ray.util.annotations import PublicAPI
+from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
