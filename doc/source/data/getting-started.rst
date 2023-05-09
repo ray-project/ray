@@ -8,12 +8,6 @@ is a distributed data transformation pipeline. Dataset provides APIs for loading
 external data into Ray in *blocks*, and it exposes APIs for streaming
 processing of these data blocks in the cluster.
 
-.. tip::
-
-    Ray Data is for processing of *finite* datasets for ML training and
-    batch inference. This is in contrast to frameworks such as Apache Flink that
-    process infinite data streams.
-
 Install Ray Data
 ----------------
 
