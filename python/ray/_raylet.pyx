@@ -670,6 +670,7 @@ cdef store_task_errors(
         exc,
         task_exception,
         actor,
+        actor_id,
         function_name,
         CTaskType task_type,
         proctitle,
@@ -690,15 +691,22 @@ cdef store_task_errors(
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
 
+    if actor_id is None or actor_id.is_nil():
+        actor_id = None
+    else:
+        actor_id = actor_id.hex()
+
     if isinstance(exc, RayTaskError):
         # Avoid recursive nesting of RayTaskError.
         failure_object = RayTaskError(function_name, backtrace,
                                       exc.cause, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
     else:
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
@@ -738,6 +746,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         title,
         const CAddress &caller_address,
         actor,
+        actor_id,
         name_of_concurrency_group_to_execute):
     worker = ray._private.worker.global_worker
     cdef:
@@ -814,6 +823,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         worker, e,
                         True,  # task_exception
                         actor,  # actor
+                        actor_id,  # actor id
                         function_name, task_type, title,
                         dynamic_returns, application_error, caller_address)
             if num_errors_stored == 0:
@@ -875,6 +885,7 @@ cdef void execute_task(
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
+    actor_id = None
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
@@ -915,7 +926,8 @@ cdef void execute_task(
         print(task_name_magic_token, end="")
         print(task_name_magic_token, file=sys.stderr, end="")
     else:
-        actor = worker.actors[core_worker.get_actor_id()]
+        actor_id = core_worker.get_actor_id()
+        actor = worker.actors[actor_id]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
 
@@ -1008,7 +1020,8 @@ cdef void execute_task(
                     args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
+                actor_id = core_worker.get_actor_id()
+                actor = worker.actors[actor_id]
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
@@ -1050,6 +1063,7 @@ cdef void execute_task(
                                     title,
                                     caller_address,
                                     actor,
+                                    actor_id,
                                     name_of_concurrency_group_to_execute)
                             # The regular output is not used for generator.
                             outputs = None
@@ -1138,7 +1152,7 @@ cdef void execute_task(
                     caller_address)
         except Exception as e:
             num_errors_stored = store_task_errors(
-                    worker, e, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, returns, application_error, caller_address)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
@@ -1272,7 +1286,9 @@ cdef execute_task_with_cancellation_handler(
                 # Task cancellation can happen anytime so we don't really need
                 # to differentiate between mid-task or not.
                 False,  # task_exception
-                actor, execution_info.function_name,
+                actor,
+                actor_id,
+                execution_info.function_name,
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.

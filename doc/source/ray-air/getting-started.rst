@@ -107,6 +107,8 @@ Then, we define a ``Preprocessor`` pipeline for our task:
             :start-after: __air_tf_preprocess_start__
             :end-before: __air_tf_preprocess_end__
 
+.. _air-getting-started-training:
+
 Training
 ~~~~~~~~
 
@@ -134,6 +136,8 @@ Train a model with a ``Trainer`` with common ML frameworks:
             :language: python
             :start-after: __air_tf_train_start__
             :end-before: __air_tf_train_end__
+
+.. _air-getting-started-tuning:
 
 Hyperparameter Tuning
 ~~~~~~~~~~~~~~~~~~~~~
@@ -173,7 +177,7 @@ Then use the ``Tuner`` to run the search:
 Batch Inference
 ~~~~~~~~~~~~~~~
 
-Use the trained model for scalable batch prediction with a ``BatchPredictor``.
+After running the steps in :ref:`Training <air-getting-started-training>` or :ref:`Tuning <air-getting-started-tuning>`, use the trained model for scalable batch prediction with a ``BatchPredictor``.
 
 .. tab-set::
 

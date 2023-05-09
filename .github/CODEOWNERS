@@ -76,8 +76,8 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani
-/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @maxpumperla @ray-project/ray-docs
+/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen
+/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @maxpumperla @ray-project/ray-docs
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
@@ -103,8 +103,8 @@
 /doc/source/ray-air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
 
 # ML Docker Dependencies
-/python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
-/python/requirements/ml/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
+/python/requirements/ml/requirements_dl.txt @amogkam @krfricke @richardliaw @matthewdeng
+/python/requirements/ml/requirements_ml_docker.txt @amogkam @krfricke @richardliaw @matthewdeng
 
 # Ray symbol export
 /src/ray/ray_version_script.lds @iycheng @ericl @scv119

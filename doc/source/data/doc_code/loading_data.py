@@ -21,36 +21,6 @@ ds.take_batch(5)
 # fmt: on
 
 # fmt: off
-# __gen_synth_tensor_range_begin__
-# Create a Datastream of tensors.
-ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
-# -> Datastream(
-#       num_blocks=200,
-#       num_rows=409600,
-#       schema={data: numpy.ndarray(shape=(64, 64), dtype=int64)}
-#    )
-
-ds.take_batch(5)
-# -> {'data': array(
-#       [[[0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0],
-#         ...,
-#         [0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0]],
-#        ...
-#        [[4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4],
-#         ...,
-#         [4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4]]])}
-# __gen_synth_tensor_range_end__
-# fmt: on
-
-# fmt: off
 # __from_items_begin__
 # Create a Datastream from python dicts.
 ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
@@ -131,7 +101,7 @@ ds.show(2)
 # fmt: off
 # __read_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
-# -> Datastream(num_blocks=3, num_rows=3, 
+# -> Datastream(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
@@ -436,7 +406,7 @@ ds.show(2)
 #        'passenger_count': 1,
 #        'trip_distance': 1.5,
 #        'rate_code_id': '1',
-#        'store_and_fwd_flag': 'N', 
+#        'store_and_fwd_flag': 'N',
 #        ...,
 #    }
 #    {
@@ -446,7 +416,7 @@ ds.show(2)
 #        'passenger_count': 1,
 #        'trip_distance': 2.5999999046325684,
 #        'rate_code_id': '1',
-#        'store_and_fwd_flag': 'N', 
+#        'store_and_fwd_flag': 'N',
 #        ...,
 #    }
 # __read_parquet_s3_end__

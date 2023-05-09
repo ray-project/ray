@@ -16,7 +16,7 @@ worker_node_types:
      instance_type: n2-standard-16
      min_workers: 9
      max_workers: 9
-     use_spot: true
+     use_spot: false
      resources:
       custom_resources:
         worker: 1
