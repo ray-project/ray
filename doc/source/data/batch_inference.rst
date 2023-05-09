@@ -19,8 +19,9 @@ batch of data on demand.
 This is in contrast to online inference, where the model is run immediately on a
 data point when it becomes available.
 
-Here's a simple schematic of batch inference, "mapping" batches to predictions
-via model inference:
+Here's a simple schematic of batch inference for the computer vision task classifying
+images as cats or docs, by "mapping" batches of input data to predictions
+via ML model inference:
 
 .. figure:: images/batch_inference.png
 
@@ -492,9 +493,15 @@ stateful class with Ray for our pretrained ResNet model:
 
         <2> The ``__call__`` method is used to apply the model to a batch of data.
 
-        <3> We're free to use any custom code in a stateful class, and here we prepare the data to run on GPUs.
+        <3> We're free to use any custom code in a stateful class.
 
         <4> Finally, we return the ``"class"`` key of the model predictions as Numpy array.
+
+.. note::
+
+    Of course, you can also use GPUs for inference with Ray.
+    Jump ahead to the :ref:`GPU usage section <batch_inference_gpu>` to see how
+    to modify the current example to use GPUs.
 
 
 Scalable inference with Ray Data
@@ -660,6 +667,9 @@ If encountering OOMs, decreasing your ``batch_size`` may help.
 .. caution::
   The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
   (e.g. tables with many columns or a collection of large images).
+
+
+.. _batch_inference_gpu:
 
 Using GPUs in batch inference
 -----------------------------
