@@ -34,9 +34,11 @@ def test_get_test_targets_for_changed_files(mock_01, mock_02) -> None:
                 }
             )
         )
-    assert _get_test_targets_for_changed_files(
-        ["file_01.py", "file_02.py"], "tmp"
-    ) == set(["//release:test_name", "//release:test_name2", "//release:test_name3"])
+    assert _get_test_targets_for_changed_files(["file_01.py", "file_02.py"], "tmp") == {
+        "//release:test_name",
+        "//release:test_name2",
+        "//release:test_name3",
+    }
 
 
 if __name__ == "__main__":
