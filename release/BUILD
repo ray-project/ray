@@ -440,6 +440,10 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_manager.py"],
     tags = [
+        "release_unit",
+        "team:ci",
+    ]
+    deps = [
         ":ray_release",
         bk_require("pytest"),
     ],
@@ -614,6 +618,10 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_template.py"],
     tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
         ":ray_release",
         bk_require("pytest"),
     ],
