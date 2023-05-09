@@ -87,12 +87,12 @@ class Humanify:
     def memory(x: int):
         """Converts raw bytes to a human readable memory size."""
         if x >= 2**30:
-            return str(x / (2**30)) + " GiB"
+            return str(format(x / (2**30), ".3f")) + " GiB"
         elif x >= 2**20:
-            return str(x / (2**20)) + " MiB"
+            return str(format(x / (2**20), ".3f")) + " MiB"
         elif x >= 2**10:
-            return str(x / (2**10)) + " KiB"
-        return str(x) + " B"
+            return str(format(x / (2**10), ".3f")) + " KiB"
+        return str(format(x, ".3f")) + " B"
 
     def duration(x: int):
         """Converts miliseconds to a human readable duration."""
@@ -252,7 +252,10 @@ class StateSchema(ABC):
                 and f.name in state
                 and state[f.name] is not None
             ):
-                state[f.name] = f.metadata["format_fn"](state[f.name])
+                try:
+                    state[f.name] = f.metadata["format_fn"](state[f.name])
+                except Exception as e:
+                    logger.error(f"Failed to format {f.name}:{state[f.name]} with {e}")
         return state
 
     @classmethod
