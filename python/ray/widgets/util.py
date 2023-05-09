@@ -241,8 +241,12 @@ def in_notebook() -> bool:
     try:
         import IPython
 
-        class_name = IPython.get_ipython().__class__.__name__
-        is_notebook = True if "Terminal" not in class_name else False
+        shell = IPython.get_ipython().__class__.__name__
+        if shell == "ZMQInteractiveShell":
+            return True  # Jupyter notebook or qtconsole
+        elif shell == "TerminalInteractiveShell":
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type
     except (ModuleNotFoundError, NameError):
-        is_notebook = False
-    return is_notebook
+        return False
