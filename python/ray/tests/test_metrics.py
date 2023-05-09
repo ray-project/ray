@@ -105,26 +105,21 @@ def get_owner_info(node_ids):
         n["NodeID"]: (n["NodeManagerAddress"], n["NodeManagerPort"])
         for n in ray.nodes()
     }
-    import gc
-
-    gc.collect()
-    import time
-
-    time.sleep(1)
+    # Force a global gc to clean up the object store.
+    ray._private.internal_api.global_gc()
     owner_stats = {n: 0 for n in node_ids}
     primary_copy_stats = {n: 0 for n in node_ids}
 
     for node_id in node_ids:
         node_stats = ray._private.internal_api.node_stats(
-            node_addrs[node_id][0], node_addrs[node_id][1], False, True
+            node_addrs[node_id][0], node_addrs[node_id][1], False
         )
-        for owner_stat in node_stats.store_stats.owner_stats:
-            owner_id = ray.NodeID(owner_stat.owner_id).hex()
-            owner_stats[owner_id] += owner_stat.num_object_ids
-        print(node_id, node_stats.core_workers_stats)
+        owner_stats[node_id] = sum(
+            [stats.num_owned_objects for stats in node_stats.core_workers_stats]
+        )
         primary_copy_stats[
             node_id
-        ] = node_stats.store_stats.object_store_primary_copies_total
+        ] = node_stats.store_stats.num_object_store_primary_copies
 
     print(owner_stats)
     print(node_ids)
@@ -157,62 +152,78 @@ def test_node_object_metrics(ray_start_cluster, monkeypatch):
     # Object store stats
     # x is owned by node_0
     # x is stored at node_0
-    x = ray.put([1] * 1024 * 1024 * 2)
+    x = ray.put([1])  # noqa: F841
+    wait_for_condition(lambda: get_owner_info(node_ids) == ([1, 0, 0], [1, 0, 0]))
 
+    # Test nested with put
     @ray.remote(resources={"node_1": 1})
     def big_obj():
-        return ray.put([1] * 1024 * 1024 * 10)
+        # b is owned by node_1
+        # b is stored at node_1
+        b = ray.put([1] * 1024 * 1024 * 10)
+        return b
 
     # Object store stats
-    # big_obj is owned by node_1
-    # big_obj is stored at node_1
-    big_obj_ref = big_obj.remote()
-    ray.get(big_obj_ref)
+    # big_obj is owned by node_0
+    # big_obj is stored in memory (no primary copy)
+    big_obj_ref = big_obj.remote()  # noqa: F841
+    wait_for_condition(lambda: get_owner_info(node_ids) == ([2, 1, 0], [1, 1, 0]))
 
-    @ray.remote(resources={"node_2": 1})
-    class A:
-        def gen(self, s):
+    # Test nested with task (small output)
+    @ray.remote(resources={"node_1": 1})
+    def nest_task(s):
+        @ray.remote(resources={"node_2": 1})
+        def task():
             return [1] * s
 
-        def owned_by_a(self, s):
-            return ray.put([1] * s)
+        # t is owned by node_1
+        # if s is small,
+        # then it's is stored in memory of node_1 (no primary copy)
+        # else it's stored in object store of node_1
+        t = task.remote()
+        return t
 
-    a = A.remote()
-    # Object store stats
-    # a_obj is owned by node_0
-    # a_obj is stored at node_2
-    a_obj = a.gen.remote(1024 * 1024 * 10)
-    ray.get(a_obj)
+    # nest_ref is owned by node_0
+    # nest_ref is stored in memory (no primary copy)
+    nest_ref = nest_task.remote(1) # noqa: F841
+    wait_for_condition(lambda: get_owner_info(node_ids) == ([3, 2, 0], [1, 1, 0]))
 
-    # b is owned by node_2
-    # b is stored at node_2
-    b = a.owned_by_a.remote(1024 * 1024 * 10)
-    import time
+    big_nest = nest_task.remote(1024 * 1024 * 10) # noqa: F841
 
-    ray.get(b)
+    wait_for_condition(lambda: get_owner_info(node_ids) == ([4, 3, 0], [1, 1, 1]))
 
-    @ray.remote(resources={"node_0": 1})
-    def sleep():
-        time.sleep(100000)
+    # Test with assigned owned
+    @ray.remote(resources={"node_2": 0.5}, num_cpus=0)
+    class A:
+        def ready(self):
+            return
 
-    # s is not available
-    s = sleep.remote()
-    print(">>>SLEEP: ", s)
+        def gen(self):
+            return ray.put(10)
 
-    @ray.remote(resources={"node_1": 1})
-    def pass_obj(x):
-        return ray.get(x)
+    # actor is owned by node_0
+    # actor is not an object, so no object store copies
+    actor = A.remote()  # noqa: F841
+    ray.get(actor.ready.remote())
+    # o is owned by actor (node_2)
+    # o is stored in object store of node_0
+    o = ray.put(1, _owner=actor)  # noqa: F841
+    wait_for_condition(lambda: get_owner_info(node_ids) == ([5, 3, 1], [2, 1, 1]))
 
-    p = pass_obj.remote([s])
-    time.sleep(1)
+    # Test with detached owned
+    # detached actor is owned by GCS. So it's not counted in the owner stats
+    detached_actor = A.options(lifetime="detached", name="A").remote()
+    ray.get(detached_actor.ready.remote())
+    for i in range(3):
+        assert get_owner_info(node_ids) == ([5, 3, 1], [2, 1, 1])
+        import time
 
-    def check():
-        owner_stats, primary_copy_stats = get_owner_info(node_ids)
-        assert owner_stats == [2, 1, 1]
-        assert primary_copy_stats == [1, 1, 2]
-        return True
-
-    wait_for_condition(check)
+        time.sleep(1)
+    # gen_obj is owned by node_0
+    # the inner object is owned by A (node_2)
+    # the inner object is stored in object store of node_2
+    gen_obj = detached_actor.gen.remote()  # noqa: F841
+    wait_for_condition(lambda: get_owner_info(node_ids) == ([6, 3, 2], [2, 1, 2]))
 
 
 def test_multi_node_metrics_export_port_discovery(ray_start_cluster):

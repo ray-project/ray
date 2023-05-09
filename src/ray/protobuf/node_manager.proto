@@ -220,7 +220,7 @@ message ObjectStoreStats {
   // memory.
   bool object_pulls_queued = 13;
   // The number of primary copies of objects in the local node.
-  int64 object_store_primary_copies_total = 15;
+  int64 num_object_store_primary_copies = 14;
 }
 
 message GetNodeStatsReply {

@@ -147,10 +147,10 @@ class LocalObjectManager {
   /// \return True if spilling is still in progress. False otherwise.
   bool IsSpillingInProgress();
 
-  /// Populate object spilling stats.
+  /// Populate object store stats.
   ///
   /// \param reply Output parameter.
-  void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
 
   /// Record object spilling stats to metrics.
   void RecordMetrics() const;
