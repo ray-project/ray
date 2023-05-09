@@ -54,16 +54,10 @@ export const ServeApplicationRow = ({
         <DurationText startTime={last_deployed_time_s * 1000} />
       </TableCell>
       <TableCell align="center">
-        {deployed_app_config ? (
-          <CodeDialogButton
-            title={
-              name ? `Application config for ${name}` : `Application config`
-            }
-            code={deployed_app_config}
-          />
-        ) : (
-          "-"
-        )}
+        <CodeDialogButton
+          title={name ? `Application config for ${name}` : `Application config`}
+          code={deployed_app_config}
+        />
       </TableCell>
     </TableRow>
   );
