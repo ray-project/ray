@@ -286,12 +286,14 @@ class AlgorithmConfig(_Config):
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
+        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
         self.torch_compile_worker_forward_train = False
         self.torch_compile_worker_forward_inference = False
         self.torch_compile_worker_forward_exploration = False
         self.torch_compile_worker_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
+        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
 
         # `self.environment()`
         self.env = None
@@ -1221,11 +1223,13 @@ class AlgorithmConfig(_Config):
         torch_compile_learner_forward_train=NotProvided,
         torch_compile_learner_forward_exploration=NotProvided,
         torch_compile_learner_forward_inference=NotProvided,
+        torch_compile_learner_dynamo_mode=NotProvided,
         torch_compile_learner_dynamo_backend=NotProvided,
         torch_compile_worker_forward_train=NotProvided,
         torch_compile_worker_forward_exploration=NotProvided,
         torch_compile_worker_forward_inference=NotProvided,
         torch_compile_worker_dynamo_backend=NotProvided,
+        torch_compile_worker_dynamo_mode=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1259,6 +1263,8 @@ class AlgorithmConfig(_Config):
                 learner.
             torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
+            torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
+                learner.
             torch_compile_worker_forward_train: If True, forward_train methods on
                 TorchRLModules on the workers are compiled. If not specified, the
                 default is not to compile forward train on the workers.
@@ -1272,6 +1278,8 @@ class AlgorithmConfig(_Config):
                 retracing can be expensive.
             torch_compile_worker_dynamo_backend: The torch dynamo backend to use on
                 the workers.
+            torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
+                workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1309,6 +1317,8 @@ class AlgorithmConfig(_Config):
             self.torch_compile_learner_dynamo_backend = (
                 torch_compile_learner_dynamo_backend
             )
+        if torch_compile_learner_dynamo_mode is not NotProvided:
+            self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
         if torch_compile_worker_forward_train is not NotProvided:
             self.torch_compile_worker_forward_train = torch_compile_worker_forward_train
         if torch_compile_worker_forward_exploration is not NotProvided:
@@ -1323,6 +1333,8 @@ class AlgorithmConfig(_Config):
             self.torch_compile_worker_dynamo_backend = (
                 torch_compile_worker_dynamo_backend
             )
+        if torch_compile_worker_dynamo_mode is not NotProvided:
+            self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
 
         return self
 

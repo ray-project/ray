@@ -40,6 +40,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
+from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.offline import (
     D4RLReader,
     DatasetReader,
@@ -2109,10 +2110,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 new_policy = policy
 
             if self.config.get("_enable_rl_module_api", False):
-                # We make the assumption that the Policy abides to the Policy API
-                # which has an attribute `Policy.model` that will be an RL Module in
-                # this case.
-                self.config.get_torch_compile_worker_config().compile(new_policy.model)
+                if isinstance(new_policy.model, TorchRLModule):
+                    self.config.get_torch_compile_worker_config().compile(
+                        new_policy.model
+                    )
 
             self.policy_map[name] = new_policy
 

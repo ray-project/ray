@@ -58,6 +58,7 @@ class TorchCompileConfig:
     compile_forward_inference: bool = False
     compile_forward_exploration: bool = False
     torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "inductor"
+    torch_dynamo_mode: str = "reduce-overhead"
     kwargs: dict = field(default_factory=lambda: dict())
 
     def compile(self, rl_module: "TorchRLModule") -> None:
@@ -72,15 +73,21 @@ class TorchCompileConfig:
 
         if self.compile_forward_train:
             rl_module.compile_forward_train(
-                backend=self.torch_dynamo_backend, **self.kwargs
+                backend=self.torch_dynamo_backend,
+                mode=self.torch_dynamo_mode,
+                **self.kwargs
             )
         if self.compile_forward_inference:
             rl_module.compile_forward_inference(
-                backend=self.torch_dynamo_backend, **self.kwargs
+                backend=self.torch_dynamo_backend,
+                mode=self.torch_dynamo_mode,
+                **self.kwargs
             )
         if self.compile_forward_exploration:
             rl_module.compile_forward_exploration(
-                backend=self.torch_dynamo_backend, **self.kwargs
+                backend=self.torch_dynamo_backend,
+                mode=self.torch_dynamo_mode,
+                **self.kwargs
             )
 
 
@@ -174,28 +181,30 @@ class TorchRLModule(nn.Module, RLModule):
             return self._compiled_forward_train(batch, **kwargs)
         return self._forward_train(batch, **kwargs)
 
-    def compile_forward_train(self, backend="inductor", retrace_on_set_weights=True):
+    def compile_forward_train(
+        self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
+    ):
         """Compiles the forward_train method."""
         self._compiled_forward_train = torch.compile(
-            self._forward_train, backend=backend
+            self._forward_train, mode=mode, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
 
     def compile_forward_inference(
-        self, backend="inductor", retrace_on_set_weights=True
+        self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
     ):
         """Compiles the forward_inference method."""
         self._compiled_forward_inference = torch.compile(
-            self._forward_inference, backend=backend
+            self._forward_inference, mode=mode, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
 
     def compile_forward_exploration(
-        self, backend="inductor", retrace_on_set_weights=True
+        self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
     ):
         """Compiles the forward_exploration method."""
         self._compiled_forward_exploration = torch.compile(
-            self._forward_exploration, backend=backend
+            self._forward_exploration, mode=mode, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
 
