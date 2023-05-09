@@ -268,16 +268,16 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
             auto reply) {
           for (const auto &key : keys) {
             ProcessNext(key);
-            if (redis_callback) {
-              redis_callback(reply);
-            }
+          }
+          if (redis_callback) {
+            redis_callback(reply);
           }
         }));
   };
 
-  absl::MutexLock lock(&mu_);
   bool can_fire = true;
   {
+    absl::MutexLock lock(&mu_);
     for (const auto &key : keys) {
       if (auto iter = write_ops_.find(key); iter != write_ops_.end()) {
         can_fire = false;
@@ -325,7 +325,7 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   auto num_deleted = std::make_shared<int64_t>(0);
   auto context = redis_client_->GetShardContext("");
   for (auto &command : del_cmds) {
-    std::vector<std::string> partition_keys(keys.begin() + 2, keys.end());
+    std::vector<std::string> partition_keys(command.begin() + 2, command.end());
     auto delete_callback = [num_deleted, finished_count, total_count, callback](
                                const std::shared_ptr<CallbackReply> &reply) {
       (*num_deleted) += reply->ReadAsInteger();
