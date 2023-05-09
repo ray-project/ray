@@ -13,7 +13,7 @@ import numpy as np
 
 
 def read_tfrecords(path: str) -> Dataset:
-    return ray.data.read_tfrecords(paths=path)
+    return ray.data.read_tfrecords(paths=path).materialize()
 
 
 def generate_tfrecords_from_images(
