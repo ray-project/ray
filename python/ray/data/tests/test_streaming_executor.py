@@ -267,14 +267,16 @@ def test_execution_allowed():
 
     # CPU.
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
+    op_state = MagicMock()
+
     assert _execution_allowed(
-        op, stub(ExecutionResources(cpu=1)), ExecutionResources(cpu=2)
+        op, op_state, stub(ExecutionResources(cpu=1)), ExecutionResources(cpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(cpu=2)), ExecutionResources(cpu=2)
+        op, op_state, stub(ExecutionResources(cpu=2)), ExecutionResources(cpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(cpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(cpu=2)), ExecutionResources(gpu=2)
     )
 
     # GPU.
@@ -282,10 +284,10 @@ def test_execution_allowed():
         return_value=ExecutionResources(cpu=0, gpu=1)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
     # Test conversion to indicator (0/1).
@@ -293,13 +295,13 @@ def test_execution_allowed():
         return_value=ExecutionResources(cpu=0, gpu=100)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
     # Test conversion to indicator (0/1).
@@ -307,13 +309,13 @@ def test_execution_allowed():
         return_value=ExecutionResources(cpu=0, gpu=0.1)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
 
