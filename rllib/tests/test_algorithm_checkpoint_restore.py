@@ -16,6 +16,7 @@ from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.ars import ARSConfig
 from ray.rllib.algorithms.a3c import A3CConfig
 from ray.tune.registry import get_trainable_cls
+import os
 
 
 def get_mean_action(alg, obs):
@@ -32,7 +33,12 @@ def get_mean_action(alg, obs):
 # explore=None if we compare the mean of the distribution of actions for the
 # same observation to be the same.
 algorithms_and_configs = {
-    "A3C": (A3CConfig().exploration(explore=False).rollouts(num_rollout_workers=1)),
+    "A3C": (
+        A3CConfig()
+        .exploration(explore=False)
+        .rollouts(num_rollout_workers=1)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    ),
     "APEX_DDPG": (
         ApexDDPGConfig()
         .exploration(explore=False)
@@ -42,29 +48,34 @@ algorithms_and_configs = {
             optimizer={"num_replay_buffer_shards": 1},
             num_steps_sampled_before_learning_starts=0,
         )
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "ARS": (
         ARSConfig()
         .exploration(explore=False)
         .rollouts(num_rollout_workers=2, observation_filter="MeanStdFilter")
         .training(num_rollouts=10, noise_size=2500000)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "DDPG": (
         DDPGConfig()
         .exploration(explore=False)
         .reporting(min_sample_timesteps_per_iteration=100)
         .training(num_steps_sampled_before_learning_starts=0)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "DQN": (
         DQNConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "ES": (
         ESConfig()
         .exploration(explore=False)
         .training(episodes_per_batch=10, train_batch_size=100, noise_size=2500000)
         .rollouts(observation_filter="MeanStdFilter", num_rollout_workers=2)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "PPO": (
         # See the comment before the `algorithms_and_configs` dict.
@@ -72,21 +83,30 @@ algorithms_and_configs = {
         PPOConfig()
         .training(num_sgd_iter=5, train_batch_size=1000)
         .rollouts(num_rollout_workers=2)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "SimpleQ": (
         SimpleQConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
     "SAC": (
         SACConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     ),
 }
 
 
-def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=False):
+def ckpt_restore_test(
+    algo_name,
+    tf2=False,
+    object_store=False,
+    replay_buffer=False,
+    run_restored_algorithm=True,
+):
     config = algorithms_and_configs[algo_name].to_dict()
     # If required, store replay buffer data in checkpoints as well.
     if replay_buffer:
@@ -172,22 +192,28 @@ def ckpt_restore_test(algo_name, tf2=False, object_store=False, replay_buffer=Fa
                     raise AssertionError(
                         "algo={} [a1={} a2={}]".format(algo_name, a1, a2)
                     )
-            # Stop both algos.
+            # Stop algo 1.
             alg1.stop()
+
+            if run_restored_algorithm:
+                # Check that algo 2 can still run.
+                print("Starting second run on Algo 2...")
+                alg2.train()
             alg2.stop()
 
 
 class TestCheckpointRestorePG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
 
     def test_a3c_checkpoint_restore(self):
-        ckpt_restore_test("A3C")
+        # TODO(Kourosh) A3C cannot run a restored algorithm for some reason.
+        ckpt_restore_test("A3C", run_restored_algorithm=False)
 
     def test_ppo_checkpoint_restore(self):
         ckpt_restore_test("PPO", object_store=True)
@@ -196,7 +222,7 @@ class TestCheckpointRestorePG(unittest.TestCase):
 class TestCheckpointRestoreOffPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -221,7 +247,7 @@ class TestCheckpointRestoreOffPolicy(unittest.TestCase):
 class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
