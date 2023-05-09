@@ -490,16 +490,6 @@ class StateApiClient(SubmissionClient):
 
         """
 
-        if resource == StateResource.JOBS:
-            # State API will be querying job's endpoint for job details
-            endpoint = "/api/jobs/"
-            r = self._do_request("GET", "/api/jobs/")
-            if r.status_code == 200:
-                jobs_info_json = r.json()
-                jobs_info = [JobState(job_info) for job_info in jobs_info_json]
-                return jobs_info
-            else:
-                self._raise_error(r)
 
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
@@ -932,7 +922,7 @@ def list_jobs(
         Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).list(
+    res =  StateApiClient(address=address).list(
         StateResource.JOBS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -940,6 +930,8 @@ def list_jobs(
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
+    print(res)
+    return res
 
 
 def list_workers(

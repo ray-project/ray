@@ -37,9 +37,6 @@ class JobDetails(BaseModel):
     """
 
     type: JobType = Field(..., description="The type of job.")
-    entrypoint: Optional[str] = Field(
-        None, description="The entrypoint command for this job."
-    )
     job_id: Optional[str] = Field(
         None,
         description="The job ID. An ID that is created for every job that is "

@@ -20,6 +20,7 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import ActorID
 from ray._private.test_utils import (
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -2174,6 +2175,7 @@ def test_list_get_nodes(ray_start_cluster):
 )
 def test_list_jobs(shutdown_only):
     ray.init()
+    # Test submission job
     client = JobSubmissionClient(
         f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
@@ -2185,13 +2187,38 @@ def test_list_jobs(shutdown_only):
     def verify():
         job_data = list_jobs()[0]
         print(job_data)
-        job_id_from_api = job_data["job_id"]
-        correct_state = job_data["status"] == "SUCCEEDED"
-        correct_id = job_id == job_id_from_api
-        return correct_state and correct_id
+        job_id_from_api = job_data["submission_id"]
+        assert job_data["status"] == "SUCCEEDED"
+        assert job_id == job_id_from_api
+        return True
 
     wait_for_condition(verify)
-    print(list_jobs())
+
+
+    # Test driver jobs
+    script="""
+
+import ray
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+"""
+    driver_out = run_string_as_driver(script)
+
+    def verify():
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        assert len(jobs) == 1
+        assert jobs[0]["driver_info"] is not None
+
+        sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
+        assert len(sub_jobs) == 1
+        assert sub_jobs[0]["submission_id"] is not None
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(

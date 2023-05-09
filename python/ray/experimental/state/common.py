@@ -10,7 +10,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.dashboard.modules.job.common import JobInfo
+from ray.dashboard.modules.job.common import JobInfo, JobStatus
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -440,19 +440,19 @@ class NodeState(StateSchema):
     # up to 30 seconds).
     end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
 
-
-@dataclass
+# NOTE:
+# Declaring this as dataclass would make __init__ not being called properly.
 class JobState(StateSchema, JobDetails):
     """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
-    def __init__(self, kwargs):
+    def __init__(self, **kwargs):
         JobDetails.__init__(self, **kwargs)
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
         # We are not doing any filtering since filtering is currently done
         # at the backend.
-        return {}
+        return {"job_id", "type", "status", "submission_id"}
 
     @classmethod
     def list_columns(cls, detail: bool) -> List[str]:
@@ -472,8 +472,11 @@ class JobState(StateSchema, JobDetails):
     def asdict(self):
         return JobDetails.dict(self)
 
-    def __repr__(self) -> str:
-        return JobDetails.__repr__(self)
+    @classmethod
+    def schema_dict(cls) -> Dict[str, Any]:
+        schema_types = cls.schema()["properties"]
+        # Get type name to actual type mapping.
+        return {k: v['type'] for k, v in schema_types.items() if v.get('type') is not None}
 
 
 @dataclass(init=True)
