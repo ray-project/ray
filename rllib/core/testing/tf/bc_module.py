@@ -33,7 +33,13 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
 
-    def get_action_dist_cls(self, mode: str):
+    def get_train_action_dist_cls(self):
+        return TfCategorical
+
+    def get_exploration_action_dist_cls(self):
+        return TfCategorical
+
+    def get_inference_action_dist_cls(self):
         return TfCategorical
 
     @override(RLModule)

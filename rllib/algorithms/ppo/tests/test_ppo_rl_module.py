@@ -64,7 +64,7 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    action_dist_class = module.get_action_dist_cls(module.TRAIN)
+    action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[SampleBatch.ACTION_DIST_INPUTS]
     ).logp(batch[SampleBatch.ACTIONS])
@@ -88,7 +88,7 @@ def dummy_tf_ppo_loss(module, batch, fwd_out):
         Loss tensor
     """
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    action_dist_class = module.get_action_dist_cls(module.TRAIN)
+    action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[SampleBatch.ACTION_DIST_INPUTS]
     ).logp(batch[SampleBatch.ACTIONS])
@@ -226,7 +226,7 @@ class TestPPO(unittest.TestCase):
                 # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
-                action_dist_cls = module.get_action_dist_cls(module.EXPLORATION)
+                action_dist_cls = module.get_exploration_action_dist_cls()
                 action_dist = action_dist_cls.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )

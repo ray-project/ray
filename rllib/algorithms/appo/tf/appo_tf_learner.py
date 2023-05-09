@@ -26,9 +26,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
-        action_dist_cls_train = self._module[module_id].get_action_dist_cls(
-            self._module[module_id].TRAIN
-        )
+        action_dist_cls_train = self._module[module_id].get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
