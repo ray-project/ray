@@ -1,10 +1,10 @@
-from collections import defaultdict
 import itertools
 import pandas as pd
 import random
 import pytest
 import threading
 import time
+from unittest import mock
 
 from typing import List, Any
 
@@ -532,6 +532,7 @@ def test_e2e_with_unbounded_max_actors(restore_data_context):
                 min_size=3, max_tasks_in_flight_per_actor=2
             ),
             num_gpus=1,
+            batch_size=1,
         )
 
         ds.fully_executed()

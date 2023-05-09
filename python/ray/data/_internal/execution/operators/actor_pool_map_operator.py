@@ -529,9 +529,7 @@ class _ActorPool:
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # The maximum number of tasks in flight each actor has run at any point in
         # time.
-        self._max_tasks_in_flight_per_actor: dict[
-            ray.actor.ActorHandle, int
-        ] = defaultdict(int)
+        self._max_tasks_in_flight_per_actor: dict[str, int] = defaultdict(int)
         # Node id of each ready actor.
         self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
         # Actors that are not yet ready (still pending creation).
@@ -621,8 +619,11 @@ class _ActorPool:
             else:
                 self._locality_misses += 1
         self._num_tasks_in_flight[actor] += 1
-        self._max_tasks_in_flight_per_actor[actor] = max(
-            self._max_tasks_in_flight_per_actor[actor], self._num_tasks_in_flight[actor]
+
+        actor_str = str(actor)
+        self._max_tasks_in_flight_per_actor[actor_str] = max(
+            self._max_tasks_in_flight_per_actor[actor_str],
+            self._num_tasks_in_flight[actor],
         )
         return actor
 
