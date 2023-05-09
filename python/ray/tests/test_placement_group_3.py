@@ -458,6 +458,19 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         assert len(gpu_ids_res) == 2
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        generate_system_config_map(
+            use_ray_syncer=True,
+        ),
+        generate_system_config_map(
+            use_ray_syncer=False,
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.repeat(3)
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     """Tests the scheduling of lots of actors will not be blocked
     when using placement groups.

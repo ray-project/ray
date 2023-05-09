@@ -1,18 +1,26 @@
 import asyncio
 import os
-from ray.serve.deployment_graph import RayServeDAGHandle
+from typing import Optional
 
+from fastapi import FastAPI
 import requests
+from pydantic import BaseModel, ValidationError
 import pytest
 import starlette.responses
-from fastapi import FastAPI
 
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.application import Application
+from ray.serve.built_application import BuiltApplication
+from ray.serve.deployment import Application
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
+from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 
 
 @serve.deployment()
@@ -386,13 +394,13 @@ def test_run_get_ingress_app(serve_instance):
     def g():
         return "got g"
 
-    app = Application([g])
+    app = BuiltApplication([g])
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
     serve_instance.delete_deployments(["g"])
 
-    no_ingress_app = Application([g.options(route_prefix=None)])
+    no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
     ingress_handle = serve.run(no_ingress_app)
     assert ingress_handle is None
 
@@ -417,27 +425,6 @@ def test_run_get_ingress_node(serve_instance):
     ingress_handle = serve.run(dag)
 
     assert ray.get(ingress_handle.remote()) == "got f"
-
-
-def test_run_delete_old_deployments(serve_instance):
-    """Check that serve.run() can remove all old deployments"""
-
-    @serve.deployment(name="f", route_prefix="/test1")
-    def f():
-        return "got f"
-
-    @serve.deployment(name="g", route_prefix="/test2")
-    def g():
-        return "got g"
-
-    ingress_handle = serve.run(f.bind())
-    assert ray.get(ingress_handle.remote()) == "got f"
-
-    ingress_handle = serve.run(g.bind())
-    assert ray.get(ingress_handle.remote()) == "got g"
-
-    assert "g" in serve.list_deployments()
-    assert "f" not in serve.list_deployments()
 
 
 class TestSetOptions:
@@ -570,7 +557,10 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert "g" in deployment_info
+    assert (
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}g"
+        in deployment_info
+    )
 
     @serve.deployment
     def f():
@@ -706,6 +696,138 @@ def test_invalid_driver_deployment_class():
         f.options(num_replicas=2)
     with pytest.raises(ValueError):
         f.options(autoscaling_config={"min_replicas": "1"})
+
+
+class TestAppBuilder:
+    @serve.deployment
+    class A:
+        pass
+
+    @serve.deployment
+    def f():
+        pass
+
+    class TypedArgs(BaseModel):
+        message: str
+        num_replicas: Optional[int]
+
+    def test_prebuilt_app(self):
+        a = self.A.bind()
+        assert call_app_builder_with_args_if_necessary(a, {}) == a
+
+        f = self.f.bind()
+        assert call_app_builder_with_args_if_necessary(f, {}) == f
+
+        with pytest.raises(
+            ValueError,
+            match="Arguments can only be passed to an application builder function",
+        ):
+            call_app_builder_with_args_if_necessary(f, {"key": "val"})
+
+    def test_invalid_builder(self):
+        class ThisShouldBeAFunction:
+            pass
+
+        with pytest.raises(
+            TypeError,
+            match=(
+                "Expected a built Serve application "
+                "or an application builder function"
+            ),
+        ):
+            call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
+
+    def test_invalid_signature(self):
+        def builder_with_two_args(args1, args2):
+            return self.f.bind()
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions should take exactly one parameter",
+        ):
+            call_app_builder_with_args_if_necessary(builder_with_two_args, {})
+
+    def test_builder_returns_bad_type(self):
+        def return_none(args):
+            self.f.bind()
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions must return a",
+        ):
+            call_app_builder_with_args_if_necessary(return_none, {})
+
+        def return_unbound_deployment(args):
+            return self.f
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions must return a",
+        ):
+            call_app_builder_with_args_if_necessary(return_unbound_deployment, {})
+
+    def test_basic_no_args(self):
+        def build_function(args):
+            return self.A.bind()
+
+        assert isinstance(
+            call_app_builder_with_args_if_necessary(build_function, {}), Application
+        )
+
+        def build_class(args):
+            return self.f.bind()
+
+        assert isinstance(
+            call_app_builder_with_args_if_necessary(build_class, {}), Application
+        )
+
+    def test_args_dict(self):
+        args_dict = {"message": "hiya", "num_replicas": "3"}
+
+        def build(args):
+            assert len(args) == 2
+            assert args["message"] == "hiya"
+            assert args["num_replicas"] == "3"
+            return self.A.options(num_replicas=int(args["num_replicas"])).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+    def test_args_typed(self):
+        args_dict = {"message": "hiya", "num_replicas": "3"}
+
+        def build(args: self.TypedArgs):
+            assert isinstance(args, self.TypedArgs)
+            assert args.message == "hiya"
+            assert args.num_replicas == 3
+            return self.A.options(num_replicas=args.num_replicas).bind(args.message)
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        # Sanity check that pydantic validation works.
+
+        # 1) Check that validation permits a missing optional field.
+        def check_missing_optional(args: self.TypedArgs):
+            assert args.message == "hiya"
+            assert args.num_replicas is None
+            return self.A.bind()
+
+        app = call_app_builder_with_args_if_necessary(
+            check_missing_optional, {"message": "hiya"}
+        )
+        assert isinstance(app, Application)
+
+        # 2) Check that validation rejects a missing required field.
+        def check_missing_required(args: self.TypedArgs):
+            assert False, "Shouldn't get here because validation failed."
+
+        with pytest.raises(ValidationError, match="field required"):
+            call_app_builder_with_args_if_necessary(
+                check_missing_required, {"num_replicas": "10"}
+            )
 
 
 if __name__ == "__main__":

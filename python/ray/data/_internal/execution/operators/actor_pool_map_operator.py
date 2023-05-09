@@ -75,6 +75,7 @@ class ActorPoolMapOperator(MapOperator):
         )
         self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
         self._autoscaling_policy = autoscaling_policy
@@ -248,6 +249,32 @@ class ActorPoolMapOperator(MapOperator):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
         self._actor_pool.kill_all_actors()
         super().shutdown()
+
+        # Warn if the user specified a batch or block size that prevents full
+        # parallelization across the actor pool. We only know this information after
+        # execution has completed.
+        total_rows = sum([m.num_rows for m in self._output_metadata])
+        min_workers = self._autoscaling_policy.min_workers
+        max_desired_batch_size = total_rows // min_workers
+        if (
+            self._min_rows_per_bundle is not None
+            and self._min_rows_per_bundle > max_desired_batch_size
+        ):
+            # The user specified a batch size, but it was probably too large.
+            logger.get_logger().warning(
+                "To ensure full parallelization across an actor pool of size "
+                f"{min_workers}, the specified batch size "
+                f"should be at most {max_desired_batch_size}. Your configured batch "
+                f"size for this operator was {self._min_rows_per_bundle}."
+            )
+        elif len(self._output_metadata) < min_workers:
+            # The user created a stream that has too few blocks to begin with.
+            logger.get_logger().warning(
+                "To ensure full parallelization across an actor pool of size "
+                f"{min_workers}, the Datastream should consist of at least "
+                f"{min_workers} distinct blocks. Consider increasing "
+                "the parallelism when creating the Datastream."
+            )
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         # Work references that we wish the executor to wait on includes both task

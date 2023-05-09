@@ -21,6 +21,7 @@ def filter_tests(
     frequency: Frequency,
     test_attr_regex_filters: Optional[Dict[str, str]] = None,
     prefer_smoke_tests: bool = False,
+    run_jailed_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
     if test_attr_regex_filters is None:
         test_attr_regex_filters = {}
@@ -34,6 +35,8 @@ def filter_tests(
                 attr_mismatch = True
                 break
         if attr_mismatch:
+            continue
+        if not run_jailed_tests and test.get("jailed", False):
             continue
 
         test_frequency = get_frequency(test["frequency"])
