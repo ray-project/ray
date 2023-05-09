@@ -128,8 +128,7 @@ def _get_changed_files() -> List[str]:
     """
     Get the list of changed files in the current PR.
     """
-#    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    base_branch = 'can-coverage'
+    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
     if not base_branch:
         return []
     return (
