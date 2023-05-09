@@ -71,7 +71,6 @@ def _upload_coverage_info(coverage_file: str) -> None:
         _S3_BUCKET_NAME,
         s3_file_name,
     )
-    s3_file_name = _upload_coverage_info(coverage_file)
     _logger.info(f"Successfully uploaded coverage data to s3 as {s3_file_name}")
 
 
