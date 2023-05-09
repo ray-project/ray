@@ -12,6 +12,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
+    CHECKPOINT_RANK_KEY,
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
@@ -96,13 +97,14 @@ class CheckpointManager(CommonCheckpointManager):
             # Load checkpoint from path.
             return load_checkpoint_from_path(checkpoint_to_load)
 
-    def _process_one_checkpoint(
+    def _process_checkpoint(
         self,
         checkpoint_result: TrainingResult,
         decode_checkpoint_fn: Callable,
     ) -> None:
         checkpoint_data = checkpoint_result.data
         checkpoint_metadata = checkpoint_result.metadata or {}
+        checkpoint_rank = checkpoint_metadata.get(CHECKPOINT_RANK_KEY, 0)
 
         if isinstance(checkpoint_data, str):
             checkpoint_class: Type[Checkpoint] = checkpoint_metadata[
@@ -132,23 +134,24 @@ class CheckpointManager(CommonCheckpointManager):
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
             metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
+            rank=checkpoint_rank,
         )
 
-    def _process_checkpoint(
+    def _process_checkpoints(
         self,
         checkpoint_results: List[TrainingResult],
         decode_checkpoint_fn: Callable,
     ) -> None:
         """Ray Train entrypoint. Perform all processing for a checkpoint."""
-        if self._checkpoint_strategy.checkpoint_keep_all_ranks:
+        if self._checkpoint_strategy._checkpoint_keep_all_ranks:
             tracked_checkpoints = [
-                self._process_one_checkpoint(checkpoint_result, decode_checkpoint_fn)
+                self._process_checkpoint(checkpoint_result, decode_checkpoint_fn)
                 for checkpoint_result in checkpoint_results
             ]
         else:
             # Get checkpoint from first worker.
             tracked_checkpoints = [
-                self._process_one_checkpoint(
+                self._process_checkpoint(
                     checkpoint_results[0], decode_checkpoint_fn
                 )
             ]

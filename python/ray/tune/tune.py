@@ -656,8 +656,8 @@ def run(
         checkpoint_score_order=checkpoint_score_order,
         checkpoint_frequency=checkpoint_freq,
         checkpoint_at_end=checkpoint_at_end,
-        checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
-        checkpoint_upload_from_workers=checkpoint_upload_from_workers,
+        _checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
+        _checkpoint_upload_from_workers=checkpoint_upload_from_workers,
     )
 
     if num_samples == -1:

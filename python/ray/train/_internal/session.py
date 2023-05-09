@@ -27,14 +27,16 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     TIMESTAMP,
     CHECKPOINT_METADATA_KEY,
+    CHECKPOINT_RANK_KEY,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
+from ray.util.annotations import DeveloperAPI
 
 
 _INDEX_FILE_EXTENSION = ".files"
-_INDEX_FILE = "_RANK_{0}" + _INDEX_FILE_EXTENSION
+_INDEX_FILE = ".RANK_{0}" + _INDEX_FILE_EXTENSION
 
 
 class TrainingResultType(Enum):
@@ -65,6 +67,7 @@ class TrainingResult:
 
 
 # TODO(xwjiang): This needs a better name.
+@DeveloperAPI
 class _TrainSession:
     """Holds information for training on each worker."""
 
@@ -311,7 +314,7 @@ class _TrainSession:
             for fn in ckpt_files:
                 f.write(f"{fn}\n")
 
-    def remove_uploaded_checkpoint_files(self, checkpoint: Checkpoint):
+    def _remove_uploaded_checkpoint_files(self, checkpoint: Checkpoint):
         """Get rid of already uploaded large checkpoint files.
 
         This is so they don't get shipped to the driver node.
@@ -343,7 +346,7 @@ class _TrainSession:
             # so that they won't need to be shipped to the driver node
             # via object store.
             checkpoint.to_uri(self.checkpoint_uri)
-            self.remove_uploaded_checkpoint_files(checkpoint)
+            self._remove_uploaded_checkpoint_files(checkpoint)
 
         # Update session checkpoint to latest checkpoint.
         self.loaded_checkpoint = checkpoint
@@ -355,6 +358,7 @@ class _TrainSession:
             checkpoint = self._encode_data_fn(checkpoint)
 
         metadata = self._auto_fill_checkpoint_metrics({})
+        metadata
 
         if (
             checkpoint
@@ -364,6 +368,9 @@ class _TrainSession:
         ):
             metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
             checkpoint = str(checkpoint._local_path)
+
+        # Save the rank of the worker that created this checkpoint.
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,

@@ -50,7 +50,7 @@ class TrainingIterator:
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Optional[Path] = None,
-        storage_path: Optional[str] = "",
+        storage_path: Optional[str] = None,
     ):
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
@@ -96,7 +96,7 @@ class TrainingIterator:
         )
 
         # Session has started. Set current cloud checkpoint dir if necessary.
-        if self._checkpoint_strategy.checkpoint_upload_from_workers:
+        if self._checkpoint_strategy._checkpoint_upload_from_workers:
             self._backend_executor.set_checkpoint_uri(self.__get_cloud_checkpoint_dir())
 
     def _run_with_error_handling(self, func: Callable):
@@ -181,7 +181,7 @@ class TrainingIterator:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
+                self._checkpoint_manager._process_checkpoints(
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
 
@@ -193,7 +193,7 @@ class TrainingIterator:
                 # TODO(jungong) : It would be nicer if we find a cleaner way
                 # to sync the current cloud checkpointing directory between
                 # Tuner, Trainable, and Trainers.
-                if self._checkpoint_strategy.checkpoint_upload_from_workers:
+                if self._checkpoint_strategy._checkpoint_upload_from_workers:
                     self._backend_executor.set_checkpoint_uri(
                         self.__get_cloud_checkpoint_dir()
                     )
@@ -214,10 +214,10 @@ class TrainingIterator:
             result_type = results[0].type
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
+                self._checkpoint_manager._process_checkpoints(
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
-                if self._checkpoint_strategy.checkpoint_upload_from_workers:
+                if self._checkpoint_strategy._checkpoint_upload_from_workers:
                     self._backend_executor.set_checkpoint_uri(
                         self.__get_cloud_checkpoint_dir()
                     )
@@ -285,10 +285,11 @@ class TrainingIterator:
             return None
 
         base_dir = URI(self._storage_path)
-        trial_dir_parts = session.get_trial_dir().split("/")
-        suffix = TrainableUtil._make_checkpoint_dir_suffix(
+        trial_dir_parts = session.get_trial_dir().rstrip("/").split("/")
+        trial_dir_name = trial_dir_parts.pop()
+        exp_dir_name = trial_dir_parts.pop()
+        checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
             self._checkpoint_manager._latest_checkpoint_id
         )
-        # The last 2 path components are experiment and trial directories.
-        # There is a trailing /, so the last 2 components are indexed -3 and -2.
-        return str(base_dir / trial_dir_parts[-3] / trial_dir_parts[-2] / suffix)
+
+        return str(base_dir / exp_dir_name / trial_dir_name / checkpoint_dir_name)

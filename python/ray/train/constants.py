@@ -72,3 +72,6 @@ DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,veth"
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata
 CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
+
+# Key for AIR Checkpoint world rank in TrainingResult metadata
+CHECKPOINT_RANK_KEY = "checkpoint_rank"

@@ -94,10 +94,10 @@ class BackendExecutor:
         self.dataset_shards = None
 
         self._checkpoint_keep_all_ranks = (
-            checkpoint_config and checkpoint_config.checkpoint_keep_all_ranks
+            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
         )
         self.checkpoint_upload_from_workers = (
-            checkpoint_config and checkpoint_config.checkpoint_upload_from_workers
+            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
         )
 
     def start(
@@ -507,7 +507,7 @@ class BackendExecutor:
 
         def set_uri():
             session = _get_session("set_checkpoint_uri")
-            return session.set_checkpoint_uri(uri)
+            session.set_checkpoint_uri(uri)
 
         futures = self.worker_group.execute_async(set_uri)
         self.get_with_failure_handling(futures)
