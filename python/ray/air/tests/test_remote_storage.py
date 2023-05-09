@@ -225,7 +225,7 @@ def test_is_network_mount(tmp_path, monkeypatch):
         m.setattr(
             ray.air._internal.remote_storage,
             "_get_network_mounts",
-            lambda: [str(tmp_path)]
+            lambda: [str(tmp_path)],
         )
         assert _is_network_mount(str(tmp_path / "a/b/c"))
 
