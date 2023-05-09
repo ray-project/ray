@@ -3922,9 +3922,7 @@ class Dataset:
         self._plan.execute(force_read=True)
         return self
 
-    @Deprecated(
-        message="Check `isinstance(Dataset, MaterializedDataset)` instead."
-    )
+    @Deprecated(message="Check `isinstance(Dataset, MaterializedDataset)` instead.")
     def is_fully_executed(self) -> bool:
         logger.warning(
             "Deprecation warning: Check "

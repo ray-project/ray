@@ -107,9 +107,7 @@ class DatasetPipeline:
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
         self._first_dataset: Optional[Dataset] = None
-        self._remaining_datasets_iter: Optional[
-            Iterator[Callable[[], Dataset]]
-        ] = None
+        self._remaining_datasets_iter: Optional[Iterator[Callable[[], Dataset]]] = None
         self._schema = None
         self._stats = DatasetPipelineStats()
 
@@ -377,9 +375,7 @@ class DatasetPipeline:
                 tries = 0
                 while ds is None:
                     ds = ray.get(
-                        self.coordinator.next_dataset_if_ready.remote(
-                            self.split_index
-                        )
+                        self.coordinator.next_dataset_if_ready.remote(self.split_index)
                     )
                     # Wait for other shards to catch up reading.
                     if not ds:
@@ -1236,9 +1232,7 @@ class DatasetPipeline:
             return PipelineExecutor(self)
 
     @DeveloperAPI
-    def foreach_window(
-        self, fn: Callable[[Dataset], Dataset]
-    ) -> "DatasetPipeline":
+    def foreach_window(self, fn: Callable[[Dataset], Dataset]) -> "DatasetPipeline":
         """Apply a transform to each dataset/window in this pipeline.
 
         Args:
@@ -1332,9 +1326,7 @@ class DatasetPipeline:
                 return ds._plan.with_stage(stage)
 
             optimized_stages.append(
-                lambda ds, stage=stage: Dataset(
-                    add_stage(ds, stage), ds._epoch, True
-                )
+                lambda ds, stage=stage: Dataset(add_stage(ds, stage), ds._epoch, True)
             )
         self._optimized_stages = optimized_stages
 

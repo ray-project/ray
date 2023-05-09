@@ -133,8 +133,7 @@ class GroupedData:
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}(dataset={self._dataset}, "
-            f"key={self._key!r})"
+            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset:

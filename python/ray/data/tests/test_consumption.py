@@ -228,8 +228,7 @@ def test_schema(ray_start_regular_shared):
     ds4 = ds4.materialize()
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     assert (
-        str(ds3)
-        == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
+        str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
     )
     assert (
         str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
@@ -307,8 +306,7 @@ def test_dataset_repr(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert (
-        repr(ds)
-        == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (

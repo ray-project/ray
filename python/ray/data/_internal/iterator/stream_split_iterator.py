@@ -62,9 +62,7 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(ctx, base_dataset, n, equal, locality_hints)
 
-        return [
-            StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)
-        ]
+        return [StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)]
 
     def __init__(
         self,

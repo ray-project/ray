@@ -180,8 +180,7 @@ def test_block_write_path_provider():
         ):
             num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
-                f"{block_index:06}_{num_rows:02}_{dataset_uuid}"
-                f".test.{file_format}"
+                f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
             return posixpath.join(base_path, suffix)
 
