@@ -29,7 +29,7 @@ _S3_BUCKET_DIR = "ci"
 @click.argument("test_target", required=True, type=str)
 @click.option(
     "--artifact-dir",
-    default="/artifact-mount",
+    default="/tmp/artifacts",
     type=str,
     help=(
         "This directory is used to store artifacts, such as coverage information. "
