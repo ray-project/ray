@@ -199,6 +199,7 @@ class ObjectRefGenerator:
 class StreamingObjectRefGeneratorV2:
     def __init__(self, generator_ref):
         self._generator_ref = generator_ref
+        self._generator_task_completed_time = None
         self._generator_task_exception = None
 
     def __iter__(self):
@@ -223,6 +224,16 @@ class StreamingObjectRefGeneratorV2:
                         # so that the ref will raise an exception.
                         self._generator_task_exception = e
                         return self._generator_ref
+                    finally:
+                        if self._generator_task_completed_time is None:
+                            self._generator_task_completed_time = time.time()
+            
+            if self._generator_task_completed_time:
+                if time.time() - self._generator_task_completed_time > 30:
+                    # It means the next wasn't reported although the task
+                    # has been terminated 30 seconds ago.
+                    assert False, "Unexpected network failure occured."
+
 
             time.sleep(0.001)
             obj = self._handle_next()
@@ -250,6 +261,16 @@ class StreamingObjectRefGeneratorV2:
                     except Exception as e:
                         self._generator_task_exception = e
                         return self._generator_ref
+                    finally:
+                        if self._generator_task_completed_time is None:
+                            self._generator_task_completed_time = time.time()
+
+            if self._generator_task_completed_time:
+                if time.time() - self._generator_task_completed_time > 30:
+                    # It means the next wasn't reported although the task
+                    # has been terminated 30 seconds ago.
+                    assert False, "Unexpected network failure occured."
+
             await asyncio.sleep(0.001)
             obj = self._handle_next(is_async_generator=True)
 
@@ -751,6 +772,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] dynamic_returns_temp
 
     i = 0
     while True:
@@ -765,17 +787,21 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             else:
                 assert False
             # Run the generator and report the intermediate result.
+            if dynamic_returns[0].size() > 0:
+                dynamic_returns_temp.push_back(dynamic_returns[0].back())
+
             core_worker.store_task_outputs(
                 worker, [output],
-                dynamic_returns,
+                &dynamic_returns_temp,
                 caller_address,
                 generator_id)
-            print("SANG-TODO Writes an index ", i)
-            # Dynamic returns should be updated by store_task_outputs
-            assert dynamic_returns[0].size() != 0, "SANG-TODO abcabc"
+            # print("SANG-TODO Writes an index ", i)
+            assert dynamic_returns_temp.size() == 1
             CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
-                dynamic_returns[0].front(), generator_id, caller_address, i, False)
-            dynamic_returns[0].pop_back()
+                dynamic_returns_temp.back(), generator_id, caller_address, i, False)
+            if dynamic_returns[0].size() > 0:
+                dynamic_returns[0].pop_back()
+            dynamic_returns_temp.pop_back()
             i += 1
         except AsyncioActorExit:
             # Make the task handle this exception.
@@ -809,13 +835,16 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                             core_worker.get_current_task_id()),
                             exc_info=True)
             print("create dynamic returns")
+
+            if dynamic_returns[0].size() > 0:
+                dynamic_returns_temp.push_back(dynamic_returns[0].back())
             if not is_reattempt:
                 # If this is the first execution, we should
                 # generate one additional ObjectRef. This last
                 # ObjectRef will contain the error.
                 error_id = (CCoreWorkerProcess.GetCoreWorker()
                             .AllocateDynamicReturnId(caller_address))
-                dynamic_returns[0].push_back(
+                dynamic_returns_temp.push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             error_id, shared_ptr[CRayObject]()))
             print("store task errors")
@@ -825,7 +854,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         actor,  # actor
                         actor_id,  # actor id
                         function_name, task_type, title,
-                        dynamic_returns, application_error, caller_address)
+                        &dynamic_returns_temp, application_error, caller_address)
             if num_errors_stored == 0:
                 print("problematic situation")
                 assert is_reattempt
@@ -837,20 +866,22 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 logger.error(
                     "Unhandled error: Re-executed generator task "
                     "returned more than the "
-                    f"{dynamic_returns[0].size()} values returned "
+                    f"{dynamic_returns_temp.size()} values returned "
                     "by the first execution.\n"
                     "See https://github.com/ray-project/ray/issues/28688.")
             else:
                 print("Writes an exception")
                 CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
-                    dynamic_returns[0].front(),
+                    dynamic_returns_temp.back(),
                     generator_id, caller_address, i, False)
-                dynamic_returns[0].pop_back()
+                if dynamic_returns[0].size() > 0:
+                    dynamic_returns[0].pop_back()
                 i += 1
+            dynamic_returns_temp.pop_back()
             break
 
     # Close it.
-    print("SANG-TODO Closes an index ", i)
+    # print("SANG-TODO Closes an index ", i)
     CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
         c_pair[CObjectID, shared_ptr[CRayObject]](CObjectID.Nil(), shared_ptr[CRayObject]()),
         generator_id,

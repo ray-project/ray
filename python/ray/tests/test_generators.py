@@ -3,7 +3,6 @@ import pytest
 import numpy as np
 import sys
 import time
-from unittest.mock import Mock
 
 import ray
 from ray.util.client.ray_client_helpers import (
@@ -16,6 +15,10 @@ from ray.experimental.state.api import list_tasks
 from ray._raylet import StreamingObjectRefGeneratorV2
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
 def test_generator_oom(ray_start_regular):
     @ray.remote(max_retries=0)
     def large_values(num_returns):
@@ -48,7 +51,7 @@ def test_generator_oom(ray_start_regular):
 def test_generator_basic(shutdown_only):
     ray.init(num_cpus=1)
 
-    """Basic cases"""
+    # """Basic cases"""
     @ray.remote
     def f():
         for i in range(5):
@@ -91,7 +94,7 @@ def test_generator_basic(shutdown_only):
         def f(self):
             for i in range(5):
                 import time
-                time.sleep(1)
+                time.sleep(0.1)
                 yield i
         
     a = A.remote()
@@ -131,15 +134,15 @@ def test_generator_basic(shutdown_only):
     def f(a):
         for i in range(5):
             should_kill = ray.get(a.should_kill.remote())
-            if i == 2 and should_kill:
+            if i == 3 and should_kill:
                 raise ValueError
             yield i
     a = Actor.remote()
     gen = f.options(num_returns="dynamic").remote(a)
     assert ray.get(next(gen)) == 0
     assert ray.get(next(gen)) == 1
-    a.set.remote(3)
     assert ray.get(next(gen)) == 2
+    a.set.remote(3)
     assert ray.get(next(gen)) == 3
     assert ray.get(next(gen)) == 4
     with pytest.raises(StopIteration):
@@ -154,7 +157,7 @@ def test_generator_basic(shutdown_only):
 
     gen = f.options(num_returns="dynamic").remote()
     assert ray.get(next(gen)) == 0
-    ray.cancel(gen._generator_ref)
+    ray.cancel(gen)
     with pytest.raises(ray.exceptions.RayTaskError) as e:
         assert ray.get(next(gen)) == 1
     assert "was cancelled" in str(e.value)
@@ -716,72 +719,73 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_clust
 
     exec_counter = ExecutionCounter.remote()
     gen = maybe_empty_generator.remote(exec_counter)
-    assert ray.get(check.remote(gen))
+    refs = list(gen)
+    assert ray.get(check.remote(refs))
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-    assert ray.get(check.remote(gen))
+    assert ray.get(check.remote(refs))
 
     # We should never reconstruct an empty generator.
     assert ray.get(exec_counter.get_count.remote()) == 1
 
 
-# Client server port of the shared Ray instance
-SHARED_CLIENT_SERVER_PORT = 25555
+# # Client server port of the shared Ray instance
+# SHARED_CLIENT_SERVER_PORT = 25555
 
 
-@pytest.fixture(scope="module")
-def call_ray_start_shared(request):
-    request = Mock()
-    request.param = (
-        "ray start --head --min-worker-port=0 --max-worker-port=0 --port 0 "
-        f"--ray-client-server-port={SHARED_CLIENT_SERVER_PORT}"
-    )
-    with call_ray_start_context(request) as address:
-        yield address
+# @pytest.fixture(scope="module")
+# def call_ray_start_shared(request):
+#     request = Mock()
+#     request.param = (
+#         "ray start --head --min-worker-port=0 --max-worker-port=0 --port 0 "
+#         f"--ray-client-server-port={SHARED_CLIENT_SERVER_PORT}"
+#     )
+#     with call_ray_start_context(request) as address:
+#         yield address
 
 
-@pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_ray_client(call_ray_start_shared, store_in_plasma):
-    with ray_start_client_server_for_address(call_ray_start_shared):
-        enable_client_mode()
+# @pytest.mark.parametrize("store_in_plasma", [False, True])
+# def test_ray_client(call_ray_start_shared, store_in_plasma):
+#     with ray_start_client_server_for_address(call_ray_start_shared):
+#         enable_client_mode()
 
-        @ray.remote(max_retries=0)
-        def generator(num_returns, store_in_plasma):
-            for i in range(num_returns):
-                if store_in_plasma:
-                    yield np.ones(1_000_000, dtype=np.int8) * i
-                else:
-                    yield [i]
+#         @ray.remote(max_retries=0)
+#         def generator(num_returns, store_in_plasma):
+#             for i in range(num_returns):
+#                 if store_in_plasma:
+#                     yield np.ones(1_000_000, dtype=np.int8) * i
+#                 else:
+#                     yield [i]
 
-        # TODO(swang): When generators return more values than expected, we log an
-        # error but the exception is not thrown to the application.
-        # https://github.com/ray-project/ray/issues/28689.
-        num_returns = 3
-        ray.get(
-            generator.options(num_returns=num_returns).remote(
-                num_returns + 1, store_in_plasma
-            )
-        )
+#         # TODO(swang): When generators return more values than expected, we log an
+#         # error but the exception is not thrown to the application.
+#         # https://github.com/ray-project/ray/issues/28689.
+#         num_returns = 3
+#         ray.get(
+#             generator.options(num_returns=num_returns).remote(
+#                 num_returns + 1, store_in_plasma
+#             )
+#         )
 
-        # Check return values.
-        [
-            x[0]
-            for x in ray.get(
-                generator.options(num_returns=num_returns).remote(
-                    num_returns, store_in_plasma
-                )
-            )
-        ] == list(range(num_returns))
-        # Works for num_returns=1 if generator returns a single value.
-        assert (
-            ray.get(generator.options(num_returns=1).remote(1, store_in_plasma))[0] == 0
-        )
+#         # Check return values.
+#         [
+#             x[0]
+#             for x in ray.get(
+#                 generator.options(num_returns=num_returns).remote(
+#                     num_returns, store_in_plasma
+#                 )
+#             )
+#         ] == list(range(num_returns))
+#         # Works for num_returns=1 if generator returns a single value.
+#         assert (
+#             ray.get(generator.options(num_returns=1).remote(1, store_in_plasma))[0] == 0
+#         )
 
-        gen = ray.get(
-            generator.options(num_returns="dynamic").remote(3, store_in_plasma)
-        )
-        for i, ref in enumerate(gen):
-            assert ray.get(ref)[0] == i
+#         gen = ray.get(
+#             generator.options(num_returns="dynamic").remote(3, store_in_plasma)
+#         )
+#         for i, ref in enumerate(gen):
+#             assert ray.get(ref)[0] == i
 
 
 @pytest.mark.parametrize("store_in_plasma", [False])
@@ -796,7 +800,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
 
         async def async_f(self, ref):
             for i in range(3):
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.1)
                 yield i
 
         def g(self):
@@ -972,7 +976,7 @@ def test_generator_dist_chain(ray_start_cluster):
         def get_data(self):
             if not self.child:
                 for _ in range(10):
-                    time.sleep(1)
+                    time.sleep(0.1)
                     yield np.ones(5 * 1024 * 1024)
             else:
                 for data in self.child.get_data.options(

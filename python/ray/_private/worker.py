@@ -2702,12 +2702,19 @@ def wait(
             "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
         )
 
+    gen = []
+    refs = []
     for object_ref in object_refs:
+        if isinstance(object_ref, ray._raylet.StreamingObjectRefGeneratorV2):
+            gen.append(object_ref)
+            continue
+
         if not isinstance(object_ref, ObjectRef):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef, "
                 f"got list containing {type(object_ref)}"
             )
+        refs.append(object_ref)
 
     worker.check_connected()
     # TODO(swang): Check main thread.
@@ -2719,11 +2726,11 @@ def wait(
         if len(object_refs) == 0:
             return [], []
 
-        if len(object_refs) != len(set(object_refs)):
+        if len(refs) != len(set(refs)):
             raise ValueError("Wait requires a list of unique object refs.")
         if num_returns <= 0:
             raise ValueError("Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_refs):
+        if num_returns > len(refs) + len(gen):
             raise ValueError(
                 "num_returns cannot be greater than the number "
                 "of objects provided to ray.wait."
@@ -2731,13 +2738,19 @@ def wait(
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
-        ready_ids, remaining_ids = worker.core_worker.wait(
-            object_refs,
-            num_returns,
-            timeout_milliseconds,
-            worker.current_task_id,
-            fetch_local,
-        )
+        ready_ids, remaining_ids = [], []
+        
+        if len(refs) > 0:
+            ready_ids, remaining_ids = worker.core_worker.wait(
+                refs,
+                num_returns,
+                timeout_milliseconds,
+                worker.current_task_id,
+                fetch_local,
+            )
+        if num_returns > len(ready_ids):
+            ready_ids.extend(gen[:num_returns - len(ready_ids)])
+        remaining_ids.extend(gen[num_returns - len(ready_ids) + 1:])
         return ready_ids, remaining_ids
 
 
@@ -2835,6 +2848,10 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
+
+    if isinstance(object_ref, ray._raylet.StreamingObjectRefGeneratorV2):
+        assert hasattr(object_ref, "_generator_ref")
+        object_ref = object_ref._generator_ref
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(

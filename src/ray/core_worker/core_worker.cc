@@ -1688,7 +1688,7 @@ Status CoreWorker::ObjectRefStreamWrite(
     const rpc::Address &caller_address,
     int64_t idx,
     bool finished) {
-  RAY_LOG(INFO) << "SANG-TODO Write the object ref stream, index: " << idx << " finished: " << finished << ", id: " << dynamic_return_object.first;
+  RAY_LOG(DEBUG) << "SANG-TODO Write the object ref stream, index: " << idx << " finished: " << finished << ", id: " << dynamic_return_object.first;
   rpc::WriteObjectRefStreamRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_idx(idx);
@@ -1712,9 +1712,9 @@ Status CoreWorker::ObjectRefStreamWrite(
   client->WriteObjectRefStream(
       request, [](const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
         if (status.ok()) {
-          RAY_LOG(INFO) << "SANG-TODO Succeeded to send the object ref";
+          RAY_LOG(DEBUG) << "SANG-TODO Succeeded to send the object ref";
         } else {
-          RAY_LOG(INFO) << "SANG-TODO Failed to send the object ref";
+          RAY_LOG(DEBUG) << "SANG-TODO Failed to send the object ref";
         }
       });
   return Status::OK();
@@ -2649,11 +2649,12 @@ Status CoreWorker::ExecuteTask(
           std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
                      << " should return dynamic object " << dynamic_return_id;
-
       AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
       reference_counter_->AddBorrowedObject(
           dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
     }
+    // SANG-TODO Hack. Remove it and properly support this.
+    std::reverse(dynamic_return_objects->begin(),dynamic_return_objects->end());
   }
 
   Status status;
@@ -3430,7 +3431,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 void CoreWorker::HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
                                             rpc::WriteObjectRefStreamReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "SANG-TODO HandleWriteObjectRefStream";
+  RAY_LOG(DEBUG) << "SANG-TODO HandleWriteObjectRefStream";
   task_manager_->HandleIntermediateResult(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

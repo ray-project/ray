@@ -107,10 +107,8 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                                                 std::vector<ObjectID> *objects_to_pull) {
   if (bundles.inactive_requests.empty()) {
     // No inactive requests in the queue.
-    RAY_LOG(INFO) << "SANG-TODO no inactive requ";
     return false;
   }
-  RAY_LOG(INFO) << "SANG-TODO Activate next bundle pull";
 
   // Get the next pull request in the queue.
   const auto next_request_id = *(bundles.inactive_requests.cbegin());
@@ -370,7 +368,6 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   }
 
   const bool was_pullable_before = it->second.IsPullable();
-  RAY_LOG(INFO) << "SANG-TODO was pullable after location update" << was_pullable_before;
   // Reset the list of clients that are now expected to have the object.
   // NOTE(swang): Since we are overwriting the previous list of clients,
   // we may end up sending a duplicate request to the same client as
@@ -383,17 +380,15 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
       // the directory says that we already have the object local in plasma.
       // This can happen due to a race condition between asynchronous updates
       // or a bug in the object directory.
-      RAY_LOG(INFO) << "SANG-TODO Add a new client id location " << client_id;
       it->second.client_locations.push_back(client_id);
     }
   }
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
   it->second.pending_object_creation = pending_creation;
-  RAY_LOG(INFO) << "SANG-TODO is pending" << pending_creation;
+
   if (!it->second.object_size_set) {
     it->second.object_size = object_size;
-    RAY_LOG(INFO) << "SANG-TODO object size set" << object_size;
     it->second.object_size_set = true;
 
     if (it->second.object_size == 0) {
@@ -404,7 +399,6 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     }
   }
   const bool is_pullable_after = it->second.IsPullable();
-  RAY_LOG(INFO) << "SANG-TODO is pullable after location update" << is_pullable_after;
 
   if (was_pullable_before != is_pullable_after) {
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
@@ -447,23 +441,19 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
 }
 
 void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
-  RAY_LOG(INFO) << "SANG-TODO Try make object local";
   // The object is already local; abort.
   if (object_is_local_(object_id)) {
-    RAY_LOG(INFO) << "SANG-TODO Object local";
     return;
   }
 
   // The object is no longer needed; abort.
   if (active_object_pull_requests_.count(object_id) == 0) {
-    RAY_LOG(INFO) << "SANG-TODO no active pull req";
     return;
   }
 
   // The object waiting for local pull retry; abort.
   auto &request = map_find_or_die(object_pull_requests_, object_id);
   if (request.next_pull_time > get_time_seconds_()) {
-    RAY_LOG(INFO) << "SANG-TODO not yet to pull";
     return;
   }
 
@@ -471,7 +461,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // disk of the remote node, it will be restored by PushManager prior to pushing.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
-    RAY_LOG(INFO) << "Try pulling";
     UpdateRetryTimer(request, object_id);
     return;
   }
@@ -519,7 +508,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
-    RAY_LOG(INFO) << "SANG-TODO no pull req";
     return false;
   }
 
@@ -527,7 +515,6 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto &spilled_node_id = it->second.spilled_node_id;
 
   if (node_vector.empty()) {
-    RAY_LOG(INFO) << "SANG-TODO no nodes";
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
       RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_

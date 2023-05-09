@@ -311,9 +311,9 @@ void TaskManager::DelGenerator(const ObjectID &generator_id) {
     if (object_id == ObjectID::Nil()) {
       break;
     }
-    RAY_LOG(INFO) << "SANG-TODO DelGenerator Get Next";
+    RAY_LOG(DEBUG) << "SANG-TODO DelGenerator Get Next";
   }
-  RAY_LOG(INFO) << "SANG-TODO Delete generator from " << generator_id;
+  RAY_LOG(DEBUG) << "SANG-TODO Delete generator from " << generator_id;
 }
 
 Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
@@ -322,14 +322,14 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
   RAY_CHECK(object_id_out != nullptr);
   auto it = dynamic_ids_from_generator_.find(generator_id);
   if (it == dynamic_ids_from_generator_.end()) {
-    RAY_LOG(INFO) << "SANG-TODO Generator already GC'ed " << *object_id_out << " generator id: " << generator_id;
+    RAY_LOG(DEBUG) << "SANG-TODO Generator already GC'ed " << *object_id_out << " generator id: " << generator_id;
     *object_id_out = ObjectID::Nil();
     return Status::OK();
   }
 
   auto &reader = dynamic_ids_from_generator_[generator_id];
   if (reader.last != -1 && reader.curr >= reader.last) {
-    RAY_LOG(INFO) << "SANG-TODO Generator has no more objects " << *object_id_out;
+    RAY_LOG(DEBUG) << "SANG-TODO Generator has no more objects " << *object_id_out;
     return Status::KeyError("Finished");
   }
   auto reader_it = reader.idx_to_refs.find(reader.curr);
@@ -337,9 +337,9 @@ Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
     *object_id_out = reader_it->second;
     reader.idx_to_refs.erase(reader.curr);
     reader.curr += 1;
-    RAY_LOG(INFO) << "SANG-TODO Get the next object id " << *object_id_out;
+    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out;
   } else {
-    RAY_LOG(INFO) << "SANG-TODO Object not available. Current index: " << reader.curr << " last: " << reader.last;
+    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << reader.curr << " last: " << reader.last;
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
@@ -349,19 +349,14 @@ void TaskManager::HandleIntermediateResult(
     const rpc::WriteObjectRefStreamRequest &request) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
-  std::unique_ptr<TaskSpecification> spec = nullptr;
   int64_t idx = request.idx();
   // Every generated object has the same task id.
-  RAY_LOG(INFO) << "SANG-TODO Received an intermediate result of index " << request.idx() << " generator_id: " << generator_id; 
+  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << request.idx() << " generator_id: " << generator_id; 
 
   {
     absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    if (it != submissible_tasks_.end()) {
-      spec = std::make_unique<TaskSpecification>(it->second.spec);
-    }
     if (request.finished()) {
-      RAY_LOG(INFO) << "SANG-TODO Finished with an index " << request.idx();
+      RAY_LOG(DEBUG) << "SANG-TODO Finished with an index " << request.idx();
       auto &reader = dynamic_ids_from_generator_[generator_id];
       reader.last = request.idx();
       RAY_CHECK(request.dynamic_return_objects_size() == 0);
@@ -372,24 +367,31 @@ void TaskManager::HandleIntermediateResult(
 
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    RAY_LOG(INFO) << "SANG-TODO Add an object " << object_id;
-    // SANG-TODO This logic is not working with the new protocol
-    // upon lineage reconstruction.
-    reference_counter_->AddDynamicReturn(object_id, generator_id);
+    RAY_LOG(DEBUG) << "SANG-TODO Add an object " << object_id;
     {
       absl::MutexLock lock(&mu_);
-      // if (spec) {
-      //   spec->AddDynamicReturnId(object_id);
-      // }
       auto &reader = dynamic_ids_from_generator_[generator_id];
-      reader.idx_to_refs.emplace(idx, object_id);
+      if (idx >= reader.curr) {
+        reader.idx_to_refs.emplace(idx, object_id);
+        auto it = submissible_tasks_.find(task_id);
+        if (it != submissible_tasks_.end()) {
+          // NOTE(sang): This is a hack to modify immutable field.
+          // It is possible because most of attributes under
+          // TaskSpecification is a pointer to the protobuf message.
+          TaskSpecification spec;
+          spec = it->second.spec;
+          spec.AddDynamicReturnId(object_id);
+          it->second.reconstructable_return_ids.insert(object_id);
+        }
+        reference_counter_->AddDynamicReturn(object_id, generator_id);
+      }
     }
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
                      store_in_plasma_ids.count(object_id));
   }
-  RAY_LOG(INFO) << "SANG-TODO Finished handling intermediate result";
+  RAY_LOG(DEBUG) << "SANG-TODO Finished handling intermediate result";
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
