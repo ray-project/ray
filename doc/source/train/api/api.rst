@@ -150,15 +150,25 @@ LightGBM
     ~train.lightgbm.LightGBMCheckpoint
 
 
-HuggingFace
-~~~~~~~~~~~
+Hugging Face
+~~~~~~~~~~~~
+
+Transformers
+************
 
 .. autosummary::
     :toctree: doc/
 
-    ~train.huggingface.HuggingFaceTrainer
-    ~train.huggingface.HuggingFaceCheckpoint
-    ~train.huggingface.accelerate.AccelerateTrainer
+    ~train.hf_transformers.TransformersTrainer
+    ~train.hf_transformers.TransformersCheckpoint
+
+Accelerate
+**********
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.hf_accelerate.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~
@@ -219,7 +229,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
-    train.huggingface.HuggingFaceTrainer.restore
+    train.hf_transformers.TransformersTrainer.restore
 
 .. note::
 
