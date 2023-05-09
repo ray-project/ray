@@ -279,6 +279,7 @@ class Node:
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
+
         if not connect_only:
             self._ray_params.update_pre_selected_port()
 
@@ -1215,6 +1216,7 @@ class Node:
         self.start_raylet(plasma_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
+
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
 

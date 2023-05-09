@@ -398,7 +398,7 @@ def debug(address):
 )
 @click.option(
     "--start-gcs",
-    is_flag=False,
+    is_flag=True,
     default=False,
     help="Only start GCS on the head node",
 )
