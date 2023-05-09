@@ -65,13 +65,9 @@ class Backend(metaclass=Singleton):
     # TODO(ml-team): Remove in 2.6.
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
-        if cls._encode_data != Backend._encode_data:
-            raise DeprecationWarning(_encode_decode_deprecation_message)
-        return checkpoint
+        raise DeprecationWarning(_encode_decode_deprecation_message)
 
     # TODO(ml-team): Remove in 2.6.
     @classmethod
     def _decode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
-        if cls._decode_data != Backend._decode_data:
-            raise DeprecationWarning(_encode_decode_deprecation_message)
-        return checkpoint
+        raise DeprecationWarning(_encode_decode_deprecation_message)

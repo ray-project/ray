@@ -174,9 +174,7 @@ class TrainingIterator:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend._decode_data
-                )
+                self._checkpoint_manager._process_checkpoint(results)
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise TrainBackendError(
@@ -194,9 +192,7 @@ class TrainingIterator:
             result_type = results[0].type
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend._decode_data
-                )
+                self._checkpoint_manager._process_checkpoint(results)
 
     def _finish_training(self):
         """Finish training and return final results. Propagate any exceptions.

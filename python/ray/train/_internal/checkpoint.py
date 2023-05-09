@@ -99,7 +99,6 @@ class CheckpointManager(CommonCheckpointManager):
     def _process_checkpoint(
         self,
         checkpoint_results: List[TrainingResult],
-        decode_checkpoint_fn: Callable,
     ) -> None:
         """Ray Train entrypoint. Perform all processing for a checkpoint."""
         # Get checkpoint from first worker.
@@ -114,9 +113,6 @@ class CheckpointManager(CommonCheckpointManager):
             ].checkpoint_type
             checkpoint_data = checkpoint_class.from_directory(checkpoint_data)
             checkpoint_data._metadata = checkpoint_metadata[CHECKPOINT_METADATA_KEY]
-        else:
-            # TODO(ml-team): Remove once we remove Backend.decode_data
-            checkpoint_data = decode_checkpoint_fn(checkpoint_data)
 
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute
         if (
