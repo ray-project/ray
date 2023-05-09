@@ -365,7 +365,6 @@ class BackendExecutor:
             trial_info,
             checkpoint,
             dataset_shard,
-            encode_data_fn,
         ):
             try:
                 init_session(
@@ -378,7 +377,6 @@ class BackendExecutor:
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
-                    encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     enable_lazy_checkpointing=use_lazy_checkpointing,
                 )
