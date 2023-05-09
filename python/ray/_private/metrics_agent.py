@@ -7,8 +7,6 @@ import traceback
 from collections import namedtuple
 from typing import List, Tuple, Any, Dict
 
-from bytedance import metrics
-
 from prometheus_client.core import (
     CounterMetricFamily,
     GaugeMetricFamily,
@@ -580,6 +578,9 @@ class ByteDanceMetricsAgent(MetricsAgent):
         # Lock required because gRPC server uses
         # multiple threads to process requests.
         self._lock = threading.Lock()
+
+        from bytedance import metrics
+
         self._mcli = metrics.Client(prefix="ray")
         self.proxy_exporter_collector = None
         self._actor_tags = {}

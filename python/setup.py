@@ -272,6 +272,9 @@ if setup_spec.type == SetupType.RAY:
             "bytedance.servicediscovery >= 0.1.0, < 2.0.0",
             "bytedance.metrics >= 0.1.0, < 1.0.0",
         ],
+        "bytedance": [
+            "bytedance.metrics >= 0.4.0, < 0.5.0",
+        ],
     }
 
     # Ray Serve depends on the Ray dashboard components.
