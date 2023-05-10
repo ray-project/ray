@@ -2,10 +2,10 @@
 # isort: skip_file
 # fmt: off
 
-ray.init(num_gpus=4)
-
 # __pt_load_start__
 import ray
+
+ray.init(num_gpus=4)
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"  # <1>
 ds = ray.data.read_images(data_url).limit(1000)  # <2>
@@ -29,7 +29,6 @@ ds = ds.map_batches(preprocess_images)  # <3>
 
 
 # __pt_model_start__
-from typing import List
 import torch
 from torchvision.models import resnet18
 
@@ -40,10 +39,10 @@ class TorchPredictor:
         self.model.eval()
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:  # <2>
-        torch_batch = torch.stack(batch["preprocessed"]).cuda()  # <3>
+        torch_batch = torch.stack(batch["preprocessed"])  # <3>
         with torch.inference_mode():
             prediction = self.model(torch_batch)
-            return {"class": prediction.argmax(dim=1).detach().cpu().numpy()}  # <4>
+            return {"class": prediction.argmax(dim=1).detach().numpy()}  # <4>
 # __pt_model_end__
 
 

@@ -1,7 +1,7 @@
 from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
-from ray.rllib.core.models.base import ACTOR, CRITIC
+from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
@@ -33,14 +33,15 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        # if self.encoder.config.shared:
-        #     batch[STATE_IN] = None
-        # else:
-        #     batch[STATE_IN] = {
-        #         ACTOR: None,
-        #         CRITIC: None,
-        #     }
-        # batch[SampleBatch.SEQ_LENS] = None
+        batch = batch.copy()
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         encoder_outs = self.encoder(batch)
         # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -48,8 +49,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_dist = self.action_dist_cls.from_logits(action_logits)
-        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
@@ -64,14 +64,15 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        # if self.encoder.config.shared:
-        #     batch[STATE_IN] = None
-        # else:
-        #     batch[STATE_IN] = {
-        #         ACTOR: None,
-        #         CRITIC: None,
-        #     }
-        # batch[SampleBatch.SEQ_LENS] = None
+        batch = batch.copy()
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -86,9 +87,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
 
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
-            logits=action_logits
-        )
 
         return output
 
@@ -97,14 +95,15 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output = {}
 
         # TODO (Artur): Remove this once Policy supports RNN
-        # if self.encoder.config.shared:
-        #     batch[STATE_IN] = None
-        # else:
-        #     batch[STATE_IN] = {
-        #         ACTOR: None,
-        #         CRITIC: None,
-        #     }
-        # batch[SampleBatch.SEQ_LENS] = None
+        batch = batch.copy()
+        if self.encoder.config.shared:
+            batch[STATE_IN] = None
+        else:
+            batch[STATE_IN] = {
+                ACTOR: None,
+                CRITIC: None,
+            }
+        batch[SampleBatch.SEQ_LENS] = None
 
         # Shared encoder
         encoder_outs = self.encoder(batch)
@@ -116,15 +115,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
 
         # Policy head
-        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_logits = pi_out
-        action_dist = self.action_dist_cls.from_logits(logits=action_logits)
-        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
-        entropy = action_dist.entropy()
-
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.ACTION_DIST] = action_dist
-        output[SampleBatch.ACTION_LOGP] = logp
-        output["entropy"] = entropy
 
         return output

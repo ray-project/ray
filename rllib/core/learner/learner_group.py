@@ -1,6 +1,5 @@
 from collections import deque
 import pathlib
-import socket
 from typing import (
     Any,
     Callable,
@@ -101,6 +100,9 @@ class LearnerGroup:
 
         self._is_module_trainable = _is_module_trainable
 
+        # How many timesteps had to be dropped due to a full input queue?
+        self._in_queue_ts_dropped = 0
+
         if self._is_local:
             self._learner = learner_class(**learner_spec.get_params_dict())
             self._learner.build()
@@ -133,14 +135,12 @@ class LearnerGroup:
             )
             self._in_queue = deque(maxlen=max_queue_len)
 
-    @property
-    def in_queue_size(self) -> int:
-        """Returns the number of batches currently in the in queue to be processed.
-
-        If the queue is reaching its max size, then this learner group likely needs
-        more workers to process incoming batches.
-        """
-        return len(self._in_queue)
+    def get_in_queue_stats(self) -> Mapping[str, Any]:
+        """Returns the current stats for the input queue for this learner group."""
+        return {
+            "learner_group_queue_size": len(self._in_queue),
+            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+        }
 
     @property
     def is_local(self) -> bool:
@@ -303,7 +303,7 @@ class LearnerGroup:
             return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for worker in self._workers]
+                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
             if reduce_fn is None:
@@ -488,16 +488,15 @@ class LearnerGroup:
             self._learner.load_state(path)
         else:
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            head_node_ip = socket.gethostbyname(socket.gethostname())
+            head_node_ip = ray.util.get_node_ip_address()
             workers = self._worker_manager.healthy_actor_ids()
 
             def _load_state(w):
                 # doing imports here since they might not be imported on the worker
-                import socket
+                import ray
                 import tempfile
 
-                hostname = socket.gethostname()
-                worker_node_ip = socket.gethostbyname(hostname)
+                worker_node_ip = ray.util.get_node_ip_address()
                 # if the worker is on the same node as the head, load the checkpoint
                 # directly from the path otherwise sync the checkpoint from the head
                 # to the worker and load it from there
@@ -539,11 +538,9 @@ class LearnerGroup:
             The address of this process.
 
         """
-        import socket
+        import ray
 
-        hostname = socket.gethostname()
-
-        return socket.gethostbyname(hostname)
+        return ray.util.get_node_ip_address()
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
