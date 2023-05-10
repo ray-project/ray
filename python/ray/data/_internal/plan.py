@@ -132,6 +132,10 @@ class ExecutionPlan:
 
         self._run_by_consumer = run_by_consumer
 
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = copy.deepcopy(DataContext.get_current())
+
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
@@ -483,7 +487,10 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DataContext.get_current()
+        # Always used the saved context for execution.
+        DataContext._set_current(copy.deepcopy(self._context))
+        ctx = self._context
+
         if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(
@@ -532,7 +539,11 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        context = DataContext.get_current()
+
+        # Always used the saved context for execution.
+        DataContext._set_current(copy.deepcopy(self._context))
+        context = self._context
+
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
