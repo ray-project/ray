@@ -10,12 +10,14 @@ import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
+import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
+import { ActorLogs } from "./ActorLogs";
 import { useActorDetail } from "./hook/useActorDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -33,6 +35,9 @@ const useStyle = makeStyles((theme) => ({
   },
   tab: {
     marginBottom: theme.spacing(2),
+  },
+  tasksSection: {
+    marginTop: theme.spacing(4),
   },
 }));
 
@@ -177,15 +182,6 @@ const ActorDetailPage = () => {
             label: "Actions",
             content: (
               <div>
-                <Link
-                  target="_blank"
-                  to={`/logs/${encodeURIComponent(
-                    ipLogMap[actorDetail.address?.ipAddress],
-                  )}?fileName=${actorDetail.jobId}-${actorDetail.pid}`}
-                >
-                  Log
-                </Link>
-                <br />
                 <CpuProfilingLink
                   pid={actorDetail.pid}
                   ip={actorDetail.address?.ipAddress}
@@ -202,8 +198,18 @@ const ActorDetailPage = () => {
           },
         ]}
       />
-      <CollapsibleSection title="Tasks History">
-        <TaskList jobId={actorDetail.jobId} actorId={params.actorId} />
+      <CollapsibleSection title="Logs" startExpanded>
+        <Section>
+          <ActorLogs actor={actorDetail} />
+        </Section>
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Tasks History"
+        className={classes.tasksSection}
+      >
+        <Section>
+          <TaskList jobId={actorDetail.jobId} actorId={params.actorId} />
+        </Section>
       </CollapsibleSection>
     </div>
   );

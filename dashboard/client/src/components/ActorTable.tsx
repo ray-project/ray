@@ -436,14 +436,16 @@ const ActorTable = ({
                   <TableCell align="center">
                     {ipLogMap[address?.ipAddress] && (
                       <React.Fragment>
-                        <Link
-                          target="_blank"
-                          to={`/logs/${encodeURIComponent(
-                            ipLogMap[address?.ipAddress],
-                          )}?fileName=${jobId}-${pid}`}
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
                         >
                           Log
-                        </Link>
+                        </ActorLink>
                         <br />
                         <CpuProfilingLink
                           pid={pid}

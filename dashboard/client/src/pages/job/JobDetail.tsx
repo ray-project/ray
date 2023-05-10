@@ -1,6 +1,6 @@
-import { Box, makeStyles } from "@material-ui/core";
+import { Box, Link, makeStyles } from "@material-ui/core";
 import React, { useContext, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { Section } from "../../common/Section";
@@ -238,7 +238,11 @@ export const JobLogsLink = ({
   if (type === "SUBMISSION") {
     // For submission jobs, send them to the job detail page because we have logs there already.
     const link = `/jobs/${job_id ? job_id : submission_id}`;
-    return <Link to={link}>Log</Link>;
+    return (
+      <Link component={RouterLink} to={link}>
+        Log
+      </Link>
+    );
   }
 
   let link: string | undefined;
@@ -254,7 +258,7 @@ export const JobLogsLink = ({
       type === "DRIVER" ? job_id : `driver-${submission_id}`
     }`;
     return (
-      <Link to={link} target="_blank">
+      <Link component={RouterLink} to={link} target="_blank">
         Log
       </Link>
     );
