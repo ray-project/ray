@@ -85,7 +85,7 @@ def _bisect(
         passing_idx = 0
         failing_idx = len(commit_list) - 1
         for idx, commit in idx_to_commit.items():
-            is_passing = all(
+            is_passing = any(
                 outcome == "passed" for outcome in outcomes[commit].values()
             )
             if is_passing and idx > passing_idx:
@@ -108,9 +108,9 @@ def _sanity_check(
         f" and failing revision: {failing_revision}"
     )
     outcomes = _run_test(test, [passing_revision, failing_revision], run_per_commit)
-    if any(map(lambda x: x != "passed", outcomes[passing_revision].values())):
+    if all(map(lambda x: x != "passed", outcomes[passing_revision].values())):
         return False
-    return any(map(lambda x: x != "passed", outcomes[failing_revision].values()))
+    return all(map(lambda x: x != "passed", outcomes[failing_revision].values()))
 
 
 def _run_test(
