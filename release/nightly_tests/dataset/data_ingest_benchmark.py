@@ -152,7 +152,7 @@ def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu, early_stop):
     locality_hints = ray.get([actor.get_location.remote() for actor in consumers])
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
-    expected_total_read_bytes = dataset_size_gb * GiB
+    expected_total_read_bytes = dataset_size_gb * GiB // num_workers
     max_bytes_to_read = None
     if early_stop:
         max_bytes_to_read = expected_total_read_bytes // 2
