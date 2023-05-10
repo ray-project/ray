@@ -628,7 +628,7 @@
 
 
 # These tests install requirements_py37_compat.txt which are the
-# upper bound of Python 3.7 dependencies we support.
+# upper bound of Python 3.7 dependencies we support
 - label: ":cold_face: :python: Ray Python 3.7 ML compatibility tests"
   conditions:
     ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
