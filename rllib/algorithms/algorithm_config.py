@@ -280,7 +280,7 @@ class AlgorithmConfig(_Config):
             "inter_op_parallelism_threads": 8,
         }
         # Torch compile settings
-        self.torch_compile_learner_forward_train = True
+        self.torch_compile_learner_forward_train = False
         self.torch_compile_learner_forward_inference = False
         self.torch_compile_learner_forward_exploration = False
         self.torch_compile_learner_dynamo_backend = (
@@ -3035,6 +3035,7 @@ class AlgorithmConfig(_Config):
             compile_forward_exploration=self.torch_compile_learner_forward_exploration,
             compile_forward_inference=self.torch_compile_learner_forward_inference,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
+            torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
         )
 
     def get_torch_compile_worker_config(self):
@@ -3044,6 +3045,7 @@ class AlgorithmConfig(_Config):
             compile_forward_exploration=self.torch_compile_worker_forward_exploration,
             compile_forward_inference=self.torch_compile_worker_forward_inference,
             torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
+            torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
 
     def get_default_rl_module_spec(self) -> ModuleSpec:
