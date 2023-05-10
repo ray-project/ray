@@ -176,6 +176,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  private:
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
+  /// Same issue with capture-moving into a lambda that gets turned into an std::function.
+  /// See gcs_server for explanation.
+  std::promise<ClusterID> cluster_token_promise_;
+
   std::unique_ptr<GcsSubscriber> gcs_subscriber_;
 
   // Gcs rpc client

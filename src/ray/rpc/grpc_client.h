@@ -29,14 +29,19 @@ namespace rpc {
 
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
+#define _INVOKE_RPC_CALL(                                                           \
+    SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms, IS_INSECURE) \
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply, IS_INSECURE>(             \
+      &SERVICE::Stub::PrepareAsync##METHOD,                                         \
+      request,                                                                      \
+      callback,                                                                     \
+      #SERVICE ".grpc_client." #METHOD,                                             \
+      method_timeout_ms))
+
 #define INVOKE_RPC_CALL(                                               \
     SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms) \
-  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(             \
-      &SERVICE::Stub::PrepareAsync##METHOD,                            \
-      request,                                                         \
-      callback,                                                        \
-      #SERVICE ".grpc_client." #METHOD,                                \
-      method_timeout_ms))
+  _INVOKE_RPC_CALL(                                                    \
+      SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms, false);
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)   \
@@ -136,14 +141,14 @@ class GrpcClient {
   /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return Status.
-  template <class Request, class Reply>
+  template <class Request, class Reply, bool Insecure = false>
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request,
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+    auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply, Insecure>(
         *stub_,
         prepare_async_function,
         request,

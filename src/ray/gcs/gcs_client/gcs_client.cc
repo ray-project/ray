@@ -83,9 +83,18 @@ GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
 
 Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      io_service, cluster_token_promise_.get_future());
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
+
+  // Note: We need to initialize this so we can use the RPC.
+  node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
+  gcs_rpc_client_->RegisterClient(
+      rpc::RegisterClientRequest(),
+      [this](const Status &status, const rpc::RegisterClientReply &reply) {
+        this->cluster_token_promise_.set_value(ClusterID::FromBinary(reply.cluster_id()));
+      });
 
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
@@ -120,7 +129,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
-  node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);

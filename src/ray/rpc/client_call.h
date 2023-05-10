@@ -18,10 +18,12 @@
 
 #include <boost/asio.hpp>
 #include <chrono>
+#include <future>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
 
@@ -67,6 +69,7 @@ class ClientCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
+                          ClusterID const *cluster_token,
                           std::shared_ptr<StatsHandle> stats_handle,
                           int64_t timeout_ms = -1)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
@@ -75,6 +78,9 @@ class ClientCallImpl : public ClientCall {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
       context_.set_deadline(deadline);
+    }
+    if (cluster_token) {
+      context_.AddMetadata(kClusterIdKey, cluster_token->Hex());
     }
   }
 
@@ -184,10 +190,17 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
+  ///
+  /// Note: Ideally with C++20 we could use constraints here, or auto&& in the contructor.
+  template <typename T = std::shared_future<ClusterID>,
+            typename = typename std::enable_if_t<
+                std::is_convertible<T, std::shared_future<ClusterID>>::value>>
   explicit ClientCallManager(instrumented_io_context &main_service,
+                             T &&cluster_token_future = T(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : main_service_(main_service),
+      : cluster_token_(std::forward<T>(cluster_token_future)),
+        main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
         call_timeout_ms_(call_timeout_ms) {
@@ -227,7 +240,7 @@ class ClientCallManager {
   /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return A `ClientCall` representing the request that was just sent.
-  template <class GrpcService, class Request, class Reply>
+  template <class GrpcService, class Request, class Reply, bool Insecure>
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
@@ -239,8 +252,16 @@ class ClientCallManager {
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
+
+    ClusterID const *maybe_cluster_token;
+    if constexpr (Insecure) {
+      maybe_cluster_token = nullptr;
+    } else {
+      maybe_cluster_token = cluster_token_.valid() ? &cluster_token_.get() : nullptr;
+    }
+
     auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, std::move(stats_handle), method_timeout_ms);
+        callback, maybe_cluster_token, std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -308,6 +329,9 @@ class ClientCallManager {
       }
     }
   }
+
+  /// UUID of this generation of the cluster.
+  std::shared_future<ClusterID> cluster_token_;
 
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;

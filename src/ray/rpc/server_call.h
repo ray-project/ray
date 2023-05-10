@@ -21,12 +21,20 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace rpc {
+
+// Authentication type of ServerCall.
+enum class AuthType {
+  NO_AUTH,  // Do not authenticate (accept all).
+  LAZY,     // Accept missing token, but reject wrong token.
+  STRICT,   // Reject missing token and wrong token.
+};
 
 /// Get the thread pool for the gRPC server.
 /// This pool is shared across gRPC servers.
@@ -133,10 +141,15 @@ using HandleRequestFunction = void (ServiceHandler::*)(Request,
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
 ///
+/// IMPORTANT NOTE: Template specializations of HandleRequest live in server_call-* files!
+///
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply>
+template <class ServiceHandler,
+          class Request,
+          class Reply,
+          AuthType EnableAuth = AuthType::STRICT>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -153,6 +166,7 @@ class ServerCallImpl : public ServerCall {
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
+      ClusterID const *const cluster_id,
       bool record_metrics)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -161,6 +175,7 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
@@ -177,7 +192,29 @@ class ServerCallImpl : public ServerCall {
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
+  // The general template implements no auth.
   void HandleRequest() override {
+    if constexpr (EnableAuth == AuthType::STRICT) {
+      RAY_CHECK(cluster_id_ != nullptr) << "Expected cluster ID in server call!";
+      auto &metadata = context_.client_metadata();
+      if (auto it = metadata.find(kClusterIdKey);
+          it == metadata.end() || it->second != cluster_id_->Hex()) {
+        RAY_LOG(DEBUG) << "Wrong cluster ID token in request!";
+        SendReply(Status::AuthError("WrongClusterToken"));
+      }
+    } else if constexpr (EnableAuth == AuthType::LAZY) {
+      RAY_CHECK(cluster_id_ != nullptr) << "Expected cluster ID in server call!";
+      auto &metadata = context_.client_metadata();
+      if (auto it = metadata.find(kClusterIdKey);
+          it != metadata.end() && it->second != cluster_id_->Hex()) {
+        RAY_LOG(DEBUG) << "Wrong cluster ID token in request!";
+        SendReply(Status::AuthError("WrongClusterToken"));
+      }
+    } else {
+      RAY_CHECK(cluster_id_ == nullptr)
+          << "Unexpected cluster ID in server call!" << cluster_id_;
+    }
+
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
@@ -298,6 +335,10 @@ class ServerCallImpl : public ServerCall {
   /// Human-readable name for this RPC call.
   std::string call_name_;
 
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  ClusterID const *const cluster_id_;
+
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
 
@@ -310,7 +351,7 @@ class ServerCallImpl : public ServerCall {
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
 
-  template <class T1, class T2, class T3, class T4>
+  template <class T1, class T2, class T3, class T4, AuthType T5>
   friend class ServerCallFactoryImpl;
 };
 
@@ -334,7 +375,11 @@ using RequestCallFunction =
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class GrpcService, class ServiceHandler, class Request, class Reply>
+template <class GrpcService,
+          class ServiceHandler,
+          class Request,
+          class Reply,
+          AuthType EnableAuth = AuthType::STRICT>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
 
@@ -360,6 +405,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service,
       std::string call_name,
+      ClusterID const *const cluster_id,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -369,19 +415,21 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         max_active_rpcs_(max_active_rpcs),
         record_metrics_(record_metrics) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call =
-        new ServerCallImpl<ServiceHandler, Request, Reply>(*this,
-                                                           service_handler_,
-                                                           handle_request_function_,
-                                                           io_service_,
-                                                           call_name_,
-                                                           record_metrics_);
+    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth>(
+        *this,
+        service_handler_,
+        handle_request_function_,
+        io_service_,
+        call_name_,
+        cluster_id_,
+        record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
@@ -415,6 +463,10 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  ClusterID const *const cluster_id_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

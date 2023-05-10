@@ -35,6 +35,14 @@ GcsNodeManager::GcsNodeManager(
       gcs_table_storage_(std::move(gcs_table_storage)),
       raylet_client_pool_(std::move(raylet_client_pool)) {}
 
+// Note: ServerCall will populate the cluster_id.
+void GcsNodeManager::HandleRegisterClient(rpc::RegisterClientRequest request,
+                                          rpc::RegisterClientReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Registering GCS client!";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {

@@ -28,30 +28,42 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, RECORD_METRICS) \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
-      new ServerCallFactoryImpl<SERVICE,                                        \
-                                SERVICE##Handler,                               \
-                                HANDLER##Request,                               \
-                                HANDLER##Reply>(                                \
-          service_,                                                             \
-          &SERVICE::AsyncService::Request##HANDLER,                             \
-          service_handler_,                                                     \
-          &SERVICE##Handler::Handle##HANDLER,                                   \
-          cq,                                                                   \
-          main_service_,                                                        \
-          #SERVICE ".grpc_server." #HANDLER,                                    \
-          MAX_ACTIVE_RPCS,                                                      \
-          RECORD_METRICS));                                                     \
+#define _RPC_SERVICE_HANDLER(                                     \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS) \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(      \
+      new ServerCallFactoryImpl<SERVICE,                          \
+                                SERVICE##Handler,                 \
+                                HANDLER##Request,                 \
+                                HANDLER##Reply,                   \
+                                AUTH_TYPE>(                       \
+          service_,                                               \
+          &SERVICE::AsyncService::Request##HANDLER,               \
+          service_handler_,                                       \
+          &SERVICE##Handler::Handle##HANDLER,                     \
+          cq,                                                     \
+          main_service_,                                          \
+          #SERVICE ".grpc_server." #HANDLER,                      \
+          AUTH_TYPE == AuthType::NO_AUTH ? nullptr : cluster_id,  \
+          MAX_ACTIVE_RPCS,                                        \
+          RECORD_METRICS));                                       \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, true)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::STRICT, true)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, false)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::STRICT, false)
+
+/// Define a RPC service handler with gRPC server metrics enabled.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true)
+
+/// Define a RPC service handler with gRPC server metrics disabled.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
@@ -68,7 +80,7 @@ class GrpcService;
 /// 2) and a thread that polls events from the `ServerCompletionQueue`.
 ///
 /// Subclasses can register one or multiple services to a `GrpcServer`, see
-/// `RegisterServices`. And they should also implement `InitServerCallFactories` to decide
+/// `RegisterServices`. And they should also implement `nitServerCallFactories` to decide
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:
@@ -77,14 +89,32 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
+  ///
+  /// Note: Ideally with C++20 we could use constraints here, or auto&& in the contructor.
+  template <typename T = std::shared_future<ClusterID>,
+            typename = typename std::enable_if_t<
+                std::is_convertible<T, std::shared_future<ClusterID>>::value>>
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
+             T &&cluster_token_future = T(),
              int num_threads = 1,
-             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
+             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
+      : name_(std::move(name)),
+        port_(port),
+        listen_to_localhost_only_(listen_to_localhost_only),
+        cluster_token_(std::forward<T>(cluster_token_future)),
+        is_closed_(true),
+        num_threads_(num_threads),
+        keepalive_time_ms_(keepalive_time_ms) {
+    Init();
+  }
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
+
+  /// Initialize this server.
+  void Init();
 
   /// Initialize and run this server.
   void Run();
@@ -100,10 +130,14 @@ class GrpcServer {
   /// `GrpcServer`, as it holds the underlying `grpc::Service`.
   ///
   /// \param[in] service A `GrpcService` to register to this server.
-  void RegisterService(GrpcService &service);
+  /// NOTE: if token_auth is not set to false, it will block on
+  /// cluster_token_future_ to pass the cluster ID
+  void RegisterService(GrpcService &service, bool token_auth = true);
   void RegisterService(grpc::Service &service);
 
   grpc::Server &GetServer() { return *server_; }
+
+  std::shared_future<ClusterID> const &GetClusterTokenFuture() { return cluster_token_; }
 
  protected:
   /// This function runs in a background thread. It keeps polling events from the
@@ -118,6 +152,8 @@ class GrpcServer {
   /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
+  /// Token representing ID of this cluster.
+  std::shared_future<ClusterID> cluster_token_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
@@ -168,7 +204,8 @@ class GrpcService {
   /// and the maximum number of concurrent requests that this gRPC server can handle.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      ClusterID const *const cluster_id) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

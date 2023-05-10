@@ -99,12 +99,15 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
-// TODO(vitsai): string <=> enum generator macro
-enum class StorageType {
-  UNKNOWN = 0,
-  IN_MEMORY = 1,
-  REDIS_PERSIST = 2,
-};
+  // TODO(vitsai): string <=> enum generator macro
+  enum class StorageType {
+    UNKNOWN = 0,
+    IN_MEMORY = 1,
+    REDIS_PERSIST = 2,
+  };
+
+  static constexpr char kInMemoryStorage[] = "memory";
+  static constexpr char kRedisStorage[] = "redis";
 
  protected:
   /// Generate the redis client options
@@ -170,7 +173,6 @@ enum class StorageType {
   void InitMonitorServer();
 
  private:
-
   /// Gets the type of KV storage to use from config.
   StorageType GetStorageType() const;
 
@@ -186,7 +188,7 @@ enum class StorageType {
   /// Get server token if persisted, otherwise generate
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
-  void CacheAndSetServerToken();
+  void CacheAndSetClusterId();
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -200,12 +202,9 @@ enum class StorageType {
   /// instead of in the promise-setting lambda
   /// is because lambda => std::function conversion cannot
   /// avoid copy-constructor, so move-capturing promise won't work.
-  /// Can be fixed by using auto as parameter type instead of 
+  /// Can be fixed by using auto as parameter type instead of
   /// std::function in C++20.
-  std::promise<std::string> token_promise_;
-
-  /// UUID of this generation of the server.
-  std::future<std::string> server_token_;
+  std::promise<ClusterID> cluster_token_promise_;
 
   /// Gcs server configuration.
   const GcsServerConfig config_;
