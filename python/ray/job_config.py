@@ -40,11 +40,11 @@ class JobConfig:
         jvm_options: Optional[List[str]] = None,
         code_search_path: Optional[List[str]] = None,
         runtime_env: Optional[dict] = None,
+        _client_job: bool = False,
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
-        _client_job: bool = False,
-        _py_driver_sys_path: List[str] = None,
+        _py_driver_sys_path: Optional[List[str]] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
@@ -64,7 +64,7 @@ class JobConfig:
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
         # A list of directories that specify the search path for python workers.
-        self._py_driver_sys_path = []
+        self._py_driver_sys_path = _py_driver_sys_path or []
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
