@@ -82,7 +82,6 @@ def test_metrics(shutdown_only):
     try:
         cluster.start()
         info = ray.init(address="auto")
-        print(info)
         autoscaler_export_addr = "{}:{}".format(
             info.address_info["node_ip_address"], AUTOSCALER_METRIC_PORT
         )

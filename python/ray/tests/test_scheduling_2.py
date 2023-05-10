@@ -754,14 +754,11 @@ def test_workload_placement_metrics(ray_start_regular):
 
     t = task.remote()
     ray.get(t)
-    print("Task ran")
     a = Actor.remote()
     ray.get(a.ready.remote())
-    print("Actor ran")
     del a
     pg = placement_group(bundles=[{"CPU":1}], strategy="SPREAD")
     ray.get(pg.ready())
-    print("PG created")
 
     placement_metric_condition = get_metric_check_condition(
         [
