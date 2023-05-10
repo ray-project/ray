@@ -212,12 +212,12 @@ class LearnerGroup:
                 block=block,
             )
 
-        # If results are empty, don't run them through reduce_fn, but return empty dict.
-        if not results:
-            return {}
-        # No reduce function -> Return list of mappings.
-        elif reduce_fn is None:
+        # No reduce function -> Return results as is: (possibly empty) list of mappings.
+        if reduce_fn is None:
             return results
+        # If results are empty, don't run them through reduce_fn, but return empty dict.
+        elif not results:
+            return {}
         # Run results (list of result dicts from our n learner actors) through
         # reduction function and return single mapping.
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
