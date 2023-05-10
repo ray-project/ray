@@ -4,12 +4,12 @@
 (gentle-intro)=
 
 # Getting Started
-Use Ray to scale applications on your laptop or on the cloud. Choose the guide that fits your use case or task. 
-* Scale end-to-end ML applications: Ray AI Runtime Quickstart
-* Scale single ML workloads: Ray Libraries Quickstart
-* Scale general Python applications: Ray Core Quickstart
-* Deploy to the cloud: Ray Clusters Quickstart
-* Debug and monitor applications: Debugging and Monitoring Quickstart
+Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task. 
+* Scale end-to-end ML applications: [Ray AI Runtime Quickstart](#ray-ai-runtime-quickstart)
+* Scale single ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
+* Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
+* Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
+* Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
 ## Ray AI Runtime Quickstart
 
 Explore Ray's full suite of libraries for end-to-end ML pipelines, with the `air` packages:
