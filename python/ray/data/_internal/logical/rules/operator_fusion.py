@@ -191,7 +191,11 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map.pop(up_op)
 
         # Merge target block sizes.
-        down_target_block_size = down_logical_op._target_block_size
+        down_target_block_size = (
+            down_logical_op._target_block_size
+            if isinstance(down_logical_op, AbstractUDFMap)
+            else None
+        )
         up_target_block_size = (
             up_logical_op._target_block_size
             if isinstance(up_logical_op, AbstractUDFMap)
@@ -233,7 +237,9 @@ class OperatorFusionRule(Rule):
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
-        compute = get_compute(down_logical_op._compute)
+        compute = None
+        if isinstance(down_logical_op, AbstractUDFMap):
+            compute = get_compute(down_logical_op._compute)
         ray_remote_args = down_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies

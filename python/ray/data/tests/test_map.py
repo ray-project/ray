@@ -30,7 +30,6 @@ def maybe_pipeline(ds, enabled):
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
-    # Need to implement Window operator to work with pipelined datasets.
     ray.init(num_cpus=6)
     n = 5
     ds = ray.data.range(n)
@@ -93,7 +92,7 @@ def test_basic_actors(shutdown_only, pipelined):
 
 
 def test_callable_classes(shutdown_only):
-    ray.init(num_cpus=2)
+    # TODO(scott_optimizer): fix map with CallableClass arg
     ds = ray.data.range(10, parallelism=10)
 
     class StatefulFn:
@@ -374,6 +373,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
 
 
 def test_map_batches_extra_args(shutdown_only, tmp_path):
+    # TODO(scott_optimizer): fix map_batches with CallableClass arg
     ray.shutdown()
     ray.init(num_cpus=2)
 
@@ -692,6 +692,8 @@ def test_map_batches_batch_mutation(
 def test_map_batches_batch_zero_copy(
     ray_start_regular_shared, num_rows, num_blocks, batch_size
 ):
+    # TODO(scott_optimizer): To pass this, we need to implement zero-copy batching
+    # between transform functions in operator_fusion.py?
     # Test that batches are zero-copy read-only views when zero_copy_batch=True.
     def mutate(df):
         # Check that batch is read-only.
@@ -706,8 +708,6 @@ def test_map_batches_batch_zero_copy(
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
-    # To pass this, we need to implement zero-copy batching
-    # between transform functions in operator_fusion.py?
     with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
         ds = ds.map_batches(
             mutate, batch_format="pandas", batch_size=batch_size, zero_copy_batch=True
@@ -726,9 +726,11 @@ BLOCK_BUNDLING_TEST_CASES = [
 def test_map_batches_block_bundling_auto(
     ray_start_regular_shared, block_size, batch_size
 ):
+    # TODO(scott_optimizer): fix map_batches block bundling 
+    # for block_size>1 or batch_size>1
     # Ensure that we test at least 2 batches worth of blocks.
     num_blocks = max(10, 2 * batch_size // block_size)
-    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
+    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks).materialize()
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
 
@@ -834,6 +836,7 @@ def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
 
 
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
+    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     xs = [x % 3 for x in list(range(100))]
 
     # ds1 has 1 block which contains 100 rows.

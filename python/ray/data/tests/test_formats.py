@@ -320,6 +320,8 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 
 
 def test_get_read_tasks(shutdown_only):
+    # Note: if you get TimeoutErrors here, try installing required dependencies
+    # with `pip install -U "ray[default]"`.
     ray.init()
 
     head_node_id = ray.get_runtime_context().get_node_id()

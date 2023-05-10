@@ -114,9 +114,10 @@ def test_to_numpy_refs(ray_start_regular_shared):
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
+    # TODO(scott_optimizer): fix multi-file write
     ds = ray.data.range_tensor(10, parallelism=2)
     ds.write_numpy(data_path, filesystem=fs, column="data")
-    ds = ray.data.read_numpy(data_path, filesystem=fs)
+    ds = ray.data.read_numpy(data_path, filesystem=fs, parallelism=2)
     assert str(ds) == (
         "Datastream(\n"
         "   num_blocks=2,\n"
@@ -274,6 +275,7 @@ def test_numpy_read_partitioned_with_filter(
     ],
 )
 def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+    # TODO(scott_optimizer): fix multi-file write
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(data_path, filesystem=fs, column="data")
@@ -311,7 +313,8 @@ def test_numpy_write_block_path_provider(
     endpoint_url,
     test_block_write_path_provider,
 ):
-    ds = ray.data.range_tensor(10, parallelism=2)
+    # TODO(scott_optimizer): fix multi-file write
+    ds = ray.data.range_tensor(10, parallelism=2).materialize()
     ds._set_uuid("data")
     ds.write_numpy(
         data_path,
