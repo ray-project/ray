@@ -115,26 +115,36 @@ class GcsTaskManagerTest : public ::testing::Test {
   rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
                                             absl::optional<JobID> job_id = absl::nullopt,
                                             int64_t limit = -1,
-                                            bool exclude_driver = true) {
+                                            bool exclude_driver = true,
+                                            const std::string &name = "",
+                                            const ActorID &actor_id = ActorID::Nil()) {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
 
     if (!task_ids.empty()) {
       for (const auto &task_id : task_ids) {
-        request.mutable_task_ids()->add_vals(task_id.Binary());
+        request.mutable_filters()->add_task_ids(task_id.Binary());
       }
     }
 
+    if (!name.empty()) {
+      request.mutable_filters()->set_name(name);
+    }
+
+    if (!actor_id.IsNil()) {
+      request.mutable_filters()->set_actor_id(actor_id.Binary());
+    }
+
     if (job_id) {
-      request.set_job_id(job_id->Binary());
+      request.mutable_filters()->set_job_id(job_id->Binary());
     }
 
     if (limit >= 0) {
       request.set_limit(limit);
     }
 
-    request.set_exclude_driver(exclude_driver);
+    request.mutable_filters()->set_exclude_driver(exclude_driver);
     task_manager->GetIoContext().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(
@@ -155,11 +165,15 @@ class GcsTaskManagerTest : public ::testing::Test {
   static rpc::TaskInfoEntry GenTaskInfo(
       JobID job_id,
       TaskID parent_task_id = TaskID::Nil(),
-      rpc::TaskType task_type = rpc::TaskType::NORMAL_TASK) {
+      rpc::TaskType task_type = rpc::TaskType::NORMAL_TASK,
+      const ActorID actor_id = ActorID::Nil(),
+      const std::string name = "") {
     rpc::TaskInfoEntry task_info;
     task_info.set_job_id(job_id.Binary());
     task_info.set_parent_task_id(parent_task_id.Binary());
     task_info.set_type(task_type);
+    task_info.set_actor_id(actor_id.Binary());
+    task_info.set_name(name);
     return task_info;
   }
 
@@ -488,6 +502,66 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
                      reply_job1.mutable_events_by_task());
   ExpectTaskEventsEq(events_data_job2.mutable_events_by_task(),
                      reply_job2.mutable_events_by_task());
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
+  // Generate task events
+
+  // A task event with actor id
+  ActorID actor_id = ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1);
+  {
+    auto task_ids = GenTaskIDs(1);
+    auto task_info_actor_id =
+        GenTaskInfo(JobID::FromInt(1), TaskID::Nil(), rpc::ACTOR_TASK, actor_id);
+    auto events = GenTaskEvents(task_ids,
+                                /* attempt_number */
+                                0,
+                                /* job_id */ 1,
+                                absl::nullopt,
+                                absl::nullopt,
+                                task_info_actor_id);
+    auto data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(data);
+  }
+
+  // A task event with name.
+  {
+    auto task_ids = GenTaskIDs(1);
+    auto task_info_name = GenTaskInfo(
+        JobID::FromInt(1), TaskID::Nil(), rpc::NORMAL_TASK, ActorID::Nil(), "task_name");
+    auto events = GenTaskEvents(task_ids,
+                                /* attempt_number */
+                                0,
+                                /* job_id */ 1,
+                                absl::nullopt,
+                                absl::nullopt,
+                                task_info_name);
+    auto data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(data);
+  }
+
+  auto reply_name = SyncGetTaskEvents({},
+                                      /* job_id */ absl::nullopt,
+                                      /* limit */ -1,
+                                      /* exclude_driver */ false,
+                                      "task_name");
+  EXPECT_EQ(reply_name.events_by_task_size(), 1);
+
+  auto reply_actor_id = SyncGetTaskEvents({},
+                                          /* job_id */ absl::nullopt,
+                                          /* limit */ -1,
+                                          /* exclude_driver */ false,
+                                          /* name */ "",
+                                          actor_id);
+  EXPECT_EQ(reply_name.events_by_task_size(), 1);
+
+  auto reply_both_and = SyncGetTaskEvents({},
+                                          /* job_id */ absl::nullopt,
+                                          /* limit */ -1,
+                                          /* exclude_driver */ false,
+                                          "task_name",
+                                          actor_id);
+  EXPECT_EQ(reply_both_and.events_by_task_size(), 0);
 }
 
 TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
