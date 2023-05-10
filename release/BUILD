@@ -439,6 +439,7 @@ py_test(
     name = "test_anyscale_job_manager",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_manager.py"],
+    exec_compatible_with = [":hermetic_python"],
     tags = [
         "release_unit",
         "team:ci",
@@ -583,6 +584,7 @@ py_test(
     name = "test_result",
     size = "small",
     srcs = ["ray_release/tests/test_result.py"],
+    exec_compatible_with = [":hermetic_python"],
     tags = [
         "release_unit",
         "team:ci",
@@ -617,6 +619,7 @@ py_test(
     name = "test_template",
     size = "small",
     srcs = ["ray_release/tests/test_template.py"],
+    exec_compatible_with = [":hermetic_python"],
     tags = [
         "release_unit",
         "team:ci",
