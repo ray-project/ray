@@ -111,6 +111,7 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
 
 
 def test_webdataset_write(ray_start_2_cpus, tmp_path):
+    # TODO(scott_optimizer): fix multi-file write
     print(ray.available_resources())
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]
     ds = ray.data.from_items(data).repartition(1)
