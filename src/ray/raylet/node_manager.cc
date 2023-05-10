@@ -1367,6 +1367,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Send the reply callback only after registration fully completes at the GCS.
     auto cb = [this,
                worker_ip_address,
+               worker_id,
                pid,
                job_id,
                job_config,
@@ -1379,6 +1380,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         driver_address.set_raylet_id(self_node_id_.Binary());
         driver_address.set_ip_address(worker_ip_address);
         driver_address.set_port(assigned_port);
+        driver_address.set_worker_id(worker_id.Binary());
         auto job_data_ptr = gcs::CreateJobTableData(
             job_id, /*is_dead*/ false, driver_address, pid, entrypoint, job_config);
 

@@ -25,6 +25,9 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/pubsub/subscriber.h"
+#include "mock/ray/rpc/worker/core_worker_client.h"
+
 // clang-format on
 
 namespace ray {
@@ -55,11 +58,12 @@ class GcsJobManagerTest : public ::testing::Test {
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
 
-    // Mock client factory which returns a client with number of running tasks equal to
-    // the address port.
-    client_factory_ = [this](const rpc::Address &address) {
-      return std::make_shared<ray::rpc::MockCoreWorkerClientConfigurableRunningTasks>(
-          address.port);
+    // Mock client factory which abuses the "address" argument to return a
+    // CoreWorkerClient whose number of running tasks equal to the address port. This is
+    // just for testing purposes.
+    client_factory_ = [](const rpc::Address &address) {
+      return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
+          address.port());
     };
   }
 
@@ -103,24 +107,36 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
-                                     client_factory_, );
+                                     client_factory_);
 
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs. Job i should have i running tasks.
-  for (int i = 0; i < 100; ++i) {
+  int num_jobs = 100;
+  for (int i = 0; i < num_jobs; ++i) {
     auto job_id = JobID::FromInt(i);
     // Create an address with port equal to the number of running tasks. We use the mock
     // client factory to create a core worker client with number of running tasks
     // equal to the address port.
     rpc::Address address;
     address.set_port(i);
+
+    // Populate other fields, the value is not important.
+    address.set_raylet_id(NodeID::FromRandom().Binary());
+    address.set_ip_address("123.456.7.8");
+    address.set_worker_id(WorkerID::FromRandom().Binary());
+
     auto add_job_request =
         Mocker::GenAddJobRequest(job_id, std::to_string(i), std::to_string(i), address);
     rpc::AddJobReply empty_reply;
     std::promise<bool> promise;
-    gcs_job_manager.AddJob(add_job_request, empty_reply, promise);
+    gcs_job_manager.HandleAddJob(
+        *add_job_request,
+        &empty_reply,
+        [&promise](Status, std::function<void()>, std::function<void()>) {
+          promise.set_value(true);
+        });
     promise.get_future().get();
   }
 
@@ -137,10 +153,10 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
       });
   all_job_info_promise.get_future().get();
 
-  ASSERT_EQ(all_job_info_reply.job_info_list().size(), 100);
+  ASSERT_EQ(all_job_info_reply.job_info_list().size(), num_jobs);
 
   // Check that the is_running_tasks field is correct for each job.
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < num_jobs; ++i) {
     auto job_info = all_job_info_reply.job_info_list(i);
     ASSERT_EQ(all_job_info_reply.job_info_list(i).is_running_tasks(), i > 0);
   }
@@ -152,7 +168,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
-                                     client_factory_, );
+                                     client_factory_);
 
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
@@ -329,7 +345,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
-                                     client_factory_, );
+                                     client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
@@ -484,6 +500,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   address.set_ip_address("10.0.0.1");
   address.set_port(8264);
   address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_worker_id(WorkerID::FromRandom().Binary());
   add_job_request->mutable_data()->mutable_driver_address()->CopyFrom(address);
 
   add_job_request->mutable_data()->set_driver_pid(8264);

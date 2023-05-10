@@ -253,6 +253,13 @@ struct Mocker {
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
     if (address.has_value()) {
       job_table_data->mutable_driver_address()->CopyFrom(address.value());
+    } else {
+      rpc::Address dummy_address;
+      dummy_address.set_port(1234);
+      dummy_address.set_raylet_id(NodeID::FromRandom().Binary());
+      dummy_address.set_ip_address("123.456.7.8");
+      dummy_address.set_worker_id(WorkerID::FromRandom().Binary());
+      job_table_data->mutable_driver_address()->CopyFrom(dummy_address);
     }
     if (submission_id.has_value()) {
       job_table_data->mutable_config()->mutable_metadata()->insert(
