@@ -40,7 +40,7 @@ impl GlobalStateAccessor {
             gcs_address
         );
         unsafe {
-            GcsClientOptions_Update(gcs_address.as_ptr(), gcs_address.len());
+            GlobalStateAccessor_ClientOptions_Update(gcs_address.as_ptr(), gcs_address.len());
             let gcs = GlobalStateAccessor_Create();
             return GlobalStateAccessor { raw: gcs };
         };
@@ -122,7 +122,7 @@ impl GlobalStateAccessor {
 }
 
 extern "C" {
-    pub fn GcsClientOptions_Update(gcs_address: *const u8, len: usize);
+    pub fn GlobalStateAccessor_ClientOptions_Update(gcs_address: *const u8, len: usize);
     pub fn GlobalStateAccessor_Create() -> *mut c_void;
     pub fn GlobalStateAccessor_Destroy(ptr: *mut c_void);
 

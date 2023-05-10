@@ -109,9 +109,9 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()> {
 
     {
         let mut engine = ctx.engine.write().unwrap();
-        let module = engine.compile("module", &data)?;
-        let sandbox = engine.create_sandbox("sandbox")?;
-        let instance = engine.instantiate("sandbox", "module", "instance")?;
+        let _module = engine.compile("module", &data)?;
+        let _sandbox = engine.create_sandbox("sandbox")?;
+        let _instance = engine.instantiate("sandbox", "module", "instance")?;
 
         debug!("wasm module instantiated");
 
@@ -130,7 +130,7 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()> {
     Ok(())
 }
 
-async fn run_text(args: &util::LauncherParameters) -> Result<()> {
+async fn run_text(_args: &util::LauncherParameters) -> Result<()> {
     unimplemented!()
 }
 

@@ -16,8 +16,10 @@ use crate::engine::{
     Hostcalls, WasmEngine, WasmFunc, WasmInstance, WasmModule, WasmSandbox, WasmType, WasmValue,
 };
 use crate::engine::{TASK_RECEIVER, TASK_RESULT_SENDER};
+use crate::runtime::RayRuntime;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::debug;
 use wasmtime::{Engine, FuncType, Instance, Linker, Module, Store, ValRaw, ValType};
@@ -47,6 +49,74 @@ impl WasmtimeEngine {
         }
     }
 }
+
+struct WasmtimeModule {
+    name: String,
+    module: Module,
+    bytes: Vec<u8>,
+}
+
+impl WasmtimeModule {
+    pub fn new(engine: &Engine, module_name: &str, bytes: &[u8]) -> Self {
+        WasmtimeModule {
+            name: module_name.to_string(),
+            module: Module::from_binary(engine, bytes).unwrap(),
+            bytes: bytes.to_vec(),
+        }
+    }
+}
+
+impl WasmModule for WasmtimeModule {}
+
+#[derive(Clone)]
+pub struct WasmtimeStoreData {
+    sandbox_name: String,
+    module_bytes: HashMap<String, Vec<u8>>,
+    submitted_modules: HashMap<String, String>, // module_name -> module_hash
+}
+
+struct WasmtimeSandbox {
+    store: Store<WasmtimeStoreData>,
+    instances: HashMap<String, WasmtimeInstance>,
+}
+
+impl WasmtimeSandbox {
+    fn new(engine: &Engine, name: &str) -> Self {
+        let store = Store::new(
+            engine,
+            WasmtimeStoreData {
+                sandbox_name: name.to_string(),
+                module_bytes: HashMap::new(),
+                submitted_modules: HashMap::new(),
+            },
+        );
+        WasmtimeSandbox {
+            store,
+            instances: HashMap::new(),
+        }
+    }
+}
+
+impl WasmSandbox for WasmtimeSandbox {}
+
+#[derive(Clone)]
+struct WasmtimeInstance {
+    name: String,
+    module_name: String,
+    instance: Instance,
+}
+
+impl WasmtimeInstance {
+    fn new(name: &str, module_name: &str, instance: Instance) -> Self {
+        WasmtimeInstance {
+            name: name.to_string(),
+            module_name: module_name.to_string(),
+            instance,
+        }
+    }
+}
+
+impl WasmInstance for WasmtimeInstance {}
 
 impl WasmEngine for WasmtimeEngine {
     fn init(&self) -> Result<()> {
@@ -94,6 +164,11 @@ impl WasmEngine for WasmtimeEngine {
             instance_name.to_string(),
             WasmtimeInstance::new(instance_name, module_name, instance),
         );
+        sandbox
+            .store
+            .data_mut()
+            .module_bytes
+            .insert(module_name.to_string(), module.bytes.clone());
         Ok(Box::new(
             &self.sandboxes[sandbox_name].instances[instance_name],
         ))
@@ -268,6 +343,18 @@ impl WasmEngine for WasmtimeEngine {
         };
     }
 
+    fn has_instance(&self, _sandbox_name: &str, _instance_name: &str) -> Result<bool> {
+        unimplemented!()
+    }
+
+    fn has_module(&self, name: &str) -> Result<bool> {
+        Ok(self.modules.contains_key(name))
+    }
+
+    fn has_sandbox(&self, name: &str) -> Result<bool> {
+        Ok(self.sandboxes.contains_key(name))
+    }
+
     fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>> {
         unimplemented!()
     }
@@ -276,7 +363,7 @@ impl WasmEngine for WasmtimeEngine {
         unimplemented!()
     }
 
-    fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>> {
+    fn list_instances(&self, _sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>> {
         unimplemented!()
     }
 
@@ -311,7 +398,7 @@ impl WasmEngine for WasmtimeEngine {
                     &module_name,
                     &hostcall.name,
                     ft,
-                    move |mut caller, args| -> Result<()> {
+                    move |caller, args| -> Result<()> {
                         // iterate params and convert them to WasmValue
                         let mut params = Vec::new();
                         if args.len()
@@ -360,7 +447,10 @@ impl WasmEngine for WasmtimeEngine {
         Ok(())
     }
 
-    fn task_loop_once(&mut self) -> Result<()> {
+    fn task_loop_once(
+        &mut self,
+        rt: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
+    ) -> Result<()> {
         let mut result_buf: Vec<u8> = vec![];
 
         // receive task from channel with a timeout
@@ -370,10 +460,50 @@ impl WasmEngine for WasmtimeEngine {
                     RayLog::info(
                         format!("task_loop_once: executing wasm task: {:?}", task).as_str(),
                     );
+                    let mod_name = task.module_name.as_str();
                     let func_name = task.func_name.as_str();
                     let args = task.args;
 
-                    // TODO: use ray get to get binary and compile it
+                    // check if module is already compiled
+                    if !self.has_module(mod_name).unwrap() {
+                        RayLog::info(
+                            format!("task_loop_once: compiling wasm module: {:?}", mod_name)
+                                .as_str(),
+                        );
+                        match rt.as_ref().read().unwrap().kv_get("", mod_name) {
+                            Ok(obj) => match self.compile(mod_name, &obj.as_slice()) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    RayLog::error(
+                                        format!("task_loop_once: wasm compile error: {:?}", e)
+                                            .as_str(),
+                                    );
+                                }
+                            },
+                            Err(e) => {
+                                RayLog::error(
+                                    format!("task_loop_once: wasm compile error: {:?}", e).as_str(),
+                                );
+                            }
+                        }
+                        match self.create_sandbox("sandbox") {
+                            Ok(_) => {}
+                            Err(e) => {
+                                RayLog::error(
+                                    format!("task_loop_once: wasm sandbox error: {:?}", e).as_str(),
+                                );
+                            }
+                        }
+                        match self.instantiate("sandbox", mod_name, "instance") {
+                            Ok(_) => {}
+                            Err(e) => {
+                                RayLog::error(
+                                    format!("task_loop_once: wasm instantiate error: {:?}", e)
+                                        .as_str(),
+                                );
+                            }
+                        }
+                    }
 
                     match self.execute("sandbox", "instance", func_name, args) {
                         Ok(results) => {
@@ -435,67 +565,3 @@ impl WasmEngine for WasmtimeEngine {
         Ok(())
     }
 }
-
-struct WasmtimeModule {
-    name: String,
-    module: Module,
-    bytes: Vec<u8>,
-}
-
-impl WasmtimeModule {
-    pub fn new(engine: &Engine, module_name: &str, bytes: &[u8]) -> Self {
-        WasmtimeModule {
-            name: module_name.to_string(),
-            module: Module::from_binary(engine, bytes).unwrap(),
-            bytes: bytes.to_vec(),
-        }
-    }
-}
-
-impl WasmModule for WasmtimeModule {}
-
-#[derive(Clone)]
-pub struct WasmtimeStoreData {
-    sandbox_name: String,
-}
-
-struct WasmtimeSandbox {
-    store: Store<WasmtimeStoreData>,
-    instances: HashMap<String, WasmtimeInstance>,
-}
-
-impl WasmtimeSandbox {
-    fn new(engine: &Engine, name: &str) -> Self {
-        let store = Store::new(
-            engine,
-            WasmtimeStoreData {
-                sandbox_name: name.to_string(),
-            },
-        );
-        WasmtimeSandbox {
-            store,
-            instances: HashMap::new(),
-        }
-    }
-}
-
-impl WasmSandbox for WasmtimeSandbox {}
-
-#[derive(Clone)]
-struct WasmtimeInstance {
-    name: String,
-    module_name: String,
-    instance: Instance,
-}
-
-impl WasmtimeInstance {
-    fn new(name: &str, module_name: &str, instance: Instance) -> Self {
-        WasmtimeInstance {
-            name: name.to_string(),
-            module_name: module_name.to_string(),
-            instance,
-        }
-    }
-}
-
-impl WasmInstance for WasmtimeInstance {}

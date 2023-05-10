@@ -49,7 +49,6 @@ pub trait WasmEngine {
     fn init(&self) -> Result<()>;
 
     fn compile(&mut self, name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>>;
-
     fn create_sandbox(&mut self, name: &str) -> Result<Box<&dyn WasmSandbox>>;
     fn instantiate(
         &mut self,
@@ -65,13 +64,18 @@ pub trait WasmEngine {
         args: Vec<WasmValue>,
     ) -> Result<Vec<WasmValue>>;
 
+    fn has_module(&self, name: &str) -> Result<bool>;
+    fn has_sandbox(&self, name: &str) -> Result<bool>;
+    fn has_instance(&self, sandbox_name: &str, instance_name: &str) -> Result<bool>;
+
     fn list_modules(&self) -> Result<Vec<Box<&dyn WasmModule>>>;
     fn list_sandboxes(&self) -> Result<Vec<Box<&dyn WasmSandbox>>>;
     fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>>;
 
     fn register_hostcalls(&mut self, hostcalls: &Hostcalls) -> Result<()>;
 
-    fn task_loop_once(&mut self) -> Result<()>;
+    fn task_loop_once(&mut self, rt: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>)
+        -> Result<()>;
 }
 
 pub trait WasmModule {}
@@ -221,16 +225,16 @@ pub struct WasmFunc {
 
 impl WasmFunc {
     pub fn new(
-        sandbox: &str,
-        module: &str,
-        name: &str,
+        sandbox: String,
+        module: String,
+        name: String,
         params: Vec<WasmType>,
         results: Vec<WasmType>,
     ) -> Self {
         WasmFunc {
-            sandbox: sandbox.to_string(),
-            name: name.to_string(),
-            module: module.to_string(),
+            sandbox,
+            name,
+            module,
             params,
             results,
         }
@@ -364,4 +368,5 @@ pub trait WasmContext {
     ) -> Result<Vec<ObjectID>>;
     fn get_object(&mut self, object_id: &ObjectID) -> Result<Vec<u8>>;
     fn put_object(&mut self, data: &[u8]) -> Result<ObjectID>;
+    fn submit_sandbox_binary(&mut self) -> Result<()>;
 }

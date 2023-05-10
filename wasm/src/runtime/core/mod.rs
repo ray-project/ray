@@ -13,4 +13,5 @@
 // limitations under the License.
 
 pub mod core_worker;
+pub mod gcs_client;
 pub mod global_state_accessor;

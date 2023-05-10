@@ -514,7 +514,7 @@ int CoreWorker_GetMulti(uint8_t **object_ids_buf,
   std::vector<std::shared_ptr<::ray::RayObject>> results;
   ::ray::Status status = core_worker.Get(object_ids, timeout_ms, &results);
   if (!status.ok()) {
-    return -1;
+    return (int)status.code();
   }
   RAY_CHECK(results.size() == object_ids.size());
   for (size_t i = 0; i < results.size(); i++) {
@@ -528,25 +528,25 @@ int CoreWorker_GetMulti(uint8_t **object_ids_buf,
         switch (std::stoi(meta_str)) {
         case ray::rpc::ErrorType::WORKER_DIED:
           RAY_LOG(ERROR) << "Worker died";
-          return -1;
+          return -100 + ray::rpc::ErrorType::WORKER_DIED;
         case ray::rpc::ErrorType::ACTOR_DIED:
           RAY_LOG(ERROR) << "Actor died";
-          return -1;
+          return -100 + ray::rpc::ErrorType::ACTOR_DIED;
         case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE:
           RAY_LOG(ERROR) << "Object unreconstructable";
-          return -1;
+          return -100 + ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE;
         case ray::rpc::ErrorType::OBJECT_LOST:
           RAY_LOG(ERROR) << "Object lost";
-          return -1;
+          return -100 + ray::rpc::ErrorType::OBJECT_LOST;
         case ray::rpc::ErrorType::OWNER_DIED:
           RAY_LOG(ERROR) << "Owner died";
-          return -1;
+          return -100 + ray::rpc::ErrorType::OWNER_DIED;
         case ray::rpc::ErrorType::OBJECT_DELETED:
           RAY_LOG(ERROR) << "Object deleted";
-          return -1;
+          return -100 + ray::rpc::ErrorType::OBJECT_DELETED;
         case ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
           RAY_LOG(ERROR) << "Task execution exception";
-          return -1;
+          return -100 + ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION;
         default:
           break;
         }
@@ -560,7 +560,7 @@ int CoreWorker_GetMulti(uint8_t **object_ids_buf,
       tmp_data_len = data_buffer->Size();
       if (tmp_data_len == 0) {
         RAY_LOG(ERROR) << "tmp_data_len is 0";
-        return -1;
+        return -2;
       }
     }
     if (meta_str == "RAW") {
@@ -572,7 +572,7 @@ int CoreWorker_GetMulti(uint8_t **object_ids_buf,
     } else {
       // return error if data is not enough or null pointer
       if (data[i] == nullptr || data_len[i] < tmp_data_len) {
-        return -1;
+        return -3;
       }
       memcpy(data[i], tmp_data, tmp_data_len);
       data_len[i] = tmp_data_len;

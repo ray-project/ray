@@ -18,6 +18,8 @@ __attribute__((import_module("ray"), import_name("test"))) void test();
 
 __attribute__((import_module("ray"), import_name("sleep"))) void sleep(int);
 
+__attribute__((import_module("ray"), import_name("init"))) int rinit();
+
 __attribute__((import_module("ray"), import_name("call"))) int rcall(ray_buffer *id,
                                                                      void *func,
                                                                      ...);
@@ -90,6 +92,10 @@ int test_call() {
 }
 
 int _start() {
+  int res = rinit();
+  if (res != 0) {
+    return res;
+  }
   if (test_call() != 0) {
     return 1;
   }

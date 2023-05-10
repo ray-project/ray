@@ -36,6 +36,8 @@ pub trait Base<T> {
     fn from_random() -> T;
     fn from_binary(data: &[u8]) -> T;
     fn from_hex_string(hex: &str) -> T;
+
+    fn hex_string(&self) -> String;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -81,7 +83,24 @@ impl Base<ObjectID> for ObjectID {
     }
 
     fn from_hex_string(hex: &str) -> ObjectID {
-        unimplemented!()
+        // parse hex string
+        let mut data = Vec::new();
+        for i in 0..OBJECT_ID_SIZE {
+            let start = i * 2;
+            let end = start + 2;
+            let byte = u8::from_str_radix(&hex[start..end], 16).unwrap();
+            data.push(byte);
+        }
+        ObjectID::from_binary(&data)
+    }
+
+    fn hex_string(&self) -> String {
+        // convert to hex string
+        let mut hex = String::new();
+        for i in 0..OBJECT_ID_SIZE {
+            hex.push_str(&format!("{:02x}", self.id[i]));
+        }
+        hex
     }
 }
 
@@ -115,11 +134,37 @@ impl Base<UniqueID> for UniqueID {
     }
 
     fn from_binary(data: &[u8]) -> UniqueID {
-        unimplemented!()
+        if data.len() != UNIQUE_ID_SIZE {
+            panic!(
+                "UniqueID::from_binary: data length {} != {}",
+                data.len(),
+                UNIQUE_ID_SIZE
+            );
+        }
+        let mut obj = UniqueID::new();
+        obj.id.copy_from_slice(data);
+        obj
     }
 
     fn from_hex_string(hex: &str) -> UniqueID {
-        unimplemented!()
+        // parse hex string
+        let mut data = Vec::new();
+        for i in 0..UNIQUE_ID_SIZE {
+            let start = i * 2;
+            let end = start + 2;
+            let byte = u8::from_str_radix(&hex[start..end], 16).unwrap();
+            data.push(byte);
+        }
+        UniqueID::from_binary(&data)
+    }
+
+    fn hex_string(&self) -> String {
+        // convert to hex string
+        let mut hex = String::new();
+        for i in 0..UNIQUE_ID_SIZE {
+            hex.push_str(&format!("{:02x}", self.id[i]));
+        }
+        hex
     }
 }
 
@@ -153,10 +198,36 @@ impl Base<ActorID> for ActorID {
     }
 
     fn from_binary(data: &[u8]) -> ActorID {
-        unimplemented!()
+        if data.len() != ACTOR_ID_SIZE {
+            panic!(
+                "ActorID::from_binary: data length {} != {}",
+                data.len(),
+                ACTOR_ID_SIZE
+            );
+        }
+        let mut obj = ActorID::new();
+        obj.id.copy_from_slice(data);
+        obj
     }
 
     fn from_hex_string(hex: &str) -> ActorID {
-        unimplemented!()
+        // parse hex string
+        let mut data = Vec::new();
+        for i in 0..ACTOR_ID_SIZE {
+            let start = i * 2;
+            let end = start + 2;
+            let byte = u8::from_str_radix(&hex[start..end], 16).unwrap();
+            data.push(byte);
+        }
+        ActorID::from_binary(&data)
+    }
+
+    fn hex_string(&self) -> String {
+        // convert to hex string
+        let mut hex = String::new();
+        for i in 0..ACTOR_ID_SIZE {
+            hex.push_str(&format!("{:02x}", self.id[i]));
+        }
+        hex
     }
 }

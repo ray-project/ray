@@ -60,6 +60,7 @@ rust_library(
         "@wasm_crate_index//:wasmtime",
         "@wasm_crate_index//:libc",
         "@wasm_crate_index//:rmp",
+        "@wasm_crate_index//:sha256",
     ],
 )
 
@@ -99,6 +100,7 @@ rust_dylib_library(
         "@wasm_crate_index//:wasmtime",
         "@wasm_crate_index//:libc",
         "@wasm_crate_index//:rmp",
+        "@wasm_crate_index//:sha256",
     ],
 )
 

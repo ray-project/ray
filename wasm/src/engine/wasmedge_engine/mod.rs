@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::engine::{Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue};
+use crate::runtime::RayRuntime;
 use anyhow::Result;
+use std::sync::{Arc, RwLock};
 
 // temp Val
 pub struct Value {}
@@ -30,30 +32,42 @@ impl WasmEngine for WasmEdgeEngine {
         unimplemented!()
     }
 
-    fn compile(&mut self, name: &str, wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>> {
+    fn compile(&mut self, _name: &str, _wasm_bytes: &[u8]) -> Result<Box<&dyn WasmModule>> {
         unimplemented!()
     }
 
-    fn create_sandbox(&mut self, name: &str) -> Result<Box<&dyn WasmSandbox>> {
+    fn create_sandbox(&mut self, _name: &str) -> Result<Box<&dyn WasmSandbox>> {
         unimplemented!()
     }
 
     fn instantiate(
         &mut self,
-        sandbox_name: &str,
-        module_name: &str,
-        instance_name: &str,
+        _sandbox_name: &str,
+        _module_name: &str,
+        _instance_name: &str,
     ) -> Result<Box<&dyn WasmInstance>> {
         unimplemented!()
     }
 
     fn execute(
         &mut self,
-        sandbox_name: &str,
-        instance_name: &str,
-        func_name: &str,
-        args: Vec<WasmValue>,
+        _sandbox_name: &str,
+        _instance_name: &str,
+        _func_name: &str,
+        _args: Vec<WasmValue>,
     ) -> Result<Vec<WasmValue>> {
+        unimplemented!()
+    }
+
+    fn has_instance(&self, _sandbox_name: &str, _instance_name: &str) -> Result<bool> {
+        unimplemented!()
+    }
+
+    fn has_module(&self, _name: &str) -> Result<bool> {
+        unimplemented!()
+    }
+
+    fn has_sandbox(&self, _name: &str) -> Result<bool> {
         unimplemented!()
     }
 
@@ -65,15 +79,18 @@ impl WasmEngine for WasmEdgeEngine {
         unimplemented!()
     }
 
-    fn list_instances(&self, sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>> {
+    fn list_instances(&self, _sandbox_name: &str) -> Result<Vec<Box<&dyn WasmInstance>>> {
         unimplemented!()
     }
 
-    fn register_hostcalls(&mut self, hostcalls: &Hostcalls) -> Result<()> {
+    fn register_hostcalls(&mut self, _hostcalls: &Hostcalls) -> Result<()> {
         unimplemented!()
     }
 
-    fn task_loop_once(&mut self) -> Result<()> {
+    fn task_loop_once(
+        &mut self,
+        _rt: &Arc<RwLock<Box<dyn RayRuntime + Send + Sync>>>,
+    ) -> Result<()> {
         unimplemented!()
     }
 }

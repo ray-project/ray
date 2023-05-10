@@ -175,7 +175,7 @@ impl TaskExecutor {
                 match receiver.as_ref() {
                     Some(r) => {
                         // copy data to buffer
-                        let mut res = r.recv().unwrap();
+                        let res = r.recv().unwrap();
                         match res {
                             Ok(mut data) => {
                                 buf.append(&mut data);

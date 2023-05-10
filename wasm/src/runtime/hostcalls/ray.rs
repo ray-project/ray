@@ -223,7 +223,7 @@ pub fn register_ray_hostcalls(
         .add_hostcall("sleep", vec![WasmType::I32], vec![], hc_sleep)
         .unwrap();
     hostcalls
-        .add_hostcall("init", vec![], vec![], hc_init)
+        .add_hostcall("init", vec![], vec![WasmType::I32], hc_init)
         .unwrap();
     hostcalls
         .add_hostcall("shutdown", vec![], vec![], hc_shutdown)
@@ -259,12 +259,12 @@ pub fn register_ray_hostcalls(
     Ok(())
 }
 
-fn hc_test(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+fn hc_test(_ctx: &mut dyn WasmContext, _params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("test function called");
     Ok(vec![])
 }
 
-fn hc_sleep(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+fn hc_sleep(_ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     match &params[0] {
         WasmValue::I32(v) => {
             sleep(std::time::Duration::from_secs(*v as u64));
@@ -274,11 +274,25 @@ fn hc_sleep(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmV
     Ok(vec![])
 }
 
+/// put sandbox binaries to object store
+/// no parameter
+/// return 0 if success, -1 if failed
 fn hc_init(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
-    Err(anyhow!("not implemented"))
+    // make sure there is not parameter
+    if params.len() != 0 {
+        error!("invalid parameter");
+        return Ok(vec![WasmValue::I32(-1)]);
+    }
+    match ctx.submit_sandbox_binary() {
+        Ok(_) => Ok(vec![WasmValue::I32(0)]),
+        Err(e) => {
+            error!("submit sandbox binary failed: {}", e);
+            return Ok(vec![WasmValue::I32(-1)]);
+        }
+    }
 }
 
-fn hc_shutdown(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+fn hc_shutdown(_ctx: &mut dyn WasmContext, _params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     Err(anyhow!("not implemented"))
 }
 
@@ -340,7 +354,7 @@ fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
         }
     };
 
-    let mut data = Vec::new();
+    let data: Vec<u8>;
     match load_buffer(ctx, obj_buf.ptr, obj_buf.len) {
         Ok(v) => {
             let obj_id = ObjectID::from_binary(&v.as_slice());

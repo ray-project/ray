@@ -329,7 +329,7 @@ impl TaskSubmitter for NativeTaskSubmitter {
         }
     }
 
-    fn create_actor(&mut self, invocation: &InvocationSpec) -> ActorID {
+    fn create_actor(&mut self, _invocation: &InvocationSpec) -> ActorID {
         unimplemented!()
     }
 
@@ -373,11 +373,11 @@ impl TaskSubmitter for NativeTaskSubmitter {
         unimplemented!()
     }
 
-    fn remove_placement_group(&mut self, group_id: &String) {
+    fn remove_placement_group(&mut self, _group_id: &String) {
         unimplemented!()
     }
 
-    fn wait_placement_group_ready(&mut self, group_id: &String, timeout_sec: i64) -> bool {
+    fn wait_placement_group_ready(&mut self, _group_id: &String, _timeout_sec: i64) -> bool {
         unimplemented!()
     }
 }
@@ -391,11 +391,11 @@ impl NativeTaskSubmitter {
 pub struct LocalTaskSubmitter {}
 
 impl TaskSubmitter for LocalTaskSubmitter {
-    fn submit_task(&self, invocation: &InvocationSpec, call_options: &CallOptions) -> ObjectID {
+    fn submit_task(&self, _invocation: &InvocationSpec, _call_options: &CallOptions) -> ObjectID {
         unimplemented!()
     }
 
-    fn create_actor(&mut self, invocation: &InvocationSpec) -> ActorID {
+    fn create_actor(&mut self, _invocation: &InvocationSpec) -> ActorID {
         unimplemented!()
     }
 
@@ -407,7 +407,7 @@ impl TaskSubmitter for LocalTaskSubmitter {
         self.submit_task(invocation, call_options)
     }
 
-    fn get_actor(&mut self, actor_name: &String, ray_namespace: &String) -> ActorID {
+    fn get_actor(&mut self, _actor_name: &String, _ray_namespace: &String) -> ActorID {
         todo!()
     }
 
@@ -415,11 +415,11 @@ impl TaskSubmitter for LocalTaskSubmitter {
         todo!()
     }
 
-    fn remove_placement_group(&mut self, group_id: &String) {
+    fn remove_placement_group(&mut self, _group_id: &String) {
         todo!()
     }
 
-    fn wait_placement_group_ready(&mut self, group_id: &String, timeout_sec: i64) -> bool {
+    fn wait_placement_group_ready(&mut self, _group_id: &String, _timeout_sec: i64) -> bool {
         todo!()
     }
 }

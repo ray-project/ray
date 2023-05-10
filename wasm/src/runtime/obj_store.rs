@@ -29,6 +29,8 @@ pub enum ObjectStoreType {
     Local,
 }
 
+const MAX_RAY_GET_SIZE: usize = 100 * 1024 * 1024;
+
 pub trait ObjectStore {
     fn put(&mut self, data: &[u8]) -> Result<ObjectID>;
     fn put_with_object_id(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()>;
@@ -61,36 +63,36 @@ impl ObjectStoreFactory {
 pub struct LocalObjectStore {}
 
 impl ObjectStore for LocalObjectStore {
-    fn put(&mut self, data: &[u8]) -> Result<ObjectID> {
+    fn put(&mut self, _data: &[u8]) -> Result<ObjectID> {
         unimplemented!()
     }
 
-    fn put_with_object_id(&mut self, data: &[u8], object_id: &ObjectID) -> Result<()> {
+    fn put_with_object_id(&mut self, _data: &[u8], _object_id: &ObjectID) -> Result<()> {
         unimplemented!()
     }
 
-    fn get(&self, object_id: &ObjectID, timeout_ms: i32) -> Result<Vec<u8>> {
+    fn get(&self, _object_id: &ObjectID, _timeout_ms: i32) -> Result<Vec<u8>> {
         unimplemented!()
     }
 
-    fn gets(&self, object_ids: &[ObjectID], timeout_ms: i32) -> Result<Vec<Vec<u8>>> {
+    fn gets(&self, _object_ids: &[ObjectID], _timeout_ms: i32) -> Result<Vec<Vec<u8>>> {
         unimplemented!()
     }
 
     fn wait(
         &self,
-        object_ids: &[ObjectID],
-        num_objects: usize,
-        timeout_ms: i32,
+        _object_ids: &[ObjectID],
+        _num_objects: usize,
+        _timeout_ms: i32,
     ) -> Result<Vec<bool>> {
         unimplemented!()
     }
 
-    fn add_local_ref(&mut self, id: &ObjectID) -> Result<()> {
+    fn add_local_ref(&mut self, _id: &ObjectID) -> Result<()> {
         unimplemented!()
     }
 
-    fn remove_local_ref(&mut self, id: &ObjectID) -> Result<()> {
+    fn remove_local_ref(&mut self, _id: &ObjectID) -> Result<()> {
         unimplemented!()
     }
 }
@@ -141,7 +143,7 @@ impl ObjectStore for NativeObjectStore {
 
     fn get(&self, object_id: &ObjectID, timeout_ms: i32) -> Result<Vec<u8>> {
         // allocate a temporary buffer for the object
-        let mut data = vec![0u8; 4096];
+        let mut data = vec![0u8; MAX_RAY_GET_SIZE];
         let mut data_len = data.len();
         unsafe {
             let res = CoreWorker_Get(
@@ -152,7 +154,10 @@ impl ObjectStore for NativeObjectStore {
                 timeout_ms,
             );
             if res != 0 || data_len == 0 || data_len > data.len() {
-                let msg = format!("obj store getting object failed: {:x?}", object_id);
+                let msg = format!(
+                    "obj store getting object failed: {:x?}. res: {} data_len: {}",
+                    object_id, res, data_len
+                );
                 return Err(anyhow!(msg));
             }
         }
@@ -211,6 +216,10 @@ impl ObjectStore for NativeObjectStore {
             // free the result buffers
             libc::free(data_buf as *mut libc::c_void);
             libc::free(data_buf_len as *mut libc::c_void);
+            if res != 0 {
+                // free the temporary buffer
+                return Err(anyhow!("get object failed"));
+            }
             Ok(results)
         }
     }

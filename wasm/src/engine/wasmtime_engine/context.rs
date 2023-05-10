@@ -19,6 +19,10 @@ use crate::runtime::{InvocationSpec, ObjectID, RemoteFunctionHolder};
 use crate::engine::WasmContext;
 use crate::runtime::common_proto::TaskType;
 use anyhow::{anyhow, Result};
+use core::result::Result::Ok;
+
+use sha256::digest;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use wasmtime::AsContextMut;
 use wasmtime::Caller;
@@ -82,10 +86,29 @@ impl WasmContext for WasmtimeContext<'_> {
             .results()
             .map(|p| from_wasmtime_type(&p))
             .collect();
+        let mut k = self.caller.data_mut().submitted_modules.keys();
+        if k.len() == 0 {
+            return Err(anyhow!("No module submitted to object store yet"));
+        }
+        if k.len() > 1 {
+            return Err(anyhow!(
+                "More than one module submitted to object store, it is not supported yet"
+            ));
+        }
+        let kstr = k.next().unwrap().clone();
+        let sb = self.caller.as_context_mut().data().sandbox_name.clone();
+        let mod_hash = self
+            .caller
+            .as_context_mut()
+            .data()
+            .submitted_modules
+            .get(kstr.as_str())
+            .unwrap()
+            .clone();
         Ok(WasmFunc::new(
-            self.caller.as_context_mut().data().sandbox_name.as_str(),
-            "",
-            format!("{}", func_idx).as_str(),
+            sb,
+            mod_hash,
+            format!("{}", func_idx),
             params,
             results,
         ))
@@ -125,5 +148,40 @@ impl WasmContext for WasmtimeContext<'_> {
 
     fn put_object(&mut self, data: &[u8]) -> Result<ObjectID> {
         self.runtime.write().unwrap().put(data.to_vec())
+    }
+
+    fn submit_sandbox_binary(&mut self) -> Result<()> {
+        let mut new_obj_hash = HashMap::new();
+        self.caller.data().module_bytes.keys().for_each(|k| {
+            match self.caller.data().module_bytes.get(k) {
+                Some(v) => {
+                    // hash the bytes
+                    let hash = digest(v.as_slice());
+
+                    match self
+                        .runtime
+                        .write()
+                        .unwrap()
+                        .kv_put("", hash.as_str(), v.as_slice())
+                    {
+                        Ok(_) => {
+                            info!("submit_sandbox_binary: {:x?} {:x?}", k, hash);
+                            new_obj_hash.insert(k.clone(), hash);
+                        }
+                        Err(e) => {
+                            error!("Failed to submit sandbox binary: {}", e);
+                        }
+                    };
+                }
+                None => {}
+            };
+        });
+        new_obj_hash.iter().for_each(|(k, v)| {
+            self.caller
+                .data_mut()
+                .submitted_modules
+                .insert(k.clone(), v.clone());
+        });
+        Ok(())
     }
 }

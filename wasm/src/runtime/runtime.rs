@@ -25,6 +25,7 @@ use tokio::task;
 use anyhow::{anyhow, Result};
 use tracing::{debug, error, info};
 
+use super::core::gcs_client::GcsClient;
 use super::core::global_state_accessor::GlobalStateAccessor;
 use super::CallOptions;
 use super::ObjectID;
@@ -55,6 +56,10 @@ pub trait RayRuntime {
         invoke_spec: &InvocationSpec,
         task_options: &CallOptions,
     ) -> Result<Vec<ObjectID>>;
+
+    // internal kv related operations
+    fn kv_put(&self, ns: &str, key: &str, value: &[u8]) -> Result<()>;
+    fn kv_get(&self, ns: &str, key: &str) -> Result<Vec<u8>>;
 }
 
 pub struct RayRuntimeFactory {}
@@ -77,6 +82,7 @@ pub struct RayRuntimeClusterMode {
     task_executor: TaskExecutor,
     task_submitter: Box<dyn TaskSubmitter + Send + Sync>,
     global_state_accessor: GlobalStateAccessor,
+    gcs_client: GcsClient,
 
     // core worker task loop handle for progress checking
     task_loop_handle: Option<task::JoinHandle<()>>,
@@ -97,6 +103,7 @@ impl RayRuntimeClusterMode {
                 super::TaskSubmitterType::Native,
             ),
             global_state_accessor: GlobalStateAccessor::new(bootstrap_address.as_str()),
+            gcs_client: GcsClient::new(bootstrap_address.as_str()),
             task_loop_handle: None,
         }
     }
@@ -179,11 +186,11 @@ impl RayRuntime for RayRuntimeClusterMode {
         }
     }
 
-    fn gets(&self, obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>> {
+    fn gets(&self, _obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>> {
         unimplemented!()
     }
 
-    fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>> {
+    fn wait(&self, _obj_ids: Vec<ObjectID>, _num_obj: i32, _timeout: i32) -> Result<Vec<Vec<u8>>> {
         unimplemented!()
     }
 
@@ -198,6 +205,18 @@ impl RayRuntime for RayRuntimeClusterMode {
 
     fn exec_type(&self) -> WorkerType {
         self.internal_cfg.worker_type
+    }
+
+    fn kv_put(&self, ns: &str, key: &str, value: &[u8]) -> Result<()> {
+        if self.gcs_client.internal_kv.put(ns, key, value) {
+            Ok(())
+        } else {
+            Err(anyhow!("put kv failed"))
+        }
+    }
+
+    fn kv_get(&self, ns: &str, key: &str) -> Result<Vec<u8>> {
+        self.gcs_client.internal_kv.get(ns, key)
     }
 }
 
@@ -243,35 +262,43 @@ impl RayRuntime for RayRuntimeSingleProcessMode {
         unimplemented!()
     }
 
-    fn put_with_id(&mut self, data: Vec<u8>, obj_id: ObjectID) -> Result<()> {
+    fn put_with_id(&mut self, _data: Vec<u8>, _obj_id: ObjectID) -> Result<()> {
         unimplemented!()
     }
 
-    fn put(&mut self, data: Vec<u8>) -> Result<ObjectID> {
+    fn put(&mut self, _data: Vec<u8>) -> Result<ObjectID> {
         unimplemented!()
     }
 
-    fn get(&self, obj_id: &ObjectID) -> Result<Vec<u8>> {
+    fn get(&self, _obj_id: &ObjectID) -> Result<Vec<u8>> {
         unimplemented!()
     }
 
-    fn gets(&self, obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>> {
+    fn gets(&self, _obj_ids: Vec<ObjectID>) -> Result<Vec<Vec<u8>>> {
         unimplemented!()
     }
 
-    fn wait(&self, obj_ids: Vec<ObjectID>, num_obj: i32, timeout: i32) -> Result<Vec<Vec<u8>>> {
+    fn wait(&self, _obj_ids: Vec<ObjectID>, _num_obj: i32, _timeout: i32) -> Result<Vec<Vec<u8>>> {
         unimplemented!()
     }
 
     fn call(
         &self,
-        invoke_spec: &InvocationSpec,
-        task_options: &CallOptions,
+        _invoke_spec: &InvocationSpec,
+        _task_options: &CallOptions,
     ) -> Result<Vec<ObjectID>> {
         todo!()
     }
 
     fn exec_type(&self) -> WorkerType {
         self.internal_cfg.worker_type
+    }
+
+    fn kv_put(&self, _ns: &str, _key: &str, _value: &[u8]) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn kv_get(&self, _ns: &str, _key: &str) -> Result<Vec<u8>> {
+        unimplemented!()
     }
 }

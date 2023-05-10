@@ -296,6 +296,6 @@ impl RayObject {
 // restricted to nightly rust. If we do this, we will see errors while compiling other
 // crates. So we just declare the atexit symbol here.
 #[no_mangle]
-pub extern "C" fn atexit(f: extern "C" fn()) -> i32 {
+pub extern "C" fn atexit(_: extern "C" fn()) -> i32 {
     0
 }

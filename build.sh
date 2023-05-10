@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# export CARGO_BAZEL_REPIN=true
+
 if [ "${OSTYPE}" = msys ]; then
   echo "WARNING: ${0##*/} is not recommended on MSYS2, as MSYS2 alters the build environment."
 fi
