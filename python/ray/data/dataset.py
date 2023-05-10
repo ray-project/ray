@@ -4218,6 +4218,12 @@ class Dataset:
         else:
             return result
 
+    @PublicAPI(stability="alpha")
+    @property
+    def columns(self) -> List[str]:
+        schema = self.schema()
+        return schema.names
+
     @ensure_ipywidgets_dep("8")
     @repr_fallback_if_colab
     def _repr_mimebundle_(self, **kwargs):
@@ -4393,10 +4399,6 @@ class Dataset:
             return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
-
-
-# Backwards compatibility alias.
-Dataset = Dataset
 
 
 @PublicAPI
