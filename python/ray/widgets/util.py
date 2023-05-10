@@ -220,7 +220,7 @@ def repr_fallback_if_colab(func: F) -> Callable[[F], F]:
         import IPython
 
         ipython = IPython.get_ipython()
-    except ModuleNotFoundError:
+    except (ModuleNotFoundError, ValueError):
         ipython = None
 
     @wraps(func)
