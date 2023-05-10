@@ -320,6 +320,7 @@ class HTTPProxy:
             tag_keys=(
                 "route",
                 "application",
+                "status_code",
             ),
         )
 
@@ -437,7 +438,12 @@ class HTTPProxy:
 
         latency_ms = (time.time() - start_time) * 1000.0
         self.processing_latency_tracker.observe(
-            latency_ms, tags={"route": route_path, "application": app_name}
+            latency_ms,
+            tags={
+                "route": route_path,
+                "application": app_name,
+                "status_code": status_code,
+            },
         )
         logger.info(
             access_log_msg(
