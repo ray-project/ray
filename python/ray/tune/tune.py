@@ -389,8 +389,10 @@ def run(
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
         verbose: 0, 1, 2, or 3. Verbosity mode.
-            0 = silent, 1 = only status updates, 2 = status and brief trial
-            results, 3 = status and detailed trial results. Defaults to 3.
+            0 = silent, 1 = default, 2 = verbose.
+            If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results. Defaults to 3.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
