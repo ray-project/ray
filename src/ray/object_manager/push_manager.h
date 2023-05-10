@@ -152,6 +152,9 @@ class PushManager {
 
   /// Num pushes in flight
   int64_t num_pushes_in_flight_ = 0;
+
+  double all_loop_num_ = 0.0;
+  double send_chunk_num_ = 0.0;
 };
 
 }  // namespace ray

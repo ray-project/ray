@@ -78,9 +78,13 @@ void PushManager::ScheduleRemainingPushes() {
     // Loop over each active push and try to send another chunk.
     auto it = push_info_.begin();
     keep_looping = false;
+    bool into_while = false;
     while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
+      all_loop_num_ += 1.0;
+      into_while = true;
       NodeID node_id = it->first;
       if (!it->second.second.empty() && chunks_in_flight_ < max_chunks_in_flight_) {
+        send_chunk_num_ += 1.0;
         auto &info = it->second.second.front();
         RAY_CHECK(info->SendOneChunk());
         chunks_in_flight_ += 1;
@@ -95,7 +99,14 @@ void PushManager::ScheduleRemainingPushes() {
 
       it++;
     }
+    if (!into_while) {
+      all_loop_num_ += 1.0;
+    }
   }
+  RAY_LOG(INFO) << "Loop summary:"
+                << "\n- all loop number: " << all_loop_num_
+                << "\n- send chunk number: " << send_chunk_num_
+                << "\n- send_chunk_num_ / all_loop_num_:" << (send_chunk_num_ / all_loop_num_);
 }
 
 void PushManager::RecordMetrics() const {
