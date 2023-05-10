@@ -85,10 +85,7 @@ def start_and_shutdown_ray_cli():
     wait_for_condition(_check_ray_stop, timeout=15)
     subprocess.check_output(["ray", "start", "--head"])
 
-    ray.init(address="auto", namespace=SERVE_NAMESPACE)
     yield
-    serve.shutdown()
-    ray.shutdown()
 
     subprocess.check_output(["ray", "stop", "--force"])
     wait_for_condition(_check_ray_stop, timeout=15)
@@ -468,7 +465,10 @@ class TestDeployApp:
                 == 200,
                 timeout=15,
             )
+            ray.init(address="auto", namespace=SERVE_NAMESPACE)
             yield serve.start(detached=True)
+            serve.shutdown()
+            ray.shutdown()
 
     def check_deployment_running(self, client: ServeControllerClient, name: str):
         serve_status = client.get_serve_status()
