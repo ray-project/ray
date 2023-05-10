@@ -425,7 +425,9 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
-        model_id = ""
+        start_time = time.time()
+
+        model_id = None
         for key, value in scope["headers"]:
             if RAY_SERVE_REQUEST_MODEL_ID == key.decode():
                 model_id = value.decode()
@@ -433,12 +435,11 @@ class HTTPProxy:
             ray.serve.context.RequestContext(
                 route_path,
                 get_random_letters(10),
-                model_id=model_id,
+                model_id=model_id if model_id else None,
                 app_name=app_name,
             )
         )
 
-        start_time = time.time()
         status_code = await _send_request_to_handle(handle, scope, receive, send)
 
         self.request_counter.inc(
