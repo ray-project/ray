@@ -36,7 +36,7 @@
           ]
         },
         "datasource": "Prometheus",
-        "definition": "label_values(ray_serve_deployment_request_counter{{{global_filters}}}, deployment)",
+        "definition": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, deployment)",
         "description": null,
         "error": null,
         "hide": 0,
@@ -46,7 +46,7 @@
         "name": "Deployment",
         "options": [],
         "query": {
-          "query": "label_values(ray_serve_deployment_request_counter{{{global_filters}}}, deployment)",
+          "query": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, deployment)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
         "refresh": 2,
@@ -71,7 +71,7 @@
           ]
         },
         "datasource": "Prometheus",
-        "definition": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, replica)",
+        "definition": "label_values(ray_serve_deployment_replica_healthy{{deployment=~\"$Deployment\",{global_filters}}}, replica)",
         "description": null,
         "error": null,
         "hide": 0,
@@ -81,7 +81,7 @@
         "name": "Replica",
         "options": [],
         "query": {
-          "query": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, replica)",
+          "query": "label_values(ray_serve_deployment_replica_healthy{{deployment=~\"$Deployment\",{global_filters}}}, replica)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
         "refresh": 2,
