@@ -23,7 +23,7 @@ Ray exposes its metrics in Prometheus format. This allows us to easily scrape th
 
 First, `download Prometheus <https://prometheus.io/download/>`_. Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
 
-Then, unzip the the archive into a local directory using the following command.
+Then, unzip the archive into a local directory using the following command.
 
 .. code-block:: bash
 

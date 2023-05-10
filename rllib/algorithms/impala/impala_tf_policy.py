@@ -265,6 +265,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     Returns:
         A TF Policy to be used with Impala.
     """
+
     # VTrace mixins are placed in front of more general mixins to make sure
     # their functions like optimizer() overrides all the other implementations
     # (e.g., LearningRateSchedule.optimizer())
@@ -297,13 +298,18 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
-            GradStatsMixin.__init__(self)
-            VTraceClipGradients.__init__(self)
-            VTraceOptimizer.__init__(self)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
+            # If Learner API is used, we don't need any loss-specific mixins.
+            # However, we also would like to avoid creating special Policy-subclasses
+            # for this as the entire Policy concept will soon not be used anymore with
+            # the new Learner- and RLModule APIs.
+            if not self.config.get("_enable_learner_api"):
+                GradStatsMixin.__init__(self)
+                VTraceClipGradients.__init__(self)
+                VTraceOptimizer.__init__(self)
+                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+                EntropyCoeffSchedule.__init__(
+                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+                )
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

@@ -223,6 +223,7 @@ class ActorReplicaWrapper:
             # Populated after replica is allocated.
             self._node_id: str = None
         self._node_ip: str = None
+        self._log_file_path: str = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -309,6 +310,11 @@ class ActorReplicaWrapper:
     def node_ip(self) -> Optional[str]:
         """Returns the node ip of the actor, None if not placed."""
         return self._node_ip
+
+    @property
+    def log_file_path(self) -> Optional[str]:
+        """Returns the relative log file path of the actor, None if not placed."""
+        return self._log_file_path
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -527,9 +533,13 @@ class ActorReplicaWrapper:
                 if not self._deployment_is_cross_language:
                     _, self._version = ray.get(self._ready_obj_ref)
 
-                self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
-                    self._allocated_obj_ref
-                )
+                (
+                    self._pid,
+                    self._actor_id,
+                    self._node_id,
+                    self._node_ip,
+                    self._log_file_path,
+                ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in replica '{self._replica_tag}', "
@@ -768,6 +778,7 @@ class DeploymentReplica(VersionedReplica):
             node_id=self._actor.node_id,
             node_ip=self._actor.node_ip,
             start_time_s=self._start_time,
+            log_file_path=self._actor._log_file_path,
         )
 
     @property
@@ -1045,7 +1056,6 @@ class DeploymentState:
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
     ):
-
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
@@ -1629,7 +1639,6 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -1746,7 +1755,6 @@ class DeploymentState:
             len(slow_start_replicas)
             and time.time() - self._prev_startup_warning > SLOW_STARTUP_WARNING_PERIOD_S
         ):
-
             pending_allocation = []
             pending_initialization = []
 
@@ -1986,7 +1994,6 @@ class DeploymentStateManager:
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
     ):
-
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store

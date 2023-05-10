@@ -131,7 +131,6 @@ class StatusOverview:
         return None
 
     def to_proto(self):
-
         # Create a protobuf for the Serve Application info
         app_status_proto = self.app_status.to_proto()
 
@@ -155,7 +154,6 @@ class StatusOverview:
 
     @classmethod
     def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
-
         # Recreate Serve Application info
         app_status = ApplicationStatusInfo.from_proto(proto.app_status)
 
@@ -365,3 +363,9 @@ class ServeDeployMode(str, Enum):
     UNSET = "UNSET"
     SINGLE_APP = "SINGLE_APP"
     MULTI_APP = "MULTI_APP"
+
+
+class HTTPProxyStatus(str, Enum):
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"

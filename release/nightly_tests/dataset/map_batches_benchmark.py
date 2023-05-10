@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
-from ray.data.datastream import Dataset, MaterializedDatastream
+from ray.data.dataset import Dataset, MaterializedDataset
 
 from benchmark import Benchmark
 
@@ -21,8 +21,7 @@ def map_batches(
     num_calls: Optional[int] = 1,
     is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
-
-    assert isinstance(input_ds, MaterializedDatastream)
+    assert isinstance(input_ds, MaterializedDataset)
     ds = input_ds
 
     for _ in range(num_calls):

@@ -203,7 +203,7 @@ class ServeController:
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
 
-        return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
+        return await self.long_poll_host.listen_for_change(keys_to_snapshot_ids)
 
     async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
         """Proxy long pull client's listen request.
@@ -215,8 +215,8 @@ class ServeController:
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
 
-        return await (
-            self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
+        return await self.long_poll_host.listen_for_change_java(
+            keys_to_snapshot_ids_bytes
         )
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
@@ -706,6 +706,9 @@ class ServeController:
                 host=http_config.host,
                 port=http_config.port,
             ),
+            http_proxies=self.http_state.get_http_proxy_details()
+            if self.http_state
+            else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)

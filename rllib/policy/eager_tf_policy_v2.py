@@ -432,16 +432,17 @@ class EagerTFPolicyV2(Policy):
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
     def maybe_initialize_optimizer_and_loss(self):
-        optimizers = force_list(self.optimizer())
-        if self.exploration:
-            # Policies with RLModules don't have an exploration object.
-            optimizers = self.exploration.get_exploration_optimizer(optimizers)
+        if not self.config.get("_enable_learner_api", False):
+            optimizers = force_list(self.optimizer())
+            if self.exploration:
+                # Policies with RLModules don't have an exploration object.
+                optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
-        # The list of local (tf) optimizers (one per loss term).
-        self._optimizers: List[LocalOptimizer] = optimizers
-        # Backward compatibility: A user's policy may only support a single
-        # loss term and optimizer (no lists).
-        self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
+            # The list of local (tf) optimizers (one per loss term).
+            self._optimizers: List[LocalOptimizer] = optimizers
+            # Backward compatibility: A user's policy may only support a single
+            # loss term and optimizer (no lists).
+            self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
 
         self._initialize_loss_from_dummy_batch(
             auto_remove_unneeded_view_reqs=True,
@@ -657,7 +658,6 @@ class EagerTFPolicyV2(Policy):
     def compute_gradients(
         self, postprocessed_batch: SampleBatch
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
-
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             shuffle=False,

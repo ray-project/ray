@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import _StatsActor, DatastreamStats
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.stats import _StatsActor, DatasetStats
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -40,19 +40,19 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatastreamLogger(
+            logger = DatasetLogger(
                 "ray.data._internal.execution.streaming_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatastreamLogger(
+            logger = DatasetLogger(
                 "ray.data._internal.execution.bulk_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
-        logger = DatastreamLogger("ray.data._internal.plan").get_logger(
+        logger = DatasetLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
     with patch.object(logger, "info") as mock_logger:
@@ -151,7 +151,7 @@ Stage N DoRead->MapBatches->MapRows: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Datastream iterator time breakdown:
+Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
@@ -191,7 +191,7 @@ Stage N DoRead->MapBatches->MapRows: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Datastream iterator time breakdown:
+Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
 * Num blocks local: Z
@@ -227,7 +227,7 @@ Stage N Map: N/N blocks executed in T
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Datastream iterator time breakdown:
+Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
@@ -259,7 +259,7 @@ Stage N Map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Datastream iterator time breakdown:
+Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -277,8 +277,8 @@ def test_dataset__repr__(ray_start_regular_shared):
     ds = ds.materialize()
 
     assert canonicalize(repr(ds._plan.stats().to_summary())) == (
-        "DatastreamStatsSummary(\n"
-        "   datastream_uuid=U,\n"
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=U,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -314,8 +314,8 @@ def test_dataset__repr__(ray_start_regular_shared):
     ds2 = ds.map_batches(lambda x: x).materialize()
     assert len(ds2.take_all()) == n
     assert canonicalize(repr(ds2._plan.stats().to_summary())) == (
-        "DatastreamStatsSummary(\n"
-        "   datastream_uuid=U,\n"
+        "DatasetStatsSummary(\n"
+        "   dataset_uuid=U,\n"
         "   base_name=DoRead->MapBatches,\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -349,8 +349,8 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      total_time=T,\n"
         "   ),\n"
         "   parents=[\n"
-        "      DatastreamStatsSummary(\n"
-        "         datastream_uuid=U,\n"
+        "      DatasetStatsSummary(\n"
+        "         dataset_uuid=U,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -599,19 +599,19 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 
     if context.new_execution_backend:
         if context.use_streaming_executor:
-            logger = DatastreamLogger(
+            logger = DatasetLogger(
                 "ray.data._internal.execution.streaming_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
         else:
-            logger = DatastreamLogger(
+            logger = DatasetLogger(
                 "ray.data._internal.execution.bulk_executor"
             ).get_logger(
                 log_to_stdout=enable_auto_log_stats,
             )
     else:
-        logger = DatastreamLogger("ray.data._internal.plan").get_logger(
+        logger = DatasetLogger("ray.data._internal.plan").get_logger(
             log_to_stdout=enable_auto_log_stats,
         )
 
@@ -780,10 +780,10 @@ Stage N Map: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next datastream: T min, T max, T mean, T total
+* Time stalled waiting for next dataset: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next datastream: T
+* Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -835,10 +835,10 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next datastream: T min, T max, T mean, T total
+* Time stalled waiting for next dataset: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next datastream: T
+* Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -911,10 +911,10 @@ Stage N ReadRange: N/N blocks executed in T
 'obj_store_mem_peak': N}
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next datastream: T min, T max, T mean, T total
+* Time stalled waiting for next dataset: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next datastream: T
+* Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -945,10 +945,10 @@ Stage N Read: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 ##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next datastream: T min, T max, T mean, T total
+* Time stalled waiting for next dataset: T min, T max, T mean, T total
 
 DatasetPipeline iterator time breakdown:
-* Waiting for next datastream: T
+* Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
 * In next_batch(): T
@@ -964,7 +964,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatastreamStats(
+    stats = DatasetStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
@@ -1009,11 +1009,11 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatastreamStats(
+    stats = DatasetStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
-    stats.datastream_uuid = "test-uuid"
+    stats.dataset_uuid = "test-uuid"
 
     calculated_stats = stats.to_summary()
     summarized_lines = calculated_stats.to_string().split("\n")
@@ -1084,14 +1084,14 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
 def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating stage-level stats:
-    `DatastreamStats.get_max_wall_time()`,
-    `DatastreamStats.get_total_cpu_time()`,
-    `DatastreamStats.get_max_heap_memory()`."""
+    `DatasetStats.get_max_wall_time()`,
+    `DatasetStats.get_total_cpu_time()`,
+    `DatasetStats.get_max_heap_memory()`."""
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
-    stats = DatastreamStats(
+    stats = DatasetStats(
         stages={"Read": block_meta_list},
         parent=None,
     )
@@ -1131,7 +1131,7 @@ Stage N DoRead->MapRows: N/N blocks executed in T
 * Extra metrics: \
 {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N}
 
-Datastream iterator time breakdown:
+Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T

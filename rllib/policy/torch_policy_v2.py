@@ -182,29 +182,32 @@ class TorchPolicyV2(Policy):
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
-        self._optimizers = force_list(self.optimizer())
 
-        # Backward compatibility workaround so Policy will call self.loss() directly.
-        # TODO(jungong): clean up after all policies are migrated to new sub-class
-        #  implementation.
-        self._loss = None
+        if not self.config.get("_enable_learner_api", False):
+            self._optimizers = force_list(self.optimizer())
 
-        # Store, which params (by index within the model's list of
-        # parameters) should be updated per optimizer.
-        # Maps optimizer idx to set or param indices.
-        self.multi_gpu_param_groups: List[Set[int]] = []
-        main_params = {p: i for i, p in enumerate(self.model.parameters())}
-        for o in self._optimizers:
-            param_indices = []
-            for pg_idx, pg in enumerate(o.param_groups):
-                for p in pg["params"]:
-                    param_indices.append(main_params[p])
-            self.multi_gpu_param_groups.append(set(param_indices))
+            # Backward compatibility workaround so Policy will call self.loss()
+            # directly.
+            # TODO (jungong): clean up after all policies are migrated to new sub-class
+            #  implementation.
+            self._loss = None
 
-        # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
-        # one with m towers (num_gpus).
-        num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
-        self._loaded_batches = [[] for _ in range(num_buffers)]
+            # Store, which params (by index within the model's list of
+            # parameters) should be updated per optimizer.
+            # Maps optimizer idx to set or param indices.
+            self.multi_gpu_param_groups: List[Set[int]] = []
+            main_params = {p: i for i, p in enumerate(self.model.parameters())}
+            for o in self._optimizers:
+                param_indices = []
+                for pg_idx, pg in enumerate(o.param_groups):
+                    for p in pg["params"]:
+                        param_indices.append(main_params[p])
+                self.multi_gpu_param_groups.append(set(param_indices))
+
+            # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
+            # one with m towers (num_gpus).
+            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+            self._loaded_batches = [[] for _ in range(num_buffers)]
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -499,7 +502,6 @@ class TorchPolicyV2(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
@@ -537,7 +539,6 @@ class TorchPolicyV2(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
-
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict(
@@ -574,7 +575,6 @@ class TorchPolicyV2(Policy):
         actions_normalized: bool = True,
         in_training: bool = True,
     ) -> TensorType:
-
         if is_overridden(self.action_sampler_fn) and not is_overridden(
             self.action_distribution_fn
         ):
@@ -650,7 +650,6 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
-
         # Set Model to train mode.
         if self.model:
             self.model.train()
@@ -849,7 +848,6 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch: SampleBatch) -> ModelGradients:
-
         assert len(self.devices) == 1
 
         # If not done yet, see whether we have to zero-pad this batch.
@@ -1104,7 +1102,7 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        extra_fetches = {}
+        extra_fetches = None
         if isinstance(self.model, RLModule):
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
@@ -1166,7 +1164,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if not extra_fetches:
+        if extra_fetches is None:
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )

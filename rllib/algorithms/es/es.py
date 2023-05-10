@@ -249,7 +249,6 @@ class Worker(FaultAwareApply):
         worker_index,
         min_task_runtime=0.2,
     ):
-
         # Set Python random, numpy, env, and torch/tf seeds.
         seed = config.seed
         if seed is not None:
@@ -318,7 +317,6 @@ class Worker(FaultAwareApply):
         while (
             len(noise_indices) == 0 or time.time() - task_tstart < self.min_task_runtime
         ):
-
             if np.random.uniform() < self.config.eval_prob:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_flat_weights(params)
@@ -356,6 +354,10 @@ class Worker(FaultAwareApply):
             eval_returns=eval_returns,
             eval_lengths=eval_lengths,
         )
+
+    def stop(self):
+        """Releases all resources used by this RolloutWorker."""
+        pass
 
 
 def get_policy_class(config: AlgorithmConfig):

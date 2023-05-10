@@ -11,6 +11,7 @@ from ray.serve._private.common import (
     DeploymentInfo,
     ReplicaState,
     ServeDeployMode,
+    HTTPProxyStatus,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
@@ -390,7 +391,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
-
         if v is None:
             return
 
@@ -446,9 +446,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         config = self.dict(**kwargs)
         for idx, deployment in enumerate(config["deployments"]):
-
             if isinstance(deployment.get("ray_actor_options"), dict):
-
                 # JSON-serialize ray_actor_options' resources dictionary
                 if isinstance(deployment["ray_actor_options"].get("resources"), dict):
                     deployment["ray_actor_options"]["resources"] = json.dumps(
@@ -634,6 +632,12 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "state from the running replica actor."
         )
     )
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
+        )
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -759,6 +763,23 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
+class HTTPProxyDetails(BaseModel):
+    node_id: str = Field(description="ID of the node that the HTTP Proxy is running on")
+    node_ip: str = Field(
+        description="IP address of the node that the HTTP Proxy is running on."
+    )
+    actor_id: str = Field(description="ID of the HTTP Proxy actor.")
+    actor_name: str = Field(description="Name of the HTTP Proxy actor.")
+    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
     Serve metadata with system-level info and details on all applications deployed to
@@ -776,6 +797,11 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    http_proxies: Optional[Dict[str, HTTPProxyDetails]] = Field(
+        description=(
+            "Mapping from node_id to details about the HTTP Proxy running on that node."
+        )
+    )
     deploy_mode: ServeDeployMode = Field(
         description=(
             "Whether a single-app config of format ServeApplicationSchema or multi-app "
@@ -844,7 +870,6 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
 
 @DeveloperAPI
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
-
     return ServeStatusSchema(
         name=serve_status.name,
         app_status=serve_status.app_status,

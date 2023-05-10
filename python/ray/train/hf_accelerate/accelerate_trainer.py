@@ -22,7 +22,7 @@ from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
 
 try:
-    from ray.train.huggingface.accelerate._accelerate_utils import (
+    from ray.train.hf_accelerate._accelerate_utils import (
         launch_command,
         AccelerateDefaultNamespace,
         AccelerateConfigWrapper,
@@ -68,7 +68,7 @@ class AccelerateTrainer(TorchTrainer):
             # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Session returns the Datastream shard for the given key.
+            # Session returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
@@ -122,7 +122,7 @@ class AccelerateTrainer(TorchTrainer):
 
             import ray
             from ray.air import session, Checkpoint
-            from ray.train.huggingface.accelerate import AccelerateTrainer
+            from ray.train.hf_accelerate import AccelerateTrainer
             from ray.air.config import ScalingConfig
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
@@ -249,7 +249,7 @@ class AccelerateTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datastreams to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -273,7 +273,6 @@ class AccelerateTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-
         if Version(accelerate.__version__) < Version("0.17.0.dev0"):
             raise RuntimeError(
                 "AccelerateTrainer requires accelerate>=0.17.0, "

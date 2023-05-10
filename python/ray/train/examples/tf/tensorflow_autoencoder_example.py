@@ -42,7 +42,6 @@ def get_dataset(split_type="train"):
     dataset = dataset.map_batches(preprocess_dataset)
 
     def convert_batch_to_pandas(batch):
-
         images = [TensorArray(image) for image, _ in batch]
         # because we did autoencoder here
         df = pd.DataFrame({"image": images, "label": images})
@@ -70,7 +69,6 @@ def build_autoencoder_model() -> tf.keras.Model:
 
 
 def train_func(config: dict):
-
     per_worker_batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
 
@@ -137,7 +135,7 @@ def train_tensorflow_mnist(
     return results
 
 
-def predict_tensorflow_mnist(result: Result) -> ray.data.Datastream:
+def predict_tensorflow_mnist(result: Result) -> ray.data.Dataset:
     test_dataset = get_dataset(split_type="test")
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model

@@ -68,7 +68,7 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
 
 class ArrowRow(TableRow):
     """
-    Row of a tabular Datastream backed by a Arrow Table block.
+    Row of a tabular Dataset backed by a Arrow Table block.
     """
 
     def __getitem__(self, key: str) -> Any:

@@ -213,7 +213,6 @@ class SelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-
     args = get_cli_args()
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
@@ -274,6 +273,7 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
+        create_checkpoints = not bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
         results = tune.Tuner(
             "PPO",
             param_space=config,
@@ -294,8 +294,8 @@ if __name__ == "__main__":
                     sort_by_metric=True,
                 ),
                 checkpoint_config=air.CheckpointConfig(
-                    checkpoint_at_end=True,
-                    checkpoint_frequency=10,
+                    checkpoint_at_end=create_checkpoints,
+                    checkpoint_frequency=10 if create_checkpoints else 0,
                 ),
             ),
         ).fit()

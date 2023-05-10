@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 from PIL import Image
 
 import ray
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 
@@ -15,14 +15,12 @@ from benchmark import Benchmark
 def read_images(
     root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
 ) -> Dataset:
-
     return ray.data.read_images(paths=root, size=size, mode=mode)
 
 
 def generate_images(
     num_images: int, sizes: List[Tuple[int, int]], modes: List[str], formats: List[str]
 ) -> str:
-
     dimensions = []
     for mode in modes:
         if mode in ["1", "L", "P"]:
