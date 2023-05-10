@@ -7,7 +7,7 @@ from ray.util.annotations import Deprecated
 @Deprecated("TableRow is no longer part of the public Ray Data API.")
 class TableRow(Mapping):
     """
-    A dict-like row of a tabular ``Datastream``.
+    A dict-like row of a tabular ``Dataset``.
 
     This implements the dictionary mapping interface, but provides more
     efficient access with less data copying than converting Arrow Tables
