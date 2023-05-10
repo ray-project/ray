@@ -13,7 +13,7 @@ def objective(*args):
 ray.init(num_cpus=4)
 
 # By setting `max_concurrent_trials=3`, this ensures the cluster will always
-# have a sparse CPU for Datastream. Try setting `max_concurrent_trials=4` here,
+# have a sparse CPU for Dataset. Try setting `max_concurrent_trials=4` here,
 # and notice that the experiment will appear to hang.
 tuner = tune.Tuner(
     tune.with_resources(objective, {"cpu": 1}),
@@ -41,7 +41,7 @@ def objective(*args):
 ray.init(num_cpus=4)
 
 # This runs smoothly since _max_cpu_fraction_per_node is set to 0.8, effectively
-# reserving 1 CPU for Datastream task execution.
+# reserving 1 CPU for Dataset task execution.
 tuner = tune.Tuner(
     tune.with_resources(objective, tune.PlacementGroupFactory(
         [{"CPU": 1}],

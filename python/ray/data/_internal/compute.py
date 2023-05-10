@@ -80,7 +80,7 @@ class TaskPoolStrategy(ComputeStrategy):
 
         context = DataContext.get_current()
 
-        # Handle empty datastreams.
+        # Handle empty datasets.
         if block_list.initial_num_blocks() == 0:
             return block_list
 
@@ -179,10 +179,10 @@ class TaskPoolStrategy(ComputeStrategy):
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
-    """Specify the compute strategy for a Datastream transform.
+    """Specify the compute strategy for a Dataset transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
-    for a given Datastream transform. This is useful for stateful setup of callable
+    for a given Dataset transform. This is useful for stateful setup of callable
     classes.
 
     For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
@@ -206,7 +206,7 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
     ):
-        """Construct ActorPoolStrategy for a Datastream transform.
+        """Construct ActorPoolStrategy for a Dataset transform.
 
         Args:
             size: Specify a fixed size actor pool of this size. It is an error to
@@ -279,7 +279,7 @@ class ActorPoolStrategy(ComputeStrategy):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
-        """Note: this is not part of the Datastream public API."""
+        """Note: this is not part of the Dataset public API."""
         assert not DataContext.get_current().new_execution_backend, "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()

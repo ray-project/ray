@@ -30,7 +30,7 @@ Parquet
 
    read_parquet
    read_parquet_bulk
-   Datastream.write_parquet
+   Dataset.write_parquet
 
 CSV
 ---
@@ -39,7 +39,7 @@ CSV
    :toctree: doc/
 
    read_csv
-   Datastream.write_csv
+   Dataset.write_csv
 
 JSON
 ----
@@ -48,7 +48,7 @@ JSON
    :toctree: doc/
 
    read_json
-   Datastream.write_json
+   Dataset.write_json
 
 Text
 ----
@@ -81,7 +81,7 @@ TFRecords
    :toctree: doc/
 
    read_tfrecords
-   Datastream.write_tfrecords
+   Dataset.write_tfrecords
 
 
 Pandas
@@ -92,8 +92,8 @@ Pandas
 
    from_pandas
    from_pandas_refs
-   Datastream.to_pandas
-   Datastream.to_pandas_refs
+   Dataset.to_pandas
+   Dataset.to_pandas_refs
 
 NumPy
 -----
@@ -104,8 +104,8 @@ NumPy
    read_numpy
    from_numpy
    from_numpy_refs
-   Datastream.write_numpy
-   Datastream.to_numpy_refs
+   Dataset.write_numpy
+   Dataset.to_numpy_refs
 
 Arrow
 -----
@@ -115,7 +115,7 @@ Arrow
 
    from_arrow
    from_arrow_refs
-   Datastream.to_arrow_refs
+   Dataset.to_arrow_refs
 
 MongoDB
 -------
@@ -124,7 +124,7 @@ MongoDB
    :toctree: doc/
 
    read_mongo
-   Datastream.write_mongo
+   Dataset.write_mongo
 
 SQL Databases
 -------------
@@ -141,7 +141,7 @@ Dask
    :toctree: doc/
 
    from_dask
-   Datastream.to_dask
+   Dataset.to_dask
 
 Spark
 -----
@@ -150,7 +150,7 @@ Spark
    :toctree: doc/
 
    from_spark
-   Datastream.to_spark
+   Dataset.to_spark
 
 Modin
 -----
@@ -159,7 +159,7 @@ Modin
    :toctree: doc/
 
    from_modin
-   Datastream.to_modin
+   Dataset.to_modin
 
 Mars
 ----
@@ -168,7 +168,7 @@ Mars
    :toctree: doc/
 
    from_mars
-   Datastream.to_mars
+   Dataset.to_mars
 
 Torch
 -----
@@ -211,7 +211,7 @@ Datasource API
    :toctree: doc/
 
    read_datasource
-   Datastream.write_datasource
+   Dataset.write_datasource
    Datasource
    ReadTask
    datasource.Reader

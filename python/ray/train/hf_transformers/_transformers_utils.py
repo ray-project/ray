@@ -61,9 +61,9 @@ def wrap_transformers_trainer(
     return trainer
 
 
-# TODO(ml-team): Replace with a Datastreams-HuggingFace integration when available.
+# TODO(ml-team): Replace with a Datasets-HuggingFace integration when available.
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Datastream."""
+    """HF ExamplesIterable backed by a Dataset."""
 
     def __init__(self, dataset: DataIterator) -> None:
         self.dataset = dataset
@@ -88,7 +88,7 @@ def process_dataset_for_hf(
     ).with_format("torch")
 
     try:
-        dataset_length = dataset._base_datastream.count()
+        dataset_length = dataset._base_dataset.count()
     except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None

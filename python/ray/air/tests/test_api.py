@@ -13,7 +13,7 @@ class DummyTrainer(BaseTrainer):
         pass
 
 
-class DummyDataset(ray.data.Datastream):
+class DummyDataset(ray.data.Dataset):
     def __init__(self):
         pass
 

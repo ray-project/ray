@@ -4,8 +4,8 @@
 Examples
 ========
 
-.. tip:: Check out the Datastreams :ref:`User Guide <data_user_guide>` to learn more about
-  Datastream features in-depth.
+.. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
+  Dataset features in-depth.
 
 .. _data-recipes:
 
@@ -56,7 +56,7 @@ Other Examples
     :class-container: container pb-4
 
     .. grid-item-card::
-        :img-top: ../images/datastream-arch.svg
+        :img-top: ../images/dataset-arch.svg
         :class-img-top: pt-5 w-75 d-block mx-auto
 
         .. button-ref:: random-access

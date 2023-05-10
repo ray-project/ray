@@ -4,7 +4,7 @@
 Random Data Access (Experimental)
 ---------------------------------
 
-Any Arrow-format datastream can be enabled for random access by calling ``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the cluster by the given sort key, providing efficient random access to records via binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Datastream.
+Any Arrow-format dataset can be enabled for random access by calling ``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the cluster by the given sort key, providing efficient random access to records via binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Dataset.
 
 .. code-block:: python
 
@@ -13,7 +13,7 @@ Any Arrow-format datastream can be enabled for random access by calling ``ds.to_
     ds = ds.add_column("embedding", lambda b: b["id"] ** 2)
     # -> schema={id: int64, embedding: int64}
 
-    # Enable random access on the datastream. This launches a number of actors
+    # Enable random access on the dataset. This launches a number of actors
     # spread across the cluster that serve random access queries to the data.
     rmap = ds.to_random_access_dataset(key="id", num_workers=4)
 
@@ -29,7 +29,7 @@ Any Arrow-format datastream can be enabled for random access by calling ``ds.to_
     rmap.multiget([4, 2])
     # -> [{"id": 4, "embedding": 16}, {"id": 2, "embedding": 4}]
 
-Similar to Datastream, a RandomAccessDataset can be passed to and used from any Ray actor or task.
+Similar to Dataset, a RandomAccessDataset can be passed to and used from any Ray actor or task.
 
 Architecture
 ------------

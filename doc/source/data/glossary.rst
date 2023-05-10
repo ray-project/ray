@@ -1,4 +1,4 @@
-.. _datastreams_glossary:
+.. _datasets_glossary:
 
 =====================
 Ray Data Glossary
@@ -10,20 +10,20 @@ Ray Data Glossary
         The way batches of data are represented.
 
         Set ``batch_format`` in methods like
-        :meth:`Datastream.iter_batches() <ray.data.Datastream.iter_batches>` and
-        :meth:`Datastream.map_batches() <ray.data.Datastream.map_batches>` to specify the
+        :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and
+        :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>` to specify the
         batch type.
 
         .. doctest::
 
             >>> import ray
-            >>> # Datastream is executed by streaming executor by default, which doesn't
+            >>> # Dataset is executed by streaming executor by default, which doesn't
             >>> # preserve the order, so we explicitly set it here.
             >>> ray.data.context.DataContext.get_current().execution_options.preserve_order = True
-            >>> datastream = ray.data.range(10)
-            >>> next(iter(datastream.iter_batches(batch_format="numpy", batch_size=5)))
+            >>> dataset = ray.data.range(10)
+            >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'id': array([0, 1, 2, 3, 4])}
-            >>> next(iter(datastream.iter_batches(batch_format="pandas", batch_size=5)))
+            >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
                id
             0   0
             1   1
@@ -32,10 +32,10 @@ Ray Data Glossary
             4   4
 
         To learn more about batch formats, read
-        :ref:`Configuring batch formats <transform_datastreams_batch_formats>`.
+        :ref:`Configuring batch formats <transform_datasets_batch_formats>`.
 
     Block
-        A processing unit of data. A :class:`~ray.data.Datastream` consists of a
+        A processing unit of data. A :class:`~ray.data.Dataset` consists of a
         collection of blocks.
 
         Under the hood, :term:`Ray Data <Ray Data (library)>` partition :term:`records <Record>`
@@ -58,14 +58,14 @@ Ray Data Glossary
         Its utility is as the last-mile bridge from ETL pipeline outputs to distributed
         ML applications and libraries in Ray.
 
-        To learn more about Ray Data, read :ref:`Key Concepts <datastream_concept>`.
+        To learn more about Ray Data, read :ref:`Key Concepts <dataset_concept>`.
 
-    Datastream (object)
+    Dataset (object)
         A class that produces a sequence of distributed data blocks.
 
-        :class:`~ray.data.Datastream` exposes methods to read, transform, and consume data at scale.
+        :class:`~ray.data.Dataset` exposes methods to read, transform, and consume data at scale.
 
-        To learn more about Datastreams and the operations they support, read the :ref:`Datastreams API Reference <data-api>`.
+        To learn more about Datasets and the operations they support, read the :ref:`Datasets API Reference <data-api>`.
 
     Datasource
         A :class:`~ray.data.Datasource` specifies how to read and write from
@@ -83,7 +83,7 @@ Ray Data Glossary
         A single data item, which is always a ``Dict[str, Any]``.
 
     Schema
-        The name and type of the datastream fields.
+        The name and type of the dataset fields.
 
-        To determine a datastream's schema, call
-        :meth:`Datastream.schema() <ray.data.Datastream.schema>`.
+        To determine a dataset's schema, call
+        :meth:`Dataset.schema() <ray.data.Dataset.schema>`.

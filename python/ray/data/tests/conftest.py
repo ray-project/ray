@@ -173,15 +173,14 @@ def test_block_write_path_provider():
             base_path,
             *,
             filesystem=None,
-            datastream_uuid=None,
+            dataset_uuid=None,
             block=None,
             block_index=None,
             file_format=None,
         ):
             num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
-                f"{block_index:06}_{num_rows:02}_{datastream_uuid}"
-                f".test.{file_format}"
+                f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
             return posixpath.join(base_path, suffix)
 
@@ -269,7 +268,7 @@ def assert_base_partitioned_ds():
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
 
-        # For Datastreams with long string representations, the format will include
+        # For Datasets with long string representations, the format will include
         # whitespace and newline characters, which is difficult to generalize
         # without implementing the formatting logic again (from
         # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
@@ -279,12 +278,12 @@ def assert_base_partitioned_ds():
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(str(ds)), ds
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
@@ -386,7 +385,7 @@ def enable_streaming_executor():
     ctx.use_streaming_executor = use_streaming_executor
 
 
-# ===== Pandas datastream formats =====
+# ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
     in_df = pd.DataFrame({"column_1": [1, 2, 3, 4]})
@@ -405,7 +404,7 @@ def ds_pandas_list_multi_column_format(ray_start_regular_shared):
     yield ray.data.from_pandas([in_df] * 4)
 
 
-# ===== Arrow datastream formats =====
+# ===== Arrow dataset formats =====
 @pytest.fixture(scope="function")
 def ds_arrow_single_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow(pa.table({"column_1": [1, 2, 3, 4]}))
@@ -441,7 +440,7 @@ def ds_list_arrow_multi_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow([pa.table({"column_1": [1], "column_2": [1]})] * 4)
 
 
-# ===== Numpy datastream formats =====
+# ===== Numpy dataset formats =====
 @pytest.fixture(scope="function")
 def ds_numpy_single_column_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy(np.arange(16).reshape((4, 2, 2)))

@@ -217,13 +217,13 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_grouped_datastream_repr(ray_start_regular_shared):
+def test_grouped_dataset_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
-    assert repr(ds.groupby("key")) == f"GroupedData(datastream={ds!r}, key='key')"
+    assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
 
 
 def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
-    # Test empty datastream.
+    # Test empty dataset.
     agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
     assert agg_ds.count() == 0
 
@@ -405,7 +405,7 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
         ds = _to_pandas(ds)
     assert ds.sum("A") == 4950
 
-    # Test empty datastream
+    # Test empty dataset
     ds = ray.data.range(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
@@ -765,7 +765,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_pandas(df).groupby("A").mean("D").materialize()
     with pytest.raises(ValueError):
         ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).materialize()
-    # Columns for simple Datastream.
+    # Columns for simple Dataset.
     with pytest.raises(ValueError):
         ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").materialize()
 
@@ -783,7 +783,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_pandas(df).mean("D").materialize()
     with pytest.raises(ValueError):
         ray.data.from_pandas(df).mean(["B", "D"]).materialize()
-    # Columns for simple Datastream.
+    # Columns for simple Dataset.
     with pytest.raises(ValueError):
         ray.data.from_items(xs).mean("A").materialize()
 
@@ -956,7 +956,7 @@ def test_groupby_simple(ray_start_regular_shared):
         ("None", 3),
     ]
 
-    # Test empty datastream.
+    # Test empty dataset.
     ds = ray.data.from_items([])
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         AggregateFn(
@@ -1049,7 +1049,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
 
 
 @pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
-def test_groupby_map_groups_for_empty_datastream(ray_start_regular_shared):
+def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
     ds = ray.data.from_items([])
     mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
     assert mapped.count() == 0
@@ -1368,7 +1368,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
 
     # Test built-in global mean aggregation
     assert ray.data.from_items(xs).repartition(num_parts).mean() == 49.5
-    # Test empty datastream
+    # Test empty dataset
     assert ray.data.range(10).filter(lambda r: r > 10).mean() is None
 
     # Test built-in global mean aggregation with nans
@@ -1468,7 +1468,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
         pd.Series(xs).std(ddof=0),
     )
 
-    # Test empty datastream
+    # Test empty dataset
     assert ray.data.from_items([]).std() is None
     # Test edge cases
     assert ray.data.from_items([3]).std() == 0
@@ -1673,7 +1673,7 @@ def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
     r2 = range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
-    # Test empty datastream.
+    # Test empty dataset.
     ds = ray.data.from_items([])
     r1 = ds.random_shuffle()
     assert r1.count() == 0
@@ -1741,7 +1741,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
 
     ray.init(cluster.address)
 
-    # Run datastream in "bar" nodes.
+    # Run dataset in "bar" nodes.
     ds = ray.data.read_parquet(
         "example://parquet_images_mini",
         parallelism=2,

@@ -37,7 +37,7 @@ def test_tensors_basic(ray_start_regular_shared):
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=6,\n"
         "   num_rows=6,\n"
         "   schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)}\n"
@@ -214,7 +214,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = "MaterializedDatastream(num_blocks=40, num_rows=40, schema={item: object})"
+    res = "MaterializedDataset(num_blocks=40, num_rows=40, schema={item: object})"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -300,7 +300,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).map(lambda _: {"data": np.ones((4, 4))})
     ds = ds.materialize()
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=10,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
@@ -313,7 +313,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
         "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
@@ -326,7 +326,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=10,\n"
         "   num_rows=20,\n"
         "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
@@ -339,7 +339,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=24,\n"
         "   schema={a: numpy.ndarray(shape=(4, 4), dtype=float64)}\n"
@@ -352,7 +352,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=4,\n"
         "   num_rows=16,\n"
         "   schema={a: numpy.ndarray(shape=(None, None), dtype=float64)}\n"

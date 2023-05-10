@@ -33,7 +33,7 @@ import ray
 ds = ray.data.range(10000)
 num_rows = 0
 
-# Consume all rows in the Datastream.
+# Consume all rows in the Dataset.
 for row in ds.iter_rows():
     assert isinstance(row, dict)
     num_rows += 1
@@ -51,7 +51,7 @@ import pandas as pd
 ds = ray.data.range(10000)
 num_batches = 0
 
-# Consume all batches in the Datastream.
+# Consume all batches in the Dataset.
 for batch in ds.iter_batches(batch_size=2):
     assert isinstance(batch, dict)
     num_batches += 1
@@ -63,7 +63,7 @@ print(num_batches)
 cum_sum = 0
 for batch in ds.iter_batches(batch_size=2, batch_format="pandas"):
     assert isinstance(batch, pd.DataFrame)
-    # Simple integer Datastream is converted to a single-column Pandas DataFrame.
+    # Simple integer Dataset is converted to a single-column Pandas DataFrame.
     cum_sum += batch["id"]
 print(cum_sum)
 # -> 49995000
@@ -76,7 +76,7 @@ print(cum_sum)
 import ray
 
 @ray.remote
-def consume(data: ray.data.Datastream) -> int:
+def consume(data: ray.data.Dataset) -> int:
     num_batches = 0
     # Consume data in 2-record batches.
     for batch in data.iter_batches(batch_size=2):
@@ -108,7 +108,7 @@ workers = [Worker.remote(i) for i in range(4)]
 # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
 ds = ray.data.range(10000)
-# -> Datastream(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
 shards = ds.streaming_split(n=4, equal=True)
 # -> [<StreamSplitDataIterator at 0x7fa5b5c99070>,

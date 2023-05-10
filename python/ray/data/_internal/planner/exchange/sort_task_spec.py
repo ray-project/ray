@@ -104,7 +104,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_bar.close()
         del sample_results
         samples = [s for s in samples if len(s) > 0]
-        # The datastream is empty
+        # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)
         builder = DelegatingBlockBuilder()

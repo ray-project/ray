@@ -7,7 +7,7 @@ Ray Data API
     :maxdepth: 2
 
     input_output.rst
-    datastream.rst
+    dataset.rst
     data_iterator.rst
     execution_options.rst
     grouped_data.rst

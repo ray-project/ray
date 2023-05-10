@@ -8,16 +8,16 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetStats
 
 
 def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
-    from ray.data.datastream import Datastream, Schema
+    from ray.data.dataset import Dataset, Schema
 
-    wrapped_ds = Datastream(
+    wrapped_ds = Dataset(
         ExecutionPlan(
             blocks,
-            DatastreamStats(stages={}, parent=None),
+            DatasetStats(stages={}, parent=None),
             run_by_consumer=blocks._owned_by_consumer,
         ),
         0,
@@ -59,7 +59,7 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
     owned_by_consumer = blocks._owned_by_consumer
 
     # Schema is safe to fetch here since we have already called
-    # get_internal_block_refs and executed the datastream.
+    # get_internal_block_refs and executed the dataset.
     schema = wrapped_ds.schema(fetch_if_missing=True)
     if isinstance(schema, Schema):
         schema = schema.base_schema
@@ -86,8 +86,8 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
 
         if schema is None:
             raise ValueError(
-                "Datastream is empty or cleared, can't determine the format of "
-                "the datastream."
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
             )
         elif isinstance(schema, type):
             builder = SimpleBlockBuilder()

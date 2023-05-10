@@ -223,7 +223,7 @@ class _ExperimentCheckpointManager:
         # Checkpoint
         checkpoint_time_start = time.monotonic()
 
-        # NOTE: This context manager is for Datastreams captured in a trial config.
+        # NOTE: This context manager is for Datasets captured in a trial config.
         # This is the case when *tuning over datasets*.
         # If the datasets have already been full executed, then serializing
         # block refs means that this checkpoint is not usable in a new Ray cluster.

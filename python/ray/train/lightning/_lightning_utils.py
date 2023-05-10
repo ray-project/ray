@@ -1,7 +1,7 @@
 import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
-from ray.data.datastream import DataIterator
+from ray.data.dataset import DataIterator
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
 import logging

@@ -19,7 +19,7 @@ from ray.data._internal.block_batching.util import (
     make_async_gen,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from contextlib import nullcontext
 
@@ -27,7 +27,7 @@ from contextlib import nullcontext
 def iter_batches(
     block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     *,
-    stats: Optional[DatastreamStats] = None,
+    stats: Optional[DatasetStats] = None,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
     batch_format: Optional[str] = "default",
@@ -74,7 +74,7 @@ def iter_batches(
     Args:
         block_refs: An iterator over block object references and their corresponding
             metadata.
-        stats: DatastreamStats object to record timing and other statistics.
+        stats: DatasetStats object to record timing and other statistics.
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
@@ -176,7 +176,7 @@ def iter_batches(
 
 def _format_in_threadpool(
     batch_iter: Iterator[Batch],
-    stats: DatastreamStats,
+    stats: DatasetStats,
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
@@ -185,7 +185,7 @@ def _format_in_threadpool(
 
     Args:
         logical_batch_iterator: An iterator over logical batches.
-        stats: DatastreamStats object to record timing and other statistics.
+        stats: DatasetStats object to record timing and other statistics.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
             Arrow to pandas automatically), "pandas" to

@@ -22,7 +22,7 @@ Ray Data represents tensors as
 .. testoutput::
     :options: +ELLIPSIS
 
-    Datastream(
+    Dataset(
        num_blocks=...,
        num_rows=100,
        schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
