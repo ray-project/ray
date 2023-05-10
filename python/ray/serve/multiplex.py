@@ -17,7 +17,7 @@ class _ModelMultiplexWrapper:
         self,
         model_load_func: Callable,
         self_args: List[Any],
-        num_models_per_replica: int = 0,
+        max_num_models_per_replica: int = -1,
     ):
         """Initialize the model multiplexer.
 
@@ -34,15 +34,15 @@ class _ModelMultiplexWrapper:
         Args:
             model_load_func: the model load async function.
             self_args: the arguments to be passed to the model load function.
-            num_models_per_replica: the maximum number of models to be loaded on the
-                current replica. If it is 0, there is no limit on the number of models
+            max_num_models_per_replica: the maximum number of models to be loaded on the
+                current replica. If it is -1, there is no limit for the number of models
                 per replica.
         """
 
         self.models = OrderedDict()
         self._func = model_load_func
         self.self_args = self_args
-        self.num_models_per_replica = num_models_per_replica
+        self.max_num_models_per_replica = max_num_models_per_replica
         self.model_load_latency_s = metrics.Gauge(
             "serve_model_load_latency_s",
             description="The time it takes to load a model.",
@@ -63,13 +63,11 @@ class _ModelMultiplexWrapper:
             description="The counter for models loaded on the current replica.",
         )
 
-    async def load_model(self, model_id: str, *args, **kwargs) -> Any:
+    async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the model handle.
 
         Args:
             model_id: the model ID.
-            *args: the arguments to be passed to the model load function.
-            **kwargs: the keyword arguments to be passed to the model load function.
 
         Returns:
             The model handle.
@@ -96,8 +94,8 @@ class _ModelMultiplexWrapper:
             self.models_load_counter.inc()
             # If the number of models per replica is specified, check if the number of
             # models on the current replica has reached the limit.
-            if self.num_models_per_replica > 0:
-                if len(self.models) >= self.num_models_per_replica:
+            if self.max_num_models_per_replica > 0:
+                if len(self.models) >= self.max_num_models_per_replica:
                     # Unload the least recently used model.
                     unload_start_time = time.time()
                     await self.unload_model()
@@ -108,11 +106,9 @@ class _ModelMultiplexWrapper:
             load_start_time = time.time()
             logger.info("Loading model '{}'.".format(model_id))
             if self.self_args is None:
-                self.models[model_id] = await self._func(model_id, *args, **kwargs)
+                self.models[model_id] = await self._func(model_id)
             else:
-                self.models[model_id] = await self._func(
-                    self.self_args, model_id, *args, **kwargs
-                )
+                self.models[model_id] = await self._func(self.self_args, model_id)
             self.model_load_latency_s.set(
                 time.time() - load_start_time, tags={"model_id": model_id}
             )

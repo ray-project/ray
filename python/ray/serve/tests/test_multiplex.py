@@ -31,7 +31,7 @@ class TestMultiplexWrapper:
             return model_id
 
         multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, num_models_per_replica=2
+            model_load_func, None, max_num_models_per_replica=2
         )
         # Load model1
         await multiplexer.load_model("1")
@@ -60,7 +60,7 @@ class TestMultiplexWrapper:
             return model_id
 
         multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, num_models_per_replica=2
+            model_load_func, None, max_num_models_per_replica=2
         )
         with pytest.raises(TypeError):
             await multiplexer.load_model(1)
@@ -81,7 +81,7 @@ class TestMultiplexWrapper:
             return MyModel(model_id)
 
         multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, num_models_per_replica=1
+            model_load_func, None, max_num_models_per_replica=1
         )
         await multiplexer.load_model("1")
         assert multiplexer.models == {"1": MyModel("1")}

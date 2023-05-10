@@ -580,19 +580,25 @@ def delete(name: str, _blocking: bool = True):
 
 
 @PublicAPI(stability="alpha")
-def multiplexed(func: Optional[Callable] = None, num_models_per_replica: int = 0):
+def multiplexed(
+    func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = -1
+):
     """Coverts a function or method to a multiplexed function.
 
     The function can be standalone function or a method of a class. The
-    function must have at least one argument with type `str` and the argument
+    function must have exact one argument with type `str` and the argument
     must be the first argument. The `str` argument is the model id of the model to
-    be loaded. The function can have other arguments and keyword arguments.
+    be loaded.
+
+    User have to define the function with `async def` and the function must be
+    an async function. It is recommended to define courotine for long running
+    IO tasks in the function, it can prevent blocking the event loop.
 
     The multiplexed function will load the model with the given model id and call
     the original function. The multiplexed function will return the return
     value of the original function.
 
-    When the number of models in one replica is larger than num_models_per_replica,
+    When the number of models in one replica is larger than max_num_models_per_replica,
     the multiplexed function will unload the model with LRU policy.
 
     If you want to release resource after the model is loaded, you can define
@@ -607,8 +613,8 @@ def multiplexed(func: Optional[Callable] = None, num_models_per_replica: int = 0
             @serve.deployment
             class MultiplexedDeployment:
 
-                @serve.multiplexed(num_models_per_replica=5)
-                def load_model(self, model_id: str) -> Any:
+                @serve.multiplexed(max_num_models_per_replica=5)
+                async def load_model(self, model_id: str) -> Any:
                     # Load model with the given tag
                     # You can use any model loading library here
                     # and return the loaded model. load_from_s3 is
@@ -619,22 +625,23 @@ def multiplexed(func: Optional[Callable] = None, num_models_per_replica: int = 0
                     # Get model id from request context
                     model_id = serve.get_model_id()
                     # Load model with the given model id
-                    model = await self.get_model(tag)
+                    model = await self.load_model(model_id)
                     # Call the model
                     return model(request)
 
 
     Args:
-        num_models_per_replica: number of models to be loaded on each replica.
-        By default, it is 0, which means all models will be loaded on all replicas.
+        max_num_models_per_replica: number of models to be loaded on each replica.
+        By default, it is -1, which means there is no number limit to load models.
     """
     if func is not None:
         if not callable(func):
             raise TypeError(
                 "@serve.multiplex can only be used to decorate functions or methods."
             )
-    if num_models_per_replica < 0:
-        raise ValueError("num_models_per_replica must be larger than or equal to 0.")
+
+    if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:
+        raise ValueError("max_num_models_per_replica must be larger than 0.")
 
     def _multiplex_decorator(func):
 
@@ -653,23 +660,35 @@ def multiplexed(func: Optional[Callable] = None, num_models_per_replica: int = 0
             )
 
         @wraps(func)
-        async def _multiplex_wrapper(*args, **kwargs):
+        async def _multiplex_wrapper(*args):
             self = _extract_self_if_method_call(args, func)
-
+            signature = inspect.signature(func)
             if self is None:
+                if len(signature.parameters) != 1:
+                    raise ValueError(
+                        "The function must have exact one argument with type `str` "
+                        "as model_id."
+                    )
                 multiplex_object = func
+                model_id = args[0]
             else:
+                # count self as an argument
+                if len(signature.parameters) != 2:
+                    raise ValueError(
+                        "The method must have exact one argument with type `str` "
+                        "as model_id."
+                    )
                 multiplex_object = self
-                args = args[1:]
+                model_id = args[1]
             multiplex_attr = f"__serve_multiplex_{func.__name__}"
             if not hasattr(multiplex_object, multiplex_attr):
                 model_multiplex_wrapper = _ModelMultiplexWrapper(
-                    func, self, num_models_per_replica
+                    func, self, max_num_models_per_replica
                 )
                 setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
             else:
                 model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
-            return await model_multiplex_wrapper.load_model(*args, **kwargs)
+            return await model_multiplex_wrapper.load_model(model_id)
 
         return _multiplex_wrapper
 
@@ -682,6 +701,30 @@ def get_model_id() -> str:
 
     When user defines a multiplexed deployment, the model id of the current request
     can be retrieved by calling `serve.get_model_id()`.
+
+    .. code-block:: python
+            from ray import serve
+
+            @serve.deployment
+            class MultiplexedDeployment:
+
+                @serve.multiplexed(max_num_models_per_replica=5)
+                async def load_model(self, model_id: str) -> Any:
+                    # Load model with the given tag
+                    # You can use any model loading library here
+                    # and return the loaded model. load_from_s3 is
+                    # a placeholder function.
+                    return load_from_s3(model_id)
+
+                async def __call__(self, request):
+                    # Get model id from request context
+                    model_id = serve.get_model_id()
+                    # Load model with the given model id
+                    model = await self.load_model(model_id)
+                    # Call the model
+                    return model(request)
+
+
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.model_id
