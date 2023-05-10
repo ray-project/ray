@@ -161,6 +161,5 @@ MULTI_APP_MIGRATION_MESSAGE = (
     "config files."
 )
 
+# Keyword to specify model id used in multiplexed deployment.
 RAY_SERVE_REQUEST_MODEL_ID = "ray_serve_request_model_id"
-
-PUSH_MODEL_IDS_INTERVAL_S = 1

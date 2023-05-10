@@ -773,19 +773,11 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
-            model_ids=self._model_ids,
         )
 
     @property
     def actor_details(self) -> ReplicaDetails:
         return self._actor_details
-
-    def record_model_ids(self, model_ids: List[str]):
-        self._model_ids = model_ids
-
-    @property
-    def model_ids(self) -> List[str]:
-        return self._model_ids
 
     @property
     def replica_tag(self) -> ReplicaTag:
@@ -1110,9 +1102,6 @@ class DeploymentState:
             ),
             tag_keys=("deployment", "replica", "application"),
         )
-
-        # whether the model ids are updated.
-        self._is_model_ids_updated = False
 
     def should_autoscale(self) -> bool:
         """
@@ -1843,21 +1832,6 @@ class DeploymentState:
 
         return running_replicas_changed
 
-    def record_model_ids(self, replica_name: str, model_ids: List[str]) -> None:
-        """Records the model IDs of a replica.
-
-        Args:
-            replica_name: Name of the replica.
-            model_ids: List of model IDs.
-        """
-        # Find the replica
-        for replica in self._replicas.get():
-            if replica.replica_tag == replica_name:
-                replica.record_model_ids(model_ids)
-                self._is_model_ids_updated = True
-                break
-        logger.debug(f"Replia {replica_name} not found in deployment {self._name}")
-
     def update(self) -> Tuple[bool, bool]:
         """Attempts to reconcile this deployment to match its goal state.
 
@@ -1879,12 +1853,8 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed |= self._check_and_update_replicas()
 
-            # Check if the model_id has changed.
-            running_replicas_changed |= self._is_model_ids_updated
-
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
-                self._is_model_ids_updated = False
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
@@ -2078,18 +2048,6 @@ class DeploymentStateManager:
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
-
-    def record_model_ids(self, data: Tuple[str, str, Tuple[str]]):
-        """
-        Record model ids for a replica of a deployment.
-        """
-        deployment_name, replica_name, model_ids = data
-        if deployment_name not in self._deployment_states:
-            logger.error(f"Deployment {deployment_name} not found in state manager.")
-            return
-        self._deployment_states[deployment_name].record_model_ids(
-            replica_name, model_ids
-        )
 
     def get_autoscaling_metrics(self):
         """

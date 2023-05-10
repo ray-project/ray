@@ -580,7 +580,7 @@ def delete(name: str, _blocking: bool = True):
 
 
 @PublicAPI(stability="alpha")
-def multiplexed(func=None, num_models_per_replica: int = 0):
+def multiplexed(func: Optional[Callable] = None, num_models_per_replica: int = 0):
     """Coverts a function or method to a multiplexed function.
 
     The function can be standalone function or a method of a class. The
@@ -633,6 +633,8 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
             raise TypeError(
                 "@serve.multiplex can only be used to decorate functions or methods."
             )
+    if num_models_per_replica < 0:
+        raise ValueError("num_models_per_replica must be larger than or equal to 0.")
 
     def _multiplex_decorator(func):
 
@@ -641,6 +643,13 @@ def multiplexed(func=None, num_models_per_replica: int = 0):
             raise ValueError(
                 "@serve.multiplex can only be used to decorate functions or methods "
                 "with at least one 'model_id: str' argument."
+            )
+
+        # func must be ascyn function or method
+        if not inspect.iscoroutinefunction(func):
+            raise ValueError(
+                "@serve.multiplex can only be used to decorate async "
+                "functions or methods."
             )
 
         @wraps(func)

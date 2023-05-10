@@ -148,9 +148,11 @@ class ReplicaSet:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
-
-        def _assign_replica(replica: RunningReplicaInfo):
-            """Assign query to a replica."""
+        for _ in range(len(self.in_flight_queries.keys())):
+            replica = next(self.replica_iterator)
+            if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
+                # This replica is overloaded, try next one
+                continue
 
             logger.debug(
                 f"Assigned query {query.metadata.request_id} "
@@ -187,33 +189,6 @@ class ReplicaSet:
                 )
                 self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
-
-        # Try to find a replica that can handle this query.
-        # If model id is not specified, we can assign it to any non-overladed replica.
-        # If model id is specified, we can try to assign it to a replica that has
-        # loaded, and if there is no such replica, we can assign it to any
-        # non-overloaded replica.
-        if query.metadata.model_id:
-            # Try to find all replicas that has loaded the model and is not overloaded.
-            candidate_replicas = [
-                replica
-                for replica in self.in_flight_queries.keys()
-                if query.metadata.model_id in replica.model_ids
-                and len(self.in_flight_queries[replica])
-                < replica.max_concurrent_queries
-            ]
-            for replica in self.in_flight_queries.keys():
-                logger.info(f"router debug: {replica.replica_tag}, {replica.model_ids}")
-            if candidate_replicas:
-                # If there are such replicas, randomly pick one.
-                replica = random.choice(candidate_replicas)
-                return _assign_replica(replica)
-
-        for _ in range(len(self.in_flight_queries)):
-            replica = next(self.replica_iterator)
-            if len(self.in_flight_queries[replica]) == replica.max_concurrent_queries:
-                continue
-            return _assign_replica(replica)
         return None
 
     @property

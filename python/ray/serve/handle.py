@@ -203,6 +203,7 @@ class RayServeHandle:
             # The following two lines are equivalent:
             obj_ref = await handle.other_method.remote(*args)
             obj_ref = await handle.options(method_name="other_method").remote(*args)
+            obj_ref = await handle.options(model_id="model:v1").remote(*args)
 
         """
         return self._options(model_id=model_id, method_name=method_name)
