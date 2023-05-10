@@ -220,21 +220,15 @@ class OperatorFusionRule(Rule):
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        if not isinstance(up_op, ActorPoolMapOperator) and not isinstance(
-            down_op, ActorPoolMapOperator
-        ):
-            fused_init_fn = None
-        else:
-            if isinstance(up_op, ActorPoolMapOperator):
-                fused_init_fn = up_op._init_fn()
-            elif isinstance(down_op, ActorPoolMapOperator):
-                fused_init_fn = down_op._init_fn()
-            # def fused_init_fn():
-            #     2/0
-            #     if isinstance(up_op, ActorPoolMapOperator):
-            #         up_op._init_fn()
-            #     if isinstance(down_op, ActorPoolMapOperator):
-            #         down_op._init_fn()
+        # if not isinstance(up_op, ActorPoolMapOperator) and not isinstance(
+        #     down_op, ActorPoolMapOperator
+        # ):
+        #     fused_init_fn = None
+        # else:
+        #     if isinstance(up_op, ActorPoolMapOperator):
+        #         fused_init_fn = up_op._init_fn()
+        #     elif isinstance(down_op, ActorPoolMapOperator):
+        #         fused_init_fn = down_op._init_fn()
 
         def fused_map_transform_fn(
             blocks: Iterator[Block], ctx: TaskContext
@@ -258,7 +252,7 @@ class OperatorFusionRule(Rule):
         op = MapOperator.create(
             fused_map_transform_fn,
             input_op,
-            init_fn=fused_init_fn,  # TODO(Scott): fuse init fn
+            # init_fn=fused_init_fn,  # TODO(Scott): fuse init fn
             name=name,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,

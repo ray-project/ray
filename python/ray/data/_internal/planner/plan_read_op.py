@@ -1,7 +1,6 @@
 from typing import Iterator, List
 
 import ray
-import ray.cloudpickle as cloudpickle
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -10,7 +9,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.data.datasource.datasource import ReadTask
 
 
@@ -31,13 +30,7 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
                         # TODO(chengsu): figure out a better way to pass read
                         # tasks other than ray.put().
                         ray.put(read_task),
-                        BlockMetadata(
-                            num_rows=1,
-                            size_bytes=len(cloudpickle.dumps(read_task)),
-                            schema=None,
-                            input_files=[],
-                            exec_stats=None,
-                        ),
+                        read_task.get_metadata(),
                     )
                 ],
                 owns_blocks=True,
