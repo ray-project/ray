@@ -733,7 +733,7 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
     "ray_start_cluster_head",
     [
         {
-            "object_store_memory": 1 * 1024 ** 3,
+            "object_store_memory": 1 * 1024**3,
             "_system_config": {
                 "object_spilling_threshold": 1.0,
                 # disable unlimited
@@ -749,10 +749,11 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
 def test_push_large_number_and_small_size_object(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(
-        object_store_memory=1 * 1024 ** 3,
+        object_store_memory=1 * 1024**3,
         resources={"remote_node": 8},
         num_cpus=8,
     )
+
     def get_small_object():
         # 1KB
         return np.random.rand(1, 1024 // 8)
@@ -773,11 +774,10 @@ def test_push_large_number_and_small_size_object(ray_start_cluster_head):
         all_args.append(ray.put(data))
         all_sums.append(data.sum())
 
-    st1 = time.time()
     tasks = []
     for index in range(TASK_NUMBER):
-        ans = sum(all_sums[index * ARG_NUMBER:(index+1)*ARG_NUMBER])
-        args = all_args[index * ARG_NUMBER:(index+1)*ARG_NUMBER]
+        ans = sum(all_sums[index * ARG_NUMBER : (index + 1) * ARG_NUMBER])
+        args = all_args[index * ARG_NUMBER : (index + 1) * ARG_NUMBER]
         tasks.append(get_sum.remote(ans, *args))
     assert all(ray.get(tasks))
 

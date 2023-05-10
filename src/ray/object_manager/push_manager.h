@@ -15,9 +15,9 @@
 #pragma once
 
 #include <algorithm>
-#include <memory>
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <queue>
 
 #include "absl/container/flat_hash_map.h"
@@ -89,7 +89,9 @@ class PushManager {
 
     const ObjectID obj_id;
 
-    PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn, const ObjectID &obj_id)
+    PushState(int64_t num_chunks,
+              std::function<void(int64_t)> chunk_send_fn,
+              const ObjectID &obj_id)
         : num_chunks(num_chunks),
           chunk_send_fn(chunk_send_fn),
           next_chunk_id(0),
@@ -143,7 +145,10 @@ class PushManager {
   int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<NodeID, std::pair<absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>, std::queue<std::shared_ptr<PushState>>>> push_info_;
+  absl::flat_hash_map<NodeID,
+                      std::pair<absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>,
+                                std::queue<std::shared_ptr<PushState>>>>
+      push_info_;
 
   /// Num pushes in flight
   int64_t num_pushes_in_flight_ = 0;

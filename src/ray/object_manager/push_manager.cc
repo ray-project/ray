@@ -41,7 +41,9 @@ void PushManager::StartPush(const NodeID &dest_id,
       push_info_[dest_id].first[obj_id] = push_state;
       push_info_[dest_id].second.push(push_state);
     } else {
-      auto pair = std::make_pair(absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>(), std::queue<std::shared_ptr<PushState>>());
+      auto pair =
+          std::make_pair(absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>(),
+                         std::queue<std::shared_ptr<PushState>>());
       auto it = push_info_.emplace(dest_id, std::move(pair)).first;
       it->second.first.emplace(obj_id, push_state);
       it->second.second.push(push_state);
@@ -77,7 +79,6 @@ void PushManager::ScheduleRemainingPushes() {
     auto it = push_info_.begin();
     keep_looping = false;
     while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
-
       NodeID node_id = it->first;
       if (!it->second.second.empty() && chunks_in_flight_ < max_chunks_in_flight_) {
         auto &info = it->second.second.front();
@@ -85,10 +86,10 @@ void PushManager::ScheduleRemainingPushes() {
         chunks_in_flight_ += 1;
         keep_looping = true;
         RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of "
-                      << info->num_chunks << " for push " << info->obj_id << ", "
-                      << node_id << ", chunks in flight " << NumChunksInFlight()
-                      << " / " << max_chunks_in_flight_
-                      << " max, remaining chunks: " << NumChunksRemaining();
+                       << info->num_chunks << " for push " << info->obj_id << ", "
+                       << node_id << ", chunks in flight " << NumChunksInFlight() << " / "
+                       << max_chunks_in_flight_
+                       << " max, remaining chunks: " << NumChunksRemaining();
         if (info->HasNoChunkRemained()) it->second.second.pop();
       }
 
