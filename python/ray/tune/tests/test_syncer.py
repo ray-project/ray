@@ -1084,6 +1084,9 @@ def test_distributed_checkpointing_to_s3(
             name=exp_name,
             storage_path=mock_s3_bucket_uri,
             local_dir=local_dir,
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=3,
+            ),
         ),
         tune_config=tune.TuneConfig(
             # Only running 1 trial.
@@ -1100,12 +1103,12 @@ def test_distributed_checkpointing_to_s3(
     shutil.rmtree(download_dir, ignore_errors=True)
     download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
 
-    def _check_dir_content(checkpoint_dir, has_local=True):
+    def _check_dir_content(checkpoint_dir, exist=True):
         # Double check local checkpoint dir.
         local_trial_data = os.listdir(
             os.path.join(local_dir, "test_dist_ckpt_to_s3", "trial_0")
         )
-        if has_local:
+        if exist:
             # 2 checkpoints in local trial folder.
             assert checkpoint_dir in local_trial_data
             local_checkpoint_1_data = os.listdir(
@@ -1127,24 +1130,27 @@ def test_distributed_checkpointing_to_s3(
         cloud_trial_data = os.listdir(
             os.path.join(download_dir, "test_dist_ckpt_to_s3", "trial_0")
         )
-        # 2 checkpoints in cloud trial folder.
-        assert checkpoint_dir in cloud_trial_data
-        cloud_checkpoint_1_data = os.listdir(
-            os.path.join(
-                download_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
+        if exist:
+            # 2 checkpoints in cloud trial folder.
+            assert checkpoint_dir in cloud_trial_data
+            cloud_checkpoint_1_data = os.listdir(
+                os.path.join(
+                    download_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
+                )
             )
-        )
-        # Cloud folder has 2 index files.
-        assert ".RANK_0.files" in cloud_checkpoint_1_data
-        assert ".RANK_1.files" in cloud_checkpoint_1_data
-        assert ".RANK_2.files" in cloud_checkpoint_1_data
-        # And all the data files.
-        assert "model-0.pt" in cloud_checkpoint_1_data
-        assert "model-1.pt" in cloud_checkpoint_1_data
-        assert "model-2.pt" in cloud_checkpoint_1_data
+            # Cloud folder has 2 index files.
+            assert ".RANK_0.files" in cloud_checkpoint_1_data
+            assert ".RANK_1.files" in cloud_checkpoint_1_data
+            assert ".RANK_2.files" in cloud_checkpoint_1_data
+            # And all the data files.
+            assert "model-0.pt" in cloud_checkpoint_1_data
+            assert "model-1.pt" in cloud_checkpoint_1_data
+            assert "model-2.pt" in cloud_checkpoint_1_data
+        else:
+            assert checkpoint_dir not in cloud_trial_data
 
     # Step 0 checkpoint is deleted.
-    _check_dir_content("checkpoint_000000", has_local=False)
+    _check_dir_content("checkpoint_000000", exist=False)
     _check_dir_content("checkpoint_000001")  # Step 3
     _check_dir_content("checkpoint_000002")  # Step 6
     _check_dir_content("checkpoint_000003")  # Step 9

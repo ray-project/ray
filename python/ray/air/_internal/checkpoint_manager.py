@@ -312,7 +312,10 @@ class _CheckpointManager:
         """
         self._delete_fn = delete_fn
 
-    def register_checkpoints(self, checkpoints: List[_TrackedCheckpoint]):
+    def register_checkpoints(
+            self,
+            checkpoints: Union[_TrackedCheckpoint, List[_TrackedCheckpoint]],
+    ):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -321,8 +324,11 @@ class _CheckpointManager:
         checkpoints should be deleted.
 
         Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
+            checkpoints: Tracked checkpoint object to add to bookkeeping.
         """
+        if not isinstance(checkpoints, list):
+            checkpoints = [checkpoints]
+
         for checkpoint in checkpoints:
             checkpoint.id = checkpoint.id or self._latest_checkpoint_id
 
