@@ -4,7 +4,7 @@
 (gentle-intro)=
 
 # Getting Started
-Use Ray to scale applications on your laptop or on the cloud. Choose a guide that fits your use case. 
+Use Ray to scale applications on your laptop or on the cloud. Choose the guide that fits your use case or task. 
 * Scale end-to-end ML applications: Ray AI Runtime Quickstart
 * Scale single ML workloads: Ray Libraries Quickstart
 * Scale general Python applications: Ray Core Quickstart
