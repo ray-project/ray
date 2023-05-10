@@ -107,7 +107,7 @@ It scales from single machines to large clusters with minimal code changes.
 As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray.
 To learn more about running batch inference with Ray, see the :ref:`batch inference guide<batch_inference_home>`.
 
-.. figure:: batch_inference/images/batch_inference.png
+.. figure:: ../data/images/batch_inference.png
 
 
 .. grid:: 1 2 3 4

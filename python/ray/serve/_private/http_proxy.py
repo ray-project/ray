@@ -509,7 +509,10 @@ class HTTPProxyActor:
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Return None, or re-throw the exception from self.running_task.
+        # Return log filepath, or re-throw the exception from self.running_task.
+        if self.setup_complete.is_set():
+            return f"/serve/http_proxy_{ray.util.get_node_ip_address()}.log"
+
         return await done_set.pop()
 
     async def block_until_endpoint_exists(
@@ -549,3 +552,9 @@ Please make sure your http-host and http-port are specified correctly."""
 
         self.setup_complete.set()
         await server.serve(sockets=[sock])
+
+    async def check_health(self):
+        """No-op method to check on the health of the HTTP Proxy.
+        Make sure the async event loop is not blocked.
+        """
+        pass

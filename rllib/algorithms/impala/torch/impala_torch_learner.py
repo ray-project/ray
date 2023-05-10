@@ -1,14 +1,12 @@
-from typing import Any, Dict, Mapping
+from typing import Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -118,21 +116,3 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             "vf_loss": mean_vf_loss,
             ENTROPY_KEY: -mean_entropy_loss,
         }
-
-    @override(ImpalaLearner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, timestep: int
-    ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(
-            module_id,
-            timestep=timestep,
-        )
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
-
-        return results

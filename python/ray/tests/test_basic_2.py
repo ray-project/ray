@@ -384,6 +384,10 @@ def test_get_with_timeout(ray_start_regular_shared):
     with pytest.raises(TimeoutError):
         ray.get(result_id, timeout=0.1)
 
+    # timeout of 0 should raise an error
+    with pytest.raises(GetTimeoutError):
+        ray.get(result_id, timeout=0)
+
     # Check that a subsequent get() returns early.
     ray.get(signal.send.remote())
     start = time.time()

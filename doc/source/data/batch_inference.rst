@@ -76,7 +76,7 @@ Running batch inference is conceptually easy and requires three steps:
 
 1. Load your data and optionally apply any preprocessing you need.
 2. Define your model for inference.
-3. Run inference on your data by using the :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+3. Run inference on your data by using the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
    method from Ray Data.
 
 The last step also defines how your batch processing job gets distributed across your (local) cluster.
@@ -96,7 +96,7 @@ For this quick start guide we use very small, in-memory datasets by
 leveraging common Python libraries like NumPy and Pandas.
 In general, once you load your data using Ray Data, you also want to apply some preprocessing steps.
 We skip this step here for simplicity.
-In any case, the result of this step is a Ray Datastream ``ds`` that we can use to run inference on.
+In any case, the result of this step is a Ray Dataset ``ds`` that we can use to run inference on.
 
 .. margin::
 
@@ -192,8 +192,8 @@ Below you find examples for PyTorch, TensorFlow, and HuggingFace.
 3. Getting predictions with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Once you have your Ray Datastream ``ds`` and your predictor class, you can use
-:meth:`ds.map_batches() <ray.data.Datastream.map_batches>` to get predictions.
+Once you have your Ray Dataset ``ds`` and your predictor class, you can use
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` to get predictions.
 ``map_batches`` takes your predictor class as an argument and allows you to specify
 ``compute`` resources by defining the :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
 In the example below, we use two CPUs to run inference in parallel and then print the results.
@@ -236,7 +236,7 @@ We cover resource allocation in more detail in :ref:`the configuration section o
 Advanced batch inference guide
 ------------------------------
 
- Let's use batch inference on a pre-trained PyTorch model for image classification
+Let's use batch inference on a pre-trained PyTorch model for image classification
 to illustrate advanced concepts of batch processing with Ray.
 
 .. important::
@@ -260,7 +260,7 @@ to illustrate advanced concepts of batch processing with Ray.
             :img-top: /images/ray_logo.png
             :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-            .. button-ref:: /data/examples/torch_detection
+            .. button-ref:: /ray-air/examples/torch_detection
 
                 Fine-tuning an Object Detection Model and using it for Batch Inference
 
@@ -268,7 +268,7 @@ to illustrate advanced concepts of batch processing with Ray.
             :img-top: /images/ray_logo.png
             :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-            .. button-ref:: /data/examples/torch_image_example
+            .. button-ref:: /ray-air/examples/torch_image_example
 
                 Training an Image Classifier and using it for Batch Inference
 
@@ -284,18 +284,18 @@ to learn more about loading data with Ray Data, but we'll cover the basics here,
 
 .. hint::
 
-    With Ray Data, you can :ref:`create synthetic data in Python <datastream_generate_data>`,
-    :ref:`load data from various storage solutions <datastream_reading_from_storage>` such as S3,
+    With Ray Data, you can :ref:`create synthetic data in Python <dataset_generate_data>`,
+    :ref:`load data from various storage solutions <dataset_reading_from_storage>` such as S3,
     HDFS, or GCS, using common formats such as CSV, JSON, Text, Images, Binary,
     TFRecords, Parquet, and more. Ray Data also supports reading from common SQL and NoSQL
     databases, and allows you to define your own, custom data sources.
 
-    You can also read :ref:`common Python library formats <datastream_from_in_memory_data_single_node>`
+    You can also read :ref:`common Python library formats <dataset_from_in_memory_data_single_node>`
     such as Pandas, NumPy, Arrow, or plain Python objects, as well as from
-    :ref:`distributed data processing frameworks <datastream_from_in_memory_data_distributed>`
+    :ref:`distributed data processing frameworks <dataset_from_in_memory_data_distributed>`
     such as Spark, Dask, Modin, or Mars.
 
-    Of course, Ray Data also supports :ref:`reading data from common ML frameworks <datastream_from_torch_tf>`
+    Of course, Ray Data also supports :ref:`reading data from common ML frameworks <dataset_from_torch_tf>`
     like PyTorch, TensorFlow or HuggingFace.
 
 .. callout::
@@ -325,12 +325,12 @@ This may include cropping or resizing images, or tokenizing raw text.
 To introduce common terminology, with :ref:`Ray Data <data>` you can define
 user-defined functions that transform batches of your data.
 As you've seen before, applying these functions via
-:meth:`ds.map_batches() <ray.data.Datastream.map_batches>` outputs a new, transformed datastream.
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` outputs a new, transformed dataset.
 
 .. note::
 
     The way we do preprocessing here is conceptually close to how we do batch
-    inference, and we use the same :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+    inference, and we use the same :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
     call from Ray Data to run this task.
     The main difference is that we don't use a machine learning model to transform our data,
     which has some practical consequences. For instance, in the example below we simply
@@ -351,7 +351,7 @@ the ``torchvision`` package to define a function called ``preprocess_images``.
 
         <2> We then define a simple function to transform batches of raw data accordingly. Note that these batches come as dictionaries of NumPy images stored in the ``"images"`` key.
 
-        <3> Finally, we apply the function to our datastream using ``map_batches``.
+        <3> Finally, we apply the function to our dataset using ``map_batches``.
 
 .. tip::
 
@@ -368,8 +368,8 @@ for inference since the model only needs to be initialized once, instead of per 
 .. margin::
 
     In short, running model inference means applying
-    :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
-    to a datastream with a trained model as a class.
+    :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+    to a dataset with a trained model as a class.
 
 You've already seen how to do this in the quickstart section of this guide, but now
 that you're equipped with more knowledge, let's have a look at how to define a
@@ -395,7 +395,7 @@ stateful class with Ray for our pretrained ResNet model:
 Scalable inference with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To get predictions, we call :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`,
+To get predictions, we call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
 by making sure to specify a :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`
 which defines how many workers to use for inference.
 
@@ -407,19 +407,19 @@ which defines how many workers to use for inference.
         :end-before: __pt_prediction_end__
 
     .. annotations::
-        <1> In this example we use a total of four Ray Actors to run inference on our datastream.
+        <1> In this example we use a total of four Ray Actors to run inference on our dataset.
 
         <2> Each actor should use one GPU.
 
-To summarize, mapping a function over batches is the simplest transform for Ray Datastreams.
-The function defines the logic for transforming individual batches of data of the datastream
+To summarize, mapping a function over batches is the simplest transform for Ray Datasets.
+The function defines the logic for transforming individual batches of data of the dataset
 Performing operations over batches of data is more performant than single element
 operations as it can leverage the underlying vectorization capabilities of Pandas or NumPy.
 
 
 .. note::
 
-    You can use :meth:`ds.map_batches() <ray.data.Datastream.map_batches>` on functions, too.
+    You can use :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` on functions, too.
     This is mostly useful for quick transformations of your data that doesn't require
     an ML model or other stateful objects.
     To handle state, using classes like we did above is the recommended way.
@@ -456,6 +456,7 @@ In many standard cases, the input batch format is the same as the output batch f
 but it's good to be aware of the differences.
 
 .. margin::
+
     We refer to batch formats by name in Ray Data (using strings).
     For instance, the batch format used to represent Pandas dataframes is called ``"pandas"``.
     We often use batch format names and the libraries they represent interchangeably.
@@ -465,35 +466,37 @@ namely NumPy, Pandas and Arrow, and how they're used in Ray Data.
 By default, the batch format will be ``"numpy"``, but you can specify other formats
 as you see fit.
 
-.. tabbed:: NumPy (default)
+.. tab-set::
 
-  The ``"numpy"`` batch format presents batches as dictionary of
-  `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
+    .. tab-item:: NumPy (default)
 
-  .. literalinclude:: ./doc_code/batch_formats.py
-    :language: python
-    :start-after: __simple_numpy_start__
-    :end-before: __simple_numpy_end__
+      The ``"numpy"`` batch format presents batches as dictionary of
+      `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__ (``Dict[str, np.ndarray]``), with each key-value pair representing one column.
 
-.. tabbed:: Pandas
-
-  The ``"pandas"`` batch format presents batches in
-  `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format.
-
-  .. literalinclude:: ./doc_code/batch_formats.py
-    :language: python
-    :start-after: __simple_pandas_start__
-    :end-before: __simple_pandas_end__
-
-.. tabbed:: Arrow
-
-    The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
-
-    .. literalinclude:: ./doc_code/batch_formats.py
+      .. literalinclude:: ./doc_code/batch_formats.py
         :language: python
-        :start-after: __simple_pyarrow_start__
-        :end-before: __simple_pyarrow_end__
+        :start-after: __simple_numpy_start__
+        :end-before: __simple_numpy_end__
+
+    .. tab-item:: Pandas
+
+      The ``"pandas"`` batch format presents batches in
+      `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+      format.
+
+      .. literalinclude:: ./doc_code/batch_formats.py
+        :language: python
+        :start-after: __simple_pandas_start__
+        :end-before: __simple_pandas_end__
+
+    .. tab-item:: Arrow
+
+        The ``"pyarrow"`` batch format presents batches in ``pyarrow.Table`` format.
+
+        .. literalinclude:: ./doc_code/batch_formats.py
+            :language: python
+            :start-after: __simple_pyarrow_start__
+            :end-before: __simple_pyarrow_end__
 
 When defining the return value of your function, you can choose between
 dictionaries of NumPy arrays (``Dict[str, np.ndarray]``), Pandas dataframes
@@ -510,7 +513,7 @@ You can learn more about output formats in :ref:`the transforming data guide <tr
 
 .. seealso::
 
-    As we've discussed in this guide, using :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+    As we've discussed in this guide, using :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
     on a class defining your model
     should be your default choice for running inference with Ray.
     For instance, if you're already using the Ray AIR framework for running your ML workflows,
@@ -535,7 +538,7 @@ Configuration & Troubleshooting
 Configuring Batch Size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+An important parameter to set for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 is ``batch_size``, which controls the size of the batches provided to the function.
 Here's a simple example of loading the IRIS dataset (which has Pandas format by default)
 and processing it with a batch size of `10`:
@@ -582,7 +585,7 @@ Here's a quick example for a PyTorch model:
     +           return {"class": prediction.argmax(dim=1).detach().cpu().numpy()}
 
 
-Next, specify ``num_gpus=N`` in :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+Next, specify ``num_gpus=N`` in :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 to indicate that each inference worker should use ``N`` GPUs.
 
 .. code-block:: diff
@@ -652,14 +655,6 @@ tutorials and examples:
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-link:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
-
-            Scalable Batch Inference with Ray for Semantic Segmentation
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
