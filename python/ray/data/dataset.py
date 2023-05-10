@@ -2196,6 +2196,38 @@ class Dataset:
         else:
             return base_schema
 
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        extra_condition="or if ``fetch_if_missing=True`` (the default)",
+        pattern="Time complexity:",
+    )
+    def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
+        """Returns the columns of this Dataset.
+
+        Time complexity: O(1)
+
+        Example:
+            >>> import ray
+            >>> # Create dataset from synthetic data.
+            >>> ds = ray.data.range(1000)
+            >>> ds.columns
+            ["id"]
+
+        Args:
+            fetch_if_missing: If True, synchronously fetch the schema if it's
+                not known. If False, None is returned if the schema is not known.
+                Default is True.
+
+        Returns:
+            A list of the column names for this Dataset.
+
+        """
+        schema = self.schema(fetch_if_missing=fetch_if_missing)
+        if schema is not None:
+            return schema.names
+        return None
+
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
 
@@ -4217,12 +4249,6 @@ class Dataset:
                 return list(result.values())[0]
         else:
             return result
-
-    @PublicAPI(stability="alpha")
-    @property
-    def columns(self) -> List[str]:
-        schema = self.schema()
-        return schema.names
 
     @ensure_ipywidgets_dep("8")
     @repr_fallback_if_colab

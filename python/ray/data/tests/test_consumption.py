@@ -250,9 +250,12 @@ def test_schema_lazy(ray_start_regular_shared):
 
 
 def test_columns(ray_start_regular_shared):
-    ds = ray.data.range(100, parallelism=10)
-    assert ds.columns == ds.schema().names
-    assert ds.columns == ["id"]
+    ds = ray.data.range(1)
+    assert ds.columns() == ds.schema().names
+    assert ds.columns() == ["id"]
+
+    ds = ds.map(lambda x: x)
+    assert ds.columns(fetch_if_missing=False) is None
 
 
 def test_count_lazy(ray_start_regular_shared):
