@@ -15,7 +15,7 @@ class HuggingFacePredictor:
         self.model = pipeline("text-generation", model="gpt2")
 
     def __call__(self, batch: Dict[str, np.ndarray]):
-        model_out = self.model(batch["data"], max_length=20)
+        model_out = self.model(list(batch["data"]), max_length=20)
         return {"output": model_out}
 
 scale = ray.data.ActorPoolStrategy(size=2)
