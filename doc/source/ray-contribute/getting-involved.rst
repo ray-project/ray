@@ -207,7 +207,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
             """
             return "hello"
 
-        def increment_attr1(self) -> None
+        def increment_attr1(self) -> None:
             """Class methods are similar to regular functions.
 
             See above about how to document functions.
