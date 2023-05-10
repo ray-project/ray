@@ -738,12 +738,12 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout else -1
+        timeout_ms = int(timeout * 1000) if timeout is not None else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms
         )
         debugger_breakpoint = b""
-        for (data, metadata) in data_metadata_pairs:
+        for data, metadata in data_metadata_pairs:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -2464,12 +2464,9 @@ def get(
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning. Set this to None will block until the
-            corresponding object becomes available.
-            WARNING: In future ray releases ``timeout=0`` will return the object
-            immediately if it's available, else raise GetTimeoutError in accordance with
-            the above docstring. The current behavior of blocking until objects become
-            available of ``timeout=0`` is considered to be a bug, see
-            https://github.com/ray-project/ray/issues/28465.
+            corresponding object becomes available. Setting ``timeout=0`` will
+            return the object immediately if it's available, else raise
+            GetTimeoutError in accordance with the above docstring.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2480,26 +2477,6 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
-    if timeout == 0:
-        if os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
-            import warnings
-
-            warnings.warn(
-                (
-                    "Please use timeout=None if you expect ray.get() to block. "
-                    "Setting timeout=0 in future ray releases will raise "
-                    "GetTimeoutError if the objects references are not available. "
-                    "You could suppress this warning by setting "
-                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0."
-                ),
-                UserWarning,
-            )
-
-        # Record this usage in telemetry
-        import ray._private.usage.usage_lib as usage_lib
-
-        usage_lib.record_extra_usage_tag(usage_lib.TagKey.RAY_GET_TIMEOUT_ZERO, "True")
-
     worker = global_worker
     worker.check_connected()
 
@@ -2710,7 +2687,6 @@ def wait(
     worker.check_connected()
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
-
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.

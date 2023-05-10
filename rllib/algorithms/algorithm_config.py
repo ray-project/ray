@@ -52,6 +52,7 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     deserialize_type,
     NOT_SERIALIZABLE,
@@ -846,7 +847,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors.
+        # RLModule API only works with connectors and with Learner API.
         if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
@@ -855,18 +856,25 @@ class AlgorithmConfig(_Config):
             )
 
         # Learner API requires RLModule API.
-        if self._enable_learner_api and not self._enable_rl_module_api:
+        if self._enable_learner_api is not self._enable_rl_module_api:
             raise ValueError(
-                "Learner API requires RLModule API. "
-                "Please enable RLModule API via "
-                "`config.training(_enable_rl_module_api=True)`."
+                "Learner API requires RLModule API and vice-versa! "
+                "Enable RLModule API via "
+                "`config.rl_module(_enable_rl_module_api=True)` and the Learner API "
+                "via `config.training(_enable_learner_api=True)` (or set both to "
+                "False)."
             )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # enable RLModule API and connectors if env variable is set
+            # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
             self.rl_module(_enable_rl_module_api=True)
+            self.training(_enable_learner_api=True)
             self.enable_connectors = True
+
+        # LR-schedule checking.
+        if self._enable_learner_api:
+            Scheduler.validate(self.lr_schedule, "lr_schedule", "learning rate")
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1587,7 +1595,8 @@ class AlgorithmConfig(_Config):
             lr_schedule: Learning rate schedule. In the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 Intermediary timesteps will be assigned to interpolated learning rate
-                values. A schedule should normally start from timestep 0.
+                values. A schedule config's first entry must start with timestep 0,
+                i.e.: [[0, initial_value], [...]].
             grad_clip: The value to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more
@@ -1664,7 +1673,7 @@ class AlgorithmConfig(_Config):
                 deprecation_warning(
                     old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
-                    "anymore. To get rid of this error, set `experimental("
+                    "anymore. To get rid of this error, set `rl_module("
                     "_enable_rl_module_api` to True. Native models will "
                     "be better supported by the upcoming RLModule API.",
                     # Error out if user tries to enable this
