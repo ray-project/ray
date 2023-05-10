@@ -58,7 +58,7 @@ export const useServeApplications = () => {
       )
     : [];
 
-  const http_proxies =
+  const httpProxies =
     data && data.http_proxies
       ? Object.values(data.http_proxies).sort(
           (a, b) =>
@@ -74,7 +74,7 @@ export const useServeApplications = () => {
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
     ),
-    httpProxies: http_proxies,
+    httpProxies,
     error,
     changeFilter,
     page,
