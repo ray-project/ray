@@ -100,9 +100,11 @@ ObjectManager::ObjectManager(
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
+                             std::future<ClusterID>(),
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service, config_.rpc_service_threads_number),
+      client_call_manager_(
+          main_service, std::future<ClusterID>(), config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(get_spilled_object_url),
       pull_retry_timer_(*main_service_,

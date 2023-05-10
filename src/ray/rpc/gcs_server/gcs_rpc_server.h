@@ -77,7 +77,7 @@ using namespace rpc::autoscaler;
 
 // TODO(vitsai): Set auth for everything except GCS.
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(InternalKVGcsService, HANDLER, -1, AuthType::NO_AUTH)
 
 #define RUNTIME_ENV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(RuntimeEnvGcsService, HANDLER, -1)
@@ -275,6 +275,10 @@ class MonitorGrpcService : public GrpcService {
 class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
+
+  virtual void HandleRegisterClient(rpc::RegisterClientRequest request,
+                                    rpc::RegisterClientReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterNode(RegisterNodeRequest request,
                                   RegisterNodeReply *reply,

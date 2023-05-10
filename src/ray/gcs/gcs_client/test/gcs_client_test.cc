@@ -987,9 +987,28 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   }
 }
 
+TEST_P(GcsClientTest, TestGcsAuth) {
+  // Restart GCS.
+  RestartGcsServer();
+  auto node_info = Mocker::GenNodeInfo();
+  if (RayConfig::instance().gcs_storage() != gcs::GcsServer::kInMemoryStorage) {
+    EXPECT_TRUE(RegisterNode(*node_info));
+    return;
+  }
+
+  EXPECT_FALSE(RegisterNode(*node_info));
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+  }
+  EXPECT_TRUE(RegisterNode(*node_info));
+}
+
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
   // Restart GCS.
   RestartGcsServer();
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+  }
 
   // Simulate the scenario of node dead.
   int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();

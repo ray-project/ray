@@ -39,15 +39,15 @@ namespace ray {
 namespace gcs {
 
 inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
-  switch(val) {
-    case GcsServer::StorageType::IN_MEMORY:
-      return str << "StorageType::IN_MEMORY";
-    case GcsServer::StorageType::REDIS_PERSIST:
-      return str << "StorageType::REDIS_PERSIST";
-    case GcsServer::StorageType::UNKNOWN:
-      return str << "StorageType::UNKNOWN";
-    default:
-      UNREACHABLE;
+  switch (val) {
+  case GcsServer::StorageType::IN_MEMORY:
+    return str << "StorageType::IN_MEMORY";
+  case GcsServer::StorageType::REDIS_PERSIST:
+    return str << "StorageType::REDIS_PERSIST";
+  case GcsServer::StorageType::UNKNOWN:
+    return str << "StorageType::UNKNOWN";
+  default:
+    UNREACHABLE;
   }
 }
 
@@ -59,9 +59,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
+                  cluster_token_promise_.get_future(),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
+                           rpc_server_.GetClusterTokenFuture(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
@@ -84,7 +86,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   // Init KV Manager
   InitKVManager();
-  CacheAndSetServerToken();
+  CacheAndSetClusterId();
 
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
@@ -145,33 +147,35 @@ void GcsServer::Start() {
   gcs_init_data->AsyncLoad([this, gcs_init_data] { DoStart(*gcs_init_data); });
 }
 
-void GcsServer::CacheAndSetServerToken() {
+void GcsServer::CacheAndSetClusterId() {
   static std::string const kTokenNamespace = "cluster";
-  static std::string const kTokenKey = "server_uuid";
+  RAY_LOG(DEBUG) << "Caching and setting cluster ID.";
   switch (storage_type_) {
-    case StorageType::IN_MEMORY:
-      token_promise_.set_value(GenerateUUIDV4());
+  case StorageType::IN_MEMORY:
+    cluster_token_promise_.set_value(ClusterID::FromRandom());
     break;
-    case StorageType::REDIS_PERSIST:
-      kv_manager_->GetInstance().Get(kTokenNamespace, kTokenKey, 
-      [this] (std::optional<std::string> token) mutable {
-        if (!token.has_value()) {
-          RAY_LOG(DEBUG) << "No existing server token found. Generating new token.";
-          std::string server_token = GenerateUUIDV4();
-          kv_manager_->GetInstance().Put(kTokenNamespace, kTokenKey, server_token, false, 
-            // server_token string copy because lifetime.
-            [this, server_token](bool added_entry) mutable {
-              RAY_CHECK(added_entry) << "Failed to persist new token!";
-              token_promise_.set_value(server_token);
-            }
-          );
-        } else {
-          token_promise_.set_value(std::move(token.value())); 
-        }
-      });
+  case StorageType::REDIS_PERSIST:
+    kv_manager_->GetInstance().Get(
+        kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
+          if (!token.has_value()) {
+            RAY_LOG(DEBUG) << "No existing server token found. Generating new token.";
+            ClusterID cluster_token = ClusterID::FromRandom();
+            kv_manager_->GetInstance().Put(
+                kTokenNamespace,
+                kClusterIdKey,
+                cluster_token.Binary(),
+                false,
+                [this, cluster_token](bool added_entry) mutable {
+                  RAY_CHECK(added_entry) << "Failed to persist new token!";
+                  cluster_token_promise_.set_value(std::move(cluster_token));
+                });
+          } else {
+            cluster_token_promise_.set_value(ClusterID::FromBinary(token.value()));
+          }
+        });
     break;
-    default:
-      RAY_LOG(FATAL) << "Unexpected storage type " << storage_type_;
+  default:
+    RAY_LOG(FATAL) << "Unexpected storage type " << storage_type_;
   }
 }
 
@@ -581,7 +585,8 @@ void GcsServer::InitKVManager() {
 
 void GcsServer::InitPubSubHandler() {
   pubsub_handler_ =
-      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_); pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
+      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_);
+  pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
                                                                      *pubsub_handler_);
   // Register service.
   rpc_server_.RegisterService(*pubsub_service_);
