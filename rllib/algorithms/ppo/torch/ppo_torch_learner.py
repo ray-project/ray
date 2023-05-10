@@ -39,16 +39,21 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        action_dist_class = self.module[module_id].unwrapped().action_dist_cls
-        curr_action_dist = action_dist_class.from_logits(
+        action_dist_class_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
+        action_dist_class_exploration = self.module[
+            module_id
+        ].get_exploration_action_dist_cls()
+
+        curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-        prev_action_dist = action_dist_class.from_logits(
+        prev_action_dist = action_dist_class_exploration.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
         curr_logp = curr_action_dist.logp(batch[SampleBatch.ACTIONS])
-
-        logp_ratio = torch.exp(curr_logp - batch[SampleBatch.ACTION_LOGP])
+        logp_ratio = torch.exp(
+            curr_logp - batch[SampleBatch.ACTION_LOGP]
+        )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if self.hps.kl_coeff > 0.0:

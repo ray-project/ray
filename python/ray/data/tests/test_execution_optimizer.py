@@ -49,7 +49,7 @@ from ray.data._internal.logical.util import (
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
@@ -287,11 +287,12 @@ def test_repartition_e2e(
 ):
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
-        ds_stats: DatastreamStats = ds._plan.stats()
-        assert ds_stats.base_name == "Repartition"
+        ds_stats: DatasetStats = ds._plan.stats()
         if shuffle:
-            assert "RepartitionMap" in ds_stats.stages
+            assert ds_stats.base_name == "DoRead->Repartition"
+            assert "DoRead->RepartitionMap" in ds_stats.stages
         else:
+            assert ds_stats.base_name == "Repartition"
             assert "RepartitionSplit" in ds_stats.stages
         assert "RepartitionReduce" in ds_stats.stages
 
@@ -630,7 +631,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
 ):
     # Note: we currently only support fusing MapOperator->AllToAllOperator.
     def fn(batch):
@@ -676,24 +677,26 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
 
+@pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
-    ray_start_regular_shared, enable_optimizer
+    ray_start_regular_shared, enable_optimizer, shuffle, use_push_based_shuffle
 ):
-    # Note: We currently do not fuse MapBatches->Repartition.
-    # This test is to ensure that we don't accidentally fuse them, until
-    # we implement it later.
     def fn(batch):
         return {"id": [x + 1 for x in batch["id"]]}
 
     n = 10
     ds = ray.data.range(n)
     ds = ds.map_batches(fn, batch_size=None)
-    ds = ds.repartition(2)
+    ds = ds.repartition(2, shuffle=shuffle)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Repartition" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
-    assert "Repartition" in ds.stats()
+
+    # Operator fusion is only supported for shuffle repartition.
+    if shuffle:
+        assert "DoRead->MapBatches->Repartition" in ds.stats()
+    else:
+        assert "DoRead->MapBatches->Repartition" not in ds.stats()
+        assert "DoRead->MapBatches" in ds.stats()
+        assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
 
@@ -1258,7 +1261,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert isinstance(ray_datasets, dict)
 
     for ds_key, ds in ray_datasets.items():
-        assert isinstance(ds, ray.data.Datastream)
+        assert isinstance(ds, ray.data.Dataset)
         # `ds.take_all()` triggers execution with new backend, which is
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
@@ -1273,7 +1276,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         _check_usage_record(["FromHuggingFace"])
 
     ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Datastream)
+    assert isinstance(ray_dataset, ray.data.Dataset)
     assert len(ray_dataset.take_all()) > 0
     assert "FromArrowRefs" in ray_dataset.stats()
     assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
@@ -1359,7 +1362,7 @@ def test_blocks_to_input_buffer_op_name(
     ray_start_regular_shared,
     enable_streaming_executor,
 ):
-    ds: ray.data.Datastream = ray.data.range(10)
+    ds: ray.data.Dataset = ray.data.range(10)
     blocks, _, _ = ds._plan._optimize()
     assert hasattr(blocks, "_tasks"), blocks
     physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)

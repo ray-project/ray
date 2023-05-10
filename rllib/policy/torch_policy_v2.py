@@ -1110,15 +1110,27 @@ class TorchPolicyV2(Policy):
         extra_fetches = None
         if isinstance(self.model, RLModule):
             if explore:
+                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                actions = action_dist.sample()
+                logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_inference_action_dist_cls()
                 fwd_out = self.model.forward_inference(input_dict)
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                action_dist = action_dist.to_deterministic()
+                actions = action_dist.sample()
+                logp = None
+
             # Anything but actions and state_out is an extra fetch.
-            actions = fwd_out.pop(SampleBatch.ACTIONS)
             state_out = fwd_out.pop("state_out", {})
             extra_fetches = fwd_out
-            logp = fwd_out.get(SampleBatch.ACTION_LOGP)
-            dist_inputs = None
+            dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         elif is_overridden(self.action_sampler_fn):
             action_dist = None
             actions, logp, dist_inputs, state_out = self.action_sampler_fn(
@@ -1163,7 +1175,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if extra_fetches is None and not isinstance(self.model, RLModule):
+        if extra_fetches is None:
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )

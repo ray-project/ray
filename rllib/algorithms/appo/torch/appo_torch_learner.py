@@ -36,15 +36,11 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
-        action_dist_class = self.module[module_id].unwrapped().action_dist_cls
-
-        target_policy_dist = action_dist_class.from_logits(
+        action_dist_cls_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
+        target_policy_dist = action_dist_cls_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-        old_target_policy_dist = action_dist_class.from_logits(
-            fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
-        )
-
+        old_target_policy_dist = action_dist_cls_train.from_logits(fwd_out[OLD_ACTION_DIST_LOGITS_KEY])
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )

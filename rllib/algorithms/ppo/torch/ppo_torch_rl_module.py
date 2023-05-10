@@ -40,8 +40,7 @@ class PPOTorchRLModule(PPORLModule, TorchRLModule):
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_dist = self.action_dist_cls.from_logits(action_logits)
-        output[SampleBatch.ACTIONS] = action_dist.to_deterministic().sample()
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
@@ -75,14 +74,11 @@ class PPOTorchRLModule(PPORLModule, TorchRLModule):
 
         # Policy head
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        action_dist = self.action_dist_cls.from_logits(logits=action_logits)
-        actions = action_dist.sample()
-        output[SampleBatch.ACTIONS] = actions
-        output[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
+
         return output
 
+    @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
