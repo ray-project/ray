@@ -268,35 +268,13 @@
       python ./ci/run/bazel_sharding/bazel_sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=-post_wheel_build,-py37,-gpu
+      --tag_filters=-post_wheel_build,-gpu
       python/ray/serve/...
       > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-post_wheel_build,-py37,-gpu
+      --test_tag_filters=-post_wheel_build,-gpu
       $(cat test_shard.txt)
-
-
-- label: ":serverless: Serve Tests (Python 3.7)"
-  conditions:
-    [
-        "RAY_CI_SERVE_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-    ]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - echo "--- Setting up Python 3.7 environment."
-    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
-    # Specifying above somehow messes up the Ray install.
-    # Uninstall and re-install Ray so that we can use Ray Client.
-    # (Remove thirdparty_files to sidestep an issue with psutil.)
-    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
-    - ./ci/ci.sh build
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=team:serve
-      python/ray/serve/test_gradio
-      python/ray/serve/test_gradio_visualization
 
 - label: ":python: Minimal install 3.7"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -518,7 +496,7 @@
     #- docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
       #rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/build/test-worker-in-container.sh
 
-- label: ":kubernetes: operator"
+- label: ":kubernetes: operator (Python 3.7)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: medium
   commands:
@@ -529,7 +507,7 @@
         kind delete cluster
       }
       trap cleanup EXIT
-    - echo "--- Setting up Python 3.7 environment."
+    - ./ci/env/install-minimal.sh 3.7
     - ./ci/env/install-dependencies.sh
     # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client.
@@ -560,7 +538,6 @@
 - label: ":book: Documentation"
   commands:
     - export LINT=1
-    - echo "--- Setting up Python 3.7 environment."
     - ./ci/env/install-dependencies.sh
     # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client
@@ -586,7 +563,7 @@
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
     - python ./ci/build/build-multinode-image.py rayproject/ray:nightly-py37-cpu rayproject/ray:multinode-py37
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=multinode,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
+      --test_tag_filters=multinode,-example,-flaky,-soft_imports,-gpu_only,-rllib
       python/ray/tune/...
       --test_env=RAY_HAS_SSH="1"
       --test_env=RAY_DOCKER_IMAGE="rayproject/ray:multinode-py37"
@@ -621,11 +598,13 @@
       - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
 
 
+# These tests install requirements_legacy_compat.txt which are the
+# lower bound of dependencies we support.
 - label: ":cold_face: :python: Ray Python 3.7 legacy dependency ML compatibility tests"
   conditions:
     ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
   instance_size: large
-  parallelism: 2
+  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-minimal.sh 3.7
@@ -648,11 +627,13 @@
       $(cat test_shard.txt)
 
 
+# These tests install requirements_py37_compat.txt which are the
+# upper bound of Python 3.7 dependencies we support.
 - label: ":cold_face: :python: Ray Python 3.7 ML compatibility tests"
   conditions:
     ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
   instance_size: large
-  parallelism: 2
+  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-minimal.sh 3.7
@@ -672,4 +653,83 @@
       } > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
+      $(cat test_shard.txt)
+
+
+- label: ":cold_face: :python: :brain: Python 3.7 RLlib: tests/ dir"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
+  parallelism: 2
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - ./ci/env/env_info.sh
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
+
+- label: ":cold_face: :python: :brain: Python 3.7 RLlib: Learning tests Pytorch (With Ray Data)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: large
+  commands:
+    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-tf_only,-tf2_only
+      --test_arg=--framework=torch
+      rllib/...
+
+
+- label: ":cold_face: :python: :brain: Python 3.7 RLlib: Learning tests TF2 (With Ray Data)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: large
+  commands:
+    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-torch_only
+      --test_arg=--framework=tf2
+      rllib/...
+
+
+- label: ":cold_face: :python: :serverless: Python 3.7 Serve Tests"
+  parallelism: 3
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+        "RAY_CI_ML_AFFECTED",
+    ]
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
+    - ./ci/env/env_info.sh
+    - >-
+      set -x;
+      python ./ci/run/bazel_sharding/bazel_sharding.py
+      --exclude_manual
+      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
+      --tag_filters=-post_wheel_build,-gpu
+      python/ray/serve/...
+      > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=-post_wheel_build,-gpu
       $(cat test_shard.txt)
