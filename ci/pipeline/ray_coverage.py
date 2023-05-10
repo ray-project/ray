@@ -75,10 +75,10 @@ def _upload_coverage_info(coverage_file: str) -> None:
 
 
 def _run_test(
-        test_target: str, 
-        coverage_file: str, 
-        source_dir: str, 
-        test_tag_filters: Optional[str],
+    test_target: str,
+    coverage_file: str,
+    source_dir: str,
+    test_tag_filters: Optional[str],
 ) -> None:
     """
     Run test target serially using bazel and compute coverage data using pycov.
@@ -103,7 +103,8 @@ def _run_test(
             "--test_env",
             f"COVERAGE_FILE={coverage_file}",
             "--cache_test_results=no",
-        ] + additional_bazel_flags
+        ]
+        + additional_bazel_flags
     )
 
 

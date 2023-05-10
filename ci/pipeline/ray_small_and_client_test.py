@@ -15,6 +15,7 @@ from typing import List, Set
 
 S3_BUCKET_FILE_PREFIX = "ray_python_small_client.cov"
 
+
 @click.command()
 @click.option(
     "--artifact-dir",
@@ -46,25 +47,34 @@ def _run_tests(test_targets: Set[str]) -> None:
     """
     Run the tests.
     """
-    subprocess.check_call([
-        "DL=1", 
-        "./ci/env/install-dependencies.sh",
-    ])
-    subprocess.check_call([
-        "bash",
-        "./ci/ci.sh",
-        "prepare_docker",
-    ])
-    subprocess.check_call([
-        "./ci/env/env_info.sh",
-    ])
-    subprocess.check_call([
-        "bazel", 
-        "test", 
-        "--config=ci", 
-        "$(./ci/run/bazel_export_options)", 
-        "--test_tag_filters=client_tests,small_size_python_tests",
-    ] + list(test_targets))
+    subprocess.check_call(
+        [
+            "DL=1",
+            "./ci/env/install-dependencies.sh",
+        ]
+    )
+    subprocess.check_call(
+        [
+            "bash",
+            "./ci/ci.sh",
+            "prepare_docker",
+        ]
+    )
+    subprocess.check_call(
+        [
+            "./ci/env/env_info.sh",
+        ]
+    )
+    subprocess.check_call(
+        [
+            "bazel",
+            "test",
+            "--config=ci",
+            "$(./ci/run/bazel_export_options)",
+            "--test_tag_filters=client_tests,small_size_python_tests",
+        ]
+        + list(test_targets)
+    )
 
 
 def _get_test_targets_for_changed_files(
@@ -109,7 +119,7 @@ def _get_test_targets_for_changed_files(
         context = data["contexts"]
         for tests in context.values():
             for test in tests:
-                test_paths = test.split('::')[0].split('/')
+                test_paths = test.split("::")[0].split("/")
                 test_targets.add(
                     f"//{'/'.join(test_paths[:-1])}:{test_paths[-1][:-3]}",
                 )
