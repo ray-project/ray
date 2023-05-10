@@ -1786,24 +1786,24 @@ def from_huggingface(
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
-            num_blocks=1,
-            num_rows=3257,
-            schema={text: string, label: int64}
+             num_blocks=1,
+             num_rows=3257,
+             schema={text: string, label: int64}
         ), 'test': MaterializedDataset(
-            num_blocks=1,
-            num_rows=1421,
-            schema={text: string, label: int64}
+             num_blocks=1,
+             num_rows=1421,
+             schema={text: string, label: int64}
         ), 'validation': MaterializedDataset(
-            num_blocks=1,
-            num_rows=374,
-            schema={text: string, label: int64}
+             num_blocks=1,
+             num_rows=374,
+             schema={text: string, label: int64}
         )}
         >>> ray_ds = ray.data.from_huggingface(hf_dataset["train"])
         >>> ray_ds
         MaterializedDataset(
-            num_blocks=1,
-            num_rows=3257,
-            schema={text: string, label: int64}
+             num_blocks=1,
+             num_rows=3257,
+             schema={text: string, label: int64}
         )
 
     Args:
