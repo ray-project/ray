@@ -1,4 +1,3 @@
-import abc
 import pathlib
 import sys
 from dataclasses import dataclass, field
@@ -94,8 +93,7 @@ class TorchCompileConfig:
 class TorchRLModule(nn.Module, RLModule):
     """A base class for RLlib torch RLModules.
 
-    Note that the `_forward` methods of this class are meant to be 'torch.compiled'
-    individually:
+    Note that the `_forward` methods of this class can be 'torch.compiled' individually:
         - TorchRLModule._forward_train()
         - TorchRLModule._forward_inference()
         - TorchRLModule._forward_exploration()
@@ -104,6 +102,7 @@ class TorchRLModule(nn.Module, RLModule):
     distributions inside these methods should be avoided when using torch.compile.
     When in doubt, you can use torch.dynamo.explain() to check whether a compiled
     method has broken up into multiple sub-graphs.
+    Compiling these methods can bring speedups under certain conditions.
     """
 
     framwork: str = "torch"
@@ -115,67 +114,30 @@ class TorchRLModule(nn.Module, RLModule):
         # Whether to retrace torch compiled forward methods on set_weights.
         self._retrace_on_set_weights = False
 
+    @override(RLModule)
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during evaluation, called from the sampler.
-
-        This method should not be overriden to implement a custom forward inference
-        method. Instead, override the _forward_inference method.
-
-        Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_inference().
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            The output of the forward pass. This output should comply with the
-            ouptut_specs_inference().
-        """
         # If this forward method was compiled, we call the compiled version.
         if hasattr(self, "_compiled_forward_inference"):
             return self._compiled_forward_inference(batch, **kwargs)
         return self._forward_inference(batch, **kwargs)
 
+    @override(RLModule)
     @check_input_specs("_input_specs_exploration")
     @check_output_specs("_output_specs_exploration")
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during exploration, called from the sampler.
-
-        This method should not be overriden to implement a custom forward exploration
-        method. Instead, override the _forward_exploration method.
-
-        Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_exploration().
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            The output of the forward pass. This output should comply with the
-            ouptut_specs_exploration().
-        """
         # If this forward method was compiled, we call the compiled version.
         if hasattr(self, "_compiled_forward_exploration"):
             return self._compiled_forward_exploration(batch, **kwargs)
         return self._forward_exploration(batch, **kwargs)
 
+    @override(RLModule)
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during training called from the learner. This method should
-        not be overriden. Instead, override the _forward_train method.
-
-        Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_train().
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            The output of the forward pass. This output should comply with the
-            ouptut_specs_train().
-        """
         # If this forward method was compiled, we call the compiled version.
         if hasattr(self, "_compiled_forward_train"):
             return self._compiled_forward_train(batch, **kwargs)
@@ -183,8 +145,15 @@ class TorchRLModule(nn.Module, RLModule):
 
     def compile_forward_train(
         self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
-    ):
-        """Compiles the forward_train method."""
+    ) -> None:
+        """Compiles the forward_train method.
+
+        Args:
+            mode: The torch.dynamo mode to use.
+            backend: The torch.dynamo backend to use.
+            retrace_on_set_weights: Whether to retrace the compiled method on
+                every call of `TorchRLModule.set_state()`.
+        """
         self._compiled_forward_train = torch.compile(
             self._forward_train, mode=mode, backend=backend
         )
@@ -192,8 +161,15 @@ class TorchRLModule(nn.Module, RLModule):
 
     def compile_forward_inference(
         self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
-    ):
-        """Compiles the forward_inference method."""
+    ) -> None:
+        """Compiles the forward_inference method.
+
+        Args:
+            mode: The torch.dynamo mode to use.
+            backend: The torch.dynamo backend to use.
+            retrace_on_set_weights: Whether to retrace the compiled method on
+                every call of `TorchRLModule.set_state()`.
+        """
         self._compiled_forward_inference = torch.compile(
             self._forward_inference, mode=mode, backend=backend
         )
@@ -201,21 +177,19 @@ class TorchRLModule(nn.Module, RLModule):
 
     def compile_forward_exploration(
         self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
-    ):
-        """Compiles the forward_exploration method."""
+    ) -> None:
+        """Compiles the forward_exploration method.
+
+        Args:
+            mode: The torch.dynamo mode to use.
+            backend: The torch.dynamo backend to use.
+            retrace_on_set_weights: Whether to retrace the compiled method on
+                every call of `TorchRLModule.set_state()`.
+        """
         self._compiled_forward_exploration = torch.compile(
             self._forward_exploration, mode=mode, backend=backend
         )
         self._retrace_on_set_weights = retrace_on_set_weights
-
-    @abc.abstractmethod
-    def get_action_dist_cls(self) -> Type[TorchDistribution]:
-        """Returns the action distribution class for this RL Module.
-
-        This class is used to create action distributions from outputs of the forward
-        methods. If the rare case that no action distribution class is needed,
-        this method can return None.
-        """
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.

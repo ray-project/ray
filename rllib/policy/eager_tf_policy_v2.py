@@ -852,8 +852,6 @@ class EagerTFPolicyV2(Policy):
             input_dict[STATE_IN] = state_batches
             input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
-            action_dist_class = self.model.get_action_dist_cls()
-
             if explore:
                 action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)

@@ -217,7 +217,6 @@ class TorchLearner(Learner):
         module = self._module[module_id]
         if isinstance(module, TorchRLModule):
             self._module[module_id].to(self._device)
-
             if self.distributed:
                 self._module.add_module(
                     module_id, TorchDDPRLModule(module), override=True

@@ -412,7 +412,6 @@ class Policy(metaclass=ABCMeta):
         spec = self.config["__marl_module_spec"]
         if isinstance(spec, SingleAgentRLModuleSpec):
             module = spec.build()
-
         else:
             # filter the module_spec to only contain the policy_id of this policy
             marl_spec = type(spec)(

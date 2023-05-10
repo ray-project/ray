@@ -1113,8 +1113,6 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = None
         if isinstance(self.model, RLModule):
-            action_dist_class = self.model.get_action_dist_cls()
-
             if explore:
                 action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
