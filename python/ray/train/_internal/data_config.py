@@ -16,29 +16,17 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-def default_ingest_options() -> ExecutionOptions:
-    """The default Ray Data options used for data ingest.
-
-    We enable output locality, which means that Ray Data will try to place tasks on
-    the node the data will be consumed. We also set the object store memory limit to a
-    fixed smaller value, to avoid using too much memory per Train worker.
-    """
-
-    return ExecutionOptions(
-        locality_with_output=True,
-        resource_limits=ExecutionResources(object_store_memory=2e9),
-    )
-
-
 @PublicAPI
 class DataConfig:
     def __init__(
         self,
         datasets_to_split: Optional[List[str]] = None,
-        execution_options: ExecutionOptions = default_ingest_options,
+        execution_options: Optional[ExecutionOptions] = None,
     ):
-        self._datasets_to_split = datasets_to_split or []
-        self._execution_options = execution_options
+        self._datasets_to_split: List[str] = datasets_to_split or []
+        self._execution_options: ExecutionOptions = (
+            execution_options or DataConfig.default_ingest_options()
+        )
 
     @DeveloperAPI
     def configure(
@@ -65,6 +53,20 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
+
+    @staticmethod
+    def default_ingest_options() -> ExecutionOptions:
+        """The default Ray Data options used for data ingest.
+
+        We enable output locality, which means that Ray Data will try to place tasks on
+        the node the data will be consumed. We also set the object store memory limit
+        to a fixed smaller value, to avoid using too much memory per Train worker.
+        """
+
+        return ExecutionOptions(
+            locality_with_output=True,
+            resource_limits=ExecutionResources(object_store_memory=2e9),
+        )
 
     def _legacy_preprocessing(
         self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
