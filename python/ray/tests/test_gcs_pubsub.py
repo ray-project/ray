@@ -169,7 +169,7 @@ def test_two_subscribers(ray_start_regular):
     num_messages = 100
 
     errors = []
-    error_subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    error_subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     # Make sure subscription is registered before publishing starts.
     error_subscriber.subscribe()
 
@@ -221,7 +221,7 @@ def test_two_subscribers(ray_start_regular):
     assert not t2.is_alive(), str(logs)
 
     for i in range(0, num_messages):
-        assert errors[i].error_message == f"error {i}", str(errors)
+        assert errors[i]["error_message"] == f"error {i}", str(errors)
         assert logs[i]["lines"][0] == f"log {i}", str(logs)
 
 

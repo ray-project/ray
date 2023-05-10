@@ -1825,13 +1825,16 @@ cdef class GcsErrorSubscriber:
         check_status(self.inner.get().Connect())
 
     def subscribe(self):
-        check_status(self.inner.get().Subscribe())
+        with nogil:
+            check_status(self.inner.get().Subscribe())
 
     def poll(self):
         cdef:
             CErrorTableData error_data
             c_string key_id
-        check_status(self.inner.get().PollError(&key_id, &error_data))
+
+        with nogil:
+            check_status(self.inner.get().PollError(&key_id, &error_data))
 
         return (bytes(key_id), {"error_message": error_data.error_message().decode()})
 

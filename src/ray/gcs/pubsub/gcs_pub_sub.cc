@@ -321,7 +321,8 @@ Status PythonGcsSubscriber::Connect() {
 }
 
 Status PythonGcsSubscriber::Subscribe() {
-  // TODO: Add locking
+  absl::MutexLock lock(&mu_);
+
   grpc::ClientContext context;
 
   rpc::GcsSubscriberCommandBatchRequest request;
@@ -339,6 +340,8 @@ Status PythonGcsSubscriber::Subscribe() {
 }
 
 Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* data) {
+  absl::MutexLock lock(&mu_);
+
   grpc::ClientContext context;
 
   rpc::GcsSubscriberPollRequest request;
@@ -349,7 +352,12 @@ Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* 
   rpc::GcsSubscriberPollReply reply;
   grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
 
+  if (publisher_id_ != reply.publisher_id()) {
+    publisher_id_ = reply.publisher_id();
+  }
+
   for (auto& message : reply.pub_messages()) {
+    max_processed_sequence_id_ = message.sequence_id();
     // TODO: Drop out of order messages
     queue_.emplace_back(std::move(message));
   }

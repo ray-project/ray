@@ -197,6 +197,8 @@ class RAY_EXPORT PythonGcsSubscriber {
   Status PollFunctionKey(std::string* key_id, rpc::PythonFunction* data);
 
  private:
+  mutable absl::Mutex mu_;
+
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;
   std::string gcs_address_;
