@@ -729,6 +729,59 @@ def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
     ), "Too much time spent in pulling objects, check the amount of time in retries"
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        {
+            "object_store_memory": 1 * 1024 ** 3,
+            "_system_config": {
+                "object_spilling_threshold": 1.0,
+                # disable unlimited
+                "oom_grace_period_s": 3600,
+                # force argument to be put into object store
+                "max_direct_call_object_size": 512,
+                "object_manager_default_chunk_size": 10 * 1024,
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_push_large_number_and_small_size_object(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(
+        object_store_memory=1 * 1024 ** 3,
+        resources={"remote_node": 8},
+        num_cpus=8,
+    )
+    def get_small_object():
+        # 1KB
+        return np.random.rand(1, 1024 // 8)
+
+    TASK_NUMBER = 100
+    ARG_NUMBER = 1000
+
+    @ray.remote(resources={"remote_node": 1})
+    def get_sum(ans, *args):
+        for i in args:
+            ans -= i.sum()
+        return abs(ans) < 1e-6
+
+    all_args = []
+    all_sums = []
+    for _ in range(TASK_NUMBER * ARG_NUMBER):
+        data = get_small_object()
+        all_args.append(ray.put(data))
+        all_sums.append(data.sum())
+
+    st1 = time.time()
+    tasks = []
+    for index in range(TASK_NUMBER):
+        ans = sum(all_sums[index * ARG_NUMBER:(index+1)*ARG_NUMBER])
+        args = all_args[index * ARG_NUMBER:(index+1)*ARG_NUMBER]
+        tasks.append(get_sum.remote(ans, *args))
+    assert all(ray.get(tasks))
+
+
 if __name__ == "__main__":
     import sys
     import os

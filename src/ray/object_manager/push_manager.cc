@@ -29,11 +29,12 @@ void PushManager::StartPush(const NodeID &dest_id,
     RAY_LOG(DEBUG) << "Duplicate push request " << dest_id << ", " << obj_id
                    << ", resending all the chunks.";
     auto push_state = push_info_[dest_id].first[obj_id];
-    if (push_state->IsNoChunk()) {
+    if (push_state->HasNoChunkRemained()) {
       push_info_[dest_id].second.push(push_state);
     }
     chunks_remaining_ += push_state->ResendAllChunks(send_chunk_fn);
   } else {
+    num_pushes_in_flight_ += 1;
     chunks_remaining_ += num_chunks;
     auto push_state = std::make_shared<PushState>(num_chunks, send_chunk_fn, obj_id);
     if (push_info_.contains(dest_id)) {
@@ -58,6 +59,7 @@ void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id)
     if (push_info_[dest_id].first.empty()) {
       RAY_CHECK(push_info_[dest_id].second.empty());
       push_info_.erase(dest_id);
+      num_pushes_in_flight_ -= 1;
     }
     RAY_LOG(DEBUG) << "Push for " << dest_id << ", " << obj_id
                    << " completed, remaining: " << NumPushesInFlight();
@@ -87,7 +89,7 @@ void PushManager::ScheduleRemainingPushes() {
                       << node_id << ", chunks in flight " << NumChunksInFlight()
                       << " / " << max_chunks_in_flight_
                       << " max, remaining chunks: " << NumChunksRemaining();
-        if (info->IsNoChunk()) it->second.second.pop();
+        if (info->HasNoChunkRemained()) it->second.second.pop();
       }
 
       it++;

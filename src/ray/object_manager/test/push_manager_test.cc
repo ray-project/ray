@@ -203,6 +203,37 @@ TEST(TestPushManager, TestMultipleTransfers) {
   }
 }
 
+TEST(TestPushManager, TestResendWholeObject) {
+  std::vector<int> results;
+  results.resize(5);
+  auto node_id = NodeID::FromRandom();
+  auto obj_id = ObjectID::FromRandom();
+  PushManager pm(5);
+  pm.StartPush(node_id, obj_id, 5, [&](int64_t chunk_id) { results[chunk_id] = 1; });
+  ASSERT_EQ(pm.NumChunksInFlight(), 5);
+  ASSERT_EQ(pm.NumChunksRemaining(), 5);
+  ASSERT_EQ(pm.NumPushesInFlight(), 1);
+  pm.StartPush(node_id, obj_id, 5, [&](int64_t chunk_id) { results[chunk_id] = 2; });
+  for (size_t i = 0; i < 5; i++) {
+    pm.OnChunkComplete(node_id, obj_id);
+  }
+  ASSERT_EQ(pm.NumChunksInFlight(), 5);
+  ASSERT_EQ(pm.NumChunksRemaining(), 5);
+  ASSERT_EQ(pm.NumPushesInFlight(), 1);
+  for (size_t i = 0; i < 5; i++) {
+    ASSERT_EQ(results[i], 2);
+  }
+  for (size_t i = 0; i < 5; i++) {
+    pm.OnChunkComplete(node_id, obj_id);
+  }
+  ASSERT_EQ(pm.NumChunksInFlight(), 0);
+  ASSERT_EQ(pm.NumChunksRemaining(), 0);
+  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+  for (size_t i = 0; i < 5; i++) {
+    ASSERT_EQ(results[i], 2);
+  }
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

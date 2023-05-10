@@ -65,7 +65,7 @@ class PushManager {
   int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
   /// Return the number of pushes currently in flight. For testing only.
-  int64_t NumPushesInFlight() const { return push_info_.size(); };
+  int64_t NumPushesInFlight() const { return num_pushes_in_flight_; };
 
   /// Record the internal metrics.
   void RecordMetrics() const;
@@ -119,7 +119,7 @@ class PushManager {
       return true;
     }
 
-    bool IsNoChunk() { return num_chunks_to_send == 0; }
+    bool HasNoChunkRemained() { return num_chunks_to_send == 0; }
 
     /// Notify that a chunk is successfully sent.
     void OnChunkComplete() { --num_chunks_inflight; }
@@ -144,6 +144,9 @@ class PushManager {
 
   /// Tracks all pushes with chunk transfers in flight.
   absl::flat_hash_map<NodeID, std::pair<absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>, std::queue<std::shared_ptr<PushState>>>> push_info_;
+
+  /// Num pushes in flight
+  int64_t num_pushes_in_flight_ = 0;
 };
 
 }  // namespace ray
