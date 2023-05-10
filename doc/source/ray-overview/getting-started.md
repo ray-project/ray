@@ -3,64 +3,19 @@
 
 (gentle-intro)=
 
-# Getting Started Guide
-This guide gives a quick tour of Ray's features.
+# Getting Started
+Use Ray to scale applications on your laptop or on the cloud. Choose a guide that fits your use case. 
+* Scale end-to-end ML applications: Ray AI Runtime Quickstart
+* Scale single ML workloads: Ray Libraries Quickstart
+* Scale general Python applications: Ray Core Quickstart
+* Deploy to the cloud: Ray Clusters Quickstart
+* Debug and monitor applications: Debugging and Monitoring Quickstart
+## Ray AI Runtime Quickstart
 
-## Starting a local Ray cluster
-To get started, install, import, and initialize Ray. Most of the examples in this guide are based on Python, and some examples use Ray Core in Java.
-
-````{eval-rst}
-.. grid:: 1 2 2 2
-    :gutter: 1
-    :class-container: container pb-3
-    
-    .. grid-item-card::
-
-        Python
-        ^^^
-        To use Ray in Python, install it with
-        ```
-        pip install -U ray[air]
-        ```
-    
-    .. grid-item-card::
-
-        Java
-        ^^^
-        
-        To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and
-        [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
-
-````
-
-
-
-```{raw} html
-
-<div class="termynal" data-termynal>
-    <span data-ty="input">pip install -U "ray[air]"</span>
-    <span data-ty="progress"></span>
-    <span data-ty>Successfully installed ray</span>
-    <span data-ty="input">python</span>
-    <span data-ty="input" data-ty-prompt=">>>">import ray; ray.init()</span>
-    <span data-ty>
-        ... INFO worker.py:1509 -- Started a local Ray instance.
-        View the dashboard at 127.0.0.1:8265
-        ...
-    </span>
-</div>
+Explore Ray's full suite of libraries for end-to-end ML pipelines, with the `air` packages:
 
 ```
-
-
-To build Ray from source or with Docker, see the detailed [installation instructions](installation.rst).
-
-## Ray AI Runtime Quick Start
-
-To use Ray's AI Runtime install Ray with the optional extra `air` packages:
-
-```
-pip install "ray[air]"
+pip install -U "ray[air]"
 ```
 
 `````{dropdown} Efficiently process your data into features.
@@ -137,11 +92,9 @@ Learn more about Ray AIR
 ```
 `````
 
+## Ray Libraries Quickstart
 
-## Ray Libraries Quick Start
-
-Ray has a rich ecosystem of libraries and frameworks built on top of it. 
-Simply click on the dropdowns below to see examples of our most popular libraries.
+Use individual libraries for single ML workloads, without having to install the full AI Runtime package. Click on the dropdowns for your workload below. 
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Distributed ML Preprocessing
 :animate: fade-in-slide-down
@@ -154,7 +107,7 @@ They are compatible with a variety of file formats, datasources, and distributed
 To get started with this example install Ray Data as follows.
 
 ```bash
-pip install "ray[data]" dask
+pip install -U "ray[default,data]" dask
 ```
 ````
 
@@ -427,11 +380,11 @@ Learn more about Ray RLlib
 
 `````
 
-## Ray Core Quick Start
+## Ray Core Quickstart
 
 Ray Core provides simple primitives for building and running distributed applications.
-Below you find examples that show you how to turn your functions and classes easily into Ray tasks and actors,
-for both Python and Java.
+Below are examples of how to turn functions and classes easily into Ray tasks and actors,
+for Python and Java.
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
@@ -610,10 +563,9 @@ Learn more about Ray Core
 
 ``````
 
-## Ray Cluster Quick Start
+## Ray Cluster Quickstart
 
-You can deploy your applications on Ray clusters, often with minimal code changes to your existing code.
-See an example of this below.
+Deploy your applications on Ray clusters, often with minimal code changes to your existing code.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on AWS
 :animate: fade-in-slide-down
@@ -658,9 +610,9 @@ Learn more about launching Ray Clusters
 
 `````
 
-## Debugging and Monitoring Quick Start
+## Debugging and Monitoring Quickstart
 
-You can use built-in observability tools to monitor and debug Ray applications and clusters.
+Use built-in observability tools to monitor and debug Ray applications and clusters.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
 :animate: fade-in-slide-down
