@@ -30,6 +30,8 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/dashboard_agent_manager.h"
+#include "ray/raylet/runtime_env_agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
@@ -110,6 +112,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  /// The command used to start runtime env agent.
+  std::string runtime_env_agent_command;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -717,7 +721,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for wait requests.
   WaitManager wait_manager_;
 
-  std::shared_ptr<AgentManager> agent_manager_;
+  std::shared_ptr<DashboardAgentManager> agent_manager_;
+  std::shared_ptr<RuntimeEnvAgentManager> runtime_env_agent_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
@@ -728,6 +733,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The agent manager RPC service.
   std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
   rpc::AgentManagerGrpcService agent_manager_service_;
+
+  /// The runtime env agent manager RPC service.
+  std::unique_ptr<rpc::RuntimeEnvAgentManagerServiceHandler>
+      runtime_env_agent_manager_service_handler_;
+  rpc::RuntimeEnvAgentManagerGrpcService runtime_env_agent_manager_service_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

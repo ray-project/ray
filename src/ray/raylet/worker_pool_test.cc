@@ -94,7 +94,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       const rpc::ClientCallback<rpc::GetOrCreateRuntimeEnvReply> &callback) {
     rpc::GetOrCreateRuntimeEnvReply reply;
     if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
-      reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+      reply.set_status(rpc::RUNTIME_ENV_AGENT_RPC_STATUS_FAILED);
       reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
       auto it = runtime_env_reference.find(request.serialized_runtime_env());
@@ -104,7 +104,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
         runtime_env_reference[request.serialized_runtime_env()] += 1;
       }
 
-      reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+      reply.set_status(rpc::RUNTIME_ENV_AGENT_RPC_STATUS_OK);
       reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
     callback(Status::OK(), reply);
@@ -118,7 +118,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     runtime_env_reference[request.serialized_runtime_env()] -= 1;
     RAY_CHECK(runtime_env_reference[request.serialized_runtime_env()] >= 0);
     rpc::DeleteRuntimeEnvIfPossibleReply reply;
-    reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+    reply.set_status(rpc::RUNTIME_ENV_AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
 };
@@ -484,7 +484,7 @@ class WorkerPoolTest : public ::testing::Test {
     std::vector<std::string> agent_commands = {};
     const NodeID node_id = NodeID::FromRandom();
     auto options = AgentManager::Options({node_id, agent_commands});
-    auto agent_manager = std::make_shared<AgentManager>(
+    auto agent_manager = std::make_shared<RuntimeEnvAgentManager>(
         std::move(options),
         /*delay_executor=*/
         [this](std::function<void()> task, uint32_t delay_ms) {
@@ -495,14 +495,15 @@ class WorkerPoolTest : public ::testing::Test {
           return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
               new MockRuntimeEnvAgentClient());
         },
+        false,
         false);
-    rpc::RegisterAgentRequest request;
+    rpc::RegisterRuntimeEnvAgentRequest request;
     // Set agent port to a nonzero value to avoid invalid agent client.
     request.set_agent_port(12345);
-    rpc::RegisterAgentReply reply;
+    rpc::RegisterRuntimeEnvAgentReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-    agent_manager->HandleRegisterAgent(request, &reply, send_reply_callback);
+    agent_manager->HandleRegisterRuntimeEnvAgent(request, &reply, send_reply_callback);
     worker_pool_->SetAgentManager(agent_manager);
   }
 

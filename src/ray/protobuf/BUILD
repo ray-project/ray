@@ -281,6 +281,23 @@ cc_proto_library(
     deps = [":agent_manager_proto"],
 )
 
+# Runtime env manager gRPC lib.
+proto_library(
+    name = "runtime_env_agent_manager_proto",
+    srcs = ["runtime_env_agent_manager.proto"],
+    deps = [],
+)
+
+python_grpc_compile(
+    name = "runtime_env_agent_manager_py_proto",
+    deps = [":runtime_env_agent_manager_proto"],
+)
+
+cc_proto_library(
+    name = "runtime_env_agent_manager_cc_proto",
+    deps = [":runtime_env_agent_manager_proto"],
+)
+
 # Ray Client gRPC lib
 proto_library(
     name = "ray_client_proto",
@@ -317,7 +334,7 @@ proto_library(
     srcs = ["runtime_env_agent.proto"],
     deps = [
         ":common_proto",
-        ":agent_manager_proto",
+        ":runtime_env_agent_manager_proto",
         ":runtime_env_common_proto",
     ],
 )

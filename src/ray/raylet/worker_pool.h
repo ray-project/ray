@@ -33,6 +33,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/runtime_env_agent_manager.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -211,7 +212,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void SetNodeManagerPort(int node_manager_port);
 
   /// Set agent manager.
-  void SetAgentManager(std::shared_ptr<AgentManager> agent_manager);
+  void SetAgentManager(std::shared_ptr<RuntimeEnvAgentManager> agent_manager);
 
   /// Handles the event that a job is started.
   ///
@@ -759,7 +760,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// A callback to get the current time.
   const std::function<double()> get_time_;
   /// Agent manager.
-  std::shared_ptr<AgentManager> agent_manager_;
+  std::shared_ptr<RuntimeEnvAgentManager> runtime_env_agent_manager_;
 
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
