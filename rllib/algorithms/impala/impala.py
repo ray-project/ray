@@ -7,6 +7,9 @@ import queue
 import random
 from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
+import numpy as np
+import tree  # pip install dm_tree
+
 import ray
 from ray import ObjectRef
 from ray.rllib import SampleBatch
@@ -963,8 +966,9 @@ class Impala(Algorithm):
                     )
                     results.append(result)
             self._counters.update(self.learner_group.get_in_queue_stats())
+            # If there are results, reduce-mean over each individual value and return.
             if results:
-                return _reduce_impala_results(results)
+                return tree.map_structure(lambda *x: np.mean(x), *results)
 
         # Nothing on the queue -> Don't send requests to learner group
         # or no results ready (from previous `self.learner_group.update()` calls) for
