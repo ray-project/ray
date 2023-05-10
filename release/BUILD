@@ -443,7 +443,7 @@ py_test(
     tags = [
         "release_unit",
         "team:ci",
-    ]
+    ],
     deps = [
         ":ray_release",
         bk_require("pytest"),
