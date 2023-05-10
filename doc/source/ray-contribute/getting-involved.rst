@@ -199,7 +199,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
             self.attr2 = param2
 
         @property
-        def attr3(self):
+        def attr3(self) -> str:
             """Public property of the class.
 
             Properties created with the @property decorator
@@ -207,7 +207,7 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
             """
             return "hello"
 
-        def increment_attr1() -> None
+        def increment_attr1(self) -> None
             """Class methods are similar to regular functions.
 
             See above about how to document functions.
