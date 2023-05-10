@@ -55,6 +55,7 @@ export const getStateApiDownloadLogUrl = (nodeId: string, fileName: string) =>
 
 export const getStateApiLog = async (nodeId: string, fileName: string) => {
   const resp = await get<string>(getStateApiDownloadLogUrl(nodeId, fileName));
+  // TODO(aguo): get rid of this first byte check once we support state-api logs without this streaming byte.
   if (resp.data[0] !== "1") {
     throw new Error(resp.data.substring(1));
   }

@@ -6,13 +6,7 @@ import { UnifiedJob } from "../../type/job";
 import { LogViewer } from "../log/LogViewer";
 
 const useDriverLogs = (
-  job: Pick<
-    UnifiedJob,
-    | "driver_agent_http_address"
-    | "driver_node_id"
-    | "driver_info"
-    | "submission_id"
-  >,
+  job: Pick<UnifiedJob, "driver_node_id" | "submission_id">,
 ) => {
   const { driver_node_id, submission_id } = job;
 
@@ -47,13 +41,7 @@ const useDriverLogs = (
 };
 
 type JobDriverLogsProps = {
-  job: Pick<
-    UnifiedJob,
-    | "driver_agent_http_address"
-    | "driver_node_id"
-    | "driver_info"
-    | "submission_id"
-  >;
+  job: Pick<UnifiedJob, "driver_node_id" | "submission_id">;
 };
 
 export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
