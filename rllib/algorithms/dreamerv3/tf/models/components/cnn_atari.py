@@ -8,7 +8,7 @@ from typing import Optional
 import numpy as np
 import tensorflow as tf
 
-from utils.model_dimensions import get_cnn_multiplier
+from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 
 
 class CNNAtari(tf.keras.Model):

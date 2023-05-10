@@ -8,8 +8,10 @@ from typing import Optional
 import numpy as np
 import tensorflow as tf
 
-from models.components.mlp import MLP
-from models.components.reward_predictor_layer import RewardPredictorLayer
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
+    RewardPredictorLayer,
+)
 
 
 class CriticNetwork(tf.keras.Model):
@@ -83,18 +85,14 @@ class CriticNetwork(tf.keras.Model):
 
     def init_ema(self):
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
-        vars_ema = (
-            self.mlp_ema.variables + self.return_layer_ema.variables
-        )
+        vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
         assert len(vars) == len(vars_ema)
         for var, var_ema in zip(vars, vars_ema):
             var_ema.assign(var)
 
     def update_ema(self):
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
-        vars_ema = (
-            self.mlp_ema.variables + self.return_layer_ema.variables
-        )
+        vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
         assert len(vars) == len(vars_ema)
         for var, var_ema in zip(vars, vars_ema):
             var_ema.assign(self.ema_decay * var_ema + (1.0 - self.ema_decay) * var)

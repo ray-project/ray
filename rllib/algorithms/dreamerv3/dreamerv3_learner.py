@@ -8,23 +8,40 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 from dataclasses import dataclass
+from typing import Any, Dict
 
-from ray.rllib.core.learner.learner import LearnerHPs
+from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
+from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.utils.annotations import override
 
 
 @dataclass
-class DreamerV3Hyperparmameters(LearnerHPs):
-    """Hyper-parameters for a DreamerV3Learner.
+class DreamerV3Hyperparameters(LearnerHyperparameters):
+    """Hyperparameters for the DreamerV3Learner sub-classes (framework specific).
 
-    Attributes:
-        model_dimension: The main switch (given as a string such as "S", "M", or "L")
-            for adjusting the overall model size. See [1] (table B) for more
-            information. Individual model settings, such as the sizes of individual
-            layers can still be overwritten by the user.
-        training_ratio: The ratio of replayed steps (used for learning/updating the
-            model) over env steps (from the actual environment, not the dreamed one).
+    These should never be set directly by the user. Instead, use the PPOConfig
+    class to configure your algorithm.
+    See `ray.rllib.algorithms.dreamerv3.dreamerv3::DreamerV3Config::training()` for
+    more details on the individual properties.
     """
 
-    # Main config settings to use for fine-tuning.
-    model_dimension: str = "XS"
-    training_ratio: float = 1024
+    model_dimension: str = None
+    training_ratio: float = None
+
+
+class DreamerV3Learner(Learner):
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    ) -> Dict[str, Any]:
+        """Updates the EMA weights of the critic network."""
+        results = super().additional_update_per_module(
+            module_id,
+            sampled_kl_values=sampled_kl_values,
+            timestep=timestep,
+        )
+
+        # Update EMA weights of the critic.
+        self.module[module_id].dreamer_model.critic.update_ema()
+
+        return results

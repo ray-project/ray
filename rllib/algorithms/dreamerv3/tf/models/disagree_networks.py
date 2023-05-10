@@ -6,8 +6,10 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 
 import tensorflow as tf
 
-from models.components.mlp import MLP
-from models.components.representation_layer import RepresentationLayer
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
+    RepresentationLayer,
+)
 
 
 class DisagreeNetworks(tf.keras.Model):
@@ -18,6 +20,7 @@ class DisagreeNetworks(tf.keras.Model):
 
     TODO
     """
+
     def __init__(self, *, num_networks, model_dimension, intrinsic_rewards_scale):
         super().__init__()
 
@@ -29,14 +32,16 @@ class DisagreeNetworks(tf.keras.Model):
         self.representation_layers = []
 
         for _ in range(self.num_networks):
-            self.mlps.append(MLP(
-                model_dimension=self.model_dimension,
-                output_layer_size=None,
-                trainable=True,
-            ))
-            self.representation_layers.append(RepresentationLayer(
-                model_dimension=self.model_dimension
-            ))
+            self.mlps.append(
+                MLP(
+                    model_dimension=self.model_dimension,
+                    output_layer_size=None,
+                    trainable=True,
+                )
+            )
+            self.representation_layers.append(
+                RepresentationLayer(model_dimension=self.model_dimension)
+            )
 
         # Optimizer.
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-5)
@@ -59,9 +64,7 @@ class DisagreeNetworks(tf.keras.Model):
         N = len(z_predicted_probs_N_B)
         z_predicted_probs_N_B = tf.stack(z_predicted_probs_N_B, axis=0)
         # Flatten z-dims (num_categoricals x num_classes).
-        z_predicted_probs_N_B = tf.reshape(
-            z_predicted_probs_N_B, shape=(N, B, -1)
-        )
+        z_predicted_probs_N_B = tf.reshape(z_predicted_probs_N_B, shape=(N, B, -1))
 
         # Compute stddevs over all disagree nets (axis=0).
         # Mean over last axis ([num categoricals] x [num classes] folded axis).
@@ -69,9 +72,9 @@ class DisagreeNetworks(tf.keras.Model):
             tf.math.reduce_std(z_predicted_probs_N_B, axis=0),
             axis=-1,
         )
-        #TEST:
+        # TEST:
         stddevs_B_mean -= tf.reduce_mean(stddevs_B_mean)
-        #END TEST
+        # END TEST
         return {
             "rewards_intrinsic": stddevs_B_mean * self.intrinsic_rewards_scale,
             "forward_train_outs": forward_train_outs,

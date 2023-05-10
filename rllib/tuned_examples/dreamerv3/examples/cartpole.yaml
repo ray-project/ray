@@ -1,0 +1,16 @@
+cartpole:
+  env: CartPole-v1
+
+  model_dimension: XS
+
+  training_ratio: 1024
+
+  # Run config.
+  # Summary behavior.
+  summary_frequency_train_steps: 10
+  summary_include_histograms: true
+  # Evaluation runs.
+  evaluation_frequency_main_iters: 100
+  evaluation_num_episodes: 10
+  # Model saving.
+  model_save_frequency_main_iters: 1000

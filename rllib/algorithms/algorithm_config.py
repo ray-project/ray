@@ -296,6 +296,9 @@ class AlgorithmConfig(_Config):
         self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
+        # TODO (sven): Clean up the configuration of fully customizable
+        #  env runner classes.
+        self.env_runner_cls = None
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.sample_collector = SimpleListCollector
@@ -394,7 +397,6 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
-        self.worker_cls = None
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -448,6 +450,7 @@ class AlgorithmConfig(_Config):
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
         self.policy_map_cache = DEPRECATED_VALUE
+        self.worker_cls = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -1339,6 +1342,7 @@ class AlgorithmConfig(_Config):
     def rollouts(
         self,
         *,
+        env_runner_cls: Optional[type] = NotProvided,
         num_rollout_workers: Optional[int] = NotProvided,
         num_envs_per_worker: Optional[int] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
@@ -1369,6 +1373,8 @@ class AlgorithmConfig(_Config):
         """Sets the rollout worker configuration.
 
         Args:
+            env_runner_cls: The EnvRunner class to use for environment rollouts (data
+                collection).
             num_rollout_workers: Number of rollout worker actors to create for
                 parallel sampling. Setting this to 0 will force rollouts to be done in
                 the local worker (driver process or the Algorithm's actor when using
@@ -1459,6 +1465,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if env_runner_cls is not NotProvided:
+            self.env_runner_cls = env_runner_cls
         if num_rollout_workers is not NotProvided:
             self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not NotProvided:
@@ -2299,7 +2307,8 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
+        # deprecated
+        worker_cls=None,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2320,11 +2329,17 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
-            worker_cls: Use a custom RolloutWorker type for unit testing purpose.
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if worker_cls is not None:
+            deprecation_warning(
+                old="AlgorithmConfig.debugging(worker_cls=..)",
+                new="AlgorithmConfig.rollouts(env_runner_cls=...)",
+                error=True,
+            )
+
         if logger_creator is not NotProvided:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
@@ -2337,8 +2352,6 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
-        if worker_cls is not NotProvided:
-            self.worker_cls = worker_cls
 
         return self
 

@@ -7,18 +7,44 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
+import dataclasses
+import gc
 import logging
+import tree  # pip install dm_tree
 from typing import Optional, Union
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
+from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Hyperparameters
+from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
+from ray.rllib.algorithms.dreamerv3.utils.summaries import (
+    summarize_actor_train_results,
+    summarize_critic_train_results,
+    summarize_dreamed_trajectory,
+    summarize_forward_train_outs_vs_samples,
+    summarize_sampling_and_replay_buffer,
+    summarize_world_model_train_results,
+)
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import ResultDict
 
 
 logger = logging.getLogger(__name__)
+
+_, tf, _ = try_import_tf()
 
 
 class DreamerV3Config(AlgorithmConfig):
@@ -74,10 +100,7 @@ class DreamerV3Config(AlgorithmConfig):
             "capacity": int(1e6),
         }
 
-        #self.num_pretrain_iterations = 0
-        self.summary_frequency_train_steps = 20
-        self.summary_include_histograms = False
-        self.gc_frequency_train_steps = 100
+        # self.num_pretrain_iterations = 0
         self.batch_size_B = 16
         self.batch_length_T = 64
         self.burn_in_T = 5
@@ -85,7 +108,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.gae_lambda = 0.95  # [1] eq. 7.
         self.entropy_scale = 3e-4  # [1] eq. 11.
         self.return_normalization_decay = 0.99  # [1] eq. 11 and 12.
-        self.symlog_obs = "auto"
+        self._symlog_obs = "auto"
         self.train_critic = True
         self.train_actor = True
         self.use_curiosity = False
@@ -95,11 +118,18 @@ class DreamerV3Config(AlgorithmConfig):
         self.actor_grad_clip_by_global_norm = 100.0
         self.disagree_grad_clip_by_global_norm = 100.0
 
-        # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
+        self.summary_frequency_train_steps = 20
+        self.summary_include_histograms = False
+        self.gc_frequency_train_steps = 100
+
+        # Override some of AlgorithmConfig's default values with DreamerV3-specific
+        # values.
         self.rollout_fragment_length = 1
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Use `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
+        self.env_runner_cls = DreamerV3EnvRunner
+        self.num_rollout_workers = 0
 
         # __sphinx_doc_end__
         # fmt: on
@@ -220,7 +250,7 @@ class DreamerV3Config(AlgorithmConfig):
         if return_normalization_decay is not NotProvided:
             self.return_normalization_decay = return_normalization_decay
         if symlog_obs is not NotProvided:
-            self.symlog_obs = symlog_obs
+            self._symlog_obs = symlog_obs
         if train_critic is not NotProvided:
             self.train_critic = train_critic
         if train_actor is not NotProvided:
@@ -275,21 +305,31 @@ class DreamerV3Config(AlgorithmConfig):
         """Returns whether we have an image observation space or not."""
         return len(self.observation_space.shape) in [2, 3]
 
-    def do_symlog_obs(self) -> bool:
+    @property
+    def symlog_obs(self) -> bool:
         """Returns whether to symlog the observations or not."""
 
         # If our symlog_obs setting is NOT set specifically ("auto"), return True
         # if we don't have an image observation space, otherwise False.
         # TODO (sven): Fix for mixed observations.
         return (
-            not self.is_image_space() if self.symlog_obs == "auto" else self.symlog_obs
+            not self.is_image_space() if self._symlog_obs == "auto" else self._symlog_obs
+        )
+
+    @override(AlgorithmConfig)
+    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return DreamerV3Hyperparameters(
+            model_dimension=self.model_dimension,
+            training_ratio=self.training_ratio,
+            **dataclasses.asdict(base_hps),
         )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_learner import (
-                DreamerV3TfLearner
+                DreamerV3TfLearner,
             )
 
             return DreamerV3TfLearner
@@ -300,7 +340,7 @@ class DreamerV3Config(AlgorithmConfig):
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
-                DreamerV3TfRLModule
+                DreamerV3TfRLModule,
             )
 
             return SingleAgentRLModuleSpec(
@@ -311,8 +351,7 @@ class DreamerV3Config(AlgorithmConfig):
 
 
 class DreamerV3(Algorithm):
-    """
-    """
+    """ """
 
     @classmethod
     @override(Algorithm)
@@ -322,12 +361,13 @@ class DreamerV3(Algorithm):
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
+
         # The vectorized gymnasium EnvRunner to collect samples of shape (B, T, ...).
-        env_runner = EnvRunnerV2(model=None, config=algo_config)
-        env_runner_evaluation = EnvRunnerV2(model=None, config=algo_config)
+        #self.env_runner = EnvRunner(model=None, config=self.config)
+        # env_runner_evaluation = EnvRunnerV2(model=None, config=self.config)
 
         # Create a replay buffer for storing actual env samples.
-        self.buffer = EpisodeReplayBuffer(
+        self.replay_buffer = EpisodeReplayBuffer(
             capacity=self.config.replay_buffer_config["capacity"],
             batch_size_B=self.config.batch_size_B,
             batch_length_T=self.config.batch_length_T,
@@ -335,6 +375,8 @@ class DreamerV3(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        results = {}
+
         # Push enough samples into buffer initially before we start training.
         env_steps = env_steps_last_sample = 0
         # TEST: Put only a single row in the buffer and try to memorize it.
@@ -342,39 +384,48 @@ class DreamerV3(Algorithm):
         # while iteration == 0:
         # END TEST
 
-        if iteration == training_iteration_start:
+        if self.training_iteration == 0:
             print(
                 "Filling replay buffer so it contains at least "
-                f"{self.config.batch_size_B * self.config.batch_length_T} ts "
+                f"{self.config.batch_size_B * self.config.batch_length_T} timesteps "
                 "(required for a single train batch)."
             )
 
+        # Sample one round and place collected data into our replay buffer.
+        # If the buffer is empty at the beginning, sample for as long as it contains
+        # enough data for at least one complete train batch
+        # (batch_size_B x batch_length_T), only then proceeed to the training
+        # update step.
         while True:
-            # Sample one round.
-            done_episodes, ongoing_episodes = self.env_runner.sample(random_actions=False)
+            done_episodes, ongoing_episodes = self.env_runner.sample(
+                random_actions=False
+            )
 
             # We took B x T env steps.
             env_steps_last_sample = sum(
                 len(eps) for eps in done_episodes + ongoing_episodes
             )
             env_steps += env_steps_last_sample
-            total_env_steps += env_steps_last_sample
+            self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps_last_sample
 
             # Add ongoing and finished episodes into buffer. The buffer will
             # automatically take care of properly concatenating (by episode IDs) the
             # different chunks of the same episodes, even if they come in via separate
             # `add()` calls.
-            self.buffer.add(episodes=done_episodes + ongoing_episodes)
+            self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
 
-            ts_in_buffer = self.buffer.get_num_timesteps()
+            ts_in_buffer = self.replay_buffer.get_num_timesteps()
             if (
                 # Got to have more timesteps than warm up setting.
-                ts_in_buffer > warm_up_timesteps
+                # ts_in_buffer > warm_up_timesteps
                 # More timesteps than BxT.
-                and ts_in_buffer >= self.config.batch_size_B * self.config.batch_length_T
+                # and
+                ts_in_buffer >= self.config.batch_size_B * self.config.batch_length_T
                 # And enough timesteps for the next train batch to not exceed
                 # the training_ratio.
-                and total_replayed_steps / total_env_steps < training_ratio
+                and self._counters[NUM_ENV_STEPS_TRAINED]
+                / self._counters[NUM_ENV_STEPS_SAMPLED]
+                < self.config.training_ratio
                 ## But also at least as many episodes as the batch size B.
                 ## Actually: This is not useful for longer episode envs, such as Atari.
                 ## Too much initial data goes into the buffer, then.
@@ -382,9 +433,10 @@ class DreamerV3(Algorithm):
             ):
                 # Summarize environment interaction and buffer data.
                 summarize_sampling_and_replay_buffer(
-                    step=total_env_steps,
-                    replay_buffer=self.buffer,
-                    sampler_metrics=env_runner.get_metrics(),
+                    results=results,
+                    step=self._counters[NUM_ENV_STEPS_SAMPLED],
+                    replay_buffer=self.replay_buffer,
+                    sampler_metrics=self.env_runner.get_metrics(),
                     print_=True,
                 )
                 break
@@ -398,166 +450,126 @@ class DreamerV3(Algorithm):
 
         sub_iter = 0
         while replayed_steps / env_steps_last_sample < self.config.training_ratio:
-            print(f"\tSub-iteration {iteration}/{sub_iter})")
+            print(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
 
             # Draw a new sample from the replay buffer.
-            sample = self.buffer.sample(
+            sample = self.replay_buffer.sample(
                 batch_size_B=self.config.batch_size_B,
                 batch_length_T=self.config.batch_length_T,
             )
             replayed_steps += self.config.batch_size_B * self.config.batch_length_T
 
             # Convert samples (numpy) to tensors.
-            sample = tree.map_structure(lambda v: tf.convert_to_tensor(v), sample)
-            # Do some other conversions.
-            sample["is_first"] = tf.cast(sample["is_first"], tf.float32)
-            sample["is_last"] = tf.cast(sample["is_last"], tf.float32)
-            sample["is_terminated"] = tf.cast(sample["is_terminated"], tf.float32)
-            if isinstance(action_space, gym.spaces.Discrete):
-                sample["actions_ints"] = sample["actions"]
-                sample["actions"] = tf.one_hot(
-                    sample["actions_ints"], depth=action_space.n
-                )
+            # TODO (sven): We shouldn't have any framework-specific code here.
+            #  Figure out, where to put this (post-buffer) logic.
+            if self.config.framework_str == "tf2":
+                sample = tree.map_structure(lambda v: tf.convert_to_tensor(v), sample)
+                # Do some other conversions.
+                sample["is_first"] = tf.cast(sample["is_first"], tf.float32)
+                sample["is_last"] = tf.cast(sample["is_last"], tf.float32)
+                sample["is_terminated"] = tf.cast(sample["is_terminated"], tf.float32)
+                if isinstance(
+                    self.env_runner.env.single_action_space, gym.spaces.Discrete
+                ):
+                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
+                    sample[SampleBatch.ACTIONS] = tf.one_hot(
+                        sample["actions_ints"],
+                        depth=self.env_runner.env.single_action_space.n,
+                    )
 
             # Perform the actual update via our learner group.
             train_results = self.learner_group.update(sample)
 
-            if summary_frequency_train_steps and (
-                total_train_steps % summary_frequency_train_steps == 0
+            if self.config.summary_frequency_train_steps and (
+                self._counters[NUM_GRAD_UPDATES_LIFETIME]
+                % self.config.summary_frequency_train_steps
+                == 0
             ):
                 summarize_forward_train_outs_vs_samples(
-                    forward_train_outs=world_model_forward_train_outs,
+                    results=results,
+                    train_results=train_results["fwd_out"],
                     sample=sample,
                     batch_size_B=self.config.batch_size_B,
                     batch_length_T=self.config.batch_length_T,
-                    symlog_obs=self.config.do_symlog_obs(),
+                    symlog_obs=self.config.symlog_obs,
                 )
                 summarize_world_model_train_results(
-                    world_model_train_results=world_model_train_results,
+                    results=results,
+                    train_results=train_results,
                     include_histograms=self.config.summary_include_histograms,
                 )
                 # Summarize actor-critic loss stats.
                 if self.config.train_critic:
                     summarize_critic_train_results(
-                        actor_critic_train_results=actor_critic_train_results,
+                        results=results,
+                        train_results=train_results,
                         include_histograms=self.config.summary_include_histograms,
                     )
                 if self.config.train_actor:
                     summarize_actor_train_results(
-                        actor_critic_train_results=actor_critic_train_results,
+                        results=results,
+                        train_results=train_results,
                         include_histograms=self.config.summary_include_histograms,
                     )
-                if self.config.use_curiosity:
-                    summarize_disagree_train_results(
-                        actor_critic_train_results=actor_critic_train_results,
-                        include_histograms=self.config.summary_include_histograms,
-                    )
+                # if self.config.use_curiosity:
+                #    summarize_disagree_train_results(
+                #        results=results,
+                #        train_results=train_results,
+                #        include_histograms=self.config.summary_include_histograms,
+                #    )
                 # TODO: Make this work with any renderable env.
                 if self.env_runner.config.env in [
-                    "CartPoleDebug-v0", "CartPole-v1", "FrozenLake-v1"
+                    "CartPoleDebug-v0",
+                    "CartPole-v1",
+                    "FrozenLake-v1",
                 ]:
                     summarize_dreamed_trajectory(
-                        dream_data=actor_critic_train_results["dream_data"],
-                        actor_critic_train_results=actor_critic_train_results,
-                        env=env_runner.config.env,
+                        dream_data=train_results["dream_data"],
+                        train_results=train_results,
+                        env=self.env_runner.config.env,
                         dreamer_model=dreamer_model,
-                        obs_dims_shape=sample["obs"].shape[2:],
+                        obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
                         desc="for_actor_critic_learning",
                     )
 
-            logger.info(
-                "\t\tWORLD_MODEL_L_total="
-                f"{world_model_train_results['WORLD_MODEL_L_total'].numpy():.5f} ("
-                "L_pred="
-                f"{world_model_train_results['WORLD_MODEL_L_prediction'].numpy():.5f} ("
-                f"dec/obs={world_model_train_results['WORLD_MODEL_L_decoder'].numpy()} "
-                f"rew(two-hot)={world_model_train_results['WORLD_MODEL_L_reward'].numpy()} "
-                f"cont={world_model_train_results['WORLD_MODEL_L_continue'].numpy()}"
-                "); "
-                f"L_dyn={world_model_train_results['WORLD_MODEL_L_dynamics'].numpy():.5f}; "
-                "L_rep="
-                f"{world_model_train_results['WORLD_MODEL_L_representation'].numpy():.5f})"
-            )
-            msg = "\t\t"
-            if self.config.train_actor:
-                L_actor = actor_critic_train_results["ACTOR_L_total"]
-                msg += f"L_actor={L_actor.numpy() if self.config.train_actor else 0.0:.5f} "
-            if self.config.train_critic:
-                L_critic = actor_critic_train_results["CRITIC_L_total"]
-                msg += f"L_critic={L_critic.numpy():.5f} "
-            if self.config.use_curiosity:
-                L_disagree = actor_critic_train_results["DISAGREE_L_total"]
-                msg += f"L_disagree={L_disagree.numpy():.5f}"
-            logger.info(msg)
+            # logger.info(
+            #    "\t\tWORLD_MODEL_L_total="
+            #    f"{world_model_train_results['WORLD_MODEL_L_total'].numpy():.5f} ("
+            #    "L_pred="
+            #    f"{world_model_train_results['WORLD_MODEL_L_prediction'].numpy():.5f} ("
+            #    f"dec/obs={world_model_train_results['WORLD_MODEL_L_decoder'].numpy()} "
+            #    f"rew(two-hot)={world_model_train_results['WORLD_MODEL_L_reward'].numpy()} "
+            #    f"cont={world_model_train_results['WORLD_MODEL_L_continue'].numpy()}"
+            #    "); "
+            #    f"L_dyn={world_model_train_results['WORLD_MODEL_L_dynamics'].numpy():.5f}; "
+            #    "L_rep="
+            #    f"{world_model_train_results['WORLD_MODEL_L_representation'].numpy():.5f})"
+            # )
+            # msg = "\t\t"
+            # if self.config.train_actor:
+            #    L_actor = actor_critic_train_results["ACTOR_L_total"]
+            #    msg += f"L_actor={L_actor.numpy() if self.config.train_actor else 0.0:.5f} "
+            # if self.config.train_critic:
+            #    L_critic = actor_critic_train_results["CRITIC_L_total"]
+            #    msg += f"L_critic={L_critic.numpy():.5f} "
+            # if self.config.use_curiosity:
+            #    L_disagree = actor_critic_train_results["DISAGREE_L_total"]
+            #    msg += f"L_disagree={L_disagree.numpy():.5f}"
+            # logger.info(msg)
 
             sub_iter += 1
-            total_train_steps += 1
+            self._counters[NUM_GRAD_UPDATES_LIFETIME] += 1
 
-        total_replayed_steps += replayed_steps
+        self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
         if self.config.gc_frequency_train_steps and (
-            total_train_steps % self.config.gc_frequency_train_steps == 0
+            self._counters[NUM_GRAD_UPDATES_LIFETIME]
+            % self.config.gc_frequency_train_steps
+            == 0
         ):
             gc.collect()
 
-
-# Our DreamerV3 world model.
-print(f"Creating initial DreamerModel ...")
-model_dimension = config["model_dimension"]
-gray_scaled = is_img_space and len(env_runner.env.single_observation_space.shape) == 2
-world_model = WorldModel(
-    model_dimension=model_dimension,
-    action_space=action_space,
-    batch_length_T=batch_length_T,
-    num_gru_units=config.get("num_gru_units"),
-    encoder=(
-        CNNAtari(model_dimension=model_dimension) if is_img_space
-        else MLP(model_dimension=model_dimension)
-    ),
-    decoder=ConvTransposeAtari(
-        model_dimension=model_dimension,
-        gray_scaled=gray_scaled,
-    ) if is_img_space else VectorDecoder(
-        model_dimension=model_dimension,
-        observation_space=env_runner.env.single_observation_space,
-    ),
-    symlog_obs=symlog_obs,
-)
-dreamer_model = DreamerModel(
-    model_dimension=model_dimension,
-    action_space=action_space,
-    world_model=world_model,
-    use_curiosity=use_curiosity,
-    intrinsic_rewards_scale=intrinsic_rewards_scale,
-    batch_size_B=batch_size_B,
-    batch_length_T=batch_length_T,
-    horizon_H=horizon_H,
-)
-
-# Timesteps to put into the buffer before the first learning step.
-warm_up_timesteps = 0
-
-# Load state from a saved checkpoint.
-if args.checkpoint is not None:
-    # dreamer_model = tf.keras.models.load_model(args.checkpoint)
-    # Load buffer.
-    print("LOADING data from checkpoint into buffer.")
-    buffer.set_state(
-        np.load(f"{args.checkpoint}/buffer.npz", allow_pickle=True)["state"])
-
-    total_env_steps = int(np.load(f"{args.checkpoint}/total_env_steps.npy"))
-    total_replayed_steps = int(np.load(f"{args.checkpoint}/total_replayed_steps.npy"))
-    total_train_steps = int(np.load(f"{args.checkpoint}/total_train_steps.npy"))
-    training_iteration_start = int(np.load(f"{args.checkpoint}/iteration.npy"))
-else:
-    total_env_steps = 0
-    total_replayed_steps = 0
-    total_train_steps = 0
-    training_iteration_start = 0
-
-# TODO: ugly hack (resulting from the insane fact that you cannot know
-#  an env's spaces prior to actually constructing an instance of it) :(
-env_runner.model = dreamer_model
-env_runner_evaluation.model = dreamer_model
+        # Return all results.
+        return results

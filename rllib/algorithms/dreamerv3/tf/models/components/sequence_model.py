@@ -9,8 +9,8 @@ import gymnasium as gym
 import numpy as np
 import tensorflow as tf
 
-from models.components.mlp import MLP
-from utils.model_dimensions import get_gru_units
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
 
 
 # TODO: de-hardcode the discrete action processing (currently one-hot).
@@ -19,6 +19,7 @@ class SequenceModel(tf.keras.Model):
 
     Here, h is the GRU unit output.
     """
+
     def __init__(
         self,
         *,
@@ -89,6 +90,6 @@ if __name__ == "__main__":
 
     model = SequenceModel(action_space=a_space, num_gru_units=h_dim)
 
-    #h, layer_normed_h = model(z=z_seq, a=a_seq, h=h_tm1)
+    # h, layer_normed_h = model(z=z_seq, a=a_seq, h=h_tm1)
     h = model(z=z_seq, a=a_seq, h=h_tm1)
     print(h.shape)

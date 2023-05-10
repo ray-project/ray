@@ -9,13 +9,13 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
 
 
 class RewardPredictorLayer(tf.keras.layers.Layer):
     """A layer outputting reward predictions using K bins and two-hot encoding.
     TODO:
     """
+
     def __init__(
         self,
         num_buckets: int = 255,
@@ -58,7 +58,7 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
             kernel_initializer="zeros",
             bias_initializer="zeros",  # zero-bias is default anyways
             trainable=trainable,
-            name=f"reward-{self.num_buckets}buckets-predictor-layer"
+            name=f"reward-{self.num_buckets}buckets-predictor-layer",
         )
         # Size of each reward bucket.
         # self.bucket_delta = (
@@ -99,14 +99,14 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
         expected_rewards = tf.reduce_sum(probs * possible_outcomes, axis=-1)
         # expected_rewards=[B]
 
-        #distr = tfp.distributions.FiniteDiscrete(
+        # distr = tfp.distributions.FiniteDiscrete(
         #    outcomes=possible_outcomes,
         #    probs=probs,
         #    # Make the tolerance exactly half of the bucket delta.
         #    # This way, we should be able to compute the log_prob of any arbitrary
         #    # continuous value, even if it's not exactly an `outcomes` value.
         #    atol=self.bucket_delta / 2.0,
-        #)
+        # )
         if return_logits:
             return expected_rewards, logits
         return expected_rewards

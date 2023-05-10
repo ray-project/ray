@@ -9,7 +9,7 @@ import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class VectorDecoder(tf.keras.Model):

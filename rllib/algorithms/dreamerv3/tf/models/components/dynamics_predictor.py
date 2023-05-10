@@ -8,8 +8,10 @@ from typing import Optional
 import numpy as np
 import tensorflow as tf
 
-from models.components.mlp import MLP
-from models.components.representation_layer import RepresentationLayer
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
+    RepresentationLayer,
+)
 
 
 class DynamicsPredictor(tf.keras.Model):
@@ -57,4 +59,3 @@ if __name__ == "__main__":
     model = DynamicsPredictor()
     out = model(inputs)
     print(out.shape)
-

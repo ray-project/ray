@@ -593,11 +593,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # - Create rollout workers here automatically.
-            # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which
-            # has been deprecated.
+            # Create rollout workers via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -625,9 +621,11 @@ class Algorithm(Trainable):
             # Now that workers have been created, update our policies
             # dict in config[multiagent] (with the correct original/
             # unpreprocessed spaces).
-            self.config["multiagent"][
-                "policies"
-            ] = self.workers.local_worker().policy_dict
+            # TODO (sven): no relevant for DreamerV3
+            #  We shouldn't even override stuff in the config anymore.
+            #self.config["multiagent"][
+            #    "policies"
+            #] = self.workers.local_worker().policy_dict
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -728,7 +726,9 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            module_spec = local_worker.marl_module_spec
+            module_spec = self.config.get_marl_module_spec(
+                policy_dict=self.config.get_multi_agent_setup(), module_spec=None
+            )
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 

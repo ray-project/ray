@@ -8,8 +8,10 @@ from typing import Optional
 import numpy as np
 import tensorflow as tf
 
-from models.components.mlp import MLP
-from models.components.reward_predictor_layer import RewardPredictorLayer
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
+    RewardPredictorLayer,
+)
 
 
 class RewardPredictor(tf.keras.Model):

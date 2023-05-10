@@ -7,9 +7,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-import numpy as np
 from typing import Optional
 
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -114,7 +114,9 @@ class ConvTransposeAtari(tf.keras.Model):
         out = tf.reshape(out, shape=(-1,) + self.input_dims)
 
         # Pass through stack of Conv2DTransport layers (and layer norms).
-        for conv_transpose_2d, layer_norm in zip(self.conv_transpose_layers, self.layer_normalizations):
+        for conv_transpose_2d, layer_norm in zip(
+            self.conv_transpose_layers, self.layer_normalizations
+        ):
             out = tf.nn.silu(layer_norm(inputs=conv_transpose_2d(out)))
         # Last output conv2d-transpose layer:
         out = self.output_conv2d_transpose(out)
@@ -136,9 +138,9 @@ class ConvTransposeAtari(tf.keras.Model):
             scale_diag=tf.ones_like(loc),
         )
         pred_obs = distribution.sample()
-        #if return_distribution:
+        # if return_distribution:
         return pred_obs, distribution
-        #return pred_obs
+        # return pred_obs
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class ActorNetwork(tf.keras.Model):
@@ -43,7 +43,7 @@ class ActorNetwork(tf.keras.Model):
                 output_layer_size=self.action_space.n,
             )
         elif isinstance(action_space, Box):
-            #assert np.all(action_space.low) == 0.0 and np.all(action_space.high) == 1.0
+            # assert np.all(action_space.low) == 0.0 and np.all(action_space.high) == 1.0
             output_layer_size = np.prod(action_space.shape)
             self.mlp = MLP(
                 model_dimension=self.model_dimension,
@@ -158,5 +158,7 @@ if __name__ == "__main__":
     actions = [actions, actions2]
     distr = [distr, distr2]
 
-    log_probs = tf.stack([dist.log_prob(action) for dist, action in zip(distr, actions)])
+    log_probs = tf.stack(
+        [dist.log_prob(action) for dist, action in zip(distr, actions)]
+    )
     print(log_probs)

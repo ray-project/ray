@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class ContinuePredictor(tf.keras.Model):
@@ -40,8 +40,8 @@ class ContinuePredictor(tf.keras.Model):
         # Create the Bernoulli distribution object.
         bernoulli = tfp.distributions.Bernoulli(logits=logits, dtype=tf.float32)
 
-        #TODO: Draw a sample?
-        #continue_ = bernoulli.sample()
+        # TODO: Draw a sample?
+        # continue_ = bernoulli.sample()
         # OR: Take the mode (greedy, deterministic "sample").
         continue_ = bernoulli.mode()
 
