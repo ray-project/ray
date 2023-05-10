@@ -191,7 +191,7 @@ class ActorPoolMapOperator(MapOperator):
             num_inputs: The number of inputs for this operator.
 
         """
-        while self._autoscaling_policy.should_scale_up(
+        if self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_free_slots=self._actor_pool.num_free_slots(),
             num_inputs=num_inputs,
