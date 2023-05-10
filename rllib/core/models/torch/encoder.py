@@ -331,5 +331,5 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         # Insert them into the output dict.
         x[ENCODER_OUT] = out
-        x[STATE_OUT] = (tree.map_structure(lambda s: s.transpose(0, 1), states_out),)
+        x[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
         return x

@@ -238,7 +238,7 @@ class TfGRUEncoder(TfModel, Encoder):
 
         # Insert them into the output dict.
         x[ENCODER_OUT] = out
-        x[STATE_OUT] = ({"h": tf.stack(states_out, 1)},)
+        x[STATE_OUT] = {"h": tf.stack(states_out, 1)}
         return x
 
 

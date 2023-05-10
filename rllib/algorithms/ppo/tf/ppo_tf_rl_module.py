@@ -1,7 +1,7 @@
 from typing import Mapping, Any
 
 from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
-from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
+from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
