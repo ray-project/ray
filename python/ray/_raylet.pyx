@@ -61,14 +61,17 @@ from ray.includes.common cimport (
     CObjectReference,
     CRayObject,
     CRayStatus,
+    CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLogBatch,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
+    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -173,6 +176,11 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
+
+cdef extern from "ray/common/constants.h" nogil:
+    cdef int kResourceUnitScaling
+
+RESOURCE_UNIT_SCALING = kResourceUnitScaling
 
 
 class ObjectRefGenerator:
@@ -586,6 +594,7 @@ cdef store_task_errors(
         exc,
         task_exception,
         actor,
+        actor_id,
         function_name,
         CTaskType task_type,
         proctitle,
@@ -606,15 +615,22 @@ cdef store_task_errors(
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
 
+    if actor_id is None or actor_id.is_nil():
+        actor_id = None
+    else:
+        actor_id = actor_id.hex()
+
     if isinstance(exc, RayTaskError):
         # Avoid recursive nesting of RayTaskError.
         failure_object = RayTaskError(function_name, backtrace,
                                       exc.cause, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
     else:
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
@@ -698,6 +714,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         worker, error,
                         False,  # task_exception
                         None,  # actor
+                        None,  # actor id
                         function_name, task_type, title,
                         dynamic_returns, application_error)
             if num_errors_stored == 0:
@@ -740,6 +757,7 @@ cdef void execute_task(
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
+    actor_id = None
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
@@ -780,7 +798,8 @@ cdef void execute_task(
         print(task_name_magic_token, end="")
         print(task_name_magic_token, file=sys.stderr, end="")
     else:
-        actor = worker.actors[core_worker.get_actor_id()]
+        actor_id = core_worker.get_actor_id()
+        actor = worker.actors[actor_id]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
 
@@ -866,7 +885,8 @@ cdef void execute_task(
                     args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
+                actor_id = core_worker.get_actor_id()
+                actor = worker.actors[actor_id]
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
@@ -1005,7 +1025,7 @@ cdef void execute_task(
                     returns)
         except Exception as e:
             num_errors_stored = store_task_errors(
-                    worker, e, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
@@ -1139,7 +1159,9 @@ cdef execute_task_with_cancellation_handler(
                 # Task cancellation can happen anytime so we don't really need
                 # to differentiate between mid-task or not.
                 False,  # task_exception
-                actor, execution_info.function_name,
+                actor,
+                actor_id,
+                execution_info.function_name,
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
@@ -1726,6 +1748,66 @@ cdef class GcsClient:
                 }
             }
         return result
+
+cdef class GcsPublisher:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
+    cdef:
+        shared_ptr[CPythonGcsPublisher] inner
+
+    def __cinit__(self, address):
+        self.inner.reset(new CPythonGcsPublisher(address))
+        check_status(self.inner.get().Connect())
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id=None, num_retries=None):
+        cdef:
+            CErrorTableData error_info
+            int64_t c_num_retries = num_retries if num_retries else -1
+            c_string c_key_id = key_id
+
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        assert isinstance(job_id, ray.JobID)
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
+
+        with nogil:
+            check_status(
+                self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
+
+    def publish_logs(self, log_json: dict):
+        cdef:
+            CLogBatch log_batch
+            c_string c_job_id
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
+
+        c_job_id = job_id.encode() if job_id else b""
+        with nogil:
+            check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
+
+    def publish_function_key(self, key: bytes):
+        cdef:
+            CPythonFunction python_function
+
+        python_function.set_key(key)
+
+        with nogil:
+            check_status(self.inner.get().PublishFunctionKey(python_function))
+
 
 cdef class CoreWorker:
 

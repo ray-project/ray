@@ -252,9 +252,10 @@ if setup_spec.type == SetupType.RAY:
             "pydantic",
             "prometheus_client >= 0.7.1",
             "smart_open",
+            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests", pyarrow_dep],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api",
@@ -321,7 +322,7 @@ if setup_spec.type == SetupType.RAY:
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "packaging; python_version >= '3.10'",
+        "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
@@ -330,7 +331,6 @@ if setup_spec.type == SetupType.RAY:
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
         "typing_extensions; python_version < '3.8'",
-        "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
     ]
 
 

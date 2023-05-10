@@ -72,9 +72,9 @@ def run_map_batches_benchmark(benchmark: Benchmark):
 
     # Test multiple calls of map_batches.
     for num_calls in num_calls_list:
-        for compute in ["tasks", ActorPoolStrategy(size=1)]:
+        for compute in [None, ActorPoolStrategy(size=1)]:
             batch_size = 4096
-            if compute == "tasks":
+            if compute is None:
                 compute_strategy = "tasks"
             else:
                 compute_strategy = "actors"

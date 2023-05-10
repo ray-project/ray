@@ -6,7 +6,7 @@ from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import BatchUDF, Block, DataBatch
+from ray.data.block import UserDefinedFunction, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
@@ -14,7 +14,7 @@ def generate_map_batches_fn(
     batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
     batch_format: Optional[str] = "default",
     zero_copy_batch: bool = False,
-) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
     import numpy as np
     import pandas as pd
@@ -25,7 +25,7 @@ def generate_map_batches_fn(
     def fn(
         blocks: Iterator[Block],
         ctx: TaskContext,
-        batch_fn: BatchUDF,
+        batch_fn: UserDefinedFunction,
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
@@ -62,18 +62,6 @@ def generate_map_batches_fn(
                             f"{type(value)}. To fix this issue, convert "
                             f"the {type(value)} to a `np.ndarray`."
                         )
-                    if isinstance(value, list):
-                        # Try to convert list values into an numpy array via
-                        # np.array(), so users don't need to manually cast.
-                        # NOTE: we don't cast generic iterables, since types like
-                        # `str` are also Iterable.
-                        try:
-                            batch[key] = np.array(value)
-                        except Exception:
-                            raise ValueError(
-                                "Failed to convert column values to numpy array: "
-                                f"({_truncated_repr(value)})."
-                            )
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
             # Apply UDF.

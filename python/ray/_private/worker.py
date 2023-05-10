@@ -68,7 +68,6 @@ from ray._private.gcs_pubsub import (
     GcsErrorSubscriber,
     GcsFunctionKeySubscriber,
     GcsLogSubscriber,
-    GcsPublisher,
 )
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -898,7 +897,7 @@ class Worker:
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
@@ -1111,7 +1110,7 @@ _global_node = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def init(
     address: Optional[str] = None,
     *,
@@ -1655,7 +1654,7 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -2002,7 +2001,7 @@ def listen_error_messages(worker, threads_stopped):
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def is_initialized() -> bool:
     """Check if ray.init has been called yet.
 
@@ -2074,7 +2073,7 @@ def connect(
     ray._private.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
-    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
+    worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2429,7 +2428,7 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get(
     object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
     *,
@@ -2556,7 +2555,7 @@ def get(
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def put(
     value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
 ) -> "ray.ObjectRef":
@@ -2618,7 +2617,7 @@ blocking_wait_inside_async_warned = False
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def wait(
     object_refs: List["ray.ObjectRef"],
     *,
@@ -2740,7 +2739,7 @@ def wait(
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
 
@@ -2775,7 +2774,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
 
@@ -2805,7 +2804,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 
 @PublicAPI
-@client_mode_hook(auto_init=True)
+@client_mode_hook
 def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
     """Cancels a task according to the following conditions.
 
@@ -3055,62 +3054,68 @@ def remote(
     This function can be used as a decorator with no arguments
     to define a remote function or actor as follows:
 
-    >>> import ray
-    >>>
-    >>> @ray.remote
-    ... def f(a, b, c):
-    ...     return a + b + c
-    >>>
-    >>> object_ref = f.remote(1, 2, 3)
-    >>> result = ray.get(object_ref)
-    >>> assert result == (1 + 2 + 3)
-    >>>
-    >>> @ray.remote
-    ... class Foo:
-    ...     def __init__(self, arg):
-    ...         self.x = arg
-    ...
-    ...     def method(self, a):
-    ...         return self.x + a
-    >>>
-    >>> actor_handle = Foo.remote(123)
-    >>> object_ref = actor_handle.method.remote(321)
-    >>> result = ray.get(object_ref)
-    >>> assert result == (123 + 321)
+    .. testcode::
+
+        import ray
+
+        @ray.remote
+        def f(a, b, c):
+            return a + b + c
+
+        object_ref = f.remote(1, 2, 3)
+        result = ray.get(object_ref)
+        assert result == (1 + 2 + 3)
+
+        @ray.remote
+        class Foo:
+            def __init__(self, arg):
+                self.x = arg
+
+            def method(self, a):
+                return self.x + a
+
+        actor_handle = Foo.remote(123)
+        object_ref = actor_handle.method.remote(321)
+        result = ray.get(object_ref)
+        assert result == (123 + 321)
 
     Equivalently, use a function call to create a remote function or actor.
 
-    >>> def g(a, b, c):
-    ...     return a + b + c
-    >>>
-    >>> remote_g = ray.remote(g)
-    >>> object_ref = remote_g.remote(1, 2, 3)
-    >>> assert ray.get(object_ref) == (1 + 2 + 3)
+    .. testcode::
 
-    >>> class Bar:
-    ...     def __init__(self, arg):
-    ...         self.x = arg
-    ...
-    ...     def method(self, a):
-    ...         return self.x + a
-    >>>
-    >>> RemoteBar = ray.remote(Bar)
-    >>> actor_handle = RemoteBar.remote(123)
-    >>> object_ref = actor_handle.method.remote(321)
-    >>> result = ray.get(object_ref)
-    >>> assert result == (123 + 321)
+        def g(a, b, c):
+            return a + b + c
+
+        remote_g = ray.remote(g)
+        object_ref = remote_g.remote(1, 2, 3)
+        assert ray.get(object_ref) == (1 + 2 + 3)
+
+        class Bar:
+            def __init__(self, arg):
+                self.x = arg
+
+            def method(self, a):
+                return self.x + a
+
+        RemoteBar = ray.remote(Bar)
+        actor_handle = RemoteBar.remote(123)
+        object_ref = actor_handle.method.remote(321)
+        result = ray.get(object_ref)
+        assert result == (123 + 321)
 
 
     It can also be used with specific keyword arguments as follows:
 
-    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    ... def f():
-    ...     return 1, 2
-    >>>
-    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    ... class Foo:
-    ...     def method(self):
-    ...         return 1
+    .. testcode::
+
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        def f():
+            return 1, 2
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo:
+            def method(self):
+                return 1
 
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
