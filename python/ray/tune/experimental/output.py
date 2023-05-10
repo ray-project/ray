@@ -538,7 +538,7 @@ def _detect_reporter(
     mode: Optional[str] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
-    rich_enabled = "ENABLE_RICH" in os.environ
+    rich_enabled = bool(int(os.environ.get("ENABLE_RICH", "0")))
     if num_samples and num_samples > 1:
         if rich_enabled:
             if not rich:

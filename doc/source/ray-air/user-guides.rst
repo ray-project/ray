@@ -125,3 +125,20 @@ If you still want to do this, refer to
 the
 :ref:`Ray Tune multi-tenancy docs <tune-multi-tenancy>`
 for potential pitfalls.
+
+.. _air-experimental-overview:
+
+Experimental features in Ray 2.5+
+---------------------------------
+Starting in Ray 2.5, we're enabling some experimental
+features per default.
+
+Experimental features are enabled so we can get feedback
+from users. Every experimental feature can be disabled
+by setting an environment variable. Some features are
+so early that they can only be _enabled_ using an
+environment variable.
+
+Please see our :ref:`experimental features <air-experimental-features>`
+page for more details on the current features and how to enable
+or disable them.
