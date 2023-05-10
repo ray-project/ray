@@ -1631,12 +1631,7 @@ def _concat_values(*values, time_major=None) -> TensorType:
         time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
     """
-    if torch and any([torch.is_tensor(t) for t in values]):
-        # Incase the elements are torch values, they might be on GPU, so we have to
-        # use torch.cat here.
-        return torch.cat(list(values), dim=1 if time_major else 0)
-    else:
-        return np.concatenate(list(values), axis=1 if time_major else 0)
+    return np.concatenate(list(values), axis=1 if time_major else 0)
 
 
 @DeveloperAPI
