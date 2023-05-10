@@ -7,8 +7,8 @@ Experimental features in Ray AIR
 We're testing a number of experimental features in Ray AIR.
 
 During development and internal dogfooding, the features
-are disabled per default. They can be opted in by setting
-an environment variable.
+are disabled per default. You can opt-in by setting an
+environment variable.
 
 After some time, we enable the feature per default to gather
 more feedback from the community. In that case, they can still
@@ -16,8 +16,9 @@ be disabled using the same environment variable. This will
 fully revert to the old behavior, should the new behavior
 not suffice your needs.
 
-In that case, please `open an issue <https://github.com/ray-project/ray/issues/>`_
-on GitHub and let us know what you're missing! This will give
+If you run into issues with experimental features,
+please `open an issue <https://github.com/ray-project/ray/issues/>`_
+on GitHub and let us know! This will give
 us the chance to incorporate your feedback before we remove
 the old implementation and make the new implementation the
 default.
@@ -31,6 +32,12 @@ default.
 
 New output engine
 -----------------
+
+.. note::
+
+    This feature is *enabled per default* starting Ray 2.5.
+
+    To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
 
 We've added a new output engine for Ray Train and Ray Tune runs.
 
@@ -53,17 +60,16 @@ Notably, it is automatically disabled when Jupyter Notebooks
 or Ray client is used.
 
 
-.. note::
-
-    This feature is *enabled per default* starting Ray 2.5.
-
-    To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
-
-
 .. _air-experimental-rich:
 
 Sticky table layout
 -------------------
+
+.. note::
+
+    This feature is *disabled per default*.
+
+    To enable, set the environment variable ``RAY_AIR_ENABLE_RICH=1``.
 
 As part of the :ref:`new output engine <air-experimental-new-output>`,
 we've introduced a sticky table layout. The regular console
@@ -74,17 +80,18 @@ screen and periodically updated.
 This feature is still in development. You can opt-in to try
 it out.
 
-.. note::
-
-    This feature is *disabled per default*.
-
-    To enable, set the environment variable ``RAY_AIR_ENABLE_RICH=1``.
-
 
 .. _air-experimental-execution:
 
 New trial execution engine
 --------------------------
+
+.. note::
+
+    This feature is *enabled per default* starting Ray 2.5.
+
+    To disable, set the environment variable ``TUNE_NEW_EXECUTION=0``.
+
 
 We've implemented a new trial execution engine in Ray Tune.
 Since Ray Tune is currently also the execution backend for
@@ -94,7 +101,7 @@ Technically, we've refactored the :ref:`TrialRunner <trialrunner-docstring>`
 to use a new, generic Ray actor and future manager instead of
 the old ``RayTrialExecutor``.
 
-Our CI and release tests all run with the new execution engine.
+Our CI and release tests all run (and pass) with the new execution engine.
 In most cases, you should not see any change to the previous
 behavior.
 
@@ -119,9 +126,3 @@ Things to look out for:
 Again, we're testing against all these potential regressions, and
 mitigated every bug we found. But there are sometimes edge cases
 we don't capture, yet. Your feedback is very welcome here.
-
-.. note::
-
-    This feature is *enabled per default* starting Ray 2.5.
-
-    To disable, set the environment variable ``TUNE_NEW_EXECUTION=0``.

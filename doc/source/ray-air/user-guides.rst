@@ -141,7 +141,7 @@ features per default.
 Experimental features are enabled so we can get feedback
 from users. Every experimental feature can be disabled
 by setting an environment variable. Some features are
-so early that they can only be _enabled_ using an
+so early that they can only be *enabled* using an
 environment variable.
 
 Please see our :ref:`experimental features <air-experimental-features>`
