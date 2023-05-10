@@ -155,7 +155,9 @@ class Tuner:
             if get_air_verbosity(run_config.verbose) is not None:
                 logger.warning(
                     "[output] This will use the legacy output and progress reporter, "
-                    "as Ray client is not supported by the new engine."
+                    "as Ray client is not supported by the new engine. "
+                    "For more information, please see "
+                    "https://docs.ray.io/en/master/ray-air/experimental-features.html"
                 )
 
         if _tuner_internal:

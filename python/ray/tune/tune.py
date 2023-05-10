@@ -527,7 +527,9 @@ def run(
         if get_air_verbosity(verbose) is not None:
             logger.warning(
                 "[output] This will use the legacy output and progress reporter, "
-                "as Ray client is not supported by the new engine."
+                "as Ray client is not supported by the new engine. "
+                "For more information, please see "
+                "https://docs.ray.io/en/master/ray-air/experimental-features.html"
             )
 
         remote_run = ray.remote(num_cpus=0)(run)
@@ -584,7 +586,9 @@ def run(
     if air_verbosity is not None and IS_NOTEBOOK:
         logger.warning(
             "[output] This will use the legacy output and progress reporter, "
-            "as Jupyter notebooks are not supported by the new output engine, yet."
+            "as Jupyter notebooks are not supported by the new engine, yet. "
+            "For more information, please see "
+            "https://docs.ray.io/en/master/ray-air/experimental-features.html"
         )
         air_verbosity = None
 
@@ -592,7 +596,9 @@ def run(
         logger.info(
             f"[output] This will use the new output engine with verbosity "
             f"{air_verbosity}. To disable the new output and use the legacy "
-            f"output engine, set the environment variable AIR_NEW_OUTPUT=0"
+            f"output engine, set the environment variable AIR_NEW_OUTPUT=0. "
+            f"For more information, please see "
+            f"https://docs.ray.io/en/master/ray-air/experimental-features.html"
         )
         # Disable old output engine
         set_verbosity(0)
@@ -1118,7 +1124,9 @@ def run_experiments(
         if get_air_verbosity(verbose) is not None:
             logger.warning(
                 "[output] This will use the legacy output and progress reporter, "
-                "as Ray client is not supported by the new engine."
+                "as Ray client is not supported by the new engine. "
+                "For more information, please see "
+                "https://docs.ray.io/en/master/ray-air/experimental-features.html"
             )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
