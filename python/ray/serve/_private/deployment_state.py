@@ -217,6 +217,7 @@ class ActorReplicaWrapper:
 
         self._pid: int = None
         self._actor_id: str = None
+        self._worker_id: str = None
         if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
             self._node_id = scheduling_strategy.node_id
         else:
@@ -300,6 +301,11 @@ class ActorReplicaWrapper:
     def actor_id(self) -> Optional[str]:
         """Returns the actor id, None if not started."""
         return self._actor_id
+
+    @property
+    def worker_id(self) -> Optional[str]:
+        """Returns the worker id, None if not started."""
+        return self._worker_id
 
     @property
     def node_id(self) -> Optional[str]:
@@ -536,6 +542,7 @@ class ActorReplicaWrapper:
                 (
                     self._pid,
                     self._actor_id,
+                    self._worker_id,
                     self._node_id,
                     self._node_ip,
                     self._log_file_path,
@@ -775,6 +782,7 @@ class DeploymentReplica(VersionedReplica):
             pid=self._actor.pid,
             actor_name=self._actor._actor_name,
             actor_id=self._actor.actor_id,
+            worker_id=self._actor.worker_id,
             node_id=self._actor.node_id,
             node_ip=self._actor.node_ip,
             start_time_s=self._start_time,

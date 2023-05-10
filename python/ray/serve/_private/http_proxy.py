@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import json
 import os
 import logging
 import pickle
@@ -513,9 +514,16 @@ class HTTPProxyActor:
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Return log filepath, or re-throw the exception from self.running_task.
+        # Return metadata, or re-throw the exception from self.running_task.
         if self.setup_complete.is_set():
-            return get_component_logger_file_path()
+            # NOTE(zcin): We need to convert the metadata to a json string because
+            # of cross-language scenarios. Java can't deserialize a Python tuple.
+            return json.dumps(
+                [
+                    ray._private.worker.global_worker.worker_id.hex(),
+                    get_component_logger_file_path(),
+                ]
+            )
 
         return await done_set.pop()
 

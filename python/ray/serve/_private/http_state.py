@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import random
 import time
@@ -33,8 +34,8 @@ class HTTPProxyState:
         self._actor_handle = actor_handle
         self._actor_name = actor_name
         self._node_ip = node_ip
-        self._actor_id = None
         self._log_file_path = None
+        self._worker_id = None
 
         self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
@@ -54,23 +55,30 @@ class HTTPProxyState:
         return self._actor_name
 
     @property
-    def status(self) -> HTTPProxyStatus:
-        return self._status
+    def actor_id(self) -> str:
+        return self._actor_handle._actor_id.hex()
 
     @property
-    def actor_id(self) -> Optional[str]:
-        return self._actor_handle._actor_id.hex()
+    def worker_id(self) -> Optional[str]:
+        return self._worker_id
 
     @property
     def log_file_path(self) -> Optional[str]:
         return self._log_file_path
+
+    @property
+    def status(self) -> HTTPProxyStatus:
+        return self._status
 
     def update(self):
         if self._status == HTTPProxyStatus.STARTING:
             try:
                 finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
                 if finished:
-                    self._log_file_path = ray.get(finished[0])
+                    actor_metadata_string = ray.get(finished[0])
+                    self._worker_id, self._log_file_path = json.loads(
+                        actor_metadata_string
+                    )
                     self._status = HTTPProxyStatus.HEALTHY
             except Exception:
                 self._status = HTTPProxyStatus.UNHEALTHY
@@ -165,6 +173,7 @@ class HTTPState:
                 node_ip=state.node_ip,
                 actor_id=state.actor_id,
                 actor_name=state.actor_name,
+                worker_id=state.worker_id,
                 status=state.status,
                 log_file_path=state.log_file_path,
             )

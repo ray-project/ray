@@ -617,6 +617,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
     actor_id: Optional[str] = Field(description="Actor ID.")
     actor_name: Optional[str] = Field(description="Actor name.")
+    worker_id: Optional[str] = Field(description="Worker ID.")
     log_file_path: Optional[str] = Field(
         description=(
             "The relative path to the Serve actor's log file from the ray logs "
