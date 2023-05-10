@@ -15,7 +15,7 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
-
+# testing
 class GlobalState:
     """A class used to interface with the Ray control state.
 

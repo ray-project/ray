@@ -1,4 +1,3 @@
-# Testing
 """Ray constants used in the Python code."""
 
 import logging
