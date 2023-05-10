@@ -3,7 +3,7 @@ import logging
 import base64
 import os
 
-from typing import Dict, Any, Callable, Union, Tuple, Optional
+from typing import Dict, Any, Callable, Union, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def get_import_export_timeout():
     return int(
-        os.environ.get(ray_constants.RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_KEY, "60")
+        os.environ.get(ray_constants.RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR, "60")
     )
 
 
@@ -30,7 +30,7 @@ def _encode_function_key(key: str) -> bytes:
 def upload_worker_setup_hook_if_needed(
     runtime_env: Union[Dict[str, Any], RuntimeEnv],
     worker: "ray.Worker",
-) -> Dict[str, Any]:
+) -> Union[Dict[str, Any], RuntimeEnv]:
     """Uploads the worker_setup_hook to GCS with a key.
 
     runtime_env["worker_setup_hook"] is converted to a decoded key
@@ -67,11 +67,11 @@ def upload_worker_setup_hook_if_needed(
             "Failed to export the setup function."
         ) from e
     env_vars = runtime_env.get("env_vars", {})
-    assert ray_constants.WORKER_SETUP_HOOK_KEY not in env_vars, (
-        f"The env var, {ray_constants.WORKER_SETUP_HOOK_KEY}, "
+    assert ray_constants.WORKER_SETUP_HOOK_ENV_VAR not in env_vars, (
+        f"The env var, {ray_constants.WORKER_SETUP_HOOK_ENV_VAR}, "
         "is not permitted because it is reserved for the internal use."
     )
-    env_vars[ray_constants.WORKER_SETUP_HOOK_KEY] = _decode_function_key(key)
+    env_vars[ray_constants.WORKER_SETUP_HOOK_ENV_VAR] = _decode_function_key(key)
     runtime_env["env_vars"] = env_vars
     # Note: This field is no-op. We don't have a plugin for the setup hook
     # because we can implement it simply using an env var.
@@ -83,14 +83,14 @@ def upload_worker_setup_hook_if_needed(
 
 def load_and_execute_setup_hook(
     worker_setup_hook_key: str,
-) -> Tuple[bool, Optional[str]]:
+) -> Optional[str]:
     """Load the setup hook from a given key and execute.
 
     Args:
         worker_setup_hook_key: The key to import the setup hook
             from GCS.
     Returns:
-        A pair of (success, error_message)
+        An error message if it fails. None if it succeeds.
     """
     assert worker_setup_hook_key is not None
     worker = ray._private.worker.global_worker
@@ -98,7 +98,7 @@ def load_and_execute_setup_hook(
 
     func_manager = worker.function_actor_manager
     try:
-        worker_setup_func_info = func_manager.fetch_registsered_method(
+        worker_setup_func_info = func_manager.fetch_registered_method(
             _encode_function_key(worker_setup_hook_key),
             timeout=get_import_export_timeout(),
         )
@@ -108,7 +108,7 @@ def load_and_execute_setup_hook(
             f"{get_import_export_timeout()} seconds.\n"
             f"{traceback.format_exc()}"
         )
-        return False, error_message
+        return error_message
 
     try:
         setup_func = pickle.loads(worker_setup_func_info.function)
@@ -116,7 +116,7 @@ def load_and_execute_setup_hook(
         error_message = (
             "Failed to deserialize the setup hook method.\n" f"{traceback.format_exc()}"
         )
-        return False, error_message
+        return error_message
 
     try:
         setup_func()
@@ -126,6 +126,6 @@ def load_and_execute_setup_hook(
             f"{worker_setup_func_info.function_name}\n"
             f"{traceback.format_exc()}"
         )
-        return False, error_message
+        return error_message
 
-    return True, None
+    return None

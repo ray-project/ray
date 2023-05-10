@@ -182,10 +182,10 @@ class FunctionActorManager:
 
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
-    ) -> str:
+    ) -> bytes:
         """Export the setup hook function and return the key."""
         pickled_function = pickle_dumps(
-            setup_func, f"Cannot serialize the setup function {setup_func.__name__}"
+            setup_func, f"Cannot serialize the worker_setup_hook {setup_func.__name__}"
         )
 
         function_to_run_id = hashlib.shake_128(pickled_function).digest(
@@ -219,8 +219,9 @@ class FunctionActorManager:
                 timeout=timeout,
             )
         except Exception as e:
-            logger.error("Failed to export the setup hook " f"{setup_func.__name__}.")
-            logger.exception(e)
+            logger.exception(
+                "Failed to export the setup hook " f"{setup_func.__name__}."
+            )
             raise e
 
         return key
@@ -274,7 +275,7 @@ class FunctionActorManager:
             key, val, True, KV_NAMESPACE_FUNCTION_TABLE
         )
 
-    def fetch_registsered_method(
+    def fetch_registered_method(
         self, key: str, timeout: Optional[int] = None
     ) -> Optional[ImportedFunctionInfo]:
         vals = self._worker.gcs_client.internal_kv_get(
@@ -296,7 +297,7 @@ class FunctionActorManager:
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        remote_function_info = self.fetch_registsered_method(key)
+        remote_function_info = self.fetch_registered_method(key)
         if not remote_function_info:
             return False
         (
