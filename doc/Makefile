@@ -50,6 +50,17 @@ help:
 
 clean:
 	rm -rf $(BUILDDIR)/*
+	rm -rf ./source/data/api/doc/*
+	rm -rf ./source/cluster/running_applications/doc/*
+	rm -rf ./source/cluster/running_applications/job-submission/doc/*
+	rm -rf ./source/ray-air/api/doc*
+	rm -rf ./source/ray-core/api/doc*
+	rm -rf ./source/ray-observability/api/state/doc*
+	rm -rf ./source/rllib/package_ref/doc*
+	rm -rf ./source/serve/api/doc/*
+	rm -rf ./source/train/api/doc/*
+	rm -rf ./source/tune/api/doc/*
+	rm -rf ./source/workflows/api/doc/*
 
 html:
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
