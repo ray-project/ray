@@ -117,16 +117,20 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
-  void DoWrite(std::vector<std::string> keys,
-               std::vector<std::string> args,
-               RedisCallback redis_callback);
+  void SendRedisCmd(std::vector<std::string> keys,
+                    std::vector<std::string> args,
+                    RedisCallback redis_callback);
+
+  void MGetValues(const std::string &table_name,
+                  const std::vector<std::string> &keys,
+                  const MapCallback<std::string, std::string> &callback);
 
   void ProcessNext(std::string key);
 
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> write_ops_
+  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> redis_ops_
       GUARDED_BY(mu_);
 };
 

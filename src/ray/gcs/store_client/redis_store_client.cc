@@ -93,22 +93,22 @@ std::string GetKeyFromRedisKey(const std::string &external_storage_namespace,
   return redis_key.substr(pos, redis_key.size() - pos);
 }
 
-Status MGetValues(std::shared_ptr<RedisClient> redis_client,
-                  const std::string &external_storage_namespace,
-                  const std::string &table_name,
-                  const std::vector<std::string> &keys,
-                  const MapCallback<std::string, std::string> &callback) {
+}  // namespace
+
+void RedisStoreClient::MGetValues(const std::string &table_name,
+                                  const std::vector<std::string> &keys,
+                                  const MapCallback<std::string, std::string> &callback) {
   // The `MGET` command for each shard.
-  auto batched_commands = GenCommandsBatched("HMGET", external_storage_namespace, keys);
+  auto batched_commands = GenCommandsBatched("HMGET", external_storage_namespace_, keys);
   auto total_count = batched_commands.size();
   auto finished_count = std::make_shared<size_t>(0);
   auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  auto context = redis_client->GetShardContext("");
 
   for (auto &command : batched_commands) {
     auto mget_keys = std::move(command);
-    auto mget_callback = [table_name,
-                          external_storage_namespace,
+    std::vector<std::string> partition_keys(mget_keys.begin() + 2, mget_keys.end());
+    auto mget_callback = [this,
+                          table_name,
                           finished_count,
                           total_count,
                           mget_keys,
@@ -121,7 +121,7 @@ Status MGetValues(std::shared_ptr<RedisClient> redis_client,
         for (size_t index = 0; index < value.size(); ++index) {
           if (value[index].has_value()) {
             (*key_value_map)[GetKeyFromRedisKey(
-                external_storage_namespace, mget_keys[index + 2], table_name)] =
+                external_storage_namespace_, mget_keys[index + 2], table_name)] =
                 *(value[index]);
           }
         }
@@ -132,12 +132,10 @@ Status MGetValues(std::shared_ptr<RedisClient> redis_client,
         callback(std::move(*key_value_map));
       }
     };
-    RAY_CHECK_OK(context->RunArgvAsync(mget_keys, mget_callback));
+    SendRedisCmd(
+        std::move(partition_keys), std::move(mget_keys), std::move(mget_callback));
   }
-  return Status::OK();
 }
-
-}  // namespace
 
 RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
@@ -173,9 +171,8 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
 
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
   std::vector<std::string> args = {"HGET", external_storage_namespace_, redis_key};
-
-  auto shard_context = redis_client_->GetShardContext(redis_key);
-  return shard_context->RunArgvAsync(args, redis_callback);
+  SendRedisCmd({redis_key}, std::move(args), std::move(redis_callback));
+  return Status::OK();
 }
 
 Status RedisStoreClient::AsyncGetAll(
@@ -221,13 +218,13 @@ Status RedisStoreClient::AsyncMultiGet(
   RAY_CHECK(callback);
   if (keys.empty()) {
     callback({});
+    return Status::OK();
   }
   std::vector<std::string> true_keys;
   for (auto &key : keys) {
     true_keys.push_back(GenRedisKey(external_storage_namespace_, table_name, key));
   }
-  RAY_CHECK_OK(MGetValues(
-      redis_client_, external_storage_namespace_, table_name, true_keys, callback));
+  MGetValues(table_name, true_keys, callback);
   return Status::OK();
 }
 
@@ -235,15 +232,14 @@ void RedisStoreClient::ProcessNext(std::string key) {
   std::function<void()> op;
   {
     absl::MutexLock lock(&mu_);
-    auto ops_iter = write_ops_.find(key);
-    RAY_CHECK(ops_iter != write_ops_.end());
-    auto &queue = ops_iter->second;
-    // All write operations have been consumed.
+    auto op_iter = redis_ops_.find(key);
+    RAY_CHECK(op_iter != redis_ops_.end()) << " redis ops stats failed for key: " << key;
+    auto &queue = op_iter->second;
+    // All write operations have been consumed, remove this entry
     if (queue.empty()) {
-      write_ops_.erase(ops_iter);
+      redis_ops_.erase(op_iter);
     } else {
       op = std::move(queue.front());
-      queue.pop();
     }
   }
   if (op) {
@@ -251,31 +247,34 @@ void RedisStoreClient::ProcessNext(std::string key) {
   }
 }
 
-void RedisStoreClient::DoWrite(std::vector<std::string> keys,
-                               std::vector<std::string> args,
-                               RedisCallback redis_callback) {
+void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
+                                    std::vector<std::string> args,
+                                    RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
+
   auto send_redis = [this,
                      keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
-    // keys[0] is where send_redis stored. It'll be evicted in ProcessNext
     {
+      // Pop the operations from the queue because it's activately
+      // executing it.
       absl::MutexLock lock(&mu_);
-      for (size_t i = 1; i < keys.size(); ++i) {
-        auto ops_iter = write_ops_.find(keys[i]);
-        RAY_CHECK(ops_iter != write_ops_.end());
-        auto &queue = ops_iter->second;
-        RAY_CHECK(!queue.empty());
-        RAY_CHECK(queue.front() == nullptr);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        auto op_iter = redis_ops_.find(keys[i]);
+        RAY_CHECK(op_iter != redis_ops_.end());
+        auto &queue = op_iter->second;
+        RAY_CHECK(!queue.empty()) << " check redis ops failed for key: " << keys[i];
         queue.pop();
       }
     }
+    // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
     RAY_CHECK_OK(cxt->RunArgvAsync(
         std::move(args),
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
+          // Fire the next request
           for (const auto &key : keys) {
             ProcessNext(key);
           }
@@ -286,26 +285,47 @@ void RedisStoreClient::DoWrite(std::vector<std::string> keys,
   };
 
   bool can_fire = true;
+  // busiest key is defined to be the key has the most pending operations.
+  size_t busiest_key_idx = 0;
+  size_t busiest_key_queuing_size = 0;
   {
     absl::MutexLock lock(&mu_);
-    for (const auto &key : keys) {
-      if (auto iter = write_ops_.find(key); iter != write_ops_.end()) {
+    for (size_t i = 0; i < keys.size(); ++i) {
+      // If there has been an entry in the queue, we need to add the new request
+      // into the queue. The queue needs to be the longest ones among all the keys.
+      // This is like a barrier because this request has to be processed after all
+      // the requests before that finished.
+      if (auto iter = redis_ops_.find(keys[i]); iter != redis_ops_.end()) {
+        if (busiest_key_queuing_size == 0 ||
+            busiest_key_queuing_size < iter->second.size()) {
+          busiest_key_queuing_size = iter->second.size();
+          busiest_key_idx = i;
+        }
         can_fire = false;
       } else {
-        write_ops_.emplace(key, std::queue<std::function<void()>>());
+        redis_ops_.emplace(keys[i], std::queue<std::function<void()>>());
       }
     }
 
     for (size_t i = 0; i < keys.size(); ++i) {
-      if (i == 0) {
-        write_ops_[keys[0]].push(std::move(send_redis));
+      auto iter = redis_ops_.find(keys[i]);
+      RAY_CHECK(iter != redis_ops_.end());
+      // Only push the actual operations into the queue of the key
+      // which has the most pending works to avoid duplicate copies.
+      if (i == busiest_key_idx) {
+        iter->second.push(std::move(send_redis));
       } else {
-        write_ops_[keys[i]].push(nullptr);
+        iter->second.push(nullptr);
       }
     }
   }
+
+  // If we can fire the request, fire it now.
+  // Otherwise, it'll be handled by the callback of the inflight requests.
   if (can_fire) {
-    ProcessNext(keys[0]);
+    RAY_CHECK(redis_ops_[keys[busiest_key_idx]].front() != nullptr);
+    auto op = std::move(redis_ops_[keys[busiest_key_idx]].front());
+    op();
   }
 }
 
@@ -323,7 +343,7 @@ Status RedisStoreClient::DoPut(const std::string &key,
           callback(added_num != 0);
         };
   }
-  DoWrite({key}, std::move(args), std::move(write_callback));
+  SendRedisCmd({key}, std::move(args), std::move(write_callback));
   return Status::OK();
 }
 
@@ -346,7 +366,8 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
         }
       }
     };
-    DoWrite(std::move(partition_keys), std::move(command), std::move(delete_callback));
+    SendRedisCmd(
+        std::move(partition_keys), std::move(command), std::move(delete_callback));
   }
   return Status::OK();
 }
@@ -473,14 +494,13 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
                                      std::function<void(bool)> callback) {
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
   std::vector<std::string> args = {"HEXISTS", external_storage_namespace_, redis_key};
-
-  auto shard_context = redis_client_->GetShardContext(redis_key);
-  RAY_CHECK_OK(shard_context->RunArgvAsync(
-      args,
+  SendRedisCmd(
+      {key},
+      std::move(args),
       [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
         bool exists = reply->ReadAsInteger() > 0;
         callback(exists);
-      }));
+      });
   return Status::OK();
 }
 
