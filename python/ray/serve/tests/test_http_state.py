@@ -76,7 +76,7 @@ def test_http_proxy_healthy():
     class MockHTTPProxyActor:
         async def ready(self):
             await signal.wait.remote()
-            return json.dumps(["mock_actor_id", "mock_log_file_path"])
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
 
         async def check_health(self):
             pass
@@ -105,7 +105,7 @@ def test_http_proxy_unhealthy():
     @ray.remote(num_cpus=0)
     class MockHTTPProxyActor:
         async def ready(self):
-            return json.dumps(["mock_actor_id", "mock_log_file_path"])
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
 
         async def check_health(self):
             await signal.wait.remote()
