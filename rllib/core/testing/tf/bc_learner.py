@@ -13,7 +13,9 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> Mapping[str, Any]:
 
-        action_dist = fwd_out["action_dist"]
-        loss = -tf.math.reduce_mean(action_dist.log_prob(batch[SampleBatch.ACTIONS]))
+        action_dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        action_dist_class = self._module[module_id].get_train_action_dist_cls()
+        action_dist = action_dist_class.from_logits(action_dist_inputs)
+        loss = -tf.math.reduce_mean(action_dist.logp(batch[SampleBatch.ACTIONS]))
 
         return {self.TOTAL_LOSS_KEY: loss}
