@@ -24,7 +24,7 @@ class DreamerV3Catalog(Catalog):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        dreamer_model_config: DreamerV3ModelConfig,
+        model_config: DreamerV3ModelConfig,
     ):
         """Initializes a DreamerV3Catalog instance.
 
@@ -36,10 +36,11 @@ class DreamerV3Catalog(Catalog):
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
-            model_config_dict=dataclasses.asdict(dreamer_model_config),
+            # TODO (sven): Make all catalogs only support ModelConfig objects.
+            model_config_dict=dataclasses.asdict(model_config),
         )
 
-        self.model_config = dreamer_model_config
+        self.model_config = model_config
         self.is_img_space = len(self.observation_space.shape) in [2, 3]
         self.is_gray_scale = (
             self.is_img_space and len(self.observation_space.shape) == 2

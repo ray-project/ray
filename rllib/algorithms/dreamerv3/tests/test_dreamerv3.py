@@ -14,7 +14,7 @@ class TestDreamerV3(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_dreamerv3_compilation_w_connectors(self):
+    def test_dreamerv3_compilation(self):
         """Test whether DremaerV3 can be built with all frameworks."""
 
         # Build a DreamerV3Config object.

@@ -325,6 +325,8 @@ class AlgorithmConfig(_Config):
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
+        TODO: make this configurable with a dataclass object
+        self.model_config = None
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -841,7 +843,7 @@ class AlgorithmConfig(_Config):
             self.model["_disable_action_flattening"] = True
         if self.model.get("custom_preprocessor"):
             deprecation_warning(
-                old="model_config['custom_preprocessor']",
+                old="AlgorithmConfig.training(model={'custom_preprocessor': ...})",
                 help="Custom preprocessors are deprecated, "
                 "since they sometimes conflict with the built-in "
                 "preprocessors for handling complex observation spaces. "
@@ -2430,7 +2432,7 @@ class AlgorithmConfig(_Config):
         Args:
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
-                observation_space, action_space, catalog_class, or the model_config is
+                observation_space, action_space, catalog_class, or the model config is
                 not specified it will be inferred from the env and other parts of the
                 algorithm config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
@@ -2729,12 +2731,20 @@ class AlgorithmConfig(_Config):
         # Normal env (gym.Env or MultiAgentEnv): These should have the
         # `observation_space` and `action_space` properties.
         elif env is not None:
-            if hasattr(env, "observation_space") and isinstance(
+            if hasattr(env, "single_observation_space") and isinstance(
+                env.single_observation_space, gym.Space
+            ):
+                env_obs_space = env.single_observation_space
+            elif hasattr(env, "observation_space") and isinstance(
                 env.observation_space, gym.Space
             ):
                 env_obs_space = env.observation_space
 
-            if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
+            if hasattr(env, "single_action_space") and isinstance(
+                env.single_action_space, gym.Space
+            ):
+                env_act_space = env.single_action_space
+            elif hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
                 env_act_space = env.action_space
 
         # Last resort: Try getting the env's spaces from the spaces
@@ -3120,6 +3130,8 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
+            if module_spec.model_config is None:
+                module_spec.model_config = policy_spec.config.get("model_config")
             if module_spec.model_config_dict is None:
                 module_spec.model_config_dict = policy_spec.config.get("model", {})
 

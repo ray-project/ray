@@ -60,13 +60,18 @@ class SingleAgentRLModuleSpec:
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
+
+        TODO (sven): Make all RLModules be only configurable via objects,
+         not dicts.
+        model_config: The model config object to use.
         catalog_class: The Catalog class to use.
     """
 
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
-    model_config_dict: Optional[Mapping[str, Any]] = None
+    model_config_dict: Optional[Dict[str, Any]] = None
+    model_config: Any = None
     catalog_class: Optional[Type["Catalog"]] = None
 
     def get_rl_module_config(self) -> "RLModuleConfig":
@@ -75,6 +80,9 @@ class SingleAgentRLModuleSpec:
             observation_space=self.observation_space,
             action_space=self.action_space,
             model_config_dict=self.model_config_dict,
+            # TODO (sven): Make all RLModules be only configurable via objects,
+            #  not dicts.
+            model_config=self.model_config,
             catalog_class=self.catalog_class,
         )
 
@@ -147,6 +155,7 @@ class SingleAgentRLModuleSpec:
         self.observation_space = other.observation_space or self.observation_space
         self.action_space = other.action_space or self.action_space
         self.model_config_dict = other.model_config_dict or self.model_config_dict
+        self.model_config = other.model_config or self.model_config
         self.catalog_class = other.catalog_class or self.catalog_class
 
 
@@ -167,16 +176,25 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    model_config_dict: Mapping[str, Any] = None
+    model_config_dict: Dict[str, Any] = None
+    # TODO (sven): Make all RLModules be only configurable via objects, not dicts.
+    model_config: Any = None
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":
         """Returns the catalog for this config."""
-        return self.catalog_class(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            model_config_dict=self.model_config_dict,
-        )
+        if self.model_config is not None:
+            return self.catalog_class(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                model_config_dict=self.model_config,
+            )
+        else:
+            return self.catalog_class(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                model_config_dict=self.model_config_dict,
+            )
 
     def to_dict(self):
         """Returns a serialized representation of the config.
