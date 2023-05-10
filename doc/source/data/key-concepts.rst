@@ -22,7 +22,7 @@ The following figure visualizes a dataset with three blocks, each holding 1000 r
 may not be computed yet. Normally, callers iterate over dataset blocks in a streaming fashion, so that not all
 blocks need to be materialized in the cluster memory at once.
 
-.. image:: images/dataset-arch.svg
+.. image:: images/datastream-arch.svg
 
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
@@ -32,7 +32,7 @@ Reading Data
 
 Dataset uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
 
-.. image:: images/dataset-read.svg
+.. image:: images/datastream-read.svg
    :align: center
 
 ..
@@ -52,7 +52,7 @@ To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
 pool of Ray actors. This allows you to cache expensive state initialization
 (e.g., model loading for GPU-based tasks).
 
-.. image:: images/dataset-map.svg
+.. image:: images/datastream-map.svg
    :align: center
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
@@ -73,7 +73,7 @@ Repartition has two modes:
 * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
 * ``shuffle=True`` - performs a full distributed shuffle
 
-.. image:: images/dataset-shuffle.svg
+.. image:: images/datastream-shuffle.svg
    :align: center
 
 ..

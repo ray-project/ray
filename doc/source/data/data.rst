@@ -19,7 +19,7 @@ and is compatible with a variety of file formats, data sources, and distributed 
 
 Read on for an overview of the main use cases and operations supported by Ray Data.
 
-.. image:: images/dataset.svg
+.. image:: images/datastream.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
@@ -56,7 +56,7 @@ Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to di
 applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems.
 
-.. image:: images/dataset-loading-1.png
+.. image:: images/datastream-loading-1.png
    :width: 650px
    :align: center
 
