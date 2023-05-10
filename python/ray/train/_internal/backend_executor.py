@@ -398,6 +398,7 @@ class BackendExecutor:
             self.dataset_shards = data_config.configure(
                 datasets,
                 world_size=len(self.worker_group),
+                worker_handles=actors,
                 worker_node_ids=_get_node_ids(actors),
             )
 

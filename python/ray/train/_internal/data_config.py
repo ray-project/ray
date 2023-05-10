@@ -1,5 +1,8 @@
 from typing import Optional, Dict, List, TYPE_CHECKING
 
+from ray.actor import ActorHandle
+from ray.train._internal.dataset_spec import DataParallelIngestSpec
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.air.config import DatasetConfig
@@ -27,6 +30,7 @@ def default_ingest_options() -> ExecutionOptions:
     )
 
 
+@PublicAPI
 class DataConfig:
     def __init__(
         self,
@@ -36,13 +40,15 @@ class DataConfig:
         self._datasets_to_split = datasets_to_split or []
         self._execution_options = execution_options
 
+    @DeveloperAPI
     def configure(
         self,
         datasets: Dict[str, Dataset],
         world_size: int,
+        worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
-    ) -> Dict[int, Dict[str, DataIterator]]:
-        output = {i: {} for i in range(world_size)}
+    ) -> List[Dict[str, DataIterator]]:
+        output = [{} for i in range(world_size)]
 
         for name, ds in datasets.items():
             ds = ds.copy(ds)
@@ -60,12 +66,39 @@ class DataConfig:
 
         return output
 
+    def _legacy_preprocessing(
+        self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
+    ) -> Dict[str, Dataset]:
+        """Legacy hook for backwards compatiblity; will be removed in future."""
+        return datasets  # No-op for non-legacy configs.
+
 
 class LegacyDataConfigWrapper(DataConfig):
-    def __init__(self, config: Dict[str, DatasetConfig]):
-        self._config = config
+    def __init__(
+        self,
+        cls_config: Dict[str, DatasetConfig],
+        user_config: Dict[str, DatasetConfig],
+        datasets: Dict[str, Dataset],
+    ):
+        self._dataset_config = DatasetConfig.validated(
+            DatasetConfig.merge(cls_config, user_config), datasets
+        )
+        self._ingest_spec = DataParallelIngestSpec(
+            dataset_config=self._dataset_config,
+        )
+        self._preprocessed_dataset = None
+
+    def configure(
+        self,
+        datasets: Dict[str, Dataset],
+        world_size: int,
+        worker_handles: Optional[List[ActorHandle]],
+        worker_node_ids: Optional[List[NodeIdStr]],
+    ) -> Dict[int, Dict[str, DataIterator]]:
+        return self._ingest_spec.get_dataset_shards(worker_handles)
 
     def _legacy_preprocessing(
         self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
     ) -> Dict[str, Dataset]:
-        ...
+        self._ingest_spec.preprocess_datasets(preprocessor, datasets)
+        return self._preprocessed_datasets

@@ -267,7 +267,9 @@ class DataParallelTrainer(BaseTrainer):
                 "The dict form of `dataset_config` is deprecated. Use the "
                 "DataConfig class instead."
             )
-            self._data_config = LegacyDataConfigWrapper(dataset_config)
+            self._data_config = LegacyDataConfigWrapper(
+                self._dataset_config, dataset_config, datasets
+            )
         elif isinstance(dataset_config, DataConfig):
             self._data_config = dataset_config
         elif dataset_config is None:
@@ -483,9 +485,8 @@ class DataParallelTrainer(BaseTrainer):
             children.append(self._datasets_repr_())
             titles.append("Datasets")
 
-        if self._dataset_config:
-            children.append(HTML(self._dataset_config_repr_html_()))
-            titles.append("Dataset Config")
+            children.append(HTML(self._data_config_repr_html_()))
+            titles.append("Data Config")
 
         if self._train_loop_config:
             children.append(HTML(self._train_loop_config_repr_html_()))
@@ -539,7 +540,7 @@ class DataParallelTrainer(BaseTrainer):
         else:
             return ""
 
-    def _dataset_config_repr_html_(self) -> str:
+    def _data_config_repr_html_(self) -> str:
         # TODO
         content = [str(self._data_config)]
         return Template("rendered_html_common.html.j2").render(content=content)
