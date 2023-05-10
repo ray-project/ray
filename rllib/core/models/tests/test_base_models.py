@@ -287,11 +287,27 @@ class TestModelBase(unittest.TestCase):
 
         compile_config = TorchCompileConfig(compile_forward_train=True)
 
-        compile_config.maybe_compile_forward_methods(torch_module)
+        compile_config.compile(torch_module)
 
         # We should still be able to call the forward method
-        torch_module._forward_train(torch.Tensor([[1]]))
-        self.assertTrue(hasattr(torch_module, "__compiled_forward_train"))
+        torch_module._forward_train({"obs": torch.randn(1, 32)})
+        self.assertTrue(hasattr(torch_module, "_compiled_forward_train"))
+
+        # Compile again with different config and see if everything still works
+
+        compile_config = TorchCompileConfig(
+            compile_forward_train=True,
+            compile_forward_inference=True,
+            compile_forward_exploration=True,
+        )
+
+        compile_config.compile(torch_module)
+
+        # We should still be able to call the forward methods
+        torch_module._forward_inference({"obs": torch.randn(1, 32)})
+        self.assertTrue(hasattr(torch_module, "_compiled_forward_inference"))
+        torch_module._forward_exploration({"obs": torch.randn(1, 32)})
+        self.assertTrue(hasattr(torch_module, "_compiled_forward_exploration"))
 
 
 if __name__ == "__main__":
