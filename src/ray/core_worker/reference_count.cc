@@ -251,6 +251,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
+  num_objects_owned_by_us_++;
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
@@ -666,6 +667,9 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
     reconstructable_owned_objects_index_.erase(index_it);
   }
   freed_objects_.erase(it->first);
+  if (it->second.owned_by_us) {
+    num_objects_owned_by_us_--;
+  }
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
 }
@@ -809,6 +813,11 @@ bool ReferenceCounter::HasReference(const ObjectID &object_id) const {
 size_t ReferenceCounter::NumObjectIDsInScope() const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.size();
+}
+
+size_t ReferenceCounter::NumObjectOwnedByUs() const {
+  absl::MutexLock lock(&mutex_);
+  return num_objects_owned_by_us_;
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {

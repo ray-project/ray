@@ -219,6 +219,8 @@ message ObjectStoreStats {
   // the node has more pull requests than available object store
   // memory.
   bool object_pulls_queued = 13;
+  // The number of primary copies of objects in the local node.
+  int64 num_object_store_primary_copies = 14;
 }
 
 message GetNodeStatsReply {
