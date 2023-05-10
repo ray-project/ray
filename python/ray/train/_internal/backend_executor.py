@@ -332,7 +332,8 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset_spec: RayDatasetSpec,
+        datasets: Dict[str, Dataset],
+        data_config: DataConfig,
         checkpoint: Optional[Checkpoint] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -341,9 +342,8 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Datastream to be
-                passed to the training workers, and the logic on how to shard the Ray
-                Dataset.
+            datasets: The base datasets.
+            data_config: The config object for creating dataset shards for workers.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``session.get_checkpoint()``. If this
@@ -392,7 +392,11 @@ class BackendExecutor:
 
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
-            self.dataset_shards = dataset_spec.get_dataset_shards(actors)
+            self.dataset_shards = data_config.configure(
+                datasets,
+                world_rank=world_rank,
+                worker_node_ids=_get_node_ids(actors),
+            )
 
         (
             local_rank_map,

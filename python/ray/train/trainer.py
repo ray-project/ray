@@ -42,7 +42,8 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        dataset_spec: RayDatasetSpec,
+        datasets: Dict[str, Dataset],
+        data_config: DataConfig,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointConfig],
@@ -51,14 +52,16 @@ class TrainingIterator:
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
-        self._dataset_spec = dataset_spec
+        self._datasets = datasets
+        self._data_config = data_config
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
-            dataset_spec=self._dataset_spec,
+            datasets=self._datasets,
+            data_config=self._data_config,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
@@ -73,7 +76,8 @@ class TrainingIterator:
         self,
         train_func,
         run_dir,
-        dataset_spec,
+        datasets,
+        data_config,
         checkpoint,
         checkpoint_strategy,
         latest_checkpoint_id=None,
@@ -87,7 +91,8 @@ class TrainingIterator:
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
-                dataset_spec=dataset_spec,
+                datasets=datasets,
+                data_config=data_config,
                 checkpoint=checkpoint,
             )
         )
@@ -107,7 +112,8 @@ class TrainingIterator:
             self._start_training(
                 self._train_func,
                 self._run_dir,
-                self._dataset_spec,
+                self._datasets,
+                self._data_config,
                 self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_strategy,
                 latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
