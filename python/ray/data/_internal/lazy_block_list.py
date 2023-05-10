@@ -7,7 +7,7 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.stats import DatastreamStats, _get_or_create_stats_actor
+from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data._internal.util import _split_list
 from ray.data.block import (
     Block,
@@ -26,7 +26,7 @@ class LazyBlockList(BlockList):
     """A BlockList that submits tasks lazily on-demand.
 
     This BlockList is used for implementing read operations (e.g., to avoid
-    needing to read all files of a Datastream when the user is just wanting to
+    needing to read all files of a Dataset when the user is just wanting to
     .take() the first few rows or view the schema).
     """
 
@@ -58,7 +58,7 @@ class LazyBlockList(BlockList):
                 in cached_metadata represents the list of output blocks metadata per
                 the read task. One task can produce multiple output blocks.
             ray_remote_args: Ray remote arguments for the read tasks.
-            stats_uuid: UUID for the datastream stats, used to group and fetch read task
+            stats_uuid: UUID for the dataset stats, used to group and fetch read task
                 stats. If not provided, a new UUID will be created.
         """
         self._tasks = tasks
@@ -119,10 +119,10 @@ class LazyBlockList(BlockList):
             _, metadata = self._get_blocks_with_metadata()
         return metadata
 
-    def stats(self) -> DatastreamStats:
-        """Create DatastreamStats for this LazyBlockList."""
-        return DatastreamStats(
-            # Make a copy of metadata, as the DatastreamStats may mutate it in-place.
+    def stats(self) -> DatasetStats:
+        """Create DatasetStats for this LazyBlockList."""
+        return DatasetStats(
+            # Make a copy of metadata, as the DatasetStats may mutate it in-place.
             stages={"Read": self.get_metadata(fetch_if_missing=False).copy()},
             parent=None,
             needs_stats_actor=True,
@@ -315,7 +315,7 @@ class LazyBlockList(BlockList):
         if context.block_splitting_enabled:
             # If block splitting is enabled, fetch the partitions through generator.
             read_progress_bar = ProgressBar("Read progress", total=len(block_refs))
-            # Handle duplicates (e.g. due to unioning the same datastream).
+            # Handle duplicates (e.g. due to unioning the same dataset).
             unique_refs = list(set(block_refs))
             generators = read_progress_bar.fetch_until_complete(unique_refs)
 
@@ -341,7 +341,7 @@ class LazyBlockList(BlockList):
             return [], []
         read_progress_bar = ProgressBar("Read progress", total=len(meta_refs))
         # Fetch the metadata in bulk.
-        # Handle duplicates (e.g. due to unioning the same datastream).
+        # Handle duplicates (e.g. due to unioning the same dataset).
         unique_meta_refs = set(meta_refs)
         metadata = read_progress_bar.fetch_until_complete(list(unique_meta_refs))
         ref_to_data = {
@@ -359,7 +359,7 @@ class LazyBlockList(BlockList):
         """Kick off computation for the first block in the list.
 
         This is useful if looking to support rapid lightweight interaction with a small
-        amount of the datastream.
+        amount of the dataset.
         """
         if self._tasks:
             self._get_or_compute(0)
@@ -385,7 +385,7 @@ class LazyBlockList(BlockList):
         try:
             block_partition_ref, metadata_ref = next(self._iter_block_partition_refs())
         except (StopIteration, ValueError):
-            # Datastream is empty (no blocks) or was manually cleared.
+            # Dataset is empty (no blocks) or was manually cleared.
             pass
         else:
             # This blocks until the underlying read task is finished.

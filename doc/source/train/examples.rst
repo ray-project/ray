@@ -83,6 +83,14 @@ Distributed Training Examples using Ray Train
 
             Use LightningTrainer with Ray Data and Batch Predictor
     
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: dolly_lightning_fsdp_finetuning
+
+            Fine-tune LLM with AIR LightningTrainer and FSDP
+    
 
 Ray Train Examples Using Loggers & Callbacks
 --------------------------------------------

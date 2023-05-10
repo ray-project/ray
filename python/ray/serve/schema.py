@@ -635,6 +635,12 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "state from the running replica actor."
         )
     )
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the log file for the replica actor from the ray logs "
+            "directory."
+        )
+    )
 
 
 @PublicAPI(stability="alpha")
