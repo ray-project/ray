@@ -827,6 +827,23 @@
         cluster_compute: gptj_deepspeed_compute_gce.yaml
 
 
+- name: air_example_dolly_v2_lightning_fsdp_finetuning
+  group: AIR examples
+  working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
+
+  python: "3.8"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: dolly_v2_fsdp_env.yaml
+    cluster_compute: dolly_v2_fsdp_compute_aws.yaml
+
+  run:
+    timeout: 4700
+    script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
+  
+  
 - name: air_example_opt_deepspeed_batch_inference
   group: AIR examples
   working_dir: air_examples/opt_deepspeed_batch_inference
@@ -4287,7 +4304,7 @@
       env: gce
       frequency: manual
       cluster:
-        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # TODO(https://github.com/ray-project/ray/issues/34591)
         # Revert to the comment below once ^ closed.
         # cluster_env: app_config.yaml
         cluster_env: debug_app_config.yaml
@@ -5619,6 +5636,8 @@
   group: data-tests
   working_dir: nightly_tests
 
+  stable: false
+
   frequency: nightly
   team: data
   cluster:
@@ -5889,6 +5908,8 @@
 - name: chaos_dataset_shuffle_sort_1tb
   group: data-tests
   working_dir: nightly_tests
+
+  stable: false
 
   frequency: nightly
   team: data
