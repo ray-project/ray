@@ -5,7 +5,7 @@ GroupedData API
 
 .. currentmodule:: ray.data
 
-GroupedData objects are returned by groupby call: Datastream.groupby().
+GroupedData objects are returned by groupby call: Dataset.groupby().
 
 Constructor
 -----------
