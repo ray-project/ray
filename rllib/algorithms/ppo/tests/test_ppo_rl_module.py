@@ -64,7 +64,7 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    action_dist_class = module.get_action_dist_cls()
+    action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[SampleBatch.ACTION_DIST_INPUTS]
     ).logp(batch[SampleBatch.ACTIONS])
@@ -81,6 +81,7 @@ def dummy_tf_ppo_loss(module, batch, fwd_out):
     Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
 
     Args:
+        module: PPOTfRLModule
         batch: SampleBatch used for training.
         fwd_out: Forward output of the model.
 
@@ -88,7 +89,7 @@ def dummy_tf_ppo_loss(module, batch, fwd_out):
         Loss tensor
     """
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    action_dist_class = module.get_action_dist_cls()
+    action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[SampleBatch.ACTION_DIST_INPUTS]
     ).logp(batch[SampleBatch.ACTIONS])
@@ -97,8 +98,8 @@ def dummy_tf_ppo_loss(module, batch, fwd_out):
     return actor_loss + critic_loss
 
 
-def _get_ppo_module(framework, env, lstm, observation_space, torch_compile):
-    model_config_dict = {"use_lstm": lstm, "torch_compile": torch_compile}
+def _get_ppo_module(framework, env, lstm, observation_space):
+    model_config_dict = {"use_lstm": lstm}
     config = get_expected_module_config(
         env, model_config_dict=model_config_dict, observation_space=observation_space
     )
@@ -139,15 +140,11 @@ class TestPPO(unittest.TestCase):
         fwd_fns = ["forward_exploration", "forward_inference"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
-        torch_compile = [False, True]
-        config_combinations = [frameworks, env_names, fwd_fns, lstm, torch_compile]
+        config_combinations = [frameworks, env_names, fwd_fns, lstm]
         for config in itertools.product(*config_combinations):
-            fw, env_name, fwd_fn, lstm, torch_compile = config
+            fw, env_name, fwd_fn, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
-                continue
-            if torch_compile and fw == "tf2":
-                # We don't need to test this
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
             if env_name.startswith("ALE/"):
@@ -163,7 +160,6 @@ class TestPPO(unittest.TestCase):
                 env=env,
                 lstm=lstm,
                 observation_space=preprocessor.observation_space,
-                torch_compile=torch_compile,
             )
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
@@ -189,15 +185,11 @@ class TestPPO(unittest.TestCase):
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         # TODO(Artur): Re-enable LSTM
         lstm = [False]
-        torch_compile = [False, True]
-        config_combinations = [frameworks, env_names, lstm, torch_compile]
+        config_combinations = [frameworks, env_names, lstm]
         for config in itertools.product(*config_combinations):
-            fw, env_name, lstm, torch_compile = config
+            fw, env_name, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
-                continue
-            if torch_compile and fw == "tf2":
-                # We don't need to test this
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
             # TODO(Artur): Figure out why this is needed and fix it.
@@ -214,7 +206,6 @@ class TestPPO(unittest.TestCase):
                 env=env,
                 lstm=lstm,
                 observation_space=preprocessor.observation_space,
-                torch_compile=torch_compile,
             )
 
             # collect a batch of data
@@ -236,7 +227,7 @@ class TestPPO(unittest.TestCase):
                 # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
-                action_dist_cls = module.get_action_dist_cls()
+                action_dist_cls = module.get_exploration_action_dist_cls()
                 action_dist = action_dist_cls.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
