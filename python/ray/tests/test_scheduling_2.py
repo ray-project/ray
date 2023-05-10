@@ -9,17 +9,17 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.test_utils import make_global_state_accessor, wait_for_condition
+from ray._private.test_utils import (
+    make_global_state_accessor,
+    wait_for_condition,
+    get_metric_check_condition,
+    MetricSamplePattern,
+)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
-)
-from ray._private.test_utils import (
-    wait_for_condition,
-    get_metric_check_condition,
-    MetricSamplePattern,
 )
 
 
@@ -751,13 +751,12 @@ def test_workload_placement_metrics(ray_start_regular):
         def ready(self):
             return True
 
-
     t = task.remote()
     ray.get(t)
     a = Actor.remote()
     ray.get(a.ready.remote())
     del a
-    pg = placement_group(bundles=[{"CPU":1}], strategy="SPREAD")
+    pg = placement_group(bundles=[{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
     placement_metric_condition = get_metric_check_condition(
