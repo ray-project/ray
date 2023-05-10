@@ -49,8 +49,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_dist = self.action_dist_cls.from_logits(action_logits)
-        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
@@ -88,9 +87,6 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
 
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.ACTION_DIST] = self.action_dist_cls.from_logits(
-            logits=action_logits
-        )
 
         return output
 
@@ -119,15 +115,7 @@ class PPOTfRLModule(PPORLModuleBase, TfRLModule):
         output[SampleBatch.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
 
         # Policy head
-        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_logits = pi_out
-        action_dist = self.action_dist_cls.from_logits(logits=action_logits)
-        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
-        entropy = action_dist.entropy()
-
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
-        output[SampleBatch.ACTION_DIST] = action_dist
-        output[SampleBatch.ACTION_LOGP] = logp
-        output["entropy"] = entropy
 
         return output

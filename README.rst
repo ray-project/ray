@@ -23,7 +23,7 @@ Ray is a unified framework for scaling AI and Python applications. Ray consists 
 
 Learn more about `Ray AIR`_ and its libraries:
 
-- `Data`_: Distributed ML Preprocessing
+- `Data`_: Scalable Datasets for ML
 - `Train`_: Distributed Training
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
