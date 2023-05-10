@@ -138,7 +138,7 @@ _cached_fs = {}
 
 
 def _get_network_mounts() -> List[str]:
-    """Get the mounted network filesystems.
+    """Get mounted network filesystems on the current node.
 
     Network file system (NFS), server message block (SMB) and
     common internet file system (CIFS) are all file access storage protocols,
@@ -153,13 +153,10 @@ def _get_network_mounts() -> List[str]:
 def _is_network_mount(path: str) -> bool:
     """Checks if a path is within a mounted network filesystem."""
     resolved_path = Path(path).expanduser().resolve()
+    network_mounts = set(Path(mount) for mount in _get_network_mounts())
 
-    network_mounts = _get_network_mounts()
-    for network_mount in network_mounts:
-        if Path(network_mount) in resolved_path.parents:
-            return True
-
-    return False
+    # Check if any of the network mounts are one of the path's parents.
+    return bool(set(resolved_path.parents).intersection(network_mounts))
 
 
 def is_local_path(path: str) -> bool:

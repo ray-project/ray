@@ -165,9 +165,12 @@ def tag_ray_air_storage_config(
     elif _is_network_mount(local_path):
         # NFS
         storage_config_tag = "nfs"
+    elif sync_config.syncer is None:
+        # Syncing is disabled - results are only available on node-local storage
+        storage_config_tag = "local"
     else:
-        # Local
-        storage_config_tag = "local" if sync_config.syncer is None else "driver"
+        # The driver node's local storage is the synchronization point.
+        storage_config_tag = "driver"
 
     record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
 
