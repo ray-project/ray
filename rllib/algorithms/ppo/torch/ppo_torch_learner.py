@@ -39,10 +39,12 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        action_dist_class_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
-        action_dist_class_exploration = self.module[
-            module_id
-        ].unwrapped().get_exploration_action_dist_cls()
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        action_dist_class_exploration = (
+            self.module[module_id].unwrapped().get_exploration_action_dist_cls()
+        )
 
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
