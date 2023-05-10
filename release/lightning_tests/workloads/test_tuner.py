@@ -29,7 +29,7 @@ if __name__ == "__main__":
             logger=CSVLogger("logs", name="my_exp_name"),
         )
         .fit_params(datamodule=MNISTDataModule(batch_size=200))
-        .checkpointing(monitor="ptl/val_accuracy", mode="max")
+        .checkpointing(monitor="val_accuracy", mode="max")
         .build()
     )
 
@@ -57,12 +57,12 @@ if __name__ == "__main__":
             verbose=2,
             checkpoint_config=CheckpointConfig(
                 num_to_keep=2,
-                checkpoint_score_attribute="ptl/val_accuracy",
+                checkpoint_score_attribute="val_accuracy",
                 checkpoint_score_order="max",
             ),
         ),
         tune_config=tune.TuneConfig(
-            metric="ptl/val_accuracy",
+            metric="val_accuracy",
             mode="max",
             num_samples=2,
             scheduler=PopulationBasedTraining(
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         ),
     )
     results = tuner.fit()
-    best_result = results.get_best_result(metric="ptl/val_accuracy", mode="max")
+    best_result = results.get_best_result(metric="val_accuracy", mode="max")
     best_result
 
     assert len(results.errors) == 0
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     # Report experiment results
     result = {
         "time_taken": taken,
-        "ptl/val_accuracy": best_result.metrics["ptl/val_accuracy"],
+        "val_accuracy": best_result.metrics["val_accuracy"],
     }
 
     test_output_json = os.environ.get(
