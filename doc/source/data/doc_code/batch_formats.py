@@ -10,10 +10,10 @@ ds = ray.data.read_csv("example://iris.csv")
 def map_function(data):
     return data[data["sepal.length"] < 5]
 
-batch = ds.take_batch(10)
+batch = ds.take_batch(10, batch_format="pandas")
 mapped_batch = map_function(batch)
 
-transformed = ds.map_batches(map_function, batch_size=10)
+transformed = ds.map_batches(map_function, batch_format="pandas", batch_size=10)
 # __simple_map_function_end__
 
 # __simple_pandas_start__
@@ -23,8 +23,6 @@ import pandas as pd
 ds = ray.data.read_csv("example://iris.csv")
 ds.show(1)
 # -> {'sepal.length': 5.1, ..., 'petal.width': 0.2, 'variety': 'Setosa'}
-
-# pandas.core.frame.DataFrame
 
 def transform_pandas(df_batch: pd.DataFrame) -> pd.DataFrame:
     df_batch = df_batch[df_batch["variety"] == "Versicolor"]
@@ -41,6 +39,7 @@ from typing import Dict
 
 import ray
 import numpy as np
+from typing import Dict
 
 
 ds = ray.data.range_tensor(1000, shape=(2, 2))
@@ -72,7 +71,7 @@ def transform_pyarrow(batch: pa.Table) -> pa.Table:
 
 
 # test map function on a batch
-batch = ds.take_batch(1)
+batch = ds.take_batch(1, batch_format="pyarrow")
 mapped_batch = transform_pyarrow(batch)
 
 ds.map_batches(transform_pyarrow, batch_format="pyarrow").show(1)

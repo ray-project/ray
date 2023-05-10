@@ -219,8 +219,7 @@ Ray Data supports creating a ``Datastream`` from local and distributed in-memory
 via integrations with common data libraries, as well as from local and remote storage
 systems via our support for many common file formats and storage backends.
 
-Check out our :ref:`feature guide for creating datastreams <creating_datastreams>` for
-details.
+For more details, read :ref:`Loading Data <loading_data>`.
 
 When should I use global per-epoch shuffling?
 =============================================

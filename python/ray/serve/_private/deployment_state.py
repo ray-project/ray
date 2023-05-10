@@ -19,7 +19,7 @@ from ray._private.usage.usage_lib import (
     record_extra_usage_tag,
 )
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import RayActorError, RayError, RayTaskError
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
@@ -482,7 +482,7 @@ class ActorReplicaWrapper:
         else:
             self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -499,23 +499,28 @@ class ActorReplicaWrapper:
                     - replica initialization failed.
                 SUCCEEDED:
                     - replica initialization succeeded.
+            error_msg:
+                None:
+                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION or SUCCEEDED states
+                str:
+                    - for FAILED state
         """
 
         # Check whether the replica has been allocated.
         if not self._check_obj_ref_ready(self._allocated_obj_ref):
-            return ReplicaStartupStatus.PENDING_ALLOCATION
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         # Check whether relica initialization has completed.
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
-            return ReplicaStartupStatus.PENDING_INITIALIZATION
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
                 # TODO(simon): fully implement reconfigure for Java replicas.
                 if self._is_cross_language:
-                    return ReplicaStartupStatus.SUCCEEDED
+                    return ReplicaStartupStatus.SUCCEEDED, None
 
                 # todo: The replica's userconfig whitch java client created
                 #  is different from the controller's userconfig
@@ -525,14 +530,23 @@ class ActorReplicaWrapper:
                 self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
                     self._allocated_obj_ref
                 )
-            except Exception:
+            except RayTaskError as e:
                 logger.exception(
                     f"Exception in replica '{self._replica_tag}', "
                     "the replica will be stopped."
                 )
-                return ReplicaStartupStatus.FAILED
+                # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                # here because the full details of the error is not displayed properly
+                # with traceback.format_exc().
+                return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+            except Exception as e:
+                logger.exception(
+                    f"Exception in replica '{self._replica_tag}', "
+                    "the replica will be stopped."
+                )
+                return ReplicaStartupStatus.FAILED, repr(e)
 
-        return ReplicaStartupStatus.SUCCEEDED
+        return ReplicaStartupStatus.SUCCEEDED, None
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
@@ -804,7 +818,7 @@ class DeploymentReplica(VersionedReplica):
         # Replica version is fetched from recovered replica dynamically in
         # check_started() below
 
-    def check_started(self) -> ReplicaStartupStatus:
+    def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
@@ -1046,6 +1060,7 @@ class DeploymentState:
         self._last_retry: float = 0.0
         self._backoff_time_s: int = 1
         self._replica_constructor_retry_counter: int = 0
+        self._replica_constructor_error_msg: Optional[str] = None
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
@@ -1543,8 +1558,10 @@ class DeploymentState:
                     message=(
                         f"The Deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with the deployment "
-                        "constructor or the initial health check failing. See logs for "
-                        f"details. Retrying after {self._backoff_time_s} seconds."
+                        "constructor or the initial health check failing. See "
+                        "controller logs for details. Retrying after "
+                        f"{self._backoff_time_s} seconds. Error:\n"
+                        f"{self._replica_constructor_error_msg}"
                     ),
                 )
                 return False, any_replicas_recovering
@@ -1589,7 +1606,7 @@ class DeploymentState:
         transitioned_to_running = False
         replicas_failed = False
         for replica in self._replicas.pop(states=[original_state]):
-            start_status = replica.check_started()
+            start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
                 # This replica should be now be added to handle's replica
                 # set.
@@ -1604,6 +1621,7 @@ class DeploymentState:
                 if self._replica_constructor_retry_counter >= 0:
                     # Increase startup failure counter if we're tracking it
                     self._replica_constructor_retry_counter += 1
+                    self._replica_constructor_error_msg = error_msg
 
                 replicas_failed = True
                 self._stop_replica(replica)

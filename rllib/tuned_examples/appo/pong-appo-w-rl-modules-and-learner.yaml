@@ -15,7 +15,6 @@ pong-appo:
             full_action_space: false
             repeat_action_probability: 0.0  # deterministic
         vtrace: true
-        #vtrace_drop_last_ts: false
         use_kl_loss: false
         rollout_fragment_length: 50
         train_batch_size: 4000
