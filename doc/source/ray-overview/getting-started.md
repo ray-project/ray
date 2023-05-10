@@ -143,7 +143,7 @@ Learn more about Ray AIR
 Ray has a rich ecosystem of libraries and frameworks built on top of it. 
 Simply click on the dropdowns below to see examples of our most popular libraries.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Distributed ML Preprocessing
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
 Ray Data is the standard way to load and exchange data in Ray libraries and applications.
