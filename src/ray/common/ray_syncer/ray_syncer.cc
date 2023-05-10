@@ -16,7 +16,9 @@
 
 #include <functional>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
+
 namespace ray {
 namespace syncer {
 
@@ -222,10 +224,14 @@ void RaySyncer::Connect(const std::string &node_id,
             [this, channel](const std::string &node_id, bool restart) {
               sync_reactors_.erase(node_id);
               if (restart) {
-                RAY_LOG_EVERY_MS(INFO, 10 * 1000)
-                    << "Connection is broken. Reconnect to node: "
-                    << NodeID::FromBinary(node_id);
-                Connect(node_id, channel);
+                execute_after(
+                    io_context_,
+                    [this, node_id, channel]() {
+                      RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
+                                    << NodeID::FromBinary(node_id);
+                      Connect(node_id, channel);
+                    },
+                    /* delay_microseconds = */ 2000);
               }
             },
             /* stub */ std::move(stub));

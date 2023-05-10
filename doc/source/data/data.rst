@@ -10,16 +10,16 @@ Ray Data: Distributed ML Preprocessing
 
 Ray Data is the standard way to load and exchange data in Ray libraries and applications.
 It provides streaming distributed transformations such as maps
-(:meth:`map_batches <ray.data.Datastream.map_batches>`),
+(:meth:`map_batches <ray.data.Dataset.map_batches>`),
 global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.GroupedData>`), and
-shuffling operations (:meth:`random_shuffle <ray.data.Datastream.random_shuffle>`,
-:meth:`sort <ray.data.Datastream.sort>`,
-:meth:`repartition <ray.data.Datastream.repartition>`),
+shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`sort <ray.data.Dataset.sort>`,
+:meth:`repartition <ray.data.Dataset.repartition>`),
 and is compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Read on for an overview of the main use cases and operations supported by Ray Data.
 
-.. image:: images/datastream.svg
+.. image:: images/dataset.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
@@ -56,7 +56,7 @@ Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to di
 applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems.
 
-.. image:: images/datastream-loading-1.png
+.. image:: images/dataset-loading-1.png
    :width: 650px
    :align: center
 
@@ -98,7 +98,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
         ^^^
 
         Understand the key concepts behind Ray Data.
-        Learn what :ref:`Datastreams <datastream_concept>` are and how they are executed in Ray
+        Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray
         Data.
 
         +++
