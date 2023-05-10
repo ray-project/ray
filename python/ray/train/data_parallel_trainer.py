@@ -15,7 +15,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
+from ray.train._internal.data_config import DataConfig, LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -263,7 +263,10 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_config = train_loop_config
 
         if isinstance(dataset_config, dict):
-            print("warning deprecated...")
+            logger.warning(
+                "The dict form of `dataset_config` is deprecated. Use the "
+                "DataConfig class instead."
+            )
             self._data_config = LegacyDataConfigWrapper(dataset_config)
         elif isinstance(dataset_config, DataConfig):
             self._data_config = dataset_config
@@ -272,7 +275,8 @@ class DataParallelTrainer(BaseTrainer):
         else:
             raise ValueError(
                 "`dataset_config` must be an instance of ray.train.DataConfig, "
-                f"was: {dataset_config}")
+                f"was: {dataset_config}"
+            )
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
@@ -339,7 +343,8 @@ class DataParallelTrainer(BaseTrainer):
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
         self.datasets = self._data_config._legacy_preprocessing(
-            self.datasets, self.preprocessor)
+            self.datasets, self.preprocessor
+        )
 
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
@@ -441,8 +446,7 @@ class DataParallelTrainer(BaseTrainer):
         # Shutdown workers.
         backend_executor.shutdown()
 
-    @Deprecated
-    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
+    def get_dataset_config(self) -> DataConfig:
         """Return a copy of this Trainer's final dataset configs.
 
         Returns:
@@ -451,7 +455,7 @@ class DataParallelTrainer(BaseTrainer):
         if isinstance(self._data_config, LegacyDataConfigWrapper):
             return self._data_config._dataset_config
         else:
-            raise DeprecationWarning("not available todo")
+            return self._data_config
 
     @ensure_notebook_deps(
         ["tabulate", None],

@@ -82,8 +82,8 @@ class BaseTrainer(abc.ABC):
       called in sequence on the remote actor.
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
-    - ``trainer.data_setup()``: The datasets passed to the Trainer will be setup and
-      assigned to workers according to the DataConfig.
+    - ``trainer.preprocess_datasets()``: The datasets passed to the Trainer will be
+      setup and assigned to workers.
     - ``trainer.train_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
       object where you can access metrics from your training run, as well

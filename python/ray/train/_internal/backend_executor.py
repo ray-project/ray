@@ -1,12 +1,12 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, TYPE_CHECKING
 
 import ray
 from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
-from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.train._internal.data_config import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
     TrainingResult,
@@ -26,6 +26,9 @@ from ray.train.constants import (
     DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 T = TypeVar("T")
 
@@ -394,7 +397,7 @@ class BackendExecutor:
             actors = [worker.actor for worker in self.worker_group.workers]
             self.dataset_shards = data_config.configure(
                 datasets,
-                world_rank=world_rank,
+                world_size=len(self.worker_group),
                 worker_node_ids=_get_node_ids(actors),
             )
 
@@ -656,3 +659,7 @@ def _get_session(method_name: str):
             f"`{method_name}`."
         )
     return session
+
+
+def _get_node_ids(actors):
+    raise NotImplementedError("TODO")

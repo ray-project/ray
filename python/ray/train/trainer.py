@@ -1,10 +1,11 @@
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
 from ray.air._internal.util import StartTraceback
+from ray.train._internal.data_config import DataConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
@@ -14,7 +15,6 @@ from ray.train._internal.backend_executor import (
 from ray.train._internal.checkpoint import (
     CheckpointManager,
 )
-from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.session import TrainingResultType
 
 # Ray Train should be usable even if Tune is not installed.
@@ -26,6 +26,9 @@ from ray.train.base_trainer import (  # noqa: F401
     TrainingFailedError,
 )
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 T = TypeVar("T")
 S = TypeVar("S")
