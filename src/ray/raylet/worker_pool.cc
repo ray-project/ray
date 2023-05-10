@@ -394,6 +394,18 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     }
   }
 
+  if (language == Language::PYTHON &&
+      RayConfig::instance().one_log_per_workerpool_worker()) {
+    int32_t workers_same_type_count = 0;
+    for (const auto &entry : state.worker_processes) {
+      if (entry.second.worker_type == worker_type) {
+        workers_same_type_count += 1;
+      }
+    }
+    worker_command_args.push_back("--worker-index=" +
+                                  std::to_string(workers_same_type_count));
+  }
+
   if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
       RayConfig::instance().preload_python_modules().size() > 0) {
     std::string serialized_preload_python_modules =

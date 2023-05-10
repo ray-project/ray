@@ -146,6 +146,13 @@ parser.add_argument(
     help="The address of web ui",
 )
 parser.add_argument(
+    "--worker-index",
+    required=False,
+    type=int,
+    default=-1,
+    help="The worker index assigned by the worker pool this worker belongs to.",
+)
+parser.add_argument(
     "--worker-launch-time-ms",
     required=True,
     type=int,
@@ -232,13 +239,14 @@ if __name__ == "__main__":
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
+        worker_index=args.worker_index,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
     )
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
+        get_worker_log_file_name(args.worker_type, worker_index=args.worker_index)
     )
     configure_log_file(out_file, err_file)
     ray._private.worker.global_worker.set_out_file(out_file)

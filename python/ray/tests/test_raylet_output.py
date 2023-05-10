@@ -42,13 +42,17 @@ def test_ray_log_redirected(ray_start_regular):
         lambda: all(map(file_exists_and_not_empty, [raylet_out_path, raylet_err_path]))
     )
 
-    core_worker_logs = glob.glob(
-        "{}/logs/python-core-worker*{}.log".format(session_dir, remote_pid)
-    )
+    if ray._config.one_log_per_workerpool_worker():
+        core_worker_logs = glob.glob(f"{session_dir}/logs/python-core-worker*.log")
+    else:
+        core_worker_logs = glob.glob(
+            f"{session_dir}/logs/python-core-worker*{remote_pid}.log"
+        )
     driver_log = glob.glob(
         "{}/logs/python-core-driver*{}.log".format(session_dir, local_pid)
     )
-    assert len(core_worker_logs) > 0 and len(driver_log) > 0
+    assert len(core_worker_logs) > 0
+    assert len(driver_log) > 0
     all_worker_logs = core_worker_logs + driver_log
     wait_for_condition(lambda: all(map(file_exists_and_not_empty, all_worker_logs)))
 

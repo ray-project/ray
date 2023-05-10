@@ -2026,6 +2026,7 @@ def connect(
     startup_token: int = 0,
     ray_debugger_external: bool = False,
     entrypoint: str = "",
+    worker_index: int = -1,
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
 ):
@@ -2049,6 +2050,8 @@ def connect(
             node this worker is running on.
         entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
+        worker_index: The worker index assigned by the worker pool this
+            worker belongs to.
         worker_launch_time_ms: The time when the worker process for this worker
             is launched. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
@@ -2219,6 +2222,7 @@ def connect(
         startup_token,
         session_name,
         "" if mode != SCRIPT_MODE else entrypoint,
+        worker_index,
         worker_launch_time_ms,
         worker_launched_time_ms,
     )

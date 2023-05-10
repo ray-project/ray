@@ -794,6 +794,10 @@ cdef void execute_task(
         # Print on both .out and .err
         print(task_name_magic_token, end="")
         print(task_name_magic_token, file=sys.stderr, end="")
+
+        pid_magic_token = f"{ray_constants.LOG_PREFIX_PID}{os.getpid()}\n"
+        print(pid_magic_token, end="")
+        print(pid_magic_token, file=sys.stderr, end="")
     else:
         actor_id = core_worker.get_actor_id()
         actor = worker.actors[actor_id]
@@ -965,6 +969,9 @@ cdef void execute_task(
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
 
+                    pid_magic_token = f"{ray_constants.LOG_PREFIX_PID}{os.getpid()}\n"
+                    print(pid_magic_token, end="")
+                    print(pid_magic_token, file=sys.stderr, end="")
                     # Sets the actor repr name for the actor so other components
                     # like GCS has such info.
                     core_worker.set_actor_repr_name(actor_repr)
@@ -1093,6 +1100,10 @@ cdef execute_task_with_cancellation_handler(
         # Flush to both .out and .err
         print(actor_magic_token, end="")
         print(actor_magic_token, file=sys.stderr, end="")
+
+        pid_magic_token = f"{ray_constants.LOG_PREFIX_PID}{os.getpid()}\n"
+        print(pid_magic_token, end="")
+        print(pid_magic_token, file=sys.stderr, end="")
 
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
@@ -1749,7 +1760,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint,
+                  startup_token, session_name, entrypoint, worker_index,
                   worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
@@ -1802,6 +1813,7 @@ cdef class CoreWorker:
         options.startup_token = startup_token
         options.session_name = session_name
         options.entrypoint = entrypoint
+        options.worker_index = worker_index
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         CCoreWorkerProcess.Initialize(options)

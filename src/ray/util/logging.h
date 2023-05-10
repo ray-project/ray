@@ -258,7 +258,7 @@ class RayLog : public RayLogBase {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param logDir Logging output file name. If empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName,
+  static void StartRayLog(const std::string &appName = "DefaultApp",
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &logDir = "");
 
@@ -326,9 +326,6 @@ class RayLog : public RayLogBase {
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
-  // In InitGoogleLogging, it simply keeps the pointer.
-  // We need to make sure the app name passed to InitGoogleLogging exist.
-  static std::string app_name_;
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;

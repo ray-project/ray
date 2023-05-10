@@ -88,6 +88,7 @@ struct CoreWorkerOptions {
         runtime_env_hash(0),
         session_name(""),
         entrypoint(""),
+        worker_index(-1),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1) {}
 
@@ -186,6 +187,10 @@ struct CoreWorkerOptions {
   /// Session name (Cluster ID) of the cluster.
   std::string session_name;
   std::string entrypoint;
+
+  /// The worker index assigned by the worker pool this worker belongs to.
+  int64_t worker_index;
+
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
 };
