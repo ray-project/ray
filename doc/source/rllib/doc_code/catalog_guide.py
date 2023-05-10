@@ -125,6 +125,7 @@ config = (
     .environment("CartPole-v1")
     .framework("torch")
     .rl_module(_enable_rl_module_api=True)
+    .training(_enable_learner_api=True)
 )
 
 # Specify the catalog to use for the PPORLModule.

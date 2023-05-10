@@ -118,7 +118,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=?,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
@@ -135,7 +135,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=1,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
@@ -153,7 +153,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=1,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
@@ -191,7 +191,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=1,\n"
         "   num_rows=10,\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
