@@ -43,7 +43,7 @@ The new features include:
   It will not use the default Ray Tune table layout from before.
 - The table format has been updated.
 - We report configurations and observed metrics in a different format
-- The default metrics displayed for e.g. Rllib runs are heavily reduce
+- The default metrics displayed for e.g. RLlib runs are heavily reduce
   in the console output.
 - We generally uncluttered a lot of output and made it easier to
   read.
