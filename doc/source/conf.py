@@ -59,6 +59,7 @@ extensions = [
     "sphinx_design",
 ]
 
+
 # Prune deep toc-trees on demand for smaller html and faster builds.
 # This only effects the navigation bar, not the content.
 if os.getenv("FAST", False):
