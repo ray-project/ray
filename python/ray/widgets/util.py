@@ -248,5 +248,5 @@ def in_notebook() -> bool:
             return False  # Terminal running IPython
         else:
             return False  # Other type
-    except (ModuleNotFoundError, NameError):
+    except (ModuleNotFoundError, NameError, ValueError):
         return False

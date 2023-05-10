@@ -4223,14 +4223,14 @@ class Dataset:
     @repr_fallback_if_colab
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
-        
+
         Depending on the frontend where the data is being displayed,
         different mimetypes will be used from this bundle.
         See https://ipython.readthedocs.io/en/stable/config/integrating.html
         for information about this method, and
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
-        
+
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
