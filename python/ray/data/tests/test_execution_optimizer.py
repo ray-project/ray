@@ -49,7 +49,7 @@ from ray.data._internal.logical.util import (
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
@@ -287,7 +287,7 @@ def test_repartition_e2e(
 ):
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
-        ds_stats: DatastreamStats = ds._plan.stats()
+        ds_stats: DatasetStats = ds._plan.stats()
         if shuffle:
             assert ds_stats.base_name == "DoRead->Repartition"
             assert "DoRead->RepartitionMap" in ds_stats.stages
@@ -1261,7 +1261,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert isinstance(ray_datasets, dict)
 
     for ds_key, ds in ray_datasets.items():
-        assert isinstance(ds, ray.data.Datastream)
+        assert isinstance(ds, ray.data.Dataset)
         # `ds.take_all()` triggers execution with new backend, which is
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
@@ -1276,7 +1276,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         _check_usage_record(["FromHuggingFace"])
 
     ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Datastream)
+    assert isinstance(ray_dataset, ray.data.Dataset)
     assert len(ray_dataset.take_all()) > 0
     assert "FromArrowRefs" in ray_dataset.stats()
     assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
@@ -1362,7 +1362,7 @@ def test_blocks_to_input_buffer_op_name(
     ray_start_regular_shared,
     enable_streaming_executor,
 ):
-    ds: ray.data.Datastream = ray.data.range(10)
+    ds: ray.data.Dataset = ray.data.range(10)
     blocks, _, _ = ds._plan._optimize()
     assert hasattr(blocks, "_tasks"), blocks
     physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
