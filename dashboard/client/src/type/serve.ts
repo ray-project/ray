@@ -14,7 +14,7 @@ export type ServeApplication = {
   status: ServeApplicationStatus;
   message: string;
   last_deployed_time_s: number;
-  deployed_app_config: Record<string, any> | null; // It could be null if user did not provide deployed_app_config
+  deployed_app_config: Record<string, any>;
   deployments: {
     [name: string]: ServeDeployment;
   };
