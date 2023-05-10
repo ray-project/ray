@@ -130,7 +130,9 @@ class DreamerV3Config(AlgorithmConfig):
         self.train_batch_size = None
         self.env_runner_cls = DreamerV3EnvRunner
         self.num_rollout_workers = 0
-
+        # Dreamer only runs on the new API stack.
+        self._enable_learner_api = True
+        self._enable_rl_module_api = True
         # __sphinx_doc_end__
         # fmt: on
 

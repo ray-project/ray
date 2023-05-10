@@ -162,7 +162,7 @@ class SingleAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
-    """A utility config class to make it constructing RLModules easier.
+    """A utility config class to make constructing RLModules easier.
 
     Args:
         observation_space: The observation space of the RLModule. This may differ
@@ -178,7 +178,8 @@ class RLModuleConfig:
     action_space: gym.Space = None
     model_config_dict: Dict[str, Any] = None
     # TODO (sven): Make all RLModules be only configurable via objects, not dicts.
-    model_config: Any = None
+    TODO: ModelConfig
+    model_config: ModelConfig = None
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":

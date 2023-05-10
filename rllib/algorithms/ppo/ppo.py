@@ -139,20 +139,23 @@ class PPOConfig(PGConfig):
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
-            )
-
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
+                PPOTorchRLModule as RLModule
             )
         elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTfRLModule, catalog_class=PPOCatalog
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
+                PPOTfRLModule as RLModule
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+        return SingleAgentRLModuleSpec(
+            action_space=self.action_space,
+            observation_space=self.observation_space,
+            module_class=RLModule,
+            catalog_class=PPOCatalog,
+            model_config_dict=self.model,
+            model_config=None,
+        )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
