@@ -1,5 +1,8 @@
 ipython
 
+# Needed for rich visualization for Ray Train and Ray Data.
+ipywidgets>=8
+
 # Needed for Ray Client error message serialization/deserialization.
 tblib
 
