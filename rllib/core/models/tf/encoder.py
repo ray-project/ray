@@ -85,8 +85,6 @@ class TfCNNEncoder(TfModel, Encoder):
                     c=self.config.input_dims[2],
                     framework="tf2",
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -97,18 +95,14 @@ class TfCNNEncoder(TfModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="tf2"
                 ),
-                STATE_OUT: None,
             }
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
-        )
+    def _forward(self, inputs: dict, **kwargs) -> dict:
+        x = inputs
+        x[ENCODER_OUT] = self.net(inputs[SampleBatch.OBS])
+        return x
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -134,8 +128,6 @@ class TfMLPEncoder(Encoder, TfModel):
                 SampleBatch.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="tf2"
                 ),
-                # STATE_IN: None,
-                # SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -146,18 +138,14 @@ class TfMLPEncoder(Encoder, TfModel):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="tf2"
                 ),
-                STATE_OUT: None,
             }
         )
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: None,  # inputs[STATE_IN],
-            }
-        )
+        x = inputs
+        x[ENCODER_OUT] = self.net(inputs[SampleBatch.OBS])
+        return x
 
 
 class TfGRUEncoder(TfModel, Encoder):
@@ -230,6 +218,9 @@ class TfGRUEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        x = inputs
+
+        # Calculate the output and state of the GRU.
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
@@ -245,11 +236,10 @@ class TfGRUEncoder(TfModel, Encoder):
 
         out = self.linear(out)
 
-        return {
-            ENCODER_OUT: out,
-            # Make state_out batch-first.
-            STATE_OUT: {"h": tf.stack(states_out, 1)},
-        }
+        # Insert them into the output dict.
+        x[ENCODER_OUT] = out
+        x[STATE_OUT] = ({"h": tf.stack(states_out, 1)},)
+        return x
 
 
 class TfLSTMEncoder(TfModel, Encoder):
@@ -335,6 +325,9 @@ class TfLSTMEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        x = inputs
+
+        # Calculate the output and state of the LSTM.
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
@@ -352,8 +345,7 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         out = self.linear(out)
 
-        return {
-            ENCODER_OUT: out,
-            # Make state_out batch-first.
-            STATE_OUT: {"h": tf.stack(states_out_h, 1), "c": tf.stack(states_out_c, 1)},
-        }
+        # Insert them into the output dict.
+        x[ENCODER_OUT] = out
+        x[STATE_OUT] = {"h": tf.stack(states_out_h, 1), "c": tf.stack(states_out_c, 1)}
+        return x
