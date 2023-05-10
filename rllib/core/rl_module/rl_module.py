@@ -50,6 +50,7 @@ RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 
 
+@ExperimentalAPI
 def copy_state_from_remote_node_if_necessary(
     load_state_path: str, load_state_ip_addr: str
 ) -> str:
