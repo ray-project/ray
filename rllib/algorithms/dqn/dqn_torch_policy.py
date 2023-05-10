@@ -277,13 +277,14 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     )
 
     # Target Q-network evaluation.
-    q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
-        policy,
-        policy.target_models[model],
-        {"obs": train_batch[SampleBatch.NEXT_OBS]},
-        explore=False,
-        is_training=True,
-    )
+    with torch.no_grad():
+        q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
+            policy,
+            policy.target_models[model],
+            {"obs": train_batch[SampleBatch.NEXT_OBS]},
+            explore=False,
+            is_training=True,
+        )
 
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(
@@ -300,18 +301,19 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
 
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
-        (
-            q_tp1_using_online_net,
-            q_logits_tp1_using_online_net,
-            q_dist_tp1_using_online_net,
-            _,
-        ) = compute_q_values(
-            policy,
-            model,
-            {"obs": train_batch[SampleBatch.NEXT_OBS]},
-            explore=False,
-            is_training=True,
-        )
+        with torch.no_grad():
+            (
+                q_tp1_using_online_net,
+                q_logits_tp1_using_online_net,
+                q_dist_tp1_using_online_net,
+                _,
+            ) = compute_q_values(
+                policy,
+                model,
+                {"obs": train_batch[SampleBatch.NEXT_OBS]},
+                explore=False,
+                is_training=True,
+            )
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = F.one_hot(
             q_tp1_best_using_online_net, policy.action_space.n
