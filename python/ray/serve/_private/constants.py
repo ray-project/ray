@@ -162,7 +162,7 @@ MULTI_APP_MIGRATION_MESSAGE = (
 )
 
 # Jsonify the log messages
-SERVE_JSONIFY_LOG_MESSAGE = os.environ.get("SERVE_JSONIFY_LOG_MESSAGE") == "1"
+RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
 SERVE_LOG_ROUTE = "route"

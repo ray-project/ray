@@ -175,7 +175,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     else:
         serve_json_log_format = "0"
     ray.init(
-        runtime_env={"env_vars": {"SERVE_JSONIFY_LOG_MESSAGE": serve_json_log_format}}
+        runtime_env={
+            "env_vars": {"RAY_SERVE_ENABLE_JSON_LOGGING": serve_json_log_format}
+        }
     )
 
     logger = logging.getLogger("ray.serve")

@@ -8,7 +8,7 @@ import ray
 from ray.serve._private.constants import (
     DEBUG_LOG_ENV_VAR,
     SERVE_LOGGER_NAME,
-    SERVE_JSONIFY_LOG_MESSAGE,
+    RAY_SERVE_ENABLE_JSON_LOGGING,
     SERVE_LOG_RECORD_FORMAT,
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
@@ -218,7 +218,7 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if SERVE_JSONIFY_LOG_MESSAGE:
+    if RAY_SERVE_ENABLE_JSON_LOGGING:
         file_handler.setFormatter(
             ServeJSONFormatter(component_name, component_id, component_type)
         )
