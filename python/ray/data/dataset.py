@@ -4351,7 +4351,8 @@ class Dataset:
         if ray.util.log_once("dataset_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. Consider using `.map_batches()` instead."
+                "can be very slow. If you're using a vectorized transformation, "
+                "consider using `.map_batches()` instead."
             )
 
     def _synchronize_progress_bar(self):
