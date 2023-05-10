@@ -63,18 +63,17 @@ class RuntimeEnvAgentManager : public AgentManager {
   /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
   /// instances.
   /// \param[in] callback The callback function.
-  virtual void GetOrCreateRuntimeEnv(
-      const JobID &job_id,
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      const std::string &serialized_allocated_resource_instances,
-      GetOrCreateRuntimeEnvCallback callback);
+  void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const std::string &serialized_allocated_resource_instances,
+                             GetOrCreateRuntimeEnvCallback callback);
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent.
   /// \param[in] serialized_runtime_env The serialized runtime environment.
   /// \param[in] callback The callback function.
-  virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                          DeleteRuntimeEnvIfPossibleCallback callback);
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  DeleteRuntimeEnvIfPossibleCallback callback);
 
  private:
   void StartAgent();
