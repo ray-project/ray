@@ -21,6 +21,7 @@ def map_batches(
     num_calls: Optional[int] = 1,
     is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
+
     assert isinstance(input_ds, MaterializedDataset)
     ds = input_ds
 

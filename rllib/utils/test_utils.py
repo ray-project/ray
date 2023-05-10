@@ -1486,6 +1486,7 @@ def check_supported_spaces(
     config["env"] = RandomEnv
 
     def _do_check(alg, config, a_name, o_name):
+
         # We need to copy here so that this validation does not affect the actual
         # validation method call further down the line.
         config_copy = config.copy()

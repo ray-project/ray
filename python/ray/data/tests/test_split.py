@@ -125,6 +125,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
 
 
 def test_equal_split_balanced_grid(ray_start_regular_shared):
+
     # Tests balanced equal splitting over a grid of configurations.
     # Grid: num_blocks x num_splits x num_rows_block_1 x ... x num_rows_block_n
     seed = int(time.time())

@@ -1264,6 +1264,7 @@ class TrialRunner(_TuneControllerBase):
         # Deprecated
         local_checkpoint_dir: Optional[str] = None,
     ):
+
         if local_checkpoint_dir:
             if experiment_path:
                 raise ValueError(

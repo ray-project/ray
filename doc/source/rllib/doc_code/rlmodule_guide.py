@@ -340,6 +340,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
         super().__init__(config)
 
     def setup(self):
+
         module_specs = self.config.modules
         module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]

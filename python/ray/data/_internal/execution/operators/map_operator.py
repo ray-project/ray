@@ -128,7 +128,6 @@ class MapOperator(PhysicalOperator, ABC):
             if init_fn is None:
 
                 def init_fn():
-                    # 5/0
                     pass
 
             return ActorPoolMapOperator(

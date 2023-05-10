@@ -265,7 +265,6 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     Returns:
         A TF Policy to be used with Impala.
     """
-
     # VTrace mixins are placed in front of more general mixins to make sure
     # their functions like optimizer() overrides all the other implementations
     # (e.g., LearningRateSchedule.optimizer())

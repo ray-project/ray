@@ -317,6 +317,7 @@ class TestCatalog(unittest.TestCase):
             )
 
             for framework in framework_iterator(frameworks=["tf2", "torch"]):
+
                 if framework == "tf2":
                     framework = "tf2"
 

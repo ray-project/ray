@@ -15,12 +15,14 @@ from benchmark import Benchmark
 def read_images(
     root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
 ) -> Dataset:
+
     return ray.data.read_images(paths=root, size=size, mode=mode)
 
 
 def generate_images(
     num_images: int, sizes: List[Tuple[int, int]], modes: List[str], formats: List[str]
 ) -> str:
+
     dimensions = []
     for mode in modes:
         if mode in ["1", "L", "P"]:

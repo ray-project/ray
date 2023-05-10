@@ -251,6 +251,7 @@ class StateAPIManager:
 
         result = []
         for message in reply.placement_group_table_data:
+
             data = protobuf_message_to_dict(
                 message=message,
                 fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],

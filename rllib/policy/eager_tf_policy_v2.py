@@ -658,6 +658,7 @@ class EagerTFPolicyV2(Policy):
     def compute_gradients(
         self, postprocessed_batch: SampleBatch
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
+
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             shuffle=False,

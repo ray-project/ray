@@ -273,6 +273,7 @@ class AccelerateTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
         if Version(accelerate.__version__) < Version("0.17.0.dev0"):
             raise RuntimeError(
                 "AccelerateTrainer requires accelerate>=0.17.0, "

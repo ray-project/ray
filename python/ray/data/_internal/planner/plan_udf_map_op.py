@@ -68,7 +68,6 @@ def _plan_udf_map_op(
             return ray.data._cached_fn(item)
 
         def init_fn():
-            # 3/0
             if ray.data._cached_fn is None:
                 ray.data._cached_cls = fn_
                 ray.data._cached_fn = fn_(*fn_constructor_args, **fn_constructor_kwargs)

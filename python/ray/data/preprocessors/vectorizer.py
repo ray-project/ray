@@ -248,6 +248,7 @@ class CountVectorizer(Preprocessor):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+
         to_concat = []
         for col in self.columns:
             token_counts = self.stats_[f"token_counts({col})"]

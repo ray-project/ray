@@ -3113,6 +3113,7 @@ class AlgorithmConfig(_Config):
         return marl_module_spec
 
     def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
+
         if not self._is_frozen:
             raise ValueError(
                 "Cannot call `get_learner_group_config()` on an unfrozen "

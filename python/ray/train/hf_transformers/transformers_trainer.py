@@ -253,6 +253,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
         # Functionality required for TransformersTrainer only added in this
         # version
         if Version(transformers.__version__) < Version("4.19.0"):

@@ -85,6 +85,7 @@ class BatchMapper(Preprocessor):
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
+
         if batch_format not in [
             BatchFormat.PANDAS,
             BatchFormat.NUMPY,

@@ -577,7 +577,7 @@ class Learner:
             name_to_optimizer,
         ) = self._configure_optimizers_per_module_helper(module_id)
 
-        for param_seq, optimizer in param_optimizer_pair:
+        for (param_seq, optimizer) in param_optimizer_pair:
             self._optimizer_parameters[optimizer] = []
             for param in param_seq:
                 param_ref = self.get_param_ref(param)
@@ -862,6 +862,7 @@ class Learner:
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
+
             result = self._update(minibatch)
             results.append(result)
 

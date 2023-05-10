@@ -144,6 +144,7 @@ class MosaicTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
         )

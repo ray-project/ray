@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 class TfLearner(Learner):
+
     framework: str = "tf"
 
     def __init__(
@@ -58,6 +59,7 @@ class TfLearner(Learner):
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
         **kwargs,
     ):
+
         # by default in rllib we disable tf2 behavior
         # This call re-enables it as it is needed for using
         # this class.
@@ -524,6 +526,7 @@ class TfLearner(Learner):
     def additional_update_per_module(
         self, module_id: ModuleID, *, timestep: int, **kwargs
     ) -> Mapping[str, Any]:
+
         results = super().additional_update_per_module(module_id, timestep=timestep)
 
         # Handle lr scheduling updates and apply new learning rates to the optimizers.

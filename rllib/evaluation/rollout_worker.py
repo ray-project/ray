@@ -704,6 +704,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
                 and not config._fake_gpus
             ):
+
                 devices = []
                 if self.config.framework_str in ["tf2", "tf"]:
                     devices = get_tf_gpu_devices()
@@ -2090,6 +2091,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         # Loop through given policy-dict and add each entry to our map.
         for name, policy_spec in sorted(policy_dict.items()):
+
             # Create the actual policy object.
             if policy is None:
                 new_policy = create_policy_for_framework(

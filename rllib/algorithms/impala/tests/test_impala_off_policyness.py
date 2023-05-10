@@ -36,6 +36,7 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
             for _ in framework_iterator(
                 config, frameworks=("tf2", "torch"), with_eager_tracing=True
             ):
+
                 # We have to set exploration_config here manually because setting
                 # it through config.exploration() only deepupdates it
                 config.exploration_config = {}

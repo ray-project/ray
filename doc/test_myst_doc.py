@@ -49,6 +49,7 @@ def postprocess_notebook(notebook):
 
 
 if __name__ == "__main__":
+
     args, remainder = parser.parse_known_args()
 
     path = Path(args.path)

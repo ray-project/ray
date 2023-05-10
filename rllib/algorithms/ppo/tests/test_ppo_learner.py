@@ -53,6 +53,7 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_loss(self):
+
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
