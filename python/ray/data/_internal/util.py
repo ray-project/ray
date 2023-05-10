@@ -63,7 +63,7 @@ def _check_pyarrow_version():
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
-                    f"Datastream requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
                     f'`pip install -U "pyarrow"`. '
                     "If you want to disable this pyarrow version check, set the "
@@ -74,7 +74,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Datastream. "
+                "compatibility with Ray Dataset. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -103,7 +103,7 @@ def _autodetect_parallelism(
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
-        ctx: The current Datastream context to use for configs.
+        ctx: The current Dataset context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
         avail_cpus: Override avail cpus detection (for testing only).
 
@@ -141,7 +141,7 @@ def _autodetect_parallelism(
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
-    """Estimates the available CPU parallelism for this Datastream in the cluster.
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
 
     If we aren't in a placement group, this is trivially the number of CPUs in the
     cluster. Otherwise, we try to calculate how large the placement group is relative
@@ -155,7 +155,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     # If we're in a placement group, we shouldn't assume the entire cluster's
     # resources are available for us to use. Estimate an upper bound on what's
-    # reasonable to assume is available for datastreams to use.
+    # reasonable to assume is available for datasets to use.
     if cur_pg:
         pg_cpus = 0
         for bundle in cur_pg.bundle_specs:
@@ -175,7 +175,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
 
 def _estimate_available_parallelism() -> int:
-    """Estimates the available CPU parallelism for this Datastream in the cluster.
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
     If we are currently in a placement group, take that into account."""
     cur_pg = ray.util.get_current_placement_group()
     return _estimate_avail_cpus(cur_pg)
@@ -351,18 +351,18 @@ def _consumption_api(
     insert_after=False,
 ):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastream execution.
+    will trigger Dataset execution.
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
-        "this datastream."
+        "this dataset."
     )
     if delegate:
         message = delegate + base
     elif not if_more_than_read:
         message = "This operation" + base
     else:
-        condition = "If this datastream consists of more than a read, "
+        condition = "If this dataset consists of more than a read, "
         if datasource_metadata is not None:
             condition += (
                 f"or if the {datasource_metadata} can't be determined from the "
@@ -387,7 +387,7 @@ def _consumption_api(
 
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastream execution.
+    will trigger Dataset execution.
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
