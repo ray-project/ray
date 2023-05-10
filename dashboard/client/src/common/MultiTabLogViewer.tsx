@@ -2,6 +2,7 @@ import { Tab, Tabs, Typography } from "@material-ui/core";
 import React, { useState } from "react";
 import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
+import { HideableBlock } from "./CollapsibleSection";
 
 export type MultiTabLogViewerTab = {
   title: string;
@@ -18,11 +19,6 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
 
   const currentTab = tabs.find((tab) => tab.title === value);
 
-  const { downloadUrl, log, path, refresh } = useStateApiLogs(
-    currentTab?.nodeId,
-    currentTab?.filename,
-  );
-
   return (
     <div>
       <Tabs
@@ -32,24 +28,47 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
         }}
       >
         {tabs.map(({ title }) => (
-          <Tab label={title} value={title} />
+          <Tab key={title} label={title} value={title} />
         ))}
       </Tabs>
       {!currentTab ? (
         <Typography color="error">Please select a tab.</Typography>
-      ) : typeof log !== "string" ? (
-        <Typography color="error">Failed to load</Typography>
       ) : (
-        <LogViewer
-          log={log}
-          path={path}
-          downloadUrl={downloadUrl}
-          height={300}
-          onRefreshClick={() => {
-            refresh();
-          }}
-        />
+        tabs.map(({ title, nodeId, filename }) => (
+          <HideableBlock
+            key={title}
+            visible={title === currentTab?.title}
+            keepRendered
+          >
+            <StateApiLogViewer nodeId={nodeId} filename={filename} />
+          </HideableBlock>
+        ))
       )}
     </div>
+  );
+};
+
+export type StateApiLogViewerProps = {
+  nodeId?: string | null;
+  filename?: string;
+};
+
+export const StateApiLogViewer = ({
+  nodeId,
+  filename,
+}: StateApiLogViewerProps) => {
+  const { downloadUrl, log, path, refresh } = useStateApiLogs(nodeId, filename);
+  return typeof log === "string" ? (
+    <LogViewer
+      log={log}
+      path={path}
+      downloadUrl={downloadUrl}
+      height={300}
+      onRefreshClick={() => {
+        refresh();
+      }}
+    />
+  ) : (
+    <Typography color="error">Failed to load</Typography>
   );
 };

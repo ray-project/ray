@@ -1,7 +1,5 @@
 import { makeStyles } from "@material-ui/core";
-import React, { useContext } from "react";
-import { Link } from "react-router-dom";
-import { GlobalContext } from "../../App";
+import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -43,7 +41,6 @@ const useStyle = makeStyles((theme) => ({
 
 const ActorDetailPage = () => {
   const classes = useStyle();
-  const { ipLogMap } = useContext(GlobalContext);
   const { params, actorDetail, msg, isLoading } = useActorDetail();
 
   if (!actorDetail) {
