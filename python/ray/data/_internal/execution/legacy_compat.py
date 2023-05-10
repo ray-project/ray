@@ -23,7 +23,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
     CallableClass,
-    TaskPoolStrategy,
     ActorPoolStrategy,
 )
 from ray.data._internal.memory_tracing import trace_allocation
@@ -38,6 +37,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.util import validate_compute
 from ray.data._internal.execution.util import make_callable_class_concurrent
 
 # Warn about tasks larger than this.
@@ -267,16 +267,11 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
+        validate_compute(stage.fn, compute)
 
         block_fn = stage.block_fn
         if stage.fn:
             if isinstance(stage.fn, CallableClass):
-                if isinstance(compute, TaskPoolStrategy):
-                    raise ValueError(
-                        "``compute`` must be specified when using a callable class, "
-                        "and must specify the actor compute strategy. "
-                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
-                    )
                 assert isinstance(compute, ActorPoolStrategy)
 
                 fn_constructor_args = stage.fn_constructor_args or ()

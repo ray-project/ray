@@ -10,6 +10,7 @@ import numpy as np
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+from ray.data._internal.compute import CallableClass, TaskPoolStrategy
 from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
@@ -18,7 +19,8 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
     import pyarrow
     import pandas
-    from ray.data.block import Block, BlockMetadata
+    from ray.data._internal.compute import ComputeStrategy
+    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
 
 logger = logging.getLogger(__name__)
 
@@ -409,6 +411,19 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
         arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
+
+
+def validate_compute(
+    fn: UserDefinedFunction, compute: Optional[Union[str, ComputeStrategy]]
+) -> None:
+    if isinstance(fn, CallableClass) and (
+        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
+    ):
+        raise ValueError(
+            "``compute`` must be specified when using a CallableClass, and must "
+            f"specify the actor compute strategy, but got: {compute}. "
+            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+        )
 
 
 def capfirst(s: str):
