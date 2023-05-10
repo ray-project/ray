@@ -11,6 +11,7 @@ import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.test_utils import make_global_state_accessor, wait_for_condition
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -747,7 +748,20 @@ def test_workload_placement_metrics(ray_start_regular):
 
     @ray.remote(num_cpus=1)
     class Actor:
-        pass
+        def ready(self):
+            return True
+
+
+    t = task.remote()
+    ray.get(t)
+    print("Task ran")
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    print("Actor ran")
+    del a
+    pg = placement_group(bundles=[{"CPU":1}], strategy="SPREAD")
+    ray.get(pg.ready())
+    print("PG created")
 
     placement_metric_condition = get_metric_check_condition(
         [
@@ -760,6 +774,11 @@ def test_workload_placement_metrics(ray_start_regular):
                 name="ray_workload_placement_time_s_bucket",
                 value=1.0,
                 partial_label_match={"WorkloadType": "Task"},
+            ),
+            MetricSamplePattern(
+                name="ray_workload_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "PlacementGroup"},
             ),
         ],
     )

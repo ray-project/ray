@@ -533,9 +533,7 @@ void TaskSpecification::EmitTaskMetrics() const {
     stats::STATS_workload_placement_time_s.Record(duration_s,
                                                   {{"WorkloadType", "Actor"}});
   } else {
-    RAY_LOG(ERROR) << "EMITTING TASK WORKLOAD" << DebugString();
     stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
-    RAY_LOG(ERROR) << "EMITTING TASK WORKLOAD DONE";
   }
 }
 
