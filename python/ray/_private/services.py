@@ -1601,11 +1601,13 @@ def start_raylet(
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         agent_command.append("--logging-filename=")
+        runtime_env_agent_command.append("--logging-filename=")
         # Use stderr log format with the component name as a message prefix.
         logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
             component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
         )
         agent_command.append(f"--logging-format={logging_format}")
+        runtime_env_agent_command.append(f"--logging-format={logging_format}")
 
     if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged

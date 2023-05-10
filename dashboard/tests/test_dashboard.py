@@ -158,8 +158,8 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
-def test_raylet_and_agent_share_fate(shutdown_only):
-    """Test raylet and agent share fate."""
+def test_raylet_restart_dashboard_agent(shutdown_only):
+    """Test raylet restart agent when it dies."""
 
     ray.init(include_dashboard=True)
     p = init_error_pubsub()
@@ -196,10 +196,13 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     check_agent_register(raylet_proc, agent_pid)
 
-    # The raylet should be dead if agent exits.
+    # The dashboard agent should be restarted after being killed
     agent_proc.kill()
     agent_proc.wait()
-    raylet_proc.wait(15)
+    time.sleep(5)
+    new_agent_proc = search_agent(raylet_proc.children())
+    assert new_agent_proc
+    assert new_agent_proc.pid != agent_pid
 
 
 def test_agent_report_unexpected_raylet_death(shutdown_only):
