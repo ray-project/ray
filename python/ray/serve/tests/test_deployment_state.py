@@ -269,6 +269,9 @@ def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
         def version(self):
             return self._version
 
+        def update_state(self, state):
+            pass
+
     return MockVersionedReplica(version)
 
 
