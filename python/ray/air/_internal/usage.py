@@ -130,8 +130,8 @@ def _get_tag_for_remote_path(remote_path: str) -> str:
         # In particular, default syncing to head node is not enabled here.
         tag = "local_uri"
     elif scheme == "memory":
-        # NOTE: This is used in tests and does not make sense to use in
-        # real usage. This condition filters the tag out of the `custom` catch-all.
+        # NOTE: This is used in tests and does not make sense to actually use.
+        # This condition filters the tag out of the `custom` catch-all.
         tag = "memory"
     elif scheme == "hdfs":
         tag = "hdfs"
@@ -152,11 +152,9 @@ def tag_ray_air_storage_config(
     The storage configuration is set by `RunConfig(storage_path, sync_config)`.
 
     The possible configurations are:
-    - 'local+sync' = Default head node syncing if no remote path is specified
-    - 'local+no_sync' = No synchronization at all.
+    - 'driver' = Default syncing to Tune driver node if no remote path is specified.
+    - 'local' = No synchronization at all.
     - 'nfs' = Using a mounted shared network filesystem.
-        NOTE: This currently detects *any* mount, not necessarily
-        a mounted network filesystem.
     - ('s3', 'gs', 'hdfs', 'custom_remote_storage'): Various remote storage schemes.
     - ('local_uri', 'memory'): Mostly used by internal testing by setting `storage_path`
         to `file://` or `memory://`.
