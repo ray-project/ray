@@ -3,7 +3,7 @@ from typing import Tuple
 import ray
 from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
 from ray.data.block import Block
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 import pyarrow.compute as pac
 
 from benchmark import Benchmark
