@@ -108,7 +108,7 @@ def get_air_verbosity(verbose: Union[int, Verbosity]) -> Optional[AirVerbosity]:
 
     verbose_int = verbose if isinstance(verbose, int) else verbose.value
 
-    # Legacy verbosity 2 + 3 --> new verbosity 2
+    # Verbosity 2 and 3 both map to AirVerbosity 2
     verbose_int = min(2, verbose_int)
 
     return AirVerbosity(verbose_int)
