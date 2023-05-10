@@ -2110,7 +2110,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 new_policy = policy
 
             if self.config.get("_enable_rl_module_api", False):
-                if isinstance(new_policy.model, TorchRLModule):
+                # All policies that inherit from TorchPolicyV2 or EagerTfPolicyV2
+                # have their model at policy.model.
+                # This is not the case in  RandomPolicy.
+                rl_module = getattr(new_policy, "model", None)
+                if rl_module is not None and isinstance(rl_module, TorchRLModule):
                     self.config.get_torch_compile_worker_config().compile(
                         new_policy.model
                     )
