@@ -395,11 +395,12 @@ class BackendExecutor:
 
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
+            node_ids = [worker.metadata.node_id for worker in self.worker_group.workers]
             self.dataset_shards = data_config.configure(
                 datasets,
                 world_size=len(self.worker_group),
                 worker_handles=actors,
-                worker_node_ids=_get_node_ids(actors),
+                worker_node_ids=node_ids,
             )
 
         (
@@ -660,7 +661,3 @@ def _get_session(method_name: str):
             f"`{method_name}`."
         )
     return session
-
-
-def _get_node_ids(actors):
-    raise NotImplementedError("TODO")
