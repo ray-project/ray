@@ -922,7 +922,7 @@ def list_jobs(
         Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
-    res =  StateApiClient(address=address).list(
+    return StateApiClient(address=address).list(
         StateResource.JOBS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
@@ -930,8 +930,6 @@ def list_jobs(
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
-    print(res)
-    return res
 
 
 def list_workers(
@@ -1148,6 +1146,7 @@ def get_log(
     suffix: str = "out",
     encoding: Optional[str] = "utf-8",
     errors: Optional[str] = "strict",
+    job_id: Optional[str] = None,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
@@ -1183,6 +1182,7 @@ def get_log(
             "utf-8". Use None to get binary data directly.
         errors: The error handling scheme to use for decoding errors. Default is
             "strict". See https://docs.python.org/3/library/codecs.html#error-handlers
+        job_id: Job submission ID if getting log from a job.
         _interval: The interval in secs to print new logs when `follow=True`.
 
     Return:
@@ -1208,6 +1208,7 @@ def get_log(
         media_type=media_type,
         timeout=timeout,
         suffix=suffix,
+        job_id=job_id,
     )
     options_dict = {}
     for field in fields(options):

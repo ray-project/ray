@@ -1162,3 +1162,59 @@ def log_worker(
         timeout=timeout,
         suffix="err" if err else "out",
     )
+
+
+@logs_state_cli_group.command(name="job")
+@click.option(
+    "--id",
+    "job_id",
+    required=True,
+    type=str,
+    help="Retrieves the logs from a submission job with submission id, i.e. raysubmit_XXX",
+)
+@address_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_worker(
+    ctx,
+    job_id: Optional[str],
+    address: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get/List logs associated with a worker process.
+
+    Example:
+
+        Follow the log file from a worker process with pid=ABC.
+
+        ```
+        ray logs worker --pid ABC --follow
+        ```
+
+        Get the stderr logs from a worker process.
+
+        ```
+        ray logs worker --pid ABC --err
+        ```
+
+    Raises:
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+            if the CLI is failed to query the data.
+        MissingParameter if inputs are missing.
+    """  # noqa: E501
+
+    _print_log(
+        address=address,
+        tail=tail,
+        follow=follow,
+        interval=interval,
+        timeout=timeout,
+        job_id=job_id
+    )

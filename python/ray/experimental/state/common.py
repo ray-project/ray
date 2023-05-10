@@ -295,6 +295,9 @@ class GetLogOptions:
     # The suffix of the log file if file resolution not through filename directly.
     # Default to "out".
     suffix: str = "out"
+    # The job submission id for submission job. This doesn't work for driver job 
+    # since Ray doesn't log driver logs to file in the ray logs directory.
+    job_id: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -320,9 +323,9 @@ class GetLogOptions:
                 "Both node_id and node_ip are given. Only one of them can be provided. "
                 f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
             )
-        if not (self.actor_id or self.task_id or self.pid or self.filename):
+        if not (self.actor_id or self.task_id or self.pid or self.filename or self.job_id):
             raise ValueError(
-                "None of actor_id, task_id, pid, or filename is provided. "
+                "None of actor_id, task_id, pid, job_id or filename is provided. "
                 "At least one of them is required to fetch logs."
             )
 

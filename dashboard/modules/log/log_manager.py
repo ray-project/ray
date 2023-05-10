@@ -4,7 +4,8 @@ import re
 from collections import defaultdict
 from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
 
-from ray.experimental.state.common import GetLogOptions
+from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE 
+from ray.experimental.state.common import GetLogOptions, DEFAULT_RPC_TIMEOUT
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
@@ -80,6 +81,7 @@ class LogsManager:
             get_actor_fn=DataSource.actors.get,
             timeout=options.timeout,
             suffix=options.suffix,
+            job_id=options.job_id,
         )
 
         keep_alive = options.media_type == "stream"
@@ -110,6 +112,32 @@ class LogsManager:
             )
         assert node_id is not None
 
+    async def _resolve_job_filename(self, job_id: str) -> Tuple[str, str]:
+        """Return the log file name and node id for a given job id.
+
+        Args:
+            job_id: The job id.
+
+        Returns:
+            The log file name and node id.
+        """
+        job_infos = await self.client.get_job_info(timeout=DEFAULT_RPC_TIMEOUT)
+        target_job = None
+        for job_info in job_infos:
+            if job_info.job_id == job_id:
+                target_job = job_info
+                break
+        if target_job is None:
+            logger.info(f"Job ID {job_id} not found.")
+            return None, None
+
+        node_id = job_info.driver_node_id
+        if node_id is None:
+            raise ValueError(f"Job {job_id} has no driver node id info. This is likely a bug. Please file an issue.")
+
+        log_filename = JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id)
+        return node_id, log_filename
+
     async def resolve_filename(
         self,
         *,
@@ -121,6 +149,7 @@ class LogsManager:
         get_actor_fn: Callable[[str], Dict],
         timeout: int,
         suffix: str = "out",
+        job_id: Optional[str] = None,
     ) -> Tuple[str, str]:
         """Return the file name given all options.
 
@@ -135,6 +164,7 @@ class LogsManager:
                 specified by `node_id`.
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'. Default to "out".
+            job_id: The submission id for a submission job.
         """
         if actor_id:
             actor_data = get_actor_fn(actor_id)
@@ -185,6 +215,8 @@ class LogsManager:
                 if worker_pid_from_filename == pid:
                     log_filename = filename
                     break
+        elif job_id:
+            node, log_filename = self._resolve_job_filename(job_id)
 
         if log_filename is None:
             raise FileNotFoundError(
@@ -196,6 +228,7 @@ class LogsManager:
                 f"\task_id: {task_id}\n"
                 f"\tpid: {pid}\n"
                 f"\tsuffix: {suffix}\n"
+                f"\tjob_id: {job_id}\n"
             )
 
         return log_filename, node_id
