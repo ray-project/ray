@@ -103,7 +103,7 @@ IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
 def get_air_verbosity(verbose: Union[int, Verbosity]) -> Optional[AirVerbosity]:
-    if os.environ.get("AIR_NEW_OUTPUT", "1") == "0":
+    if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
         return None
 
     verbose_int = verbose if isinstance(verbose, int) else verbose.value
@@ -538,7 +538,7 @@ def _detect_reporter(
     mode: Optional[str] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
-    rich_enabled = bool(int(os.environ.get("ENABLE_RICH", "0")))
+    rich_enabled = bool(int(os.environ.get("RAY_AIR_ENABLE_RICH", "0")))
     if num_samples and num_samples > 1:
         if rich_enabled:
             if not rich:
@@ -548,7 +548,7 @@ def _detect_reporter(
             reporter = TuneTerminalReporter(verbosity, num_samples, metric, mode)
     else:
         if rich_enabled:
-            logger.warning("`ENABLE_RICH` is only effective with Tune usecase.")
+            logger.warning("`RAY_AIR_ENABLE_RICH` is only effective with Tune usecase.")
         reporter = TrainReporter(verbosity)
     return reporter
 

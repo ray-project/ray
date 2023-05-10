@@ -596,7 +596,7 @@ def run(
         logger.info(
             f"[output] This will use the new output engine with verbosity "
             f"{air_verbosity}. To disable the new output and use the legacy "
-            f"output engine, set the environment variable AIR_NEW_OUTPUT=0. "
+            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
             f"For more information, please see "
             f"https://docs.ray.io/en/master/ray-air/experimental-features.html"
         )

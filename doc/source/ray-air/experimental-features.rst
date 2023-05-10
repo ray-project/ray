@@ -57,11 +57,10 @@ or Ray client is used.
 
     This feature is *enabled per default* starting Ray 2.5.
 
-    To disable, set the environment variable ``AIR_NEW_OUTPUT=0``.
+    To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
 
 
 .. _air-experimental-rich:
-
 
 Sticky table layout
 -------------------
@@ -79,7 +78,7 @@ it out.
 
     This feature is *disabled per default*.
 
-    To enable, set the environment variable ``ENABLE_RICH=1``.
+    To enable, set the environment variable ``RAY_AIR_ENABLE_RICH=1``.
 
 
 .. _air-experimental-execution:
