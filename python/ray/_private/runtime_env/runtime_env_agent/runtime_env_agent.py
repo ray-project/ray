@@ -21,7 +21,7 @@ from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
 import ray._private.ray_constants as ray_constants
-from ray._private.runtime_env.runtime_env_agent import runtime_env_consts
+from ray._private.runtime_env.runtime_env_agent import agent_consts
 from ray._private.ray_logging import setup_component_logger
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.conda import CondaPlugin
@@ -63,7 +63,6 @@ except AttributeError:
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
-_PARENT_DEATH_THREASHOLD = 5
 
 
 @dataclass
@@ -315,7 +314,7 @@ class RuntimeEnvAgent(
                 loop = get_or_create_event_loop()
                 # Cache the bad runtime env result by ttl seconds.
                 loop.call_later(
-                    runtime_env_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
+                    agent_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
                     delete_runtime_env,
                 )
             else:
@@ -405,7 +404,7 @@ class RuntimeEnvAgent(
             )
             serialized_context = None
             error_message = None
-            for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
+            for _ in range(agent_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
                         runtime_env,
@@ -435,13 +434,13 @@ class RuntimeEnvAgent(
                         )
                         error_message = hint + error_message
                     await asyncio.sleep(
-                        runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
+                        agent_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
             if error_message:
                 self._logger.error(
                     "Runtime env creation failed for %d times, "
                     "don't retry any more.",
-                    runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
+                    agent_consts.RUNTIME_ENV_RETRY_TIMES,
                 )
                 return False, None, error_message
             else:
@@ -638,21 +637,19 @@ class RuntimeEnvAgent(
                         parent_death_cnt += 1
                         logger.warning(
                             f"Raylet is considered dead {parent_death_cnt} X. "
-                            f"If it reaches to {_PARENT_DEATH_THREASHOLD}, the agent "
-                            f"will kill itself. Parent: {parent}, "
+                            f"If it reaches to {agent_consts.PARENT_DEATH_THREASHOLD},"
+                            f" the agent will kill itself. Parent: {parent}, "
                             f"parent_gone: {parent_gone}, "
                             f"init_assigned_for_parent: {init_assigned_for_parent}, "
                             f"parent_changed: {parent_changed}."
                         )
-                        if parent_death_cnt < _PARENT_DEATH_THREASHOLD:
-                            await asyncio.sleep(
-                                runtime_env_consts.CHECK_PARENT_INTERVAL_S
-                            )
+                        if parent_death_cnt < agent_consts.PARENT_DEATH_THREASHOLD:
+                            await asyncio.sleep(agent_consts.CHECK_PARENT_INTERVAL_S)
                             continue
                         sys.exit(0)
                     else:
                         parent_death_cnt = 0
-                    await asyncio.sleep(runtime_env_consts.CHECK_PARENT_INTERVAL_S)
+                    await asyncio.sleep(agent_consts.CHECK_PARENT_INTERVAL_S)
             except Exception:
                 logger.exception("Failed to check parent PID, exiting.")
                 sys.exit(1)
@@ -730,10 +727,10 @@ if __name__ == "__main__":
         "--logging-filename",
         required=False,
         type=str,
-        default=runtime_env_consts.RUNTIME_ENV_AGENT_DEFAULT_LOG_FILENAME,
+        default=agent_consts.RUNTIME_ENV_AGENT_DEFAULT_LOG_FILENAME,
         help="Specify the name of log file, "
         'log to stdout if set empty, default is "{}".'.format(
-            runtime_env_consts.RUNTIME_ENV_AGENT_DEFAULT_LOG_FILENAME
+            agent_consts.RUNTIME_ENV_AGENT_DEFAULT_LOG_FILENAME
         ),
     )
     parser.add_argument(
