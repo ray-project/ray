@@ -35,5 +35,6 @@ message RegisterRuntimeEnvAgentReply {
 }
 
 service RuntimeEnvAgentManagerService {
-  rpc RegisterRuntimeEnvAgent(RegisterRuntimeEnvAgentRequest) returns (RegisterRuntimeEnvAgentReply);
+  rpc RegisterRuntimeEnvAgent(RegisterRuntimeEnvAgentRequest) 
+      returns (RegisterRuntimeEnvAgentReply);
 }
