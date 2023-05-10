@@ -5,7 +5,6 @@ from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-
 _, tf, _ = try_import_tf()
 
 

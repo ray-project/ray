@@ -39,14 +39,20 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class.from_logits(
+        action_dist_class_train = self._module[module_id].get_train_action_dist_cls()
+        action_dist_class_exploration = self._module[
+            module_id
+        ].get_exploration_action_dist_cls()
+        curr_action_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        prev_action_dist = action_dist_class_exploration.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = tf.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
+            - batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -67,7 +73,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(

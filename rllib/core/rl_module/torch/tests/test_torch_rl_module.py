@@ -1,12 +1,14 @@
-import gymnasium as gym
 import tempfile
-import torch
-from typing import Mapping
 import unittest
+from typing import Mapping
+
+import gymnasium as gym
+import torch
 
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -44,10 +46,13 @@ class TestRLModule(unittest.TestCase):
         output = module.forward_train({"obs": obs})
 
         self.assertIsInstance(output, Mapping)
-        self.assertIn("action_dist", output)
-        self.assertIsInstance(output["action_dist"], torch.distributions.Categorical)
+        self.assertIn(SampleBatch.ACTION_DIST_INPUTS, output)
 
-        loss = -output["action_dist"].log_prob(actions.view(-1)).mean()
+        action_dist_inputs = output[SampleBatch.ACTION_DIST_INPUTS]
+        action_dist_class = module.get_train_action_dist_cls()
+        action_dist = action_dist_class.from_logits(action_dist_inputs)
+
+        loss = -action_dist.logp(actions.view(-1)).mean()
         loss.backward()
 
         # check that all neural net parameters have gradients

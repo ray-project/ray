@@ -35,7 +35,6 @@ class APPOTorchRLModule(PPOTorchRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTorchRLModule)
     def output_specs_train(self) -> List[str]:
         return [
-            SampleBatch.ACTION_DIST,
             SampleBatch.VF_PREDS,
             OLD_ACTION_DIST_KEY,
         ]
