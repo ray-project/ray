@@ -19,7 +19,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/runtime_env_common.proto";
 
-import "src/ray/protobuf/agent_manager.proto";
+import "src/ray/protobuf/runtime_env_agent_manager.proto";
 
 message GetOrCreateRuntimeEnvRequest {
   string serialized_runtime_env = 1;
@@ -33,7 +33,7 @@ message GetOrCreateRuntimeEnvRequest {
 }
 
 message GetOrCreateRuntimeEnvReply {
-  AgentRpcStatus status = 1;
+  RuntimeEnvAgentRpcStatus status = 1;
   string error_message = 2;
   string serialized_runtime_env_context = 3;
 }
@@ -44,7 +44,7 @@ message DeleteRuntimeEnvIfPossibleRequest {
 }
 
 message DeleteRuntimeEnvIfPossibleReply {
-  AgentRpcStatus status = 1;
+  RuntimeEnvAgentRpcStatus status = 1;
   string error_message = 2;
 }
 

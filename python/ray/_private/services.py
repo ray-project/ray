@@ -1575,6 +1575,28 @@ def start_raylet(
         f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
     ]
+
+    runtime_env_agent_command = [
+        *_build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
+        ),
+        os.path.join(
+            RAY_PATH,
+            "_private",
+            "runtime_env",
+            "runtime_env_agent",
+            "runtime_env_agent.py",
+        ),
+        f"--node-ip-address={node_ip_address}",
+        f"--runtime-env-agent-port={metrics_agent_port + 1}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--temp-dir={temp_dir}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--log-dir={log_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
+    ]
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
@@ -1628,6 +1650,11 @@ def start_raylet(
         "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
     )
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
+    command.append(
+        "--runtime_env_agent_command={}".format(
+            subprocess.list2cmdline(runtime_env_agent_command)
+        )
+    )
     if huge_pages:
         command.append("--huge_pages")
     if socket_to_use:

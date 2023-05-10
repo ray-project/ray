@@ -4,17 +4,26 @@ import logging
 import os
 import time
 import traceback
+import argparse
+import sys
+import signal
+import psutil
+
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
+
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
-
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
-import ray.dashboard.utils as dashboard_utils
+import ray._private.ray_constants as ray_constants
+from ray._private.runtime_env.runtime_env_agent import runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -24,14 +33,20 @@ from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
     create_for_plugin_if_needed,
 )
-from ray._private.utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop, init_grpc_channel
+from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray.core.generated import (
-    agent_manager_pb2,
     runtime_env_agent_pb2,
     runtime_env_agent_pb2_grpc,
+    runtime_env_agent_manager_pb2,
+    runtime_env_agent_manager_pb2_grpc,
+)
+from ray.core.generated.runtime_env_agent_manager_pb2 import (
+    RUNTIME_ENV_AGENT_RPC_STATUS_OK,
+    RUNTIME_ENV_AGENT_RPC_STATUS_FAILED,
 )
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
@@ -39,10 +54,16 @@ from ray.core.generated.runtime_env_common_pb2 import (
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
+
 
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
+_PARENT_DEATH_THREASHOLD = 5
 
 
 @dataclass
@@ -159,7 +180,6 @@ class ReferenceTable:
 
 
 class RuntimeEnvAgent(
-    dashboard_utils.DashboardAgentModule,
     runtime_env_agent_pb2_grpc.RuntimeEnvServiceServicer,
 ):
     """An RPC server to create and delete runtime envs.
@@ -168,12 +188,68 @@ class RuntimeEnvAgent(
         dashboard_agent: The DashboardAgent object contains global config.
     """
 
-    LOG_FILENAME = "runtime_env_agent.log"
+    def __init__(
+        self,
+        gcs_address,
+        node_ip_address,
+        node_manager_port,
+        runtime_env_agent_port,
+        temp_dir,
+        runtime_env_dir,
+        logging_params,
+        agent_id,
+    ):
+        self._node_ip_address = node_ip_address
+        self._runtime_env_agent_port = runtime_env_agent_port
+        self._runtime_env_dir = runtime_env_dir
+        self._agent_id = agent_id
+        self._logging_params = logging_params
+        self._gcs_address = gcs_address
+        self._node_manager_port = node_manager_port
 
-    def __init__(self, dashboard_agent):
-        super().__init__(dashboard_agent)
-        self._runtime_env_dir = dashboard_agent.runtime_env_dir
-        self._logging_params = dashboard_agent.logging_params
+        self._logger = default_logger
+        self._logger = setup_component_logger(
+            logger_name=default_logger.name, **self._logging_params
+        )
+        # Don't propagate logs to the root logger, because these logs
+        # might contain sensitive information. Instead, these logs should
+        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
+        self._logger.propagate = False
+
+        # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
+        # only used for fate-sharing with the raylet and we need a different
+        # fate-sharing mechanism for Windows anyways.
+        if sys.platform not in ["win32", "cygwin"]:
+            self.ppid = int(os.environ["RAY_RAYLET_PID"])
+            assert self.ppid > 0
+            self._logger.info("Parent pid is %s", self.ppid)
+
+        # Setup raylet channel
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        self._logger.info("node manager port is %d", self._node_manager_port)
+        self._aiogrpc_raylet_channel = init_grpc_channel(
+            f"{self._node_ip_address}:{self._node_manager_port}",
+            options,
+            asynchronous=True,
+        )
+        # Setup grpc server
+        self._grpc_server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
+        grpc_ip = "127.0.0.1" if self._node_ip_address == "127.0.0.1" else "0.0.0.0"
+        try:
+            self._grpc_port = add_port_to_grpc_server(
+                self._grpc_server, f"{grpc_ip}:{self._runtime_env_agent_port}"
+            )
+        except Exception:
+            self._logger.exception(
+                "Failed to add port to grpc server. Runtime env agent will exit now."
+            )
+            sys.exit(1)
+        else:
+            self._logger.info(
+                "Runtime env agent grpc address: %s:%s", grpc_ip, self._grpc_port
+            )
+
+        # Setup runtime env materials
         self._per_job_logger_cache = dict()
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
@@ -181,8 +257,7 @@ class RuntimeEnvAgent(
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_aio_client = self._dashboard_agent.gcs_aio_client
-
+        self._gcs_aio_client = GcsAioClient(address=self._gcs_address)
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(
@@ -194,8 +269,7 @@ class RuntimeEnvAgent(
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
-        self._container_manager = ContainerManager(dashboard_agent.temp_dir)
-
+        self._container_manager = ContainerManager(temp_dir)
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
         # self._xxx_plugin, we should just iterate through self._plugins.
@@ -215,16 +289,6 @@ class RuntimeEnvAgent(
             self.unused_uris_processor,
             self.unused_runtime_env_processor,
         )
-
-        self._logger = default_logger
-        self._logging_params.update(filename=self.LOG_FILENAME)
-        self._logger = setup_component_logger(
-            logger_name=default_logger.name, **self._logging_params
-        )
-        # Don't propagate logs to the root logger, because these logs
-        # might contain sensitive information. Instead, these logs should
-        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
-        self._logger.propagate = False
 
     def uris_parser(self, runtime_env):
         result = list()
@@ -251,7 +315,7 @@ class RuntimeEnvAgent(
                 loop = get_or_create_event_loop()
                 # Cache the bad runtime env result by ttl seconds.
                 loop.call_later(
-                    dashboard_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
+                    runtime_env_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
                     delete_runtime_env,
                 )
             else:
@@ -396,7 +460,7 @@ class RuntimeEnvAgent(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                status=RUNTIME_ENV_AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
                 ),
@@ -423,7 +487,7 @@ class RuntimeEnvAgent(
                         f"context: {context}"
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+                        status=RUNTIME_ENV_AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
                 else:
@@ -438,7 +502,7 @@ class RuntimeEnvAgent(
                         runtime_env, serialized_env, request.source_process
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                        status=RUNTIME_ENV_AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
                     )
 
@@ -480,9 +544,9 @@ class RuntimeEnvAgent(
             )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+                status=RUNTIME_ENV_AGENT_RPC_STATUS_OK
                 if successful
-                else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                else RUNTIME_ENV_AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
                 error_message=error_message,
             )
@@ -502,7 +566,7 @@ class RuntimeEnvAgent(
                 f"{request.serialized_runtime_env}"
             )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                status=RUNTIME_ENV_AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
                 ),
@@ -513,7 +577,7 @@ class RuntimeEnvAgent(
         )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+            status=RUNTIME_ENV_AGENT_RPC_STATUS_OK
         )
 
     async def GetRuntimeEnvsInfo(self, request, context):
@@ -549,12 +613,219 @@ class RuntimeEnvAgent(
         reply.total = len(runtime_env_states)
         return reply
 
-    async def run(self, server):
-        if server:
-            runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
-                self, server
+    async def run(self):
+        async def _check_parent():
+            """Check if raylet is dead and fate-share if it is."""
+            try:
+                curr_proc = psutil.Process()
+                parent_death_cnt = 0
+                while True:
+                    parent = curr_proc.parent()
+                    # If the parent is dead, it is None.
+                    parent_gone = parent is None
+                    init_assigned_for_parent = False
+                    parent_changed = False
+
+                    if parent:
+                        # Sometimes, the parent is changed to the `init` process.
+                        # In this case, the parent.pid is 1.
+                        init_assigned_for_parent = parent.pid == 1
+                        # Sometimes, the parent is dead, and the pid is reused
+                        # by other processes. In this case, this condition is triggered.
+                        parent_changed = self.ppid != parent.pid
+
+                    if parent_gone or init_assigned_for_parent or parent_changed:
+                        parent_death_cnt += 1
+                        logger.warning(
+                            f"Raylet is considered dead {parent_death_cnt} X. "
+                            f"If it reaches to {_PARENT_DEATH_THREASHOLD}, the agent "
+                            f"will kill itself. Parent: {parent}, "
+                            f"parent_gone: {parent_gone}, "
+                            f"init_assigned_for_parent: {init_assigned_for_parent}, "
+                            f"parent_changed: {parent_changed}."
+                        )
+                        if parent_death_cnt < _PARENT_DEATH_THREASHOLD:
+                            await asyncio.sleep(
+                                runtime_env_consts.CHECK_PARENT_INTERVAL_S
+                            )
+                            continue
+                        sys.exit(0)
+                    else:
+                        parent_death_cnt = 0
+                    await asyncio.sleep(runtime_env_consts.CHECK_PARENT_INTERVAL_S)
+            except Exception:
+                logger.exception("Failed to check parent PID, exiting.")
+                sys.exit(1)
+
+        if sys.platform not in ["win32", "cygwin"]:
+            check_parent_task = create_task(_check_parent())
+
+        # Start a grpc asyncio server.
+        assert self._grpc_server is not None
+        await self._grpc_server.start()
+        runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
+            self, self._grpc_server
+        )
+        # Register agent to agent manager.
+        raylet_stub = (
+            runtime_env_agent_manager_pb2_grpc.RuntimeEnvAgentManagerServiceStub(
+                self._aiogrpc_raylet_channel
             )
+        )
+        await raylet_stub.RegisterRuntimeEnvAgent(
+            runtime_env_agent_manager_pb2.RegisterRuntimeEnvAgentRequest(
+                agent_id=self._agent_id,
+                agent_port=self._grpc_port,
+                agent_ip_address=self._node_ip_address,
+            )
+        )
+        tasks = [check_parent_task]
+        await asyncio.gather(*tasks)
+        await self._grpc_server.wait_for_termination()
 
     @staticmethod
     def is_minimal_module():
         return True
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Runtime env agent.")
+    parser.add_argument(
+        "--gcs-address", required=True, type=str, help="The address (ip:port) of GCS."
+    )
+    parser.add_argument(
+        "--node-ip-address",
+        required=True,
+        type=str,
+        help="the IP address of this node.",
+    )
+    parser.add_argument(
+        "--node-manager-port",
+        required=True,
+        type=int,
+        help="The port used to start the node manager",
+    )
+    parser.add_argument(
+        "--runtime-env-agent-port",
+        required=True,
+        type=int,
+        help="The port on which the runtime env agent will receive GRPCs.",
+    )
+    parser.add_argument(
+        "--logging-level",
+        required=False,
+        type=lambda s: logging.getLevelName(s.upper()),
+        default=ray_constants.LOGGER_LEVEL,
+        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+        help=ray_constants.LOGGER_LEVEL_HELP,
+    )
+    parser.add_argument(
+        "--logging-format",
+        required=False,
+        type=str,
+        default=ray_constants.LOGGER_FORMAT,
+        help=ray_constants.LOGGER_FORMAT_HELP,
+    )
+    parser.add_argument(
+        "--logging-filename",
+        required=False,
+        type=str,
+        default=runtime_env_consts.RUNTIME_ENV_AGENT_DEFAULT_LOG_FILENAME,
+        help="Specify the name of log file, "
+        'log to stdout if set empty, default is "{}".'.format(
+            runtime_env_consts.RUNTIME_ENV_AGENT_DEFAULT_LOG_FILENAME
+        ),
+    )
+    parser.add_argument(
+        "--logging-rotate-bytes",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
+        help="Specify the max bytes for rotating "
+        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+    )
+    parser.add_argument(
+        "--logging-rotate-backup-count",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        help="Specify the backup count of rotated log file, default is {}.".format(
+            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+        ),
+    )
+    parser.add_argument(
+        "--log-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of log directory.",
+    )
+    parser.add_argument(
+        "--temp-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of the temporary directory use by Ray process.",
+    )
+
+    parser.add_argument(
+        "--runtime-env-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of the resource directory used by runtime_env.",
+    )
+    parser.add_argument(
+        "--agent-id",
+        required=True,
+        type=int,
+        help="ID to report when registering with raylet",
+        default=os.getpid(),
+    )
+    args = parser.parse_args()
+
+    try:
+        logging_params = dict(
+            logging_level=args.logging_level,
+            logging_format=args.logging_format,
+            log_dir=args.log_dir,
+            filename=args.logging_filename,
+            max_bytes=args.logging_rotate_bytes,
+            backup_count=args.logging_rotate_backup_count,
+        )
+
+        logger = setup_component_logger(**logging_params)
+
+        # Initialize event loop, see Dashboard init code for caveat
+        # w.r.t grpc server init in the DashboardAgent initializer.
+        agent = RuntimeEnvAgent(
+            gcs_address=args.gcs_address,
+            node_ip_address=args.node_ip_address,
+            node_manager_port=args.node_manager_port,
+            runtime_env_agent_port=args.runtime_env_agent_port,
+            temp_dir=args.temp_dir,
+            runtime_env_dir=args.runtime_env_dir,
+            logging_params=logging_params,
+            agent_id=args.agent_id,
+        )
+
+        loop = get_or_create_event_loop()
+
+        def sigterm_handler():
+            logger.warning("Exiting with SIGTERM immediately...")
+            # Exit code 0 will be considered as an expected shutdown
+            os._exit(signal.SIGTERM)
+
+        if sys.platform != "win32":
+            # TODO(rickyyx): we currently do not have any logic for actual
+            # graceful termination in the agent. Most of the underlying
+            # async tasks run by the agent head doesn't handle CancelledError.
+            # So a truly graceful shutdown is not trivial w/o much refactoring.
+            # Re-open the issue: https://github.com/ray-project/ray/issues/25518
+            # if a truly graceful shutdown is required.
+            loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
+
+        loop.run_until_complete(agent.run())
+    except Exception:
+        logger.exception("Agent is working abnormally. It will exit immediately.")
+        exit(1)

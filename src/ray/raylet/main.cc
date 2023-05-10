@@ -51,6 +51,7 @@ DEFINE_string(static_resource_list, "", "The static resource list of this node."
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
+DEFINE_string(runtime_env_agent_command, "", "Runtime env agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(native_library_path,
               "",
@@ -105,6 +106,7 @@ int main(int argc, char *argv[]) {
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
+  const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
@@ -205,6 +207,11 @@ int main(int argc, char *argv[]) {
         }
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
+        } else {
+          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
+        }
+        if (!runtime_env_agent_command.empty()) {
+          node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
         } else {
           RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
         }
