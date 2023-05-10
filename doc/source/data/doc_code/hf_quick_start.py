@@ -33,7 +33,7 @@ batches = {"data": np.asarray(["Complete this", "for me"])}
 model = pipeline("text-generation", model="gpt2")
 
 def transform(batch: Dict[str, np.ndarray]):
-    return model(batch["data"], max_length=20)
+    return model(list(batch["data"]), max_length=20)
 
 results = transform(batches)
 # __hf_no_ray_end__
@@ -54,8 +54,8 @@ class HuggingFacePredictor:
         self.model = pipeline("text-generation", model="gpt2")
 
     def __call__(self, batch: Dict[str, np.ndarray]):  # <2>
-        model_out = self.model(batch["data"], max_length=20)
-        return {"output": model_out}
+        model_out = self.model(list(batch["data"]), max_length=20)
+        return {"output": np.asarray(model_out)}
 # __hf_quickstart_model_end__
 
 
