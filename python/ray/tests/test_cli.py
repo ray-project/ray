@@ -981,7 +981,7 @@ def fetch_ray_processes(pid):
     proc_names = set()
     children = psutil.Process(pid).children()
     for c in children:
-        if c.name() == "python":
+        if c.name().startswith("python"):
             cmd = c.cmdline()
             if cmd[1] == "-m":
                 if cmd[2] == "ray.util.client.server":
