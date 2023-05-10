@@ -82,7 +82,7 @@ def test_http_proxy_healthy():
             pass
 
     proxy = MockHTTPProxyActor.options(lifetime="detached").remote()
-    state = HTTPProxyState(proxy, "alice", "mock_node_ip")
+    state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
     assert state.status == HTTPProxyStatus.STARTING
 
     state.update()
@@ -112,7 +112,7 @@ def test_http_proxy_unhealthy():
 
     with patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 1):
         proxy = MockHTTPProxyActor.options(lifetime="detached").remote()
-        state = HTTPProxyState(proxy, "alice", "mock_node_ip")
+        state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
         assert state.status == HTTPProxyStatus.STARTING
 
         def check_proxy(status):
