@@ -670,7 +670,7 @@ tutorials and examples:
 
         .. button-ref:: /data/examples/nyc_taxi_basic_processing
 
-            Batch Inference on NYC taxi data using Ray Data
+            Object Detection Batch Inference with PyTorch & torchvision
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
