@@ -130,4 +130,10 @@ enum TagKey {
   // Name of Tune scheduler algorithm or "Custom" if user-defined.
   // Example: "FIFOScheduler"
   TUNE_SCHEDULER = 502;
+
+  // Ray AIR environment variable usage stored in JSON list format
+  // This lists which of the environment variables exposed by the AIR libraries
+  // are provided by the user.
+  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
+  AIR_ENV_VARS = 503;
 }

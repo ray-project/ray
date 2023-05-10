@@ -8,6 +8,7 @@ import pytest
 from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
+import grpc
 
 import ray
 from ray._private.test_utils import (
@@ -20,7 +21,13 @@ from ray.core.generated.common_pb2 import Address
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
-from ray.dashboard.modules.log.log_agent import tail as tail_file
+from ray.dashboard.modules.log.log_agent import (
+    find_end_offset_file,
+    find_end_offset_next_n_lines_from_offset,
+    find_start_offset_last_n_lines_from_offset,
+)
+from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
+
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
@@ -57,34 +64,228 @@ def generate_actor_data(id, node_id, worker_id):
 
 
 # Unit Tests (Log Agent)
+def _read_file(fp, start, end):
+    """Help func to read a file with offsets"""
+    fp.seek(start, 0)
+    if end == -1:
+        return fp.read()
+    return fp.read(end - start)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_logs_tail():
+async def _stream_log(context, fp, start, end):
+    """Help func to stream a log with offsets"""
+    result = bytearray()
+    async for chunk_res in _stream_log_in_chunk(
+        context=context,
+        file=fp,
+        start_offset=start,
+        end_offset=end,
+        keep_alive_interval_sec=-1,
+    ):
+        result += chunk_res.data
+    return result
+
+
+def _write_lines_and_get_offset_at_index(
+    f, num_lines, start_offset=0, trailing_new_line=True
+):
     """
-    Unit test for tail
+    Write multiple lines into a file, and record offsets
+
+    Args:
+        f: a binary file object that's writable
+        num_lines: Number of lines to write
+        start_offset: The offset to start writing
+        trailing_new_line: True if a '\n' is added at the end of the
+            lines.
+
+    Return:
+        offsets: A list of offsets of the lines.
+        offset_end: The offset of the end of file.
     """
-    TOTAL_LINES = 1000
-    FILE_NAME = "test_file.txt"
-    try:
-        with open(FILE_NAME, "w") as f:
-            for i in range(TOTAL_LINES):
-                # Check this works with unicode
-                f.write(f"Message 日志 {i:4}\n")
-        file = open(FILE_NAME, "rb")
-        text, byte_pos = tail_file(file, 100)
-        assert byte_pos == TOTAL_LINES * len(
-            "Message 日志 1000\n".encode(encoding="utf-8")
-        )
-        lines = text.decode("utf-8").split("\n")
-        assert len(lines) == 100
-        assert lines[0] == "Message 日志  900"
-        assert lines[99] == "Message 日志  999"
-    except Exception as e:
-        raise e
-    finally:
-        if os.path.exists(FILE_NAME):
-            os.remove(FILE_NAME)
+    f.seek(start_offset, 0)
+
+    offsets = []
+    for i in range(num_lines):
+        offsets.append(f.tell())
+        if i == num_lines - 1 and not trailing_new_line:
+            # Last line no newline
+            line = f"{i}-test-line"
+        else:
+            line = f"{i}-test-line\n"
+        f.write(line.encode("utf-8"))
+
+    f.flush()
+    f.seek(0, 2)
+    offset_end = f.tell()
+
+    return offsets, offset_end
+
+
+@pytest.mark.parametrize("new_line", [True, False])
+@pytest.mark.parametrize("block_size", [4, 16, 256])
+def test_find_start_offset_last_n_lines_from_offset(new_line, temp_file, block_size):
+    file = temp_file
+    o, end_file = _write_lines_and_get_offset_at_index(
+        file, num_lines=50, start_offset=0, trailing_new_line=new_line
+    )
+    # Test the function with different offsets and number of lines to find
+    assert find_start_offset_last_n_lines_from_offset(file, o[3], 1, block_size) == o[2]
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[10], 10, block_size) == o[0]
+    )
+
+    # Test end of file last 1 line
+    assert find_start_offset_last_n_lines_from_offset(file, -1, 1, block_size) == o[-1]
+
+    # Test end of file no line
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, -1, 0, block_size) == end_file
+    )
+
+    # Test no line from middle of file
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[30], 0, block_size) == o[30]
+    )
+
+    # Test more lines than file
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[30], 100, block_size) == o[0]
+    )
+
+    # Test offsets in the middle of a line
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[2] + 1, 1, block_size)
+        == o[2]
+    )
+    assert (
+        find_start_offset_last_n_lines_from_offset(file, o[2] - 1, 1, block_size)
+        == o[1]
+    )
+
+
+def test_find_end_offset_next_n_lines_from_offset(temp_file):
+    file = temp_file
+    o, end_file = _write_lines_and_get_offset_at_index(
+        file, num_lines=10, start_offset=0
+    )
+    # Test the function with different offsets and number of lines to find
+    assert find_end_offset_next_n_lines_from_offset(file, o[3], 1) == o[4]
+    assert find_end_offset_next_n_lines_from_offset(file, o[3], 2) == o[5]
+    assert find_end_offset_next_n_lines_from_offset(file, 0, 1) == o[1]
+
+    # Test end of file
+    assert find_end_offset_next_n_lines_from_offset(file, o[3], 999) == end_file
+
+    # Test offset diff
+    assert find_end_offset_next_n_lines_from_offset(file, 1, 1) == o[1]
+    assert find_end_offset_next_n_lines_from_offset(file, o[1] - 1, 1) == o[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("random_ascii_file", [1 << 20], indirect=True)
+@pytest.mark.parametrize(
+    "start_offset,end_offset",
+    [
+        (0, 1 << 20),
+        (1 << 20, 1 << 20),
+        (0, 0),
+        (0, 1),
+        (1 << 16, 1 << 20),
+        (1024, 2042),
+    ],
+)
+async def test_stream_log_in_chunk(random_ascii_file, start_offset, end_offset):
+    """Test streaming of a file from different offsets"""
+    test_file = random_ascii_file
+    context = MagicMock(grpc.aio.ServicerContext)
+    context.done.return_value = False
+
+    expected_file_content = _read_file(test_file, start_offset, end_offset)
+    actual_log_content = await _stream_log(context, test_file, start_offset, end_offset)
+
+    assert (
+        expected_file_content == actual_log_content
+    ), "Non-matching content from log streamed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lines_to_tail,total_lines",
+    [(0, 100), (100, 100), (10, 100), (1, 100), (99, 100)],
+)
+@pytest.mark.parametrize("trailing_new_line", [True, False])
+async def test_log_tails(lines_to_tail, total_lines, trailing_new_line, temp_file):
+    """Test tailing a file works"""
+    _write_lines_and_get_offset_at_index(
+        temp_file,
+        total_lines,
+        trailing_new_line=trailing_new_line,
+    )
+    test_file = temp_file
+    context = MagicMock(grpc.aio.ServicerContext)
+    context.done.return_value = False
+    start_offset = find_start_offset_last_n_lines_from_offset(
+        test_file, offset=-1, n=lines_to_tail
+    )
+
+    actual_data = await _stream_log(context, test_file, start_offset, -1)
+    expected_data = _read_file(test_file, start_offset, -1)
+
+    assert actual_data == expected_data, "Non-matching data from stream log"
+
+    all_lines = actual_data.decode("utf-8")
+    assert all_lines.count("\n") == (
+        lines_to_tail if trailing_new_line or lines_to_tail == 0 else lines_to_tail - 1
+    ), "Non-matching number of lines tailed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lines_to_tail,total_lines",
+    [(0, 5), (5, 5), (2, 5), (1, 5), (4, 5)],
+)
+async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
+    """Test tailing a log file that grows at the same time"""
+    _write_lines_and_get_offset_at_index(temp_file, total_lines)
+    test_file = temp_file
+    context = MagicMock(grpc.aio.ServicerContext)
+    context.done.return_value = False
+    start_offset = find_start_offset_last_n_lines_from_offset(
+        test_file, offset=-1, n=lines_to_tail
+    )
+
+    actual_data = await _stream_log(context, test_file, start_offset, -1)
+
+    end_offset = find_end_offset_file(test_file)
+    expected_data = _read_file(test_file, start_offset, end_offset)
+    assert actual_data == expected_data, "Non-matching data from stream log"
+
+    all_lines = actual_data.decode("utf-8")
+    assert all_lines.count("\n") == lines_to_tail, "Non-matching number of lines tailed"
+
+    # Modify the file with append here
+    num_new_lines = 2
+    _write_lines_and_get_offset_at_index(
+        temp_file, num_new_lines, start_offset=end_offset
+    )
+
+    # Tail again should read the new lines written
+    start_offset = find_start_offset_last_n_lines_from_offset(
+        test_file, offset=-1, n=lines_to_tail + num_new_lines
+    )
+
+    expected_data = _read_file(test_file, start_offset, -1)
+    actual_data = await _stream_log(context, test_file, start_offset, -1)
+
+    assert (
+        actual_data == expected_data
+    ), "Non-matching data from stream log after append"
+
+    all_lines = actual_data.decode("utf-8")
+    assert (
+        all_lines.count("\n") == lines_to_tail + num_new_lines
+    ), "Non-matching number of lines tailed after append"
 
 
 # Unit Tests (LogsManager)
@@ -566,7 +767,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         lines = []
         for line in stream_response.iter_lines():
             lines.append(line.decode("utf-8"))
-        return len(lines) == 5 or len(lines) == 6
+        assert len(lines) == 5 or len(lines) == 6
+        return True
 
     wait_for_condition(verify_basic)
 

@@ -20,7 +20,10 @@ from transformers import (
 import ray
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.train.hf_transformers import (
+    TransformersPredictor,
+    TransformersTrainer,
+)
 from ray.air.config import ScalingConfig
 
 
@@ -113,7 +116,7 @@ def main(
         ray_train = ray_train.limit(16)
         ray_validation = ray_validation.limit(8)
 
-    trainer = HuggingFaceTrainer(
+    trainer = TransformersTrainer(
         trainer_init_per_worker=train_function,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": ray_train, "evaluation": ray_validation},
@@ -125,7 +128,7 @@ def main(
     prompt = ["My text: Complete me..."]
     predictor = BatchPredictor.from_checkpoint(
         results.checkpoint,
-        HuggingFacePredictor,
+        TransformersPredictor,
         task="text-generation",
         tokenizer=tokenizer,
     )
@@ -138,7 +141,7 @@ def main(
 if __name__ == "__main__":
     # Training settings
     parser = argparse.ArgumentParser(
-        description="Language modelling from scratch with HuggingFaceTrainer Example",
+        description="Language modelling from scratch with TransformersTrainer Example",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(

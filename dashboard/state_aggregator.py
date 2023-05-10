@@ -377,16 +377,10 @@ class StateAPIManager:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
-        job_id = None
-        for filter in option.filters:
-            if filter[0] == "job_id" and filter[1] == "=":
-                # Filtering by job_id == xxxx, pass it to source side filtering.
-                # tuple consists of (job_id, predicate, value)
-                job_id = filter[2]
         try:
             reply = await self._client.get_all_task_info(
                 timeout=option.timeout,
-                job_id=job_id,
+                filters=option.filters,
                 exclude_driver=option.exclude_driver,
             )
         except DataSourceUnavailable:
