@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 import pathlib
 import pprint
-import socket
 from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
 
+import ray
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
@@ -425,7 +425,7 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpecs for each individual module."
             )
         if self.load_state_path:
-            self._load_state_ip_addr = socket.gethostbyname(socket.gethostname())
+            self._load_state_ip_addr = ray.util.get_node_ip_address()
         else:
             self._load_state_ip_addr = None
 
@@ -465,14 +465,14 @@ class MultiAgentRLModuleSpec:
             load_state_path = copy_state_from_remote_node_if_necessary(
                 self.load_state_path, self._load_state_ip_addr
             )
-            modules_to_load = {}
+            modules_to_load = set()
             # This applies to the case where a user wants to load the weights of a MARL
             # module and also manually load the weights of some of the RL modules within
             # that MARL module from other checkpoints. In this case, we should respect
             # the RL Module weights that the user wants to load and not load the weights
             # of those RL Modules from the MARL checkpoint.
             for module_id in module_config.modules.keys():
-                if not module_config[module_id].load_state_path:
+                if not module_config.modules[module_id].load_state_path:
                     modules_to_load.add(module_id)
             module.load_state(load_state_path, modules_to_load)
         return module

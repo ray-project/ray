@@ -4,7 +4,6 @@ import datetime
 import gymnasium as gym
 import json
 import pathlib
-import socket
 import tempfile
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
@@ -64,7 +63,7 @@ def copy_state_from_remote_node_if_necessary(
         The path to the module state directory on the current node.
 
     """
-    current_node_ip_addr = socket.gethostbyname(socket.gethostname())
+    current_node_ip_addr = ray.util.get_node_ip_address()
 
     # If the current node is different from the node that contains the module state
     # then copy the module state to the current node.
@@ -107,7 +106,7 @@ class SingleAgentRLModuleSpec:
 
     def __post_init__(self):
         if self.load_state_path:
-            self._load_state_ip_addr = socket.gethostbyname(socket.gethostname())
+            self._load_state_ip_addr = ray.util.get_node_ip_address()
         else:
             self._load_state_ip_addr = None
 
