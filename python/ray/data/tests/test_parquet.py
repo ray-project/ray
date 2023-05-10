@@ -658,6 +658,7 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
 
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
+    # TODO(scott_optimizer): fix encoding ratio calculation for ParquetDatasourceReader
     ctx = ray.data.context.DataContext.get_current()
     old_decoding_size_estimation = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = True

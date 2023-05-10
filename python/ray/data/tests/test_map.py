@@ -726,7 +726,7 @@ BLOCK_BUNDLING_TEST_CASES = [
 def test_map_batches_block_bundling_auto(
     ray_start_regular_shared, block_size, batch_size
 ):
-    # TODO(scott_optimizer): fix map_batches block bundling 
+    # TODO(scott_optimizer): fix map_batches block bundling
     # for block_size>1 or batch_size>1
     # Ensure that we test at least 2 batches worth of blocks.
     num_blocks = max(10, 2 * batch_size // block_size)
