@@ -74,9 +74,7 @@ class TorchLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        # TODO (sven): Move lr from optimizer config to Learner HPs?
-        #  We might not need optimizer config.
-        lr = self.curr_lr_per_module[module_id]
+        lr = self.lr_scheduler.get_current_value(module_id)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
             torch.optim.Adam(self.get_parameters(module), lr=lr),
@@ -100,12 +98,13 @@ class TorchLearner(Learner):
     def additional_update_per_module(
         self, module_id: ModuleID, *, timestep: int, **kwargs
     ) -> Mapping[str, Any]:
+        results = super().additional_update_per_module(module_id, timestep=timestep)
+
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        value = self._optimizer_config["lr"]
-        if self.hps.lr_schedule is not None:
-            value = self.lr_schedule_per_module[module_id].value(t=timestep)
-            self.curr_lr_per_module[module_id].data = torch.tensor(value)
-        return {LEARNER_RESULTS_CURR_LR_KEY: value}
+        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
+        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+
+        return results
 
     @override(Learner)
     def postprocess_gradients(
