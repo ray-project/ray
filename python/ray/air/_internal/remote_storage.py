@@ -97,7 +97,7 @@ def get_fs_and_path(
         return fs, path
 
     # In case of hdfs filesystem, if uri does not have the netloc part below will
-    # failed with hdfs access error.  For example 'hdfs:///user_folder/...' will
+    # failed with hdfs access error. For example 'hdfs:///user_folder/...' will
     # fail, while only 'hdfs://namenode_server/user_foler/...' will work
     if parsed.scheme == "hdfs" and parsed.netloc == "" and not fsspec:
         return None, None
