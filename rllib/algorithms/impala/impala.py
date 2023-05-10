@@ -46,10 +46,10 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     PolicyID,
@@ -371,6 +371,13 @@ class ImpalaConfig(AlgorithmConfig):
         # Check `entropy_coeff` for correctness.
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
+        # Entropy coeff schedule checking.
+        if self._enable_learner_api:
+            Scheduler.validate(
+                self.entropy_coeff_schedule,
+                "entropy_coeff_schedule",
+                "entropy coefficient",
+            )
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -561,58 +568,39 @@ class Impala(Algorithm):
         if not config["vtrace"]:
             raise ValueError("IMPALA with the learner API does not support non-VTrace ")
 
-        if config._enable_rl_module_api:
-            if config["framework"] == "tf2":
-                from ray.rllib.algorithms.impala.tf.impala_tf_policy_rlm import (
-                    ImpalaTfPolicyWithRLModule,
+        if config["framework"] == "torch":
+            if config["vtrace"]:
+                from ray.rllib.algorithms.impala.impala_torch_policy import (
+                    ImpalaTorchPolicy,
                 )
 
-                return ImpalaTfPolicyWithRLModule
-            if config["framework"] == "torch":
-                from ray.rllib.algorithms.impala.torch.impala_torch_policy_rlm import (
-                    ImpalaTorchPolicyWithRLModule,
-                )
-
-                return ImpalaTorchPolicyWithRLModule
+                return ImpalaTorchPolicy
             else:
-                raise ValueError(
-                    f"IMPALA with the learner API does not support framework "
-                    f"{config['framework']} "
+                from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
+
+                return A3CTorchPolicy
+        elif config["framework"] == "tf":
+            if config["vtrace"]:
+                from ray.rllib.algorithms.impala.impala_tf_policy import (
+                    ImpalaTF1Policy,
                 )
+
+                return ImpalaTF1Policy
+            else:
+                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
+
+                return A3CTFPolicy
         else:
-            if config["framework"] == "torch":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.impala_torch_policy import (
-                        ImpalaTorchPolicy,
-                    )
+            if config["vtrace"]:
+                from ray.rllib.algorithms.impala.impala_tf_policy import (
+                    ImpalaTF2Policy,
+                )
 
-                    return ImpalaTorchPolicy
-                else:
-                    from ray.rllib.algorithms.a3c.a3c_torch_policy import A3CTorchPolicy
-
-                    return A3CTorchPolicy
-            elif config["framework"] == "tf":
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.impala_tf_policy import (
-                        ImpalaTF1Policy,
-                    )
-
-                    return ImpalaTF1Policy
-                else:
-                    from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                    return A3CTFPolicy
+                return ImpalaTF2Policy
             else:
-                if config["vtrace"]:
-                    from ray.rllib.algorithms.impala.impala_tf_policy import (
-                        ImpalaTF2Policy,
-                    )
+                from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
 
-                    return ImpalaTF2Policy
-                else:
-                    from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTFPolicy
-
-                    return A3CTFPolicy
+                return A3CTFPolicy
 
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
