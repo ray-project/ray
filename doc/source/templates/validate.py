@@ -45,24 +45,13 @@ def validate_template_paths(templates, invalid_paths) -> None:
             invalid_paths[template_name].append(rel_path)
 
 
-def validate_cluster_envs(templates, invalid_paths, invalid_yamls) -> None:
-    root_path = get_root_path()
-
+def validate_cluster_envs(templates) -> None:
     for template_name, template_config in templates.items():
         if "cluster_env" not in template_config:
             continue
-
-        rel_path = template_config["cluster_env"]
-        cluster_env_path = root_path / rel_path
-        if not cluster_env_path.exists():
-            invalid_paths[template_name].append(rel_path)
-        else:
-            try:
-                # Assert that the yaml file is properly formatted.
-                with open(cluster_env_path, "r") as f:
-                    yaml.safe_load(f)
-            except yaml.parser.ParserError as e:
-                invalid_yamls[template_name].append(str(e))
+        cluster_env = template_config["cluster_env"]
+        assert isinstance(cluster_env, dict)
+        assert "byod" in cluster_env or "build_id" in cluster_env
 
 
 def validate_compute_configs(templates, invalid_paths, invalid_yamls) -> dict:
@@ -110,7 +99,7 @@ if __name__ == "__main__":
 
     all_missing_fields = validate_templates_yaml_schema(templates)
     validate_template_paths(templates, invalid_paths)
-    validate_cluster_envs(templates, invalid_paths, invalid_yamls)
+    validate_cluster_envs(templates)
     all_missing_providers = validate_compute_configs(
         templates, invalid_paths, invalid_yamls
     )
