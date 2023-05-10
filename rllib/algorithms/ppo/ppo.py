@@ -55,7 +55,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-
 class PPOConfig(PGConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
