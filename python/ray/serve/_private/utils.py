@@ -174,7 +174,7 @@ def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
     """
     nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
     node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"])
+        (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
         for (node_id, node) in nodes.items()
         if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
     ]

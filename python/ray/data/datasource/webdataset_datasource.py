@@ -295,7 +295,7 @@ def _make_iterable(block: BlockAccessor):
     This is a placeholder for dealing with more complex blocks.
 
     Args:
-        block: Ray Datastream block
+        block: Ray Dataset block
 
     Returns:
         Iterable[Dict[str,Any]]: Iterable of samples
@@ -305,7 +305,7 @@ def _make_iterable(block: BlockAccessor):
 
 @PublicAPI(stability="alpha")
 class WebDatasetDatasource(FileBasedDatasource):
-    """A Datasource for WebDataset datastreams (tar format with naming conventions)."""
+    """A Datasource for WebDataset datasets (tar format with naming conventions)."""
 
     _FILE_EXTENSION = "tar"
 

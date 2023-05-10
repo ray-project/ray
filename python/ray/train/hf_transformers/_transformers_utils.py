@@ -8,7 +8,9 @@ from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
 from ray.data import DataIterator
-from ray.train.huggingface.huggingface_checkpoint import HuggingFaceCheckpoint
+from ray.train.hf_transformers.transformers_checkpoint import (
+    TransformersCheckpoint,
+)
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
@@ -59,9 +61,9 @@ def wrap_transformers_trainer(
     return trainer
 
 
-# TODO(ml-team): Replace with a Datastreams-HuggingFace integration when available.
+# TODO(ml-team): Replace with a Datasets-HuggingFace integration when available.
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Datastream."""
+    """HF ExamplesIterable backed by a Dataset."""
 
     def __init__(self, dataset: DataIterator) -> None:
         self.dataset = dataset
@@ -86,7 +88,7 @@ def process_dataset_for_hf(
     ).with_format("torch")
 
     try:
-        dataset_length = dataset._base_datastream.count()
+        dataset_length = dataset._base_dataset.count()
     except (ValueError, AttributeError):
         # pipeline case
         dataset_length = None
@@ -157,8 +159,8 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            # Use HuggingFaceCheckpoint here to avoid a warning in _TrainSession
-            self.delayed_report["checkpoint"] = HuggingFaceCheckpoint.from_directory(
+            # Use TransformersCheckpoint here to avoid a warning in _TrainSession
+            self.delayed_report["checkpoint"] = TransformersCheckpoint.from_directory(
                 str(checkpoint_path)
             )
 

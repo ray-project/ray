@@ -1,9 +1,9 @@
 import csv
-import os
 from collections import namedtuple
 from typing import Tuple, Optional, Dict
 
-from ray_release.config import Test, RELEASE_PACKAGE_DIR
+from ray_release.bazel import bazel_runfile
+from ray_release.config import Test
 from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
 
@@ -67,9 +67,10 @@ gcp_gpu_instances = {
 
 
 def load_instance_types(path: Optional[str] = None) -> Dict[str, Tuple[int, int]]:
-    path = path or os.path.join(
-        RELEASE_PACKAGE_DIR, "ray_release", "buildkite", "aws_instance_types.csv"
-    )
+    if not path:
+        path = bazel_runfile(
+            "release/ray_release/buildkite/aws_instance_types.csv",
+        )
 
     instance_to_resources = {}
     with open(path, "rt") as fp:
