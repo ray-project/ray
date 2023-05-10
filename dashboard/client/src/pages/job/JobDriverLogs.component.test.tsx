@@ -29,6 +29,7 @@ describe("JobDriverLogs", () => {
             pid: "1234",
           },
           submission_id: "raysubmit_12345",
+          driver_node_id: "node-id-0",
         }}
       />,
     );
