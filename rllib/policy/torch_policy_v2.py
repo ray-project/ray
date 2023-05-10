@@ -12,6 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -1128,7 +1129,7 @@ class TorchPolicyV2(Policy):
                 logp = None
 
             # Anything but actions and state_out is an extra fetch.
-            state_out = fwd_out.pop("state_out", {})
+            state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
             dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         elif is_overridden(self.action_sampler_fn):

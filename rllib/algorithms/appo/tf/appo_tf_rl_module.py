@@ -1,6 +1,8 @@
 from typing import List
 
-from ray.rllib.algorithms.appo.appo_learner import OLD_ACTION_DIST_LOGITS_KEY
+from ray.rllib.algorithms.appo.appo_learner import (
+    OLD_ACTION_DIST_LOGITS_KEY,
+)
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT

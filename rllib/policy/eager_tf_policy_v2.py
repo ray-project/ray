@@ -846,10 +846,6 @@ class EagerTFPolicyV2(Policy):
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
         actions = action_dist.sample()
-        logp = action_dist.logp(actions)
-
-        #fwd_out = self.model.forward_exploration(input_dict)
-        #actions = fwd_out[SampleBatch.ACTIONS]
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():
@@ -857,10 +853,9 @@ class EagerTFPolicyV2(Policy):
                 extra_fetches[k] = v
 
         # Action-logp and action-prob.
-        if fwd_out[SampleBatch.ACTION_LOGP] is not None:
-            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(
-                fwd_out[SampleBatch.ACTION_LOGP]
-            )
+        logp = action_dist.logp(actions)
+        extra_fetches[SampleBatch.ACTION_LOGP] = logp
+        extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
 
         return actions, {}, extra_fetches
 
@@ -892,21 +887,11 @@ class EagerTFPolicyV2(Policy):
         )
         action_dist = action_dist.to_deterministic()
         actions = action_dist.sample()
-        logp = None
-
-        #fwd_out = self.model.forward_inference(input_dict)
-        #actions = fwd_out[SampleBatch.ACTIONS]
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():
             if k not in [SampleBatch.ACTIONS, "state_out"]:
                 extra_fetches[k] = v
-
-        # Action-logp and action-prob.
-        if fwd_out[SampleBatch.ACTION_LOGP] is not None:
-            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(
-                fwd_out[SampleBatch.ACTION_LOGP]
-            )
 
         return actions, {}, extra_fetches
 

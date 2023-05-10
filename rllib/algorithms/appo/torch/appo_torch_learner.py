@@ -35,6 +35,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
+
         values = fwd_out[SampleBatch.VF_PREDS]
         action_dist_cls_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(

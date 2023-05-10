@@ -42,7 +42,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         action_dist_class_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
         action_dist_class_exploration = self.module[
             module_id
-        ].get_exploration_action_dist_cls()
+        ].unwrapped().get_exploration_action_dist_cls()
 
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -50,9 +50,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         prev_action_dist = action_dist_class_exploration.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
-        curr_logp = curr_action_dist.logp(batch[SampleBatch.ACTIONS])
+
         logp_ratio = torch.exp(
-            curr_logp - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
+            - batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).

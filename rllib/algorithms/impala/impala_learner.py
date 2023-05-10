@@ -90,7 +90,10 @@ class ImpalaLearner(Learner):
 
 
 def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
-    """Reduce/Aggregate a list of results from Impala Learners by averaging.
+    """Reduce/Aggregate a list of results from Impala Learners.
+
+    Average the values of the result dicts. Add keys for the number of agent and env
+    steps trained (on all modules).
 
     Args:
         results: result dicts to reduce.
@@ -98,4 +101,9 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     Returns:
         A reduced result dict.
     """
-    return tree.map_structure(lambda *x: np.mean(x), *results)
+    result = tree.map_structure(lambda *x: np.mean(x), *results)
+    agent_steps_trained = sum(r[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] for r in results)
+    env_steps_trained = sum(r[ALL_MODULES][NUM_ENV_STEPS_TRAINED] for r in results)
+    result[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = agent_steps_trained
+    result[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = env_steps_trained
+    return result
