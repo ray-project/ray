@@ -28,17 +28,22 @@ void PushManager::StartPush(const NodeID &dest_id,
   if (push_info_.contains(dest_id) && push_info_[dest_id].first.contains(obj_id)) {
     RAY_LOG(DEBUG) << "Duplicate push request " << dest_id << ", " << obj_id
                    << ", resending all the chunks.";
-    chunks_remaining_ += push_info_[dest_id].first[obj_id]->ResendAllChunks(send_chunk_fn);
+    auto push_state = push_info_[dest_id].first[obj_id];
+    if (push_state->IsNoChunk()) {
+      push_info_[dest_id].second.push(push_state);
+    }
+    chunks_remaining_ += push_state->ResendAllChunks(send_chunk_fn);
   } else {
-    auto data = std::make_shared<PushState>(num_chunks, send_chunk_fn, obj_id);
+    chunks_remaining_ += num_chunks;
+    auto push_state = std::make_shared<PushState>(num_chunks, send_chunk_fn, obj_id);
     if (push_info_.contains(dest_id)) {
-      push_info_[dest_id].first[obj_id] = data;
-      push_info_[dest_id].second.push(data);
+      push_info_[dest_id].first[obj_id] = push_state;
+      push_info_[dest_id].second.push(push_state);
     } else {
       auto pair = std::make_pair(absl::flat_hash_map<ObjectID, std::shared_ptr<PushState>>(), std::queue<std::shared_ptr<PushState>>());
-      pair.first[obj_id] = data;
-      pair.second.push(data);
-      push_info_[dest_id] = std::move(pair);
+      auto it = push_info_.emplace(dest_id, std::move(pair)).first;
+      it->second.first.emplace(obj_id, push_state);
+      it->second.second.push(push_state);
     }
   }
   ScheduleRemainingPushes();

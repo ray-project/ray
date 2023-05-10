@@ -44,8 +44,9 @@ TEST(TestPushManager, TestPushState) {
   // normal sending.
   {
     std::vector<int64_t> sent_chunks;
+    auto obj_id = ObjectID::FromRandom();
     PushManager::PushState state{
-        2, [&](int64_t chunk_id) { sent_chunks.push_back(chunk_id); }};
+        2, [&](int64_t chunk_id) { sent_chunks.push_back(chunk_id); }, obj_id};
     ASSERT_EQ(state.num_chunks, 2);
     ASSERT_EQ(state.next_chunk_id, 0);
     ASSERT_EQ(state.num_chunks_inflight, 0);
@@ -80,8 +81,9 @@ TEST(TestPushManager, TestPushState) {
   // resend all chunks.
   {
     std::vector<int64_t> sent_chunks;
+    auto obj_id = ObjectID::FromRandom();
     PushManager::PushState state{
-        3, [&](int64_t chunk_id) { sent_chunks.push_back(chunk_id); }};
+        3, [&](int64_t chunk_id) { sent_chunks.push_back(chunk_id); }, obj_id};
     ASSERT_TRUE(state.SendOneChunk());
     ASSERT_FALSE(state.AllChunksComplete());
     ASSERT_EQ(state.num_chunks, 3);
