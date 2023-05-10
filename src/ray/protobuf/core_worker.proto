@@ -398,7 +398,6 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
-// request and reply for NumPendingTasks
 message NumPendingTasksRequest {}
 
 message NumPendingTasksReply {
