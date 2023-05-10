@@ -145,7 +145,6 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
     ASSERT_EQ(all_job_info_reply.job_info_list(i).is_running_tasks(), i > 0);
   }
 }
-}
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
