@@ -252,7 +252,7 @@ if __name__ == "__main__":
     start = time.time()
     if args.new_streaming:
         run_ingest_streaming(
-            args.dataset_size_gb, args.num_workers, args.use_gpu, arg.early_stop
+            args.dataset_size_gb, args.num_workers, args.use_gpu, args.early_stop
         )
     elif args.streaming:
         run_ingest_dataset_pipeline(args.dataset_size_gb, args.num_workers)
