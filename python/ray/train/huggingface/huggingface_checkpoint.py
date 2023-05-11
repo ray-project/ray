@@ -14,7 +14,7 @@ class HuggingFaceCheckpoint(TransformersCheckpoint):
     # than __init__
     def __new__(cls: type, *args, **kwargs):
         warnings.warn(deprecation_msg, DeprecationWarning)
-        return super(HuggingFaceCheckpoint, cls).__new__(cls)
+        return super(HuggingFaceCheckpoint, cls).__new__(cls, *args, **kwargs)
 
 
 __all__ = [
