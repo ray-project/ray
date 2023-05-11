@@ -892,7 +892,16 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            worker.record_task_log_start()
+            # Record the task id via magic token in the log file.
+            # This will be used to locate the beginning of logs from a task.
+            attempt_number = core_worker.get_current_task_attempt_number()
+            task_attempt_magic_token = "{}{}-{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
+                attempt_number)
+            # Print on both .out and .err
+            print(task_attempt_magic_token, end="")
+            print(task_attempt_magic_token, file=sys.stderr, end="")
+
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -943,9 +952,14 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the task logs end offsets regardless of
-                    # task execution results.
-                    worker.record_task_log_end()
+                    # Record the end of task via magic token in the log file.
+                    # This will be used to locate the end of logs from a task.
+                    task_attempt_magic_token = "{}{}-{}\n".format(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
+                        attempt_number)
+                    # Print on both .out and .err
+                    print(task_attempt_magic_token, end="")
+                    print(task_attempt_magic_token, file=sys.stderr, end="")
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
@@ -1898,6 +1912,9 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+
+    def get_current_task_attempt_number(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskAttemptNumber()
 
     def get_task_depth(self):
         return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
