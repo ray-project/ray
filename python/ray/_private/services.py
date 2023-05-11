@@ -1588,7 +1588,7 @@ def start_raylet(
             "runtime_env_agent.py",
         ),
         f"--node-ip-address={node_ip_address}",
-        f"--runtime-env-agent-port={metrics_agent_port + 1}",
+        f"--runtime-env-agent-port={metrics_agent_port + 10}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--temp-dir={temp_dir}",
         f"--runtime-env-dir={resource_dir}",
