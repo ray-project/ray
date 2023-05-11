@@ -463,11 +463,7 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 
 @pytest.fixture
-def call_ray_start(request, monkeypatch):
-    # Force "--address=<GCS address>" to appear in the output so we can parse
-    # the address.
-    monkeypatch.setenv(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR, "1")
-
+def call_ray_start(request):
     with call_ray_start_context(request) as address:
         yield address
 
@@ -479,7 +475,6 @@ def call_ray_start_context(request):
         "--max-worker-port=0 --port 0"
     )
     parameter = getattr(request, "param", default_cmd)
-    env = None
 
     if isinstance(parameter, dict):
         if "env" in parameter:
@@ -499,9 +494,19 @@ def call_ray_start_context(request):
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
     if out.find(redis_substring_prefix) == -1:
+        suggestion = ""
+        if (
+            not ray_constants.ENABLE_RAY_CLUSTER
+            and os.environ.get(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR) != "1"
+        ):
+            suggestion = (
+                "Try setting the environment variable "
+                f"{ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1."
+            )
         raise Exception(
-            "Ray didn't print the GCS address correctly. Here is the "
-            "output: {}".format(out)
+            "Ray didn't print `--address=<GCS address>` upon startup. "
+            + suggestion
+            + f"Here is the output:\n{out}"
         )
     address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
     address = out[address_location:]
