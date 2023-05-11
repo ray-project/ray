@@ -50,13 +50,15 @@ class TaskEvent {
 
   virtual ~TaskEvent() = default;
 
-  /// Convert itself a rpc::TaskEvents or drop itself due to data limit.
+  /// Convert itself a rpc::TaskEvents or drop it if there is data loss.
   ///
   /// NOTE: this method will modify internal states by moving fields to the
   /// rpc::TaskEvents.
   /// \param[out] rpc_task_events The rpc task event to be filled.
-  /// \return If it's dropped due to data limit.
+  /// \return True if data is dropped, false otherwise.
   virtual bool ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) = 0;
+
+  virtual JobID GetJobId() const { return job_id_; }
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -158,13 +160,17 @@ class TaskProfileEvent : public TaskEvent {
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
 enum TaskEventBufferCounter {
-  kNumTaskProfileEventDroppedSinceLastFlush,
-  kNumTaskStatusEventDroppedSinceLastFlush,
+  /// Number of task events stored in the buffer.
   kNumTaskEventsStored,
-  /// Below stats are updated every flush.
-  kTotalNumTaskProfileEventDropped,
-  kTotalNumTaskStatusEventDropped,
-  kTotalTaskEventsReported,
+  /// Number of dropped task attempt stored in the buffer.
+  kNumTaskAttemptsDroppedStored,
+  /// Total number of task events dropped on the worker due to network issue.
+  kTotalNumTaskEventsDropped,
+  /// Number of profile events dropped since the last report.
+  kNumTaskProfileEventDroppedSinceLastFlush,
+  /// Total number of task events reported to GCS.
+  kTotalNumTaskEventsReported,
+  /// Total bytes of task events reported to GCS.
   kTotalTaskEventsBytesReported,
 };
 
@@ -173,13 +179,24 @@ enum TaskEventBufferCounter {
 ///
 /// Dropping of task events
 /// ========================
-/// Task events will be lost in the below cases for now:
+/// Task events from task attempts will be lost in the below cases for now:
 ///   1. If any of the gRPC call failed, the task events will be dropped and warnings
 ///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
 ///   2. More than `RAY_task_events_max_buffer_size` tasks have been stored
-///   in the buffer, any new task events will be dropped. In this case, the number of
-///   dropped task events will also be included in the next flush to surface this.
+///   in the buffer, oldest events in the buffer will be dropped. In this case, the task
+///   attempts info will also be included in subsequent flush to GCS.
+///
+/// For profiling events:
+///   - If the number of profiling events for a task attempt exceeds the limit specified
+///   by `RAY_task_events_max_num_profile_events_for_task`, any new profiling events will
+///   be dropped. Dropping of profile events will not result in the entire task attempt
+///   being dropped.
+///
+/// For task status events:
+///   - If any task status change event is dropped, the entire task attempt will be
+///   dropped. The dropped task attempt info will be sent to GCS, and GCS will then drop
+///   all new and existing events from the task attempt.
 ///
 /// No overloading of GCS
 /// =====================
@@ -244,7 +261,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
+  /// \param job_id Corresponding Job ID
+  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client, const JobID &job_id);
 
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       LOCKS_EXCLUDED(mutex_) override;
@@ -266,22 +284,16 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   }
 
   /// Test only functions.
-  size_t GetTotalNumStatusTaskEventsDropped() {
-    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskStatusEventDropped);
+  size_t GetNumTaskEventsDropped() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskEventsDropped);
   }
 
-  /// Test only functions.
-  size_t GetNumStatusTaskEventsDroppedSinceLastFlush() {
-    return stats_counter_.Get(
-        TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+  /// Test only function.
+  size_t GetNumTaskEventsReported() {
+    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskEventsReported);
   }
 
-  /// Test only functions.
-  size_t GetTotalNumProfileTaskEventsDropped() {
-    return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskProfileEventDropped);
-  }
-
-  /// Test only functions.
+  /// Test only function.
   size_t GetNumProfileTaskEventsDroppedSinceLastFlush() {
     return stats_counter_.Get(
         TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
@@ -293,8 +305,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return gcs_client_.get();
   }
 
+  /// Test only functions.
+  const JobID &GetJobId() const { return job_id_; }
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
+
+  /// Job id.
+  const JobID job_id_;
 
   /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
@@ -324,6 +342,10 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
   std::atomic<bool> grpc_in_progress_ = false;
+
+  /// Task attempts dropped on this worker that are to be reported to GCS. Reported
+  /// data loss will be removed.
+  absl::flat_hash_set<TaskAttempt> task_attempts_dropped_ GUARDED_BY(mutex_);
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
