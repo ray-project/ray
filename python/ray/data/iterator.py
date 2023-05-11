@@ -632,8 +632,7 @@ class DataIterator(abc.ABC):
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, resize tensors or
-            :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
 
         Examples:
             >>> import ray

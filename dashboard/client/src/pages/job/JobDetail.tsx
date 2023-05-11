@@ -42,7 +42,6 @@ const useStyle = makeStyles((theme) => ({
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, isLoading, params } = useJobDetail();
-  const jobId = params.id;
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
   const [taskTableExpanded, setTaskTableExpanded] = useState(false);
@@ -162,7 +161,7 @@ export const JobDetailChartsPage = () => {
       >
         <Section>
           <JobProgressBar
-            jobId={jobId}
+            jobId={job.job_id ? job.job_id : undefined}
             job={job}
             onClickLink={handleClickLink}
           />
@@ -181,15 +180,17 @@ export const JobDetailChartsPage = () => {
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection
-        title="Task Timeline (beta)"
-        startExpanded
-        className={classes.section}
-      >
-        <Section>
-          <TaskTimeline jobId={jobId} />
-        </Section>
-      </CollapsibleSection>
+      {job.job_id && (
+        <CollapsibleSection
+          title="Task Timeline (beta)"
+          startExpanded
+          className={classes.section}
+        >
+          <Section>
+            <TaskTimeline jobId={job.job_id} />
+          </Section>
+        </CollapsibleSection>
+      )}
 
       <CollapsibleSection
         title="Autoscaler"
@@ -237,51 +238,55 @@ export const JobDetailChartsPage = () => {
         </Box>
       </CollapsibleSection>
 
-      <CollapsibleSection
-        ref={taskTableRef}
-        title="Task Table"
-        expanded={taskTableExpanded}
-        onExpandButtonClick={() => {
-          setTaskTableExpanded(!taskTableExpanded);
-        }}
-        className={classes.section}
-      >
-        <Section>
-          <TaskList
-            jobId={jobId}
-            filterToTaskId={taskListFilter}
-            onFilterChange={handleTaskListFilterChange}
-          />
-        </Section>
-      </CollapsibleSection>
+      {job.job_id && (
+        <React.Fragment>
+          <CollapsibleSection
+            ref={taskTableRef}
+            title="Task Table"
+            expanded={taskTableExpanded}
+            onExpandButtonClick={() => {
+              setTaskTableExpanded(!taskTableExpanded);
+            }}
+            className={classes.section}
+          >
+            <Section>
+              <TaskList
+                jobId={job.job_id}
+                filterToTaskId={taskListFilter}
+                onFilterChange={handleTaskListFilterChange}
+              />
+            </Section>
+          </CollapsibleSection>
 
-      <CollapsibleSection
-        ref={actorTableRef}
-        title="Actor Table"
-        expanded={actorTableExpanded}
-        onExpandButtonClick={() => {
-          setActorTableExpanded(!actorTableExpanded);
-        }}
-        className={classes.section}
-      >
-        <Section>
-          <ActorList
-            jobId={jobId}
-            filterToActorId={actorListFilter}
-            onFilterChange={handleActorListFilterChange}
-            detailPathPrefix="actors"
-          />
-        </Section>
-      </CollapsibleSection>
+          <CollapsibleSection
+            ref={actorTableRef}
+            title="Actor Table"
+            expanded={actorTableExpanded}
+            onExpandButtonClick={() => {
+              setActorTableExpanded(!actorTableExpanded);
+            }}
+            className={classes.section}
+          >
+            <Section>
+              <ActorList
+                jobId={job.job_id}
+                filterToActorId={actorListFilter}
+                onFilterChange={handleActorListFilterChange}
+                detailPathPrefix="actors"
+              />
+            </Section>
+          </CollapsibleSection>
 
-      <CollapsibleSection
-        title="Placement Group Table"
-        className={classes.section}
-      >
-        <Section>
-          <PlacementGroupList jobId={jobId} />
-        </Section>
-      </CollapsibleSection>
+          <CollapsibleSection
+            title="Placement Group Table"
+            className={classes.section}
+          >
+            <Section>
+              <PlacementGroupList jobId={job.job_id} />
+            </Section>
+          </CollapsibleSection>
+        </React.Fragment>
+      )}
     </div>
   );
 };
