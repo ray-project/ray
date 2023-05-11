@@ -232,9 +232,11 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                                     std::vector<std::string> args,
                                     RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
-
+  std::string debug_redis_cmds;
+  auto counter = std::make_shared<std::atomic<size_t>>(0);
   auto send_redis = [this,
-                     counter = std::make_shared<size_t>(0),
+                     debug_redis_cmds,
+                     counter = counter,
                      keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
@@ -246,31 +248,32 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
 
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
-    RAY_CHECK_OK(cxt->RunArgvAsync(
-        std::move(args),
-        [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
-            auto reply) {
-          std::vector<std::function<void()>> requests;
+    RAY_CHECK_OK(
+        cxt->RunArgvAsync(std::move(args),
+                          [this,
+                           debug_redis_cmds,
+                           keys = std::move(keys),
+                           redis_callback = std::move(redis_callback)](auto reply) {
+                            std::vector<std::function<void()>> requests;
+                            // No new queues should have been added here
+                            RAY_CHECK(Progress(keys, [&requests](auto &queue) mutable {
+                                        // All write operations have been consumed, remove
+                                        // this entry Pop the current request
+                                        queue.pop();
+                                        // Push the next one
+                                        if (!queue.empty()) {
+                                          requests.push_back(std::move(queue.front()));
+                                        }
+                                      }).first == 0);
 
-          // No new queues should have been added here
-          RAY_CHECK(Progress(keys, [&requests](auto &queue) mutable {
-                      // All write operations have been consumed, remove this entry
-                      // Pop the current request
-                      queue.pop();
-                      // Push the next one
-                      if (!queue.empty()) {
-                        requests.push_back(std::move(queue.front()));
-                      }
-                    }).first == 0);
+                            for (auto &request : requests) {
+                              request();
+                            }
 
-          for (auto &request : requests) {
-            request();
-          }
-
-          if (redis_callback) {
-            redis_callback(reply);
-          }
-        }));
+                            if (redis_callback) {
+                              redis_callback(reply);
+                            }
+                          }));
   };
 
   auto [added_cnt, del_cnt] =
@@ -279,6 +282,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
   // If the added count equals with the keys size, it means that there is no
   // pending request for these keys. We can send the request directly.
   if (added_cnt == keys.size()) {
+    *counter = keys.size() - 1;
     send_redis();
   }
 }
