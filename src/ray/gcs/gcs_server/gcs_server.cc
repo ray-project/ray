@@ -402,6 +402,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
+      main_service_,
       std::move(scheduler),
       gcs_table_storage_,
       gcs_publisher_,

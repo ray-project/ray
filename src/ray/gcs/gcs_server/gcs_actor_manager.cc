@@ -212,6 +212,7 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
+    instrumented_io_context& io_service,
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -219,7 +220,8 @@ GcsActorManager::GcsActorManager(
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::ClientFactoryFn &worker_client_factory)
-    : gcs_actor_scheduler_(std::move(scheduler)),
+    : io_service_(io_service),
+      gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_publisher_(std::move(gcs_publisher)),
       worker_client_factory_(worker_client_factory),
@@ -752,6 +754,8 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActor
   return actors;
 }
 
+
+
 void GcsActorManager::PollOwnerForActorOutOfScope(
     const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
@@ -761,38 +765,50 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
-                   << ", job id = " << actor_id.JobId();
+                   << ", job id = " << actor_id.JobId()
+                   << " owner node id = " << owner_node_id;
     std::shared_ptr<rpc::CoreWorkerClientInterface> client =
         worker_client_factory_(actor->GetOwnerAddress());
-    it = workers.emplace(owner_id, Owner(std::move(client))).first;
+    it = workers.emplace(owner_id, Owner(client)).first;
   }
+
   it->second.children_actor_ids.insert(actor_id);
 
   rpc::WaitForActorOutOfScopeRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
+
+  auto cb = [this, client, wait_request, owner_node_id, owner_id, actor_id, &cb] (
+      Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
+    if(auto node_it = owners_.find(owner_node_id); node_it != owners_.end() && node_it->second.count(owner_id)) {
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Failed to wait for actor " << actor_id
+                         << " out of scope, job id = " << actor_id.JobId()
+                         << ", error: " << status.ToString();
+        execute_after(io_service_, client->WaitForActorOutOfScope(wait_request, cb), 1000 /* milliseconds */);
+      } else {
+        RAY_LOG(INFO) << "Actor " << actor_id
+                      << " is out of scope, destroying actor, job id = "
+                      << actor_id.JobId();
+        // Only destroy the actor if its owner is still alive. The actor may
+        // have already been destroyed if the owner died.
+        DestroyActor(
+            actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), /*force_kill=*/true);
+      }
+    }
+  };
+
+  client->WaitForActorOutOfScope(
+      wait_request,
+      [client, cb, wait_request](Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
+        if(!status.ok()) {
+          client->WaitForActorOutOfScope(wait_request, cb);
+        } else {
+
+        }
+      };
   it->second.client->WaitForActorOutOfScope(
       wait_request,
-      [this, owner_node_id, owner_id, actor_id](
-          Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << owner_id
-                        << " failed, destroying actor child, job id = "
-                        << actor_id.JobId();
-        } else {
-          RAY_LOG(INFO) << "Actor " << actor_id
-                        << " is out of scope, destroying actor, job id = "
-                        << actor_id.JobId();
-        }
-
-        auto node_it = owners_.find(owner_node_id);
-        if (node_it != owners_.end() && node_it->second.count(owner_id)) {
-          // Only destroy the actor if its owner is still alive. The actor may
-          // have already been destroyed if the owner died.
-          DestroyActor(
-              actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), /*force_kill=*/true);
-        }
-      });
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id,

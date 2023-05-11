@@ -107,6 +107,7 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
+    const NodeID &node_id,
     const WorkerID &worker_id,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
@@ -118,6 +119,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_failure_info_ptr->set_timestamp(timestamp);
+  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
   worker_failure_info_ptr->set_end_time_ms(current_sys_time_ms());
