@@ -594,9 +594,8 @@ def multiplexed(
     an async function. It is recommended to define courotine for long running
     IO tasks in the function, it can prevent blocking the event loop.
 
-    The multiplexed function will load the model with the given model id and call
-    the original function. The multiplexed function will return the return
-    value of the original function.
+    The multiplexed function is called to load a model with a given model ID when
+    necessary.
 
     When the number of models in one replica is larger than max_num_models_per_replica,
     the multiplexed function will unload the model with LRU policy.
