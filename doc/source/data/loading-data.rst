@@ -4,6 +4,21 @@
 Loading Data
 ====================
 
+.. testcode::
+
+    import ray
+    ray.init()
+
+.. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
+
+    ray.init()
+
+
 :class:`Datasets <ray.data.Dataset>` can be created from:
 
 * generated synthetic data,
