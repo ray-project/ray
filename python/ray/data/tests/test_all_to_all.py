@@ -1732,7 +1732,6 @@ def test_random_shuffle_check_random(shutdown_only):
 
 
 def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_shuffle):
-    # TODO(scott_optimizer): fix random shuffle using custom resourcing
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
     cluster.add_node(
@@ -1748,7 +1747,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_s
         "example://parquet_images_mini",
         parallelism=2,
         ray_remote_args={"resources": {"bar": 1}},
-    ).materialize()
+    )
     ds = ds.random_shuffle(resources={"bar": 1}).materialize()
     assert "1 nodes used" in ds.stats()
     assert "2 nodes used" not in ds.stats()
