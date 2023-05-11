@@ -162,6 +162,7 @@ BLACK_EXCLUDES=(
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
   ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
+  ':(exclude)doc/external/'
 )
 
 JAVA_EXCLUDES=(
