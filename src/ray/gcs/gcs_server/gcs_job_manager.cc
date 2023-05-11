@@ -210,7 +210,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       // If job is not dead, get is_running_tasks from the core worker for the driver.
       if (data.second.is_dead()) {
         reply->mutable_job_info_list(i)->set_is_running_tasks(false);
-        WorkerID worker_id = WorkerID::FromBinary(data.second.driver_address().worker_id());
+        WorkerID worker_id =
+            WorkerID::FromBinary(data.second.driver_address().worker_id());
         core_worker_clients_.Disconnect(worker_id);
         num_processed_jobs->fetch_add(1);
         try_send_reply();
