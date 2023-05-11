@@ -419,11 +419,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       return primary_index_.at(task_attempt);
     }
 
-    /// Reference to the counter map owned by the GcsTaskManager.
-    CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
-
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
+
+    /// Reference to the counter map owned by the GcsTaskManager.
+    CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
 
     // Primary index from task attempt to the locator.
     absl::flat_hash_map<TaskAttempt, std::shared_ptr<TaskEventLocator>> primary_index_;
