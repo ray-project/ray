@@ -212,7 +212,7 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
-    instrumented_io_context& io_service,
+    instrumented_io_context &io_service,
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -754,8 +754,6 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActor
   return actors;
 }
 
-
-
 void GcsActorManager::PollOwnerForActorOutOfScope(
     const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
@@ -778,14 +776,17 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
 
-  auto cb = [this, client, wait_request, owner_node_id, owner_id, actor_id, &cb] (
-      Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
-    if(auto node_it = owners_.find(owner_node_id); node_it != owners_.end() && node_it->second.count(owner_id)) {
+  auto cb = [this, client, wait_request, owner_node_id, owner_id, actor_id, &cb](
+                Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
+    if (auto node_it = owners_.find(owner_node_id);
+        node_it != owners_.end() && node_it->second.count(owner_id)) {
       if (!status.ok()) {
         RAY_LOG(WARNING) << "Failed to wait for actor " << actor_id
                          << " out of scope, job id = " << actor_id.JobId()
                          << ", error: " << status.ToString();
-        execute_after(io_service_, client->WaitForActorOutOfScope(wait_request, cb), 1000 /* milliseconds */);
+        execute_after(io_service_,
+                      client->WaitForActorOutOfScope(wait_request, cb),
+                      1000 /* milliseconds */);
       } else {
         RAY_LOG(INFO) << "Actor " << actor_id
                       << " is out of scope, destroying actor, job id = "
@@ -801,11 +802,10 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   client->WaitForActorOutOfScope(
       wait_request,
       [client, cb, wait_request](Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
-        if(!status.ok()) {
-          client->WaitForActorOutOfScope(wait_request, cb);
-        } else {
-
-        }
+    if (!status.ok()) {
+      client->WaitForActorOutOfScope(wait_request, cb);
+    } else {
+    }
       };
   it->second.client->WaitForActorOutOfScope(
       wait_request,

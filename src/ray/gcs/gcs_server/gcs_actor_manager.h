@@ -286,7 +286,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      instrumented_io_context& io_context,
+      instrumented_io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -599,7 +599,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                                          const rpc::PushTaskReply &creation_task_reply,
                                          const Status &creation_task_status);
 
-  instrumented_io_context& io_service_;
+  instrumented_io_context &io_service_;
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
