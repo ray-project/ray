@@ -35,6 +35,7 @@ class DataConfig:
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
+        **kwargs,
     ) -> List[Dict[str, DataIterator]]:
         output = [{} for i in range(world_size)]
 
@@ -96,6 +97,7 @@ class LegacyDataConfigWrapper(DataConfig):
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
         worker_node_ids: Optional[List[NodeIdStr]],
+        **kwargs,
     ) -> Dict[int, Dict[str, DataIterator]]:
         return self._ingest_spec.get_dataset_shards(worker_handles)
 
