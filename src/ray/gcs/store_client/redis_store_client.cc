@@ -228,7 +228,7 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
-std::vector<std::function<()>> RedisStoreClient::Progress(
+std::vector<std::function<void()>> RedisStoreClient::Progress(
     const std::vector<std::string> &keys) {
   std::vector<std::function<void()>> op;
   {
@@ -243,7 +243,7 @@ std::vector<std::function<()>> RedisStoreClient::Progress(
         redis_ops_.erase(op_iter);
       } else {
         if (queue.front()) {
-          op.push_back(std::move(queue));
+          op.push_back(std::move(queue.front()));
         }
       }
     }
