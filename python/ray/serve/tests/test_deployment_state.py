@@ -100,11 +100,31 @@ class MockReplicaActorWrapper:
         return 100
 
     @property
+    def pid(self) -> Optional[int]:
+        return None
+
+    @property
+    def actor_id(self) -> Optional[str]:
+        return None
+
+    @property
+    def worker_id(self) -> Optional[str]:
+        return None
+
+    @property
     def node_id(self) -> Optional[str]:
         if isinstance(self._scheduling_strategy, NodeAffinitySchedulingStrategy):
             return self._scheduling_strategy.node_id
         if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
+        return None
+
+    @property
+    def node_ip(self) -> Optional[str]:
+        return None
+
+    @property
+    def log_file_path(self) -> Optional[str]:
         return None
 
     def set_ready(self):
@@ -268,6 +288,9 @@ def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
         @property
         def version(self):
             return self._version
+
+        def update_state(self, state):
+            pass
 
     return MockVersionedReplica(version)
 
@@ -2262,7 +2285,7 @@ def test_resource_requirements_none(mock_get_all_node_ids, mock_deployment_state
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica(None, None, None, None, None)
+    replica = DeploymentReplica(None, None, "random_tag", None, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error

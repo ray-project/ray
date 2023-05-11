@@ -231,6 +231,7 @@ def create_replica_wrapper(name: str):
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
+                ray._private.worker.global_worker.worker_id.hex(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
                 get_component_logger_file_path(),

@@ -217,6 +217,7 @@ class ActorReplicaWrapper:
 
         self._pid: int = None
         self._actor_id: str = None
+        self._worker_id: str = None
         if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
             self._node_id = scheduling_strategy.node_id
         else:
@@ -300,6 +301,11 @@ class ActorReplicaWrapper:
     def actor_id(self) -> Optional[str]:
         """Returns the actor id, None if not started."""
         return self._actor_id
+
+    @property
+    def worker_id(self) -> Optional[str]:
+        """Returns the worker id, None if not started."""
+        return self._worker_id
 
     @property
     def node_id(self) -> Optional[str]:
@@ -536,6 +542,7 @@ class ActorReplicaWrapper:
                 (
                     self._pid,
                     self._actor_id,
+                    self._worker_id,
                     self._node_id,
                     self._node_ip,
                     self._log_file_path,
@@ -752,6 +759,12 @@ class DeploymentReplica(VersionedReplica):
         self._replica_tag = replica_tag
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+        self._actor_details = ReplicaDetails(
+            actor_name=self._actor._actor_name,
+            replica_id=self._replica_tag,
+            state=ReplicaState.STARTING,
+            start_time_s=0,
+        )
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -762,24 +775,9 @@ class DeploymentReplica(VersionedReplica):
             is_cross_language=self._actor.is_cross_language,
         )
 
-    def get_replica_details(self, state: ReplicaState) -> ReplicaDetails:
-        """Get replica details.
-
-        Args:
-            state: The state of the replica, which is not stored within a
-                DeploymentReplica object
-        """
-        return ReplicaDetails(
-            replica_id=self.replica_tag,
-            state=state,
-            pid=self._actor.pid,
-            actor_name=self._actor._actor_name,
-            actor_id=self._actor.actor_id,
-            node_id=self._actor.node_id,
-            node_ip=self._actor.node_ip,
-            start_time_s=self._start_time,
-            log_file_path=self._actor._log_file_path,
-        )
+    @property
+    def actor_details(self) -> ReplicaDetails:
+        return self._actor_details
 
     @property
     def replica_tag(self) -> ReplicaTag:
@@ -809,6 +807,7 @@ class DeploymentReplica(VersionedReplica):
         self._actor.start(deployment_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
+        self.update_actor_details(start_time_s=self._start_time)
 
     def reconfigure(self, version: DeploymentVersion) -> bool:
         """
@@ -826,8 +825,7 @@ class DeploymentReplica(VersionedReplica):
         """
         self._actor.recover()
         self._start_time = time.time()
-        # Replica version is fetched from recovered replica dynamically in
-        # check_started() below
+        self.update_actor_details(start_time_s=self._start_time)
 
     def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -838,7 +836,16 @@ class DeploymentReplica(VersionedReplica):
             status: Most recent state of replica by
                 querying actor obj ref
         """
-        return self._actor.check_ready()
+        is_ready = self._actor.check_ready()
+        self.update_actor_details(
+            pid=self._actor.pid,
+            node_id=self._actor.node_id,
+            node_ip=self._actor.node_ip,
+            actor_id=self._actor.actor_id,
+            worker_id=self._actor.worker_id,
+            log_file_path=self._actor.log_file_path,
+        )
+        return is_ready
 
     def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
@@ -878,6 +885,15 @@ class DeploymentReplica(VersionedReplica):
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def update_state(self, state: ReplicaState) -> None:
+        """Updates state in actor details."""
+        self.update_actor_details(state=state)
+
+    def update_actor_details(self, **kwargs) -> None:
+        details_kwargs = self._actor_details.dict()
+        details_kwargs.update(kwargs)
+        self._actor_details = ReplicaDetails(**details_kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -920,6 +936,7 @@ class ReplicaStateContainer:
         """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
+        replica.update_state(state)
         self._replicas[state].append(replica)
 
     def get(
@@ -1168,11 +1185,7 @@ class DeploymentState:
         ]
 
     def list_replica_details(self) -> List[ReplicaDetails]:
-        return [
-            replica.get_replica_details(state)
-            for state in ReplicaState
-            for replica in self._replicas.get([state])
-        ]
+        return [replica.actor_details for replica in self._replicas.get()]
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(

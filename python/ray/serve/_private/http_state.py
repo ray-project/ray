@@ -1,8 +1,9 @@
 import asyncio
+import json
 import logging
 import random
 import time
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -29,21 +30,23 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class HTTPProxyState:
-    def __init__(self, actor_handle: ActorHandle, actor_name: str, node_ip: str):
+    def __init__(
+        self, actor_handle: ActorHandle, actor_name: str, node_id: str, node_ip: str
+    ):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
-        self._node_ip = node_ip
-        self._actor_id = None
-        self._log_file_path = None
-
         self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
         self._health_check_obj_ref = None
         self._last_health_check_time: float = 0
 
-    @property
-    def node_ip(self) -> str:
-        return self._node_ip
+        self._actor_details = HTTPProxyDetails(
+            node_id=node_id,
+            node_ip=node_ip,
+            actor_id=self._actor_handle._actor_id.hex(),
+            actor_name=self._actor_name,
+            status=self._status,
+        )
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -58,22 +61,34 @@ class HTTPProxyState:
         return self._status
 
     @property
-    def actor_id(self) -> Optional[str]:
-        return self._actor_handle._actor_id.hex()
+    def actor_details(self) -> HTTPProxyDetails:
+        return self._actor_details
 
-    @property
-    def log_file_path(self) -> Optional[str]:
-        return self._log_file_path
+    def set_status(self, status: HTTPProxyStatus) -> None:
+        """Sets _status and updates _actor_details with the new status."""
+        self._status = status
+        self.update_actor_details(status=self._status)
+
+    def update_actor_details(self, **kwargs) -> None:
+        """Updates _actor_details with passed in kwargs."""
+        details_kwargs = self._actor_details.dict()
+        details_kwargs.update(kwargs)
+        self._actor_details = HTTPProxyDetails(**details_kwargs)
 
     def update(self):
         if self._status == HTTPProxyStatus.STARTING:
             try:
                 finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
                 if finished:
-                    self._log_file_path = ray.get(finished[0])
-                    self._status = HTTPProxyStatus.HEALTHY
+                    worker_id, log_file_path = json.loads(ray.get(finished[0]))
+                    self.set_status(HTTPProxyStatus.HEALTHY)
+                    self.update_actor_details(
+                        worker_id=worker_id,
+                        log_file_path=log_file_path,
+                        status=self._status,
+                    )
             except Exception:
-                self._status = HTTPProxyStatus.UNHEALTHY
+                self.set_status(HTTPProxyStatus.UNHEALTHY)
             return
 
         # Perform periodic health checks
@@ -82,12 +97,12 @@ class HTTPProxyState:
             if finished:
                 try:
                     ray.get(finished[0])
-                    self._status = HTTPProxyStatus.HEALTHY
+                    self.set_status(HTTPProxyStatus.HEALTHY)
                 except Exception as e:
                     logger.warning(
                         f"Health check for HTTP proxy {self._actor_name} failed: {e}"
                     )
-                    self._status = HTTPProxyStatus.UNHEALTHY
+                    self.set_status(HTTPProxyStatus.UNHEALTHY)
 
                 self._health_check_obj_ref = None
 
@@ -97,7 +112,7 @@ class HTTPProxyState:
         if time.time() - self._last_health_check_time > randomized_period_s:
             # If the HTTP Proxy is still blocked, mark unhealthy
             if self._health_check_obj_ref:
-                self._status = HTTPProxyStatus.UNHEALTHY
+                self.set_status(HTTPProxyStatus.UNHEALTHY)
                 logger.warning(
                     f"Health check for HTTP Proxy {self._actor_name} took more than "
                     f"{PROXY_HEALTH_CHECK_PERIOD_S} seconds."
@@ -160,14 +175,7 @@ class HTTPState:
 
     def get_http_proxy_details(self) -> Dict[NodeId, HTTPProxyDetails]:
         return {
-            node_id: HTTPProxyDetails(
-                node_id=node_id,
-                node_ip=state.node_ip,
-                actor_id=state.actor_id,
-                actor_name=state.actor_name,
-                status=state.status,
-                log_file_path=state.log_file_path,
-            )
+            node_id: state.actor_details
             for node_id, state in self._proxy_states.items()
         }
 
@@ -253,7 +261,9 @@ class HTTPState:
                     http_middlewares=self._config.middlewares,
                 )
 
-            self._proxy_states[node_id] = HTTPProxyState(proxy, name, node_ip_address)
+            self._proxy_states[node_id] = HTTPProxyState(
+                proxy, name, node_id, node_ip_address
+            )
 
     def _stop_proxies_if_needed(self) -> bool:
         """Removes proxy actors from any nodes that no longer exist."""
