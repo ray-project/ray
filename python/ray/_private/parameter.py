@@ -121,6 +121,7 @@ class RayParams:
         env_vars: Override environment variables for the raylet.
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
+        runtime_env_agent_port: The port used to start runtime env agent.
     """
 
     def __init__(
@@ -180,6 +181,7 @@ class RayParams:
         env_vars: Optional[Dict[str, str]] = None,
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
+        runtime_env_agent_port: Optional[int] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -236,6 +238,7 @@ class RayParams:
         self.env_vars = env_vars
         self.session_name = session_name
         self.webui = webui
+        self.runtime_env_agent_port = runtime_env_agent_port
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
@@ -305,6 +308,7 @@ class RayParams:
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
             "dashboard_grpc": wrap_port(self.dashboard_grpc_port),
             "metrics_export": wrap_port(self.metrics_export_port),
+            "runtime_env_agent": wrap_port(self.runtime_env_agent_port),
         }
         redis_shard_ports = self.redis_shard_ports
         if redis_shard_ports is None:

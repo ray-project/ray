@@ -1391,6 +1391,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    runtime_env_agent_port: Optional[int] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1443,6 +1444,7 @@ def start_raylet(
         ray_debugger_external: True if the Ray debugger should be made
             available externally to this node.
         env_updates: Environment variable overrides.
+        runtime_env_agent_port: The port used for runtime env agent.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1588,7 +1590,7 @@ def start_raylet(
             "runtime_env_agent.py",
         ),
         f"--node-ip-address={node_ip_address}",
-        f"--runtime-env-agent-port={metrics_agent_port + 10}",
+        f"--runtime-env-agent-port={runtime_env_agent_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--temp-dir={temp_dir}",
         f"--runtime-env-dir={resource_dir}",
@@ -2001,9 +2003,9 @@ def start_ray_client_server(
     stderr_file: Optional[int] = None,
     redis_password: Optional[int] = None,
     fate_share: Optional[bool] = None,
-    metrics_agent_port: Optional[int] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
+    runtime_env_agent_port: Optional[int] = None,
 ):
     """Run the server process of the Ray client.
 
@@ -2048,8 +2050,8 @@ def start_ray_client_server(
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
-    if metrics_agent_port:
-        command.append(f"--metrics-agent-port={metrics_agent_port}")
+    if runtime_env_agent_port:
+        command.append(f"--runtime-env-agent-port={runtime_env_agent_port}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
