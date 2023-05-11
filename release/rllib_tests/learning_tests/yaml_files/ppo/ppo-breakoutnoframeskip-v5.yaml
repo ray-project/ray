@@ -38,7 +38,7 @@ ppo-breakoutnoframeskip-v5:
 
         # Run with Learner- and RLModule API (new stack).
         _enable_learner_api: true
-        _enable_rm_module_api: true
+        _enable_rl_module_api: true
         # Use N Learner worker on the GPU
         num_learner_workers: 4
         num_gpus_per_learner_worker: 1
