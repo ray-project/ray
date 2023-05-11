@@ -33,6 +33,12 @@ def test_list_of_scalars(ray_start_regular_shared):
     assert_structure_equals(output, np.array([1, 2, 3], dtype=np.int64))
 
 
+def test_list_of_numpy_scalars(ray_start_regular_shared):
+    data = [np.int64(1), np.int64(2), np.int64(3)]
+    output = do_map_batches(data)
+    assert_structure_equals(output, np.array([1, 2, 3], dtype=np.int64))
+
+
 def test_list_of_objects(ray_start_regular_shared):
     data = [1, 2, 3, UserObj()]
     output = do_map_batches(data)
@@ -71,6 +77,14 @@ def test_ragged_lists(ray_start_regular_shared):
     assert_structure_equals(
         output, np.array([np.array([1, 2, 3]), np.array([1, 2])], dtype=object)
     )
+
+
+def test_scalar_numpy(ray_start_regular_shared):
+    data = np.int64(1)
+    ds = ray.data.range(2)
+    ds = ds.map(lambda x: {"output": data})
+    output = ds.take_batch()["output"]
+    assert_structure_equals(output, np.array([1, 1], dtype=np.int64))
 
 
 def test_scalar_arrays(ray_start_regular_shared):
