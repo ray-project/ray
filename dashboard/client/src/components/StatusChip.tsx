@@ -83,7 +83,7 @@ const colorMap = {
   serveHttpProxy: {
     [ServeHTTPProxyStatus.HEALTHY]: green,
     [ServeHTTPProxyStatus.UNHEALTHY]: red,
-    [ServeHTTPProxyStatus.STARTING]: yellow,
+    [ServeHTTPProxyStatus.STARTING]: orange,
   },
 } as {
   [key: string]: {
