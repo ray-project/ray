@@ -2215,12 +2215,13 @@ class Dataset:
             ["id"]
 
         Args:
-            fetch_if_missing: If True, synchronously fetch the schema if it's
-                not known. If False, None is returned if the schema is not known.
-                Default is True.
+            fetch_if_missing: If True, synchronously fetch the column names from the
+                schema if it's not known. If False, None is returned if the schema is
+                not known. Default is True.
 
         Returns:
-            A list of the column names for this Dataset.
+            A list of the column names for this Dataset or None if schema is not known
+            and `fetch_if_missing` is False.
 
         """
         schema = self.schema(fetch_if_missing=fetch_if_missing)
