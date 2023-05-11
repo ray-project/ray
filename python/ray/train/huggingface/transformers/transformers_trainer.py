@@ -22,7 +22,7 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.hf_transformers._transformers_utils import (
+from ray.train.huggingface.transformers._transformers_utils import (
     TrainReportCallback,
     process_datasets,
     wrap_transformers_trainer,

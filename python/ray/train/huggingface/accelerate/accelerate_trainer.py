@@ -22,7 +22,7 @@ from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
 
 try:
-    from ray.train.hf_accelerate._accelerate_utils import (
+    from ray.train.huggingface.accelerate._accelerate_utils import (
         launch_command,
         AccelerateDefaultNamespace,
         AccelerateConfigWrapper,
