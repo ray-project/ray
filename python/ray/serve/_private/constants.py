@@ -65,7 +65,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
     300,
     400,
     500,
-    750,
     1000,
     2000,
     # 5 seconds
@@ -74,6 +73,10 @@ DEFAULT_LATENCY_BUCKET_MS = [
     10000,
     # 60 seconds
     60000,
+    # 2min
+    120000,
+    # 5 min
+    300000,
     # 10 min
     600000,
 ]
