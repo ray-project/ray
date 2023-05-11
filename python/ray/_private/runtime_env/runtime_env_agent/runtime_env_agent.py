@@ -7,7 +7,6 @@ import traceback
 import argparse
 import sys
 import signal
-import psutil
 
 try:
     from grpc import aio as aiogrpc
@@ -52,6 +51,9 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 default_logger = logging.getLogger(__name__)
 try:
