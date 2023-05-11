@@ -50,7 +50,7 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
 )
-from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -1537,6 +1537,24 @@ async def test_state_data_source_client(ray_start_cluster):
     assert isinstance(result, dict)
 
     """
+    Test tasks 
+    """
+    with pytest.raises(ValueError):
+        # Since we didn't register this node id, it should raise an exception.
+        result = await client.get_task_info("1234")
+
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        result = await client.get_task_info(node_id)
+        assert isinstance(result, GetTasksInfoReply)
+
+    assert len(client.get_all_registered_raylet_ids()) == 2
+
+    """
     Test objects
     """
     with pytest.raises(ValueError):
@@ -1551,6 +1569,37 @@ async def test_state_data_source_client(ray_start_cluster):
         client.register_raylet_client(node_id, ip, port)
         result = await client.get_object_info(node_id)
         assert isinstance(result, GetObjectsInfoReply)
+
+    """
+    Test tasks
+    """
+
+    @ray.remote
+    def long_running():
+        import time
+
+        time.sleep(300)
+
+    @ray.remote
+    def f():
+        ray.get([long_running.remote() for _ in range(2)])
+
+    # Driver: 2 * f
+    # Each worker: 2 * long_running
+    # -> 2 * f + 4 * long_running
+
+    refs = [f.remote() for _ in range(2)]  # noqa
+
+    async def verify():
+        result = await client.get_task_info(node_id, limit=2)
+        assert result.total == 6
+        assert len(result.owned_task_info_entries) == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+    for ref in refs:
+        ray.cancel(ref, force=True, recursive=True)
+    del refs
 
     """
     Test runtime env

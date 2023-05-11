@@ -548,8 +548,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     """
     task_id = TaskID(b"2" * 24)
     logs_client = logs_manager.data_source_client
-    logs_client.get_task_info = AsyncMock()
-    logs_client.get_task_info.return_value = GetTaskEventsReply(
+    logs_client.get_all_task_info = AsyncMock()
+    logs_client.get_all_task_info.return_value = GetTaskEventsReply(
         events_by_task=[
             generate_task_event(task_id, node_id, attempt_number=1, worker_id=worker_id)
         ]
@@ -570,7 +570,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(task_id=task_id, attempt_number=0)
 
     # No task found
-    logs_client.get_task_info.return_value = GetTaskEventsReply(events_by_task=[])
+    logs_client.get_all_task_info.return_value = GetTaskEventsReply(events_by_task=[])
     with pytest.raises(FileNotFoundError):
         await logs_manager.resolve_filename(task_id=TaskID(b"1" * 24), attempt_number=1)
 

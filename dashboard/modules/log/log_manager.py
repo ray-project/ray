@@ -215,7 +215,9 @@ class LogsManager:
                 timeout=timeout,
             )
         elif task_id:
-            reply = await self.client.get_task_info(task_id=task_id, timeout=timeout)
+            reply = await self.client.get_all_task_info(
+                filters=[("task_id", "=", task_id)], timeout=timeout
+            )
             # Check if the task is found.
             if len(reply.events_by_task) == 0:
                 raise FileNotFoundError(
