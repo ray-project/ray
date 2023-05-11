@@ -23,14 +23,9 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
     std::function<void()> fn,
     Duration delay_duration) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);
-  if constexpr (std::is_integral_v<Duration>) {
-    auto delay = boost::posix_time::milliseconds(delay_duration);
-    timer->expires_from_now(delay);
-  } else {
-    auto delay = boost::posix_time::milliseconds(
-        std::chrono::duration_cast<std::chrono::milliseconds>(delay_duration).count());
-    timer->expires_from_now(delay);
-  }
+  auto delay = boost::posix_time::microseconds(
+      std::chrono::duration_cast<std::chrono::microseconds>(delay_duration).count());
+  timer->expires_from_now(delay);
 
   timer->async_wait([timer, fn = std::move(fn)](const boost::system::error_code &error) {
     if (error != boost::asio::error::operation_aborted && fn) {
