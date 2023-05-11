@@ -118,19 +118,41 @@ class LogsManager:
         assert node_id is not None
 
     async def _resolve_worker_file(
-        self, node_id: str, worker_id: str, suffix: str, timeout: int
+        self,
+        node_id: str,
+        worker_id: Optional[str],
+        pid: Optional[int],
+        suffix: str,
+        timeout: int,
     ) -> Optional[str]:
-        # List all worker logs that match task's worker id.
-        log_files = await self.list_logs(
-            node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
-        )
+        """Resolve worker log file."""
+        if worker_id is not None and pid is not None:
+            raise ValueError(
+                f"Only one of worker id({worker_id}) or pid({pid}) should be provided."
+            )
+
+        if worker_id is not None:
+            log_files = await self.list_logs(
+                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
+            )
+        else:
+            log_files = await self.list_logs(
+                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
+            )
 
         # Find matching worker logs.
         for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
             # Worker logs look like worker-[worker_id]-[job_id]-[pid].out
-            worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
-            if worker_id_from_filename == worker_id:
-                return filename
+            if worker_id is not None:
+                worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
+                if worker_id_from_filename == worker_id:
+                    return filename
+            else:
+                worker_pid_from_filename = int(
+                    WORKER_LOG_PATTERN.match(filename).group(3)
+                )
+                if worker_pid_from_filename == pid:
+                    return filename
         return None
 
     async def resolve_filename(
@@ -185,18 +207,13 @@ class LogsManager:
                 )
             self._verify_node_registered(node_id)
 
-            # List all worker logs that match actor's worker id.
-            log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
+            log_filename = await self._resolve_worker_file(
+                node_id=node_id,
+                worker_id=worker_id,
+                pid=None,
+                suffix=suffix,
+                timeout=timeout,
             )
-
-            # Find matching worker logs.
-            for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
-                # Worker logs look like worker-[worker_id]-[job_id]-[pid].out
-                worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
-                if worker_id_from_filename == worker_id:
-                    log_filename = filename
-                    break
         elif task_id:
             reply = await self.client.get_task_info(task_id=task_id, timeout=timeout)
             # Check if the task is found.
@@ -231,7 +248,11 @@ class LogsManager:
                 )
 
             log_filename = await self._resolve_worker_file(
-                node_id=node_id, worker_id=worker_id, suffix=suffix, timeout=timeout
+                node_id=node_id,
+                worker_id=worker_id,
+                pid=None,
+                suffix=suffix,
+                timeout=timeout,
             )
 
         elif pid:
@@ -241,17 +262,13 @@ class LogsManager:
                     f" filenames of pid {pid}"
                 )
             self._verify_node_registered(node_id)
-            log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
+            log_filename = await self._resolve_worker_file(
+                node_id=node_id,
+                worker_id=None,
+                pid=pid,
+                suffix=suffix,
+                timeout=timeout,
             )
-            for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
-                # worker-[worker_id]-[job_id]-[pid].out
-                worker_pid_from_filename = int(
-                    WORKER_LOG_PATTERN.match(filename).group(3)
-                )
-                if worker_pid_from_filename == pid:
-                    log_filename = filename
-                    break
 
         if log_filename is None:
             raise FileNotFoundError(

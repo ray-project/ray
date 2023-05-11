@@ -17,6 +17,11 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+
+from ray._private.ray_constants import (
+    LOG_PREFIX_TASK_ATTEMPT_START,
+    LOG_PREFIX_TASK_ATTEMPT_END,
+)
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
 from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
@@ -28,12 +33,13 @@ from ray.core.generated.gcs_pb2 import (
 )
 from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import (
+    find_offset_of_content_in_file,
     find_end_offset_file,
     find_end_offset_next_n_lines_from_offset,
     find_start_offset_last_n_lines_from_offset,
+    LogAgentV1Grpc,
 )
 from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
-
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
@@ -105,6 +111,9 @@ async def _stream_log(context, fp, start, end):
     return result
 
 
+TEST_LINE_TEMPLATE = "{}-test-line"
+
+
 def _write_lines_and_get_offset_at_index(
     f, num_lines, start_offset=0, trailing_new_line=True
 ):
@@ -129,9 +138,9 @@ def _write_lines_and_get_offset_at_index(
         offsets.append(f.tell())
         if i == num_lines - 1 and not trailing_new_line:
             # Last line no newline
-            line = f"{i}-test-line"
+            line = TEST_LINE_TEMPLATE.format(i)
         else:
-            line = f"{i}-test-line\n"
+            line = TEST_LINE_TEMPLATE.format(i) + "\n"
         f.write(line.encode("utf-8"))
 
     f.flush()
@@ -199,6 +208,40 @@ def test_find_end_offset_next_n_lines_from_offset(temp_file):
     # Test offset diff
     assert find_end_offset_next_n_lines_from_offset(file, 1, 1) == o[1]
     assert find_end_offset_next_n_lines_from_offset(file, o[1] - 1, 1) == o[1]
+
+
+def test_find_offset_of_content_in_file(temp_file):
+    file = temp_file
+    o, end_file = _write_lines_and_get_offset_at_index(file, num_lines=10)
+
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(0).encode("utf-8")
+        )
+        == o[0]
+    )
+
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(3).encode("utf-8"), o[1] + 1
+        )
+        == o[3]
+    )
+
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(4).encode("utf-8"), o[1] - 1
+        )
+        == o[4]
+    )
+
+    # Not found
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(1000).encode("utf-8"), o[1] - 1
+        )
+        == -1
+    )
 
 
 @pytest.mark.asyncio
@@ -305,6 +348,48 @@ async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
     assert (
         all_lines.count("\n") == lines_to_tail + num_new_lines
     ), "Non-matching number of lines tailed after append"
+
+
+@pytest.mark.asyncio
+async def test_log_agent_find_task_log_offsets(temp_file):
+    log_file_content = ""
+    task_id = "taskid1234"
+    attempt_number = 0
+    # Previous data
+    for i in range(3):
+        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    # Task's logs
+    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
+    expected_start = len(log_file_content)
+    for i in range(10):
+        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    expected_end = len(log_file_content)
+    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
+
+    # Next data
+    for i in range(3):
+        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+
+    # Write to files
+    temp_file.write(log_file_content.encode("utf-8"))
+
+    # Test all task logs
+    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
+        task_id, attempt_number, -1, temp_file
+    )
+    assert start_offset == expected_start
+    assert end_offset == expected_end
+
+    # Test tailing last X lines
+    num_tail = 3
+    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
+        task_id, attempt_number, num_tail, temp_file
+    )
+    assert end_offset == expected_end
+    exclude_tail_content = ""
+    for i in range(10 - num_tail):
+        exclude_tail_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    assert start_offset == expected_start + len(exclude_tail_content)
 
 
 # Unit Tests (LogsManager)
