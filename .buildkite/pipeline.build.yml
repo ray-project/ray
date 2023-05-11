@@ -430,7 +430,7 @@
     - pip install coverage
     - python ci/pipeline/ray_python_test.py medium_k_z
 
-- label: ":redis: (External Redis) (Small & Client)"
+- label: ":shield: (External Redis) (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
@@ -439,6 +439,18 @@
     - ./ci/env/env_info.sh
     - pip install coverage
     - python ci/pipeline/ray_python_test.py redis_small
+
+- label: ":redis: (External Redis) (Small & Client)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=client_tests,small_size_python_tests
+      --test_env=TEST_EXTERNAL_REDIS=1
+      -- python/ray/tests/...
 
 - label: ":redis: (External Redis) (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -450,7 +462,7 @@
     - ./ci/env/env_info.sh
     - ./ci/ci.sh test_large --test_env=TEST_EXTERNAL_REDIS=1
 
-- label: ":redis: (External Redis) (Medium A-J)"
+- label: ":shield: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
@@ -459,7 +471,18 @@
     - pip install coverage
     - python ci/pipeline/ray_python_test.py redis_medium_a_j
 
-- label: ":redis: (External Redis) (Medium K-Z)"
+- label: ":redis: (External Redis) (Medium A-J)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_env=TEST_EXTERNAL_REDIS=1
+      -- //python/ray/tests/...
+
+- label: ":shield: (External Redis) (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
@@ -468,6 +491,18 @@
     - ./ci/env/env_info.sh
     - pip install coverage
     - python ci/pipeline/ray_python_test.py redis_medium_k_z
+
+- label: ":redis: (External Redis) (Medium K-Z)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_env=TEST_EXTERNAL_REDIS=1
+      -- //python/ray/tests/...
 
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
