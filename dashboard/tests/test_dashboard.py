@@ -277,22 +277,38 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     "ray_start_with_dashboard",
     [
         {"dashboard_host": "127.0.0.1"},
-        {"dashboard_host": "0.0.0.0"},
-        {"dashboard_host": "::"},
+        {"dashboard_host": "localhost"},
     ],
     indirect=True,
 )
-def test_dashboard_address(ray_start_with_dashboard):
+def test_dashboard_address_local(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     if os.environ.get("RAY_MINIMAL") == "1":
         # In the minimal installation, webui url shouldn't be configured.
         assert webui_url == ""
     else:
         webui_ip = webui_url.split(":")[0]
-        print(ipaddress.ip_address(webui_ip))
-        print(webui_ip)
         assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
+        assert webui_ip == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"dashboard_host": "0.0.0.0"},
+        {"dashboard_host": "::"},
+    ],
+    indirect=True,
+)
+def test_dashboard_address_global(ray_start_with_dashboard):
+    webui_url = ray_start_with_dashboard["webui_url"]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # In the minimal installation, webui url shouldn't be configured.
+        assert webui_url == ""
+    else:
+        webui_ip = webui_url.split(":")[0]
+        assert not ipaddress.ip_address(webui_ip).is_unspecified
+        assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
 
 @pytest.mark.skipif(

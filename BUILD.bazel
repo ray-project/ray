@@ -2883,6 +2883,7 @@ filegroup(
         "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:instance_manager_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:monitor_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",

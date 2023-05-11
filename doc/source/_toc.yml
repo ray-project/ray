@@ -55,6 +55,7 @@ parts:
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
+              - file: ray-air/examples/opt_deepspeed_batch_inference
               - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
@@ -81,6 +82,7 @@ parts:
               - file: ray-air/examples/gptj_batch_prediction
               - file: ray-air/examples/gptj_serving
               - file: ray-air/examples/dreambooth_finetuning
+              - file: ray-air/examples/dolly_lightning_fsdp_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 

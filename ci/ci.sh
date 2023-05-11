@@ -77,15 +77,17 @@ reload_env() {
   fi
 }
 
-need_wheels() {
-  local error_code=1
+_need_wheels() {
+  local result="false"
   case "${OSTYPE}" in
-    linux*) if [ "${LINUX_WHEELS-}" = 1 ]; then error_code=0; fi;;
-    darwin*) if [ "${MAC_WHEELS-}" = 1 ]; then error_code=0; fi;;
-    msys*) if [ "${WINDOWS_WHEELS-}" = 1 ]; then error_code=0; fi;;
+    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
+    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
+    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
   esac
-  return "${error_code}"
+  echo "${result}"
 }
+
+NEED_WHEELS="$(_need_wheels)"
 
 upload_wheels() {
   local branch="" commit
@@ -258,13 +260,14 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0 flush_logs=0
+  local result=0
+  local flush_logs=0
 
-  if need_wheels; then
+  if [[ "${NEED_WHEELS}" == "true" ]]; then
     "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
   fi
 
-  if [ 0 -ne "${flush_logs}" ]; then
+  if [[ 0 -ne "${flush_logs}" ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
@@ -456,6 +459,7 @@ build_wheels() {
         -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
+        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
       )
 
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
@@ -746,7 +750,7 @@ build() {
     _bazel_build_protobuf
   fi
 
-  if ! need_wheels; then
+  if [[ "${NEED_WHEELS}" != "true" ]]; then
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
@@ -762,7 +766,7 @@ build() {
     install_go
   fi
 
-  if need_wheels; then
+  if [[ "${NEED_WHEELS}" == "true" ]]; then
     build_wheels
   fi
 }

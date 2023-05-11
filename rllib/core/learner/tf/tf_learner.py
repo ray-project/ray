@@ -14,8 +14,9 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import (
-    FrameworkHPs,
+    FrameworkHyperparameters,
     Learner,
+    LEARNER_RESULTS_CURR_LR_KEY,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     ParamType,
@@ -28,7 +29,10 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
@@ -52,7 +56,7 @@ class TfLearner(Learner):
     def __init__(
         self,
         *,
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
         **kwargs,
     ):
 
@@ -66,12 +70,17 @@ class TfLearner(Learner):
             # enable_v2_behavior after variables have already been created.
             pass
 
-        super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
+        super().__init__(
+            framework_hyperparameters=(
+                framework_hyperparameters or FrameworkHyperparameters()
+            ),
+            **kwargs,
+        )
 
-        self._enable_tf_function = framework_hyperparameters.eager_tracing
+        self._enable_tf_function = self._framework_hyperparameters.eager_tracing
 
-        # this is a placeholder which will be filled by
-        # `_make_distributed_strategy_if_necessary`
+        # This is a placeholder which will be filled by
+        # `_make_distributed_strategy_if_necessary`.
         self._strategy: tf.distribute.Strategy = None
 
     @override(Learner)
@@ -79,13 +88,13 @@ class TfLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        lr = self._optimizer_config["lr"]
+        lr = self.lr_scheduler.get_current_value(module_id)
         optim = tf.keras.optimizers.Adam(learning_rate=lr)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
             optim,
         )
-        # this isn't strictly necessary, but makes it so that if a checkpoint is
+        # This isn't strictly necessary, but makes it so that if a checkpoint is
         # computed before training actually starts, then it will be the same in
         # shape / size as a checkpoint after training starts.
         optim.build(module.trainable_variables)
@@ -435,7 +444,7 @@ class TfLearner(Learner):
         reduce_fn: Callable[[ResultDict], ResultDict] = ...,
     ) -> Mapping[str, Any]:
         # TODO (Kourosh): The update of learner is vastly differnet than the base
-        # class. So we need to unify them.
+        #  class. So we need to unify them.
         missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
         if len(missing_module_ids) > 0:
             raise ValueError(
@@ -452,7 +461,7 @@ class TfLearner(Learner):
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
             # TODO (Avnish): converting to tf tensor and then from nested dict back to
-            # dict will most likely hit us in perf. But let's go with this for now.
+            #  dict will most likely hit us in perf. But let's go with this for now.
             tensorbatch = self._convert_batch_type(minibatch)
             update_outs = self._update_fn(tensorbatch)
             loss = update_outs["loss"]
@@ -470,12 +479,16 @@ class TfLearner(Learner):
                 return results
             return reduce_fn(results)
 
-    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def _do_update_fn(
+        self,
+        batch: MultiAgentBatch,
+        _ray_trace_ctx=None,
+    ) -> Mapping[str, Any]:
         # TODO (Avnish): Match this base class's implementation.
         def helper(_batch):
             # TODO (Kourosh): We need to go back to NestedDict because that's the
-            # constraint on forward_train and compute_loss APIs. This seems to be
-            # in-efficient. Make it efficient.
+            #  constraint on forward_train and compute_loss APIs. This seems to be
+            #  in-efficient. Make it efficient.
             _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
@@ -507,3 +520,43 @@ class TfLearner(Learner):
             }
 
         return self._strategy.run(helper, args=(batch,))
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, *, timestep: int, **kwargs
+    ) -> Mapping[str, Any]:
+
+        results = super().additional_update_per_module(module_id, timestep=timestep)
+
+        # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
+
+        # Not sure why we need to do this here besides setting the original
+        # tf Variable `self.curr_lr_per_module[module_id]`. But when tf creates the
+        # optimizer, it seems to detach its lr value from the given variable.
+        # Updating this variable is NOT sufficient to update the actual optimizer's
+        # learning rate, so we have to explicitly set it here.
+        if self.hps.lr_schedule is not None:
+            self._named_optimizers[module_id].lr = new_lr
+
+        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+
+        return results
+
+    @override(Learner)
+    def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
+        return tf.Variable(
+            value,
+            trainable=trainable,
+            dtype=(
+                dtype
+                or (
+                    tf.float32
+                    if isinstance(value, float)
+                    else tf.int32
+                    if isinstance(value, int)
+                    else None
+                )
+            ),
+        )
