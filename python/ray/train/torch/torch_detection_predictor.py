@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.train._internal.dl_predictor import TensorDtype
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI

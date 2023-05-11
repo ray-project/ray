@@ -9,13 +9,19 @@ from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 logger = DatasetLogger(__name__)
 
 
+def is_array_like(value: Any) -> bool:
+    """Checks whether objects are array-like, excluding numpy scalars."""
+
+    return hasattr(value, "__array__") and hasattr(value, "__len__")
+
+
 def is_valid_udf_return(udf_return_col: Any) -> bool:
     """Check whether a UDF column is valid.
 
     Valid columns must either be a list of elements, or an array-like object.
     """
 
-    return isinstance(udf_return_col, list) or hasattr(udf_return_col, "__array__")
+    return isinstance(udf_return_col, list) or is_array_like(udf_return_col)
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
