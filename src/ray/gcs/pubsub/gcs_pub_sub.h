@@ -25,6 +25,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -131,6 +132,42 @@ class GcsSubscriber {
   const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };
+
+// This client is only supposed to be used from Cython / Python
+class RAY_EXPORT PythonGcsPublisher {
+ public:
+  explicit PythonGcsPublisher(const std::string &gcs_address);
+
+  /// Connect to the publisher service of the GCS.
+  /// This function must be called before calling other functions.
+  ///
+  /// \return Status
+  Status Connect();
+
+  /// Publish error information to GCS.
+  Status PublishError(const std::string &key_id,
+                      const rpc::ErrorTableData &data,
+                      int64_t num_retries);
+
+  /// Publish logs to GCS.
+  Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
+
+  /// Publish a function key to GCS.
+  Status PublishFunctionKey(const rpc::PythonFunction &python_function);
+
+ private:
+  Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
+                              int64_t num_retries,
+                              int64_t timeout_ms);
+  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
+  std::shared_ptr<grpc::Channel> channel_;
+  std::string gcs_address_;
+  int gcs_port_;
+};
+
+/// Construct the arguments for synchronous gRPC clients
+/// (the ones wrapped in Python)
+grpc::ChannelArguments PythonGrpcChannelArguments();
 
 }  // namespace gcs
 }  // namespace ray

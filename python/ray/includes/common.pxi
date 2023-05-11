@@ -6,6 +6,7 @@ from ray.includes.common cimport (
     CObjectLocation,
     CGcsClientOptions,
     CPythonGcsClient,
+    CPythonGcsPublisher,
 )
 
 

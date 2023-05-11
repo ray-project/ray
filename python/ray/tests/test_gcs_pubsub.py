@@ -3,8 +3,8 @@ import sys
 import threading
 import re
 
+import ray
 from ray._private.gcs_pubsub import (
-    GcsPublisher,
     GcsErrorSubscriber,
     GcsLogSubscriber,
     GcsFunctionKeySubscriber,
@@ -24,14 +24,16 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     subscriber = GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = GcsPublisher(address=gcs_server_addr)
-    err1 = ErrorTableData(error_message="test error message 1")
-    err2 = ErrorTableData(error_message="test error message 2")
-    publisher.publish_error(b"aaa_id", err1)
-    publisher.publish_error(b"bbb_id", err2)
+    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
+    publisher.publish_error(b"aaa_id", "", "test error message 1")
+    publisher.publish_error(b"bbb_id", "", "test error message 2")
 
-    assert subscriber.poll() == (b"aaa_id", err1)
-    assert subscriber.poll() == (b"bbb_id", err2)
+    (key_id1, err1) = subscriber.poll()
+    assert key_id1 == b"aaa_id"
+    assert err1.error_message == "test error message 1"
+    (key_id2, err2) = subscriber.poll()
+    assert key_id2 == b"bbb_id"
+    assert err2.error_message == "test error message 2"
 
     subscriber.close()
 
@@ -63,7 +65,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     subscriber = GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = GcsPublisher(address=gcs_server_addr)
+    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
     log_batch = {
         "ip": "127.0.0.1",
         "pid": 1234,
@@ -114,7 +116,7 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
     subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = GcsPublisher(address=gcs_server_addr)
+    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
     publisher.publish_function_key(b"111")
     publisher.publish_function_key(b"222")
 
@@ -196,9 +198,9 @@ def test_two_subscribers(ray_start_regular):
     t2 = threading.Thread(target=receive_logs)
     t2.start()
 
-    publisher = GcsPublisher(address=gcs_server_addr)
+    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
     for i in range(0, num_messages):
-        publisher.publish_error(b"msg_id", ErrorTableData(error_message=f"error {i}"))
+        publisher.publish_error(b"msg_id", "", f"error {i}")
         publisher.publish_logs(
             {
                 "ip": "127.0.0.1",
