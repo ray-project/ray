@@ -23,6 +23,7 @@ py_test_run_all_subdirectory(
         "client/node_modules/**",
         "modules/test/**", 
         "modules/job/tests/test_cli_integration.py",
+        "modules/job/tests/test_http_job_server.py",
         "modules/node/tests/test_node.py", 
         "tests/test_dashboard.py", 
         "tests/test_state_head.py",
@@ -45,6 +46,14 @@ py_test(
     name="test_cli_integration",
     size="large",
     srcs = ["modules/job/tests/test_cli_integration.py"],
+    deps = [":conftest"],
+    tags = ["exclusive", "team:serve"],
+)
+
+py_test(
+    name = "test_http_job_server",
+    size = "large",
+    srcs = ["modules/job/tests/test_http_job_server.py"],
     deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
 )
