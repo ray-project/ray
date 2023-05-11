@@ -188,13 +188,27 @@ class StateDataSourceClient:
         self._raylet_stubs.pop(node_id)
         self._id_id_map.pop(node_id)
 
-    def register_agent_client(self, node_id, address: str, port: int):
+    def register_agent_client(
+        self,
+        node_id,
+        address: str,
+        dashboard_agent_port: int,
+        runtime_env_agent_port: int = None,
+    ):
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            f"{address}:{port}", options=options, asynchronous=True
+        dashboard_agent_channel = ray._private.utils.init_grpc_channel(
+            f"{address}:{dashboard_agent_port}", options=options, asynchronous=True
         )
-        self._runtime_env_agent_stub[node_id] = RuntimeEnvServiceStub(channel)
-        self._log_agent_stub[node_id] = LogServiceStub(channel)
+        self._log_agent_stub[node_id] = LogServiceStub(dashboard_agent_channel)
+        if runtime_env_agent_port:
+            runtime_env_agent_channel = ray._private.utils.init_grpc_channel(
+                f"{address}:{runtime_env_agent_port}",
+                options=options,
+                asynchronous=True,
+            )
+            self._runtime_env_agent_stub[node_id] = RuntimeEnvServiceStub(
+                runtime_env_agent_channel
+            )
         self._id_id_map.put(node_id, address)
 
     def unregister_agent_client(self, node_id: str):

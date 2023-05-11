@@ -265,6 +265,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id,
                 ip,
                 int(ports[1]),
+                int(ports[2]),
             )
 
     async def _handle_list_api(
