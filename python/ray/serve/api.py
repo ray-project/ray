@@ -578,7 +578,7 @@ def delete(name: str, _blocking: bool = True):
 def multiplexed(
     func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = -1
 ):
-    """[EXPERIMENTAL] Coverts a function or method to a multiplexed function.
+    """[EXPERIMENTAL] Converts a function or method to a multiplexed function.
 
     The function can be standalone function or a method of a class. The
     function must have exact one argument with type `str` and the argument
