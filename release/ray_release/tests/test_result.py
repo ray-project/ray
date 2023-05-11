@@ -1,3 +1,5 @@
+import pytest
+import sys
 import os
 from unittest import mock
 from ray_release.result import handle_exception, ExitCode, ResultStatus
@@ -34,3 +36,7 @@ def test_handle_exception():
             ResultStatus.INFRA_ERROR,
             None,
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
