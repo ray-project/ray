@@ -371,6 +371,11 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus PollError(c_string* key_id, CErrorTableData* data)
 
+        CRayStatus PollLogs(c_string* key_id, CLogBatch* data)
+
+cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
+    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
@@ -415,6 +420,13 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_timestamp(double timestamp)
 
     cdef cppclass CLogBatch "ray::rpc::LogBatch":
+        c_string ip() const
+        c_string pid() const
+        c_string job_id() const
+        c_bool is_error() const
+        c_string actor_name() const
+        c_string task_name() const
+
         void set_ip(const c_string &ip)
         void set_pid(const c_string &pid)
         void set_job_id(const c_string &job_id)

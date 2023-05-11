@@ -221,6 +221,10 @@ grpc::ChannelArguments PythonGrpcChannelArguments() {
   return arguments;
 }
 
+std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch& log_batch) {
+  return std::vector<std::string>(log_batch.lines().begin(), log_batch.lines().end());
+}
+
 PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;

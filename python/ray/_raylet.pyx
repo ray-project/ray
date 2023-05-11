@@ -98,6 +98,7 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_STRICT_SPREAD,
     CChannelType,
     RAY_ERROR_INFO_CHANNEL,
+    PythonGetLogBatchLines,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1818,7 +1819,7 @@ cdef class GcsErrorSubscriber:
         shared_ptr[CPythonGcsSubscriber] inner
 
     def __cinit__(self, address, worker_id):
-        # _subscriber_id needs to match the binary format of a random
+        # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
         self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, subscriber_id, worker_id))
@@ -1837,6 +1838,53 @@ cdef class GcsErrorSubscriber:
             check_status(self.inner.get().PollError(&key_id, &error_data))
 
         return (bytes(key_id), {"error_message": error_data.error_message().decode()})
+
+    def close(self):
+        # TODO: Implement
+        pass
+
+
+cdef class GcsLogSubscriber:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    cdef:
+        shared_ptr[CPythonGcsSubscriber] inner
+
+    def __cinit__(self, address, worker_id):
+        # subscriber_id needs to match the binary format of a random
+        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
+        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, subscriber_id, worker_id))
+        check_status(self.inner.get().Connect())
+
+    def subscribe(self):
+        with nogil:
+            check_status(self.inner.get().Subscribe())
+
+    def poll(self):
+        cdef:
+            CLogBatch log_batch
+            c_string key_id
+            c_vector[c_string] c_log_lines
+            c_string c_log_line
+
+        with nogil:
+            check_status(self.inner.get().PollLogs(&key_id, &log_batch))
+
+        c_log_lines = PythonGetLogBatchLines(log_batch)
+
+        log_lines = []
+        for c_log_line in c_log_lines:
+            log_lines.append(c_log_line)
+
+        return {
+            "ip": log_batch.ip(),
+            "pid": log_batch.pid(),
+            "job": log_batch.job_id(),
+            "is_err": log_batch.is_error(),
+            "lines": log_lines,
+            "actor_name": log_batch.actor_name(),
+            "task_name": log_batch.task_name(),
+        }
 
     def close(self):
         # TODO: Implement

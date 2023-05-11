@@ -216,5 +216,9 @@ class RAY_EXPORT PythonGcsSubscriber {
 /// (the ones wrapped in Python)
 grpc::ChannelArguments PythonGrpcChannelArguments();
 
+/// Get the .lines() attribute of a LogBatch as a std::vector
+/// (this is needed so it can be wrapped in Cython)
+std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch& log_batch);
+
 }  // namespace gcs
 }  // namespace ray
