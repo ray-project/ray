@@ -603,10 +603,13 @@ class CheckpointConfig:
             and False for generic function trainables.
         _checkpoint_keep_all_ranks: If True, will save checkpoints from all ranked
             training workers. If False, only checkpoint from rank 0 worker is kept.
+            NOTE: This API is experimental and subject to change between minor
+            releases.
         _checkpoint_upload_from_workers: If True, distributed workers
             will upload their checkpoints to cloud directly. This is to avoid the
             need for transferring large checkpoint files to the training worker
-            group coordinator for persistence..
+            group coordinator for persistence. NOTE: This API is experimental and
+            subject to change between minor releases.
     """
 
     num_to_keep: Optional[int] = None

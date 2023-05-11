@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from typing import List, Optional
+import unittest
 from unittest.mock import patch
 
 from freezegun import freeze_time
@@ -1055,75 +1056,27 @@ def test_distributed_checkpointing_to_s3(
                 checkpoint = Checkpoint.from_directory(checkpoint_dir)
             session.report({"score": step}, checkpoint=checkpoint)
 
-    trainer = TorchTrainer(
-        train_fn,
-        train_loop_config={"num_steps": 10},
-        scaling_config=ScalingConfig(
-            num_workers=3,
-            use_gpu=False,
-        ),
-        # Note(jungong) : Trainers ignore the RunConfig specified via
-        # Tuner below. So to specify proper cloud paths and CheckpointConfig,
-        # we must pass another dummy RunConfig here.
-        # TODO(jungong) : this is extremely awkward. Refactor and clean up.
-        run_config=RunConfig(
-            storage_path=mock_s3_bucket_uri,
-            local_dir=local_dir,
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=3,
-                checkpoint_frequency=3,
-                _checkpoint_keep_all_ranks=True,
-                _checkpoint_upload_from_workers=True,
-            ),
-        ),
-    )
-
-    tuner = tune.Tuner(
-        trainer,
-        run_config=RunConfig(
-            name=exp_name,
-            storage_path=mock_s3_bucket_uri,
-            local_dir=local_dir,
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=3,
-            ),
-        ),
-        tune_config=tune.TuneConfig(
-            # Only running 1 trial.
-            trial_dirname_creator=lambda t: "trial_0"
-        ),
-    )
-    result_grid = tuner.fit()
-    # Run was successful.
-    assert not result_grid.errors
-
-    # Download remote dir locally to do some sanity checks
-    download_dir = os.path.join(tmp_path, "download")
-
-    shutil.rmtree(download_dir, ignore_errors=True)
-    download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
-
     def _check_dir_content(checkpoint_dir, exist=True):
         # Double check local checkpoint dir.
         local_trial_data = os.listdir(
             os.path.join(local_dir, "test_dist_ckpt_to_s3", "trial_0")
         )
         if exist:
-            # 2 checkpoints in local trial folder.
+            # checkpoint in local trial folder.
             assert checkpoint_dir in local_trial_data
-            local_checkpoint_1_data = os.listdir(
+            local_checkpoint_data = os.listdir(
                 os.path.join(
                     local_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
                 )
             )
-            # Local folder has 2 index files.
-            assert ".RANK_0.files" in local_checkpoint_1_data
-            assert ".RANK_1.files" in local_checkpoint_1_data
-            assert ".RANK_2.files" in local_checkpoint_1_data
+            # Local folder has index files.
+            assert ".RANK_0.files" in local_checkpoint_data
+            assert ".RANK_1.files" in local_checkpoint_data
+            assert ".RANK_2.files" in local_checkpoint_data
             # But no data files.
-            assert "model-0.pt" not in local_checkpoint_1_data
-            assert "model-1.pt" not in local_checkpoint_1_data
-            assert "model-2.pt" not in local_checkpoint_1_data
+            assert "model-0.pt" not in local_checkpoint_data
+            assert "model-1.pt" not in local_checkpoint_data
+            assert "model-2.pt" not in local_checkpoint_data
         else:
             assert checkpoint_dir not in local_trial_data
 
@@ -1131,29 +1084,80 @@ def test_distributed_checkpointing_to_s3(
             os.path.join(download_dir, "test_dist_ckpt_to_s3", "trial_0")
         )
         if exist:
-            # 2 checkpoints in cloud trial folder.
+            # Checkpoint in cloud trial folder.
             assert checkpoint_dir in cloud_trial_data
-            cloud_checkpoint_1_data = os.listdir(
+            cloud_checkpoint_data = os.listdir(
                 os.path.join(
                     download_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
                 )
             )
-            # Cloud folder has 2 index files.
-            assert ".RANK_0.files" in cloud_checkpoint_1_data
-            assert ".RANK_1.files" in cloud_checkpoint_1_data
-            assert ".RANK_2.files" in cloud_checkpoint_1_data
+            # Cloud folder has index files.
+            assert ".RANK_0.files" in cloud_checkpoint_data
+            assert ".RANK_1.files" in cloud_checkpoint_data
+            assert ".RANK_2.files" in cloud_checkpoint_data
             # And all the data files.
-            assert "model-0.pt" in cloud_checkpoint_1_data
-            assert "model-1.pt" in cloud_checkpoint_1_data
-            assert "model-2.pt" in cloud_checkpoint_1_data
+            assert "model-0.pt" in cloud_checkpoint_data
+            assert "model-1.pt" in cloud_checkpoint_data
+            assert "model-2.pt" in cloud_checkpoint_data
         else:
             assert checkpoint_dir not in cloud_trial_data
 
-    # Step 0 checkpoint is deleted.
-    _check_dir_content("checkpoint_000000", exist=False)
-    _check_dir_content("checkpoint_000001")  # Step 3
-    _check_dir_content("checkpoint_000002")  # Step 6
-    _check_dir_content("checkpoint_000003")  # Step 9
+    with unittest.mock.patch.dict(
+        os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": local_dir}
+    ):
+        trainer = TorchTrainer(
+            train_fn,
+            train_loop_config={"num_steps": 10},
+            scaling_config=ScalingConfig(
+                num_workers=3,
+                use_gpu=False,
+            ),
+            # Note(jungong) : Trainers ignore the RunConfig specified via
+            # Tuner below. So to specify proper cloud paths and CheckpointConfig,
+            # we must pass another dummy RunConfig here.
+            # TODO(jungong) : this is extremely awkward. Refactor and clean up.
+            run_config=RunConfig(
+                storage_path=mock_s3_bucket_uri,
+                checkpoint_config=CheckpointConfig(
+                    num_to_keep=3,
+                    checkpoint_frequency=3,
+                    _checkpoint_keep_all_ranks=True,
+                    _checkpoint_upload_from_workers=True,
+                ),
+            ),
+        )
+
+        tuner = tune.Tuner(
+            trainer,
+            run_config=RunConfig(
+                name=exp_name,
+                storage_path=mock_s3_bucket_uri,
+                checkpoint_config=CheckpointConfig(
+                    num_to_keep=3,
+                ),
+            ),
+            tune_config=tune.TuneConfig(
+                # Only running 1 trial.
+                trial_dirname_creator=lambda t: "trial_0"
+            ),
+        )
+        result_grid = tuner.fit()
+        # Run was successful.
+        assert not result_grid.errors
+        # Make sure checkpoint is backed by the full s3 checkpoint uri.
+        assert result_grid[0].checkpoint.uri.startswith("s3://")
+
+        # Download remote dir locally to do some sanity checks
+        download_dir = os.path.join(tmp_path, "download")
+
+        shutil.rmtree(download_dir, ignore_errors=True)
+        download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
+
+        # Step 0 checkpoint is deleted.
+        _check_dir_content("checkpoint_000000", exist=False)
+        _check_dir_content("checkpoint_000001")  # Step 3
+        _check_dir_content("checkpoint_000002")  # Step 6
+        _check_dir_content("checkpoint_000003")  # Step 9
 
 
 if __name__ == "__main__":

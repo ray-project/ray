@@ -428,7 +428,6 @@ class DataParallelTrainer(BaseTrainer):
         # This is important because otherwise Trainer's CheckpointManager
         # may delete a checkpoint written by Tuner, when creating a partial
         # checkpoint itself.
-        # Also clear a couple of other fields.
         # TODO(jungong, justinvyu) : Trainer should not own a
         # CheckpointManager.
         checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)

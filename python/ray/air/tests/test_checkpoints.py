@@ -159,6 +159,34 @@ class TestCheckpointSerializedAttrs:
         assert new_recovered_checkpoint.foo == "bar"
         assert not list(Path(path).glob("*"))
 
+    def test_copy_dir_ignore_conflict(self):
+        tmpdir = Path(tempfile.mkdtemp())
+
+        src_dir = tmpdir / "src"
+        dst_dir = tmpdir / "dst"
+
+        src_dir.mkdir()
+        dst_dir.mkdir()
+
+        (src_dir / "foo.txt").touch()
+        (src_dir / "bar.txt").touch()
+        (src_dir / "a").mkdir()
+        (src_dir / "a" / "a.txt").touch()
+        (src_dir / "b").mkdir()
+        (src_dir / "b" / "b.txt").touch()
+
+        # Has a file conflict.
+        (dst_dir / "foo.txt").touch()
+        # Has a directory conflict.
+        (dst_dir / "a").mkdir()
+
+        Checkpoint._copy_dir_ignore_conflict(src_dir, dst_dir)
+
+        assert (dst_dir / "foo.txt").exists()
+        assert (dst_dir / "bar.txt").exists()
+        assert (dst_dir / "a" / "a.txt").exists()
+        assert (dst_dir / "b" / "b.txt").exists()
+
     def test_uri(self):
         checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
         assert "foo" in checkpoint._SERIALIZED_ATTRS

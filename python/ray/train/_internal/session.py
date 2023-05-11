@@ -360,7 +360,6 @@ class _TrainSession:
             checkpoint = self._encode_data_fn(checkpoint)
 
         metadata = self._auto_fill_checkpoint_metrics({})
-        metadata
 
         if (
             checkpoint

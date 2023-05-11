@@ -524,24 +524,28 @@ class Checkpoint:
         with open(checkpoint_metadata_path, "wb") as file:
             pickle.dump(self._metadata, file)
 
-    def _copy_dir_ignore_conflict(self, src_dir: Path, dst_dir: Path):
+    @staticmethod
+    def _copy_dir_ignore_conflict(src_dir: Path, dst_dir: Path):
         """This is a workaround for python < 3.8 where shutil.copytree does not
         support dirs_exist_ok=True.
 
         We will go through the content of the folder and manually copy ites,
         while ignoring files that conflict.
+
+        TODO(jungong): remove this workaround when we drop support for python < 3.8.
         """
         for inner in src_dir.iterdir():
             dest = dst_dir / inner.name
-            if dest.exists():
-                # Ignore files that already exist.
-                # For example, checkpoints from every rank may all have
-                # a same .is_checkpoint file.
-                continue
             if inner.is_dir():
-                shutil.copytree(str(inner.absolute()), str(dest.absolute()))
+                if not dest.exists():
+                    dest.mkdir(parents=True)
+                Checkpoint._copy_dir_ignore_conflict(inner, dest)
             else:
-                shutil.copy2(str(inner.absolute()), str(dest.absolute()))
+                if not dest.exists():
+                    shutil.copy2(str(inner.absolute()), str(dest.absolute()))
+                else:
+                    # Ignore and don't overwrite the existing file.
+                    pass
 
     def _to_directory(self, path: str, move_instead_of_copy: bool = False) -> None:
         if self._data_dict:

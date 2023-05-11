@@ -96,7 +96,7 @@ class BackendExecutor:
         self._checkpoint_keep_all_ranks = (
             checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
         )
-        self.checkpoint_upload_from_workers = (
+        self._checkpoint_upload_from_workers = (
             checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
         )
 
@@ -431,7 +431,7 @@ class BackendExecutor:
                     encode_data_fn=self._backend._encode_data,
                     checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(
-                        self.checkpoint_upload_from_workers
+                        self._checkpoint_upload_from_workers
                     ),
                 )
             )

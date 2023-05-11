@@ -101,7 +101,7 @@ class CheckpointManager(CommonCheckpointManager):
         self,
         checkpoint_result: TrainingResult,
         decode_checkpoint_fn: Callable,
-    ) -> None:
+    ) -> _TrackedCheckpoint:
         checkpoint_data = checkpoint_result.data
         checkpoint_metadata = checkpoint_result.metadata or {}
         checkpoint_rank = checkpoint_metadata.get(CHECKPOINT_RANK_KEY, 0)
@@ -266,9 +266,8 @@ class TuneCheckpointManager(CheckpointManager):
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
         self.add_tune_checkpoint_id(checkpoint.dir_or_data)
 
-        # Train may choose not to commit a checkpoint, but for the purpose of
-        # hyper-param tuning, if inside a Tune Trainable, make sure the checkpoint
-        # is committed for Tune.
+        # Train may choose not to commit a checkpoint, but make sure the
+        # checkpoint is always committed for Tuning purpose.
         # After this is committed, checkpoint.dir_or_path will become a string,
         # which will prevent this checkpoint from being commtted again in the
         # subsequent super()._process_persistent_checkpoint() call.

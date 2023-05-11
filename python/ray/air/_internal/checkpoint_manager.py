@@ -420,6 +420,12 @@ class _CheckpointManager:
         checkpoint: _TrackedCheckpoint,
         next_checkpoint_path: Optional[str] = None,
     ):
+        # Note(jungong) : Track rank0 checkpoint as the best / worst checkpoint.
+        # That is because we only care about the data for checkpoints
+        # from non-rank0 workers. They do not represent a different Trial
+        # checkpoint as the rank0 one.
+        if checkpoint.rank > 0: return
+
         assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
         next_checkpoint_path = next_checkpoint_path or self._get_next_checkpoint_path()
 
@@ -428,42 +434,32 @@ class _CheckpointManager:
             priority=checkpoint_score, tracked_checkpoint=checkpoint
         )
 
-        # Note(jungong) : notice that checkpoints from different ranks are all
-        # commited, but only the rank0 checkpoint gets tracked as the best / worst
-        # checkpoint. That is because we only care about the data for checkpoints
-        # from non-rank0 workers. They do not represent a different Trial
-        # checkpoint as the rank0 one.
         if self._checkpoint_strategy.num_to_keep is None:
-            # Keep all checkpoints
             checkpoint.commit(path=next_checkpoint_path)
-
-            if checkpoint.rank == 0:
-                self._replace_latest_persisted_checkpoint(checkpoint)
-                self._top_persisted_checkpoints.append(wrapped_checkpoint)
+            self._replace_latest_persisted_checkpoint(checkpoint)
+            self._top_persisted_checkpoints.append(wrapped_checkpoint)
         elif (
             len(self._top_persisted_checkpoints) < self._checkpoint_strategy.num_to_keep
         ):
+            checkpoint.commit(path=next_checkpoint_path)
             # Heap is not full yet, so keep this checkpoint
-            checkpoint.commit(path=next_checkpoint_path)
-            if checkpoint.rank == 0:
-                heapq.heappush(self._top_persisted_checkpoints, wrapped_checkpoint)
-                self._replace_latest_persisted_checkpoint(checkpoint)
+            heapq.heappush(self._top_persisted_checkpoints, wrapped_checkpoint)
+            self._replace_latest_persisted_checkpoint(checkpoint)
         elif wrapped_checkpoint.priority >= self._top_persisted_checkpoints[0].priority:
-            # Priority is higher than current worst checkpoint, so replace worst
             checkpoint.commit(path=next_checkpoint_path)
-            if checkpoint.rank == 0:
-                worst_checkpoint = heapq.heappushpop(
-                    self._top_persisted_checkpoints, wrapped_checkpoint
-                ).tracked_checkpoint
+            # Priority is higher than current worst checkpoint, so replace worst
+            worst_checkpoint = heapq.heappushpop(
+                self._top_persisted_checkpoints, wrapped_checkpoint
+            ).tracked_checkpoint
 
-                # Only remove if checkpoint data is different
-                if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
-                    self._maybe_delete_persisted_checkpoint(worst_checkpoint)
-                    logger.debug(
-                        f"Removed worst checkpoint from " f"{worst_checkpoint}."
-                    )
+            # Only remove if checkpoint data is different
+            if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
+                self._maybe_delete_persisted_checkpoint(worst_checkpoint)
+                logger.debug(
+                    f"Removed worst checkpoint from " f"{worst_checkpoint}."
+                )
 
-                self._replace_latest_persisted_checkpoint(checkpoint)
+            self._replace_latest_persisted_checkpoint(checkpoint)
         else:
             # If the latest checkpoint has the same or lower priority, skip it.
             self._skip_persisted_checkpoint(checkpoint)
