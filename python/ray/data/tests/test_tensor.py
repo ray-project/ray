@@ -296,7 +296,6 @@ def test_tensors_sort(ray_start_regular_shared):
 
 
 def test_tensors_inferred_from_map(ray_start_regular_shared):
-    # TODO(scott_optimizer): fix map_batches with parallelism>1
     # Test map.
     ds = ray.data.range(10, parallelism=10).map(lambda _: {"data": np.ones((4, 4))})
     ds = ds.materialize()

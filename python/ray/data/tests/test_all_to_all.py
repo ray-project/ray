@@ -253,7 +253,6 @@ def test_agg_errors(ray_start_regular_shared):
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     xs = list(range(100))
     grouped_ds = (
         ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
@@ -289,7 +288,6 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 def test_groupby_tabular_count(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in count aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
@@ -320,7 +318,6 @@ def test_groupby_tabular_sum(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
     # Test built-in sum aggregation
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
     random.seed(seed)
@@ -393,7 +390,6 @@ def test_groupby_tabular_sum(
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_sum with: {seed}")
     random.seed(seed)
@@ -435,7 +431,6 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in min aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_min with: {seed}")
@@ -510,7 +505,6 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in max aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_max with: {seed}")
@@ -585,7 +579,6 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     # Test built-in mean aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_mean with: {seed}")
@@ -1085,7 +1078,6 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
     ds = ray.data.from_items(list(range(100)))
-    # TODO(scott_optimizer): fix GroupBy on None
     mapped = (
         ds.repartition(num_parts)
         .groupby(None)

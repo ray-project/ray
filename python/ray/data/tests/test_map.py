@@ -726,8 +726,6 @@ BLOCK_BUNDLING_TEST_CASES = [
 def test_map_batches_block_bundling_auto(
     ray_start_regular_shared, block_size, batch_size
 ):
-    # TODO(scott_optimizer): fix map_batches block bundling
-    # for block_size>1 or batch_size>1
     # Ensure that we test at least 2 batches worth of blocks.
     num_blocks = max(10, 2 * batch_size // block_size)
     ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks).materialize()
@@ -836,7 +834,6 @@ def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
 
 
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
-    # TODO(scott_optimizer): Fix Repartition with num_parts=1
     xs = [x % 3 for x in list(range(100))]
 
     # ds1 has 1 block which contains 100 rows.
