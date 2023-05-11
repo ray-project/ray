@@ -1102,9 +1102,7 @@ def test_distributed_checkpointing_to_s3(
         else:
             assert checkpoint_dir not in cloud_trial_data
 
-    with unittest.mock.patch.dict(
-        os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": local_dir}
-    ):
+    with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": local_dir}):
         trainer = TorchTrainer(
             train_fn,
             train_loop_config={"num_steps": 10},

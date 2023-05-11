@@ -313,8 +313,8 @@ class _CheckpointManager:
         self._delete_fn = delete_fn
 
     def register_checkpoints(
-            self,
-            checkpoints: Union[_TrackedCheckpoint, List[_TrackedCheckpoint]],
+        self,
+        checkpoints: Union[_TrackedCheckpoint, List[_TrackedCheckpoint]],
     ):
         """Register new checkpoint and add to bookkeeping.
 
@@ -424,7 +424,8 @@ class _CheckpointManager:
         # That is because we only care about the data for checkpoints
         # from non-rank0 workers. They do not represent a different Trial
         # checkpoint as the rank0 one.
-        if checkpoint.rank > 0: return
+        if checkpoint.rank > 0:
+            return
 
         assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
         next_checkpoint_path = next_checkpoint_path or self._get_next_checkpoint_path()
@@ -455,9 +456,7 @@ class _CheckpointManager:
             # Only remove if checkpoint data is different
             if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
                 self._maybe_delete_persisted_checkpoint(worst_checkpoint)
-                logger.debug(
-                    f"Removed worst checkpoint from " f"{worst_checkpoint}."
-                )
+                logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
 
             self._replace_latest_persisted_checkpoint(checkpoint)
         else:
