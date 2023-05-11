@@ -240,9 +240,11 @@ class RuntimeEnvAgent(
             )
         except Exception:
             self._logger.exception(
-                "Failed to add port to grpc server. Runtime env agent will exit now."
+                "Failed to add port to grpc server. "
+                "Runtime env agent will stay alive but not working."
             )
-            sys.exit(1)
+            self._grpc_port = None
+            self._grpc_server = None
         else:
             self._logger.info(
                 "Runtime env agent grpc address: %s:%s", grpc_ip, self._grpc_port
@@ -658,11 +660,11 @@ class RuntimeEnvAgent(
             check_parent_task = create_task(_check_parent())
 
         # Start a grpc asyncio server.
-        assert self._grpc_server is not None
-        await self._grpc_server.start()
-        runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
-            self, self._grpc_server
-        )
+        if self._grpc_server:
+            await self._grpc_server.start()
+            runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
+                self, self._grpc_server
+            )
         # Register agent to agent manager.
         raylet_stub = (
             runtime_env_agent_manager_pb2_grpc.RuntimeEnvAgentManagerServiceStub(
