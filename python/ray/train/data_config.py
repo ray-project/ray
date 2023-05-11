@@ -76,7 +76,7 @@ class DataConfig:
         return datasets  # No-op for non-legacy configs.
 
 
-class LegacyDataConfigWrapper(DataConfig):
+class _LegacyDataConfigWrapper(DataConfig):
     def __init__(
         self,
         cls_config: Dict[str, DatasetConfig],

@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, TYPE_CHE
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
 from ray.air._internal.util import StartTraceback
-from ray.train._internal.data_config import DataConfig
+from ray.train.data_config import DataConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,

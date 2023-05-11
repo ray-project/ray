@@ -15,7 +15,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train._internal.data_config import DataConfig, LegacyDataConfigWrapper
+from ray.train.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -267,7 +267,7 @@ class DataParallelTrainer(BaseTrainer):
                 "The dict form of `dataset_config` is deprecated. Use the "
                 "DataConfig class instead."
             )
-            self._data_config = LegacyDataConfigWrapper(
+            self._data_config = _LegacyDataConfigWrapper(
                 self._dataset_config, dataset_config, datasets
             )
         elif isinstance(dataset_config, DataConfig):
@@ -454,7 +454,7 @@ class DataParallelTrainer(BaseTrainer):
         Returns:
             The merged default + user-supplied dataset config.
         """
-        if isinstance(self._data_config, LegacyDataConfigWrapper):
+        if isinstance(self._data_config, _LegacyDataConfigWrapper):
             return self._data_config._dataset_config
         else:
             return self._data_config
