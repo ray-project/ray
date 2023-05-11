@@ -13,7 +13,8 @@ class JobConfig:
     """A class used to store the configurations of a job.
 
     Examples:
-        .. testsetup::
+        .. testcode::
+            :hide:
 
             import ray
             ray.shutdown()
