@@ -3581,7 +3581,7 @@
         cluster_env: app_config.yaml
         cluster_compute: 1gpu_24cpus_gce.yaml
 
-- name: rllib_learning_tests_appo_tf
+- name: rllib_learning_tests_appo_tf2
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3590,11 +3590,11 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf2
 
   alert: default
 
@@ -3605,7 +3605,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_appo_torch
   group: RLlib tests
@@ -3619,7 +3619,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
     timeout: 18000
@@ -3634,7 +3634,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_bc_tf
   group: RLlib tests
@@ -4015,7 +4015,7 @@
         cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
-- name: rllib_learning_tests_ppo_tf
+- name: rllib_learning_tests_ppo_tf2
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -4024,11 +4024,11 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf2
 
   alert: default
 
@@ -4039,7 +4039,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_ppo_torch
   group: RLlib tests
@@ -4053,11 +4053,11 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 4gpus_64cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
 
   alert: default
 
@@ -4068,7 +4068,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_sac_tf
   group: RLlib tests
