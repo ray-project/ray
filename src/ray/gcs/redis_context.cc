@@ -39,7 +39,7 @@ void ProcessCallback(int64_t callback_index,
                                  << "but it actually is " << callback_index;
   auto callback_item =
       ray::gcs::RedisCallbackManager::instance().GetCallback(callback_index);
-  if(callback_reply->IsError() && callback_item->Retry()) {
+  if (callback_reply->IsError() && callback_item->Retry()) {
     RAY_LOG(WARNING) << "Redis request failed, retry the request.";
   } else {
     // Record the redis latency
@@ -102,9 +102,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
   }
 }
 
-bool CallbackReply::IsError() const {
-  return reply_type_ == REDIS_REPLY_ERROR;
-}
+bool CallbackReply::IsError() const { return reply_type_ == REDIS_REPLY_ERROR; }
 
 void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
   RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
@@ -204,7 +202,8 @@ int64_t RedisCallbackManager::AddCallback(instrumented_io_context &io_service,
     num_callbacks_++;
   }
   callback_items_.emplace(
-      callback_index, std::make_shared<CallbackItem>(function, std::move(retry), start_time, io_service));
+      callback_index,
+      std::make_shared<CallbackItem>(function, std::move(retry), start_time, io_service));
   return callback_index;
 }
 

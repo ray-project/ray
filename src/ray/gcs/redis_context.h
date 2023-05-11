@@ -138,7 +138,7 @@ class RedisCallbackManager {
     }
 
     bool Retry() {
-      if(pending_retries_ == 0) {
+      if (pending_retries_ == 0) {
         return false;
       }
       --pending_retries_;
