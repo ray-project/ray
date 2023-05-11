@@ -6,6 +6,7 @@ import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray._private.ray_constants import env_integer
 import asyncio
 import grpc
 import io
@@ -29,6 +30,10 @@ BLOCK_SIZE = 1 << 16
 
 # Keep-alive interval for reading the file
 DEFAULT_KEEP_ALIVE_INTERVAL_SEC = 1
+
+RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT = env_integer(
+    "RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT", default=2
+)
 
 
 def find_offset_of_content_in_file(
@@ -257,6 +262,11 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
         return False
 
 
+_task_log_search_worker_pool = concurrent.futures.ThreadPoolExecutor(
+    max_workers=RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT
+)
+
+
 class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
@@ -317,15 +327,14 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
         # Offload the heavy IO CPU work to a thread pool to avoid blocking the
         # event loop for concurrent requests.
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            task_attempt_magic_line_offset = (
-                await asyncio.get_running_loop().run_in_executor(
-                    pool,
-                    find_offset_of_content_in_file,
-                    f,
-                    task_attempt_start_magic_line.encode(),
-                )
+        task_attempt_magic_line_offset = (
+            await asyncio.get_running_loop().run_in_executor(
+                _task_log_search_worker_pool,
+                find_offset_of_content_in_file,
+                f,
+                task_attempt_start_magic_line.encode(),
             )
+        )
 
         if task_attempt_magic_line_offset == -1:
             raise FileNotFoundError(
@@ -340,14 +349,13 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         task_attempt_end_magic_line = (
             f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
         )
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            end_offset = await asyncio.get_running_loop().run_in_executor(
-                pool,
-                find_offset_of_content_in_file,
-                f,
-                task_attempt_end_magic_line.encode(),
-                start_offset,
-            )
+        end_offset = await asyncio.get_running_loop().run_in_executor(
+            _task_log_search_worker_pool,
+            find_offset_of_content_in_file,
+            f,
+            task_attempt_end_magic_line.encode(),
+            start_offset,
+        )
 
         if end_offset == -1:
             # No other tasks (might still be running), stream til the end.
