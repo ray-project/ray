@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, TYPE_CHECKING
+from typing import Optional, Dict, List
 
 from ray.actor import ActorHandle
 from ray.train._internal.dataset_spec import DataParallelIngestSpec

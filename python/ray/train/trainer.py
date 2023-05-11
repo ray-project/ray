@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig

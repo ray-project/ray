@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 from ray.data import Dataset
