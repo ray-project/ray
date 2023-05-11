@@ -152,13 +152,7 @@ Learn more about Ray Data
 :animate: fade-in-slide-down
 
 Ray Train abstracts away the complexity of setting up a distributed training
-system. Let's take following simple examples:
-
-`````{tab-set}
-
-````{tab-item} PyTorch
-
-This example shows how you can use Ray Train with PyTorch.
+system. 
 
 ````{note}
 To run this example install Ray Train:
@@ -167,6 +161,14 @@ To run this example install Ray Train:
 pip install -U "ray[train]"
 ```
 ````
+
+`````{tab-set}
+
+````{tab-item} PyTorch
+
+This example shows how you can use Ray Train with PyTorch.
+
+
 
 Set up your dataset and model.
 
@@ -220,8 +222,8 @@ with 4 workers, and use it to run the new training function!
 
 ````{tab-item} TensorFlow
 
-This example shows how you can use Ray Train to set up `Multi-worker training
-with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_.
+This example shows how you can use Ray Train to set up [Multi-worker training
+with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).
 
 First, set up your dataset and model.
 
@@ -368,6 +370,7 @@ RLlib offers high scalability and unified APIs for a variety of industry- and re
 
 ````{note}
 To run this example, install `rllib` and either `tensorflow` or `pytorch`:
+
 ```bash
 pip install "ray[rllib]" tensorflow  # or torch
 ```
@@ -394,11 +397,14 @@ Learn more about Ray RLlib
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications. 
 
-Install Ray Core with: 
+````{note}
+To run this example install Ray Core:
 
-```
+```bash
 pip install -U "ray"
 ```
+````
+
 For Java, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
