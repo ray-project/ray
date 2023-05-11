@@ -118,17 +118,25 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
+        .. button-link:: https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker
 
-            [Tutorial] Architectures for Scalable Batch Inference with Ray
+            [Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
+        .. button-link:: https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus
 
-            [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
+            [Blog] Streaming distributed execution across CPUs and GPUs
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/batch_inference
+
+            [Guide] Batch Prediction using Ray Data
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
