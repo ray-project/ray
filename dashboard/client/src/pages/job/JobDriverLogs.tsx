@@ -1,5 +1,5 @@
 import React from "react";
-import { StateApiLogViewer } from "../../common/MultiTabLogViewer";
+import { MultiTabLogViewer } from "../../common/MultiTabLogViewer";
 import { UnifiedJob } from "../../type/job";
 
 type JobDriverLogsProps = {
@@ -12,5 +12,15 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
     ? `job-driver-${submission_id}.log`
     : undefined;
 
-  return <StateApiLogViewer nodeId={driver_node_id} filename={filename} />;
+  return (
+    <MultiTabLogViewer
+      tabs={[
+        {
+          title: "driver",
+          nodeId: driver_node_id,
+          filename,
+        },
+      ]}
+    />
+  );
 };

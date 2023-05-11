@@ -1,13 +1,14 @@
-import { Tab, Tabs, Typography } from "@material-ui/core";
+import { Box, IconButton, Tab, Tabs, Typography } from "@material-ui/core";
 import React, { useState } from "react";
+import { RiArrowUpDownLine } from "react-icons/ri";
 import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
 
 export type MultiTabLogViewerTab = {
   title: string;
-  nodeId: string;
-  filename: string;
+  nodeId: string | null;
+  filename?: string;
 };
 
 export type MultiTabLogViewerProps = {
@@ -16,21 +17,36 @@ export type MultiTabLogViewerProps = {
 
 export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
   const [value, setValue] = useState(tabs[0]?.title);
+  const [expanded, setExpanded] = useState(false);
 
   const currentTab = tabs.find((tab) => tab.title === value);
 
   return (
     <div>
-      <Tabs
-        value={value}
-        onChange={(event, newValue) => {
-          setValue(newValue);
-        }}
+      <Box
+        display="flex"
+        flexDirection="row"
+        alignItems="center"
+        justifyContent="space-between"
       >
-        {tabs.map(({ title }) => (
-          <Tab key={title} label={title} value={title} />
-        ))}
-      </Tabs>
+        <Tabs
+          value={value}
+          onChange={(_, newValue) => {
+            setValue(newValue);
+          }}
+        >
+          {tabs.map(({ title }) => (
+            <Tab key={title} label={title} value={title} />
+          ))}
+        </Tabs>
+        <IconButton
+          onClick={() => {
+            setExpanded(!expanded);
+          }}
+        >
+          <RiArrowUpDownLine />
+        </IconButton>
+      </Box>
       {!currentTab ? (
         <Typography color="error">Please select a tab.</Typography>
       ) : (
@@ -40,7 +56,11 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
             visible={title === currentTab?.title}
             keepRendered
           >
-            <StateApiLogViewer nodeId={nodeId} filename={filename} />
+            <StateApiLogViewer
+              nodeId={nodeId}
+              filename={filename}
+              height={expanded ? 800 : 300}
+            />
           </HideableBlock>
         ))
       )}
@@ -51,11 +71,13 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
 export type StateApiLogViewerProps = {
   nodeId?: string | null;
   filename?: string;
+  height?: number;
 };
 
 export const StateApiLogViewer = ({
   nodeId,
   filename,
+  height = 300,
 }: StateApiLogViewerProps) => {
   const { downloadUrl, log, path, refresh } = useStateApiLogs(nodeId, filename);
   return typeof log === "string" ? (
@@ -63,7 +85,7 @@ export const StateApiLogViewer = ({
       log={log}
       path={path}
       downloadUrl={downloadUrl}
-      height={300}
+      height={height}
       onRefreshClick={() => {
         refresh();
       }}
