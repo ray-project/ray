@@ -274,7 +274,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
     }
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
-    RAY_CHECK_OK(cxt->RunArgvAsync(
+    cxt->RunArgvAsync(
         std::move(args),
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
@@ -427,10 +427,7 @@ void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
                                      "COUNT",
                                      std::to_string(batch_count)};
     auto shard_context = redis_client_->GetShardContexts()[shard_index];
-    Status status = shard_context->RunArgvAsync(args, scan_callback);
-    if (!status.ok()) {
-      RAY_LOG(FATAL) << "Scan failed, status " << status.ToString();
-    }
+    shard_context->RunArgvAsync(args, scan_callback);
   }
 }
 
