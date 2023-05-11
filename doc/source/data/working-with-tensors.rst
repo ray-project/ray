@@ -103,6 +103,8 @@ Save tensor data in Parquet or Numpy files. Other formats aren't supported.
 
 For more information on saving data, read :ref:`Saving data <loading_data>`.
 
+.. _transforming_variable_tensors:
+
 Transforming variable-shape tensor data
 ---------------------------------------
 
