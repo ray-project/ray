@@ -763,6 +763,8 @@ message CoreWorkerStats {
   WorkerType worker_type = 23;
   // Length of the number of objects without truncation.
   int64 objects_total = 24;
+  // Number of objects owned by the worker.
+  int64 num_owned_objects = 25;
 }
 
 // Resource usage reported by the node reporter.
