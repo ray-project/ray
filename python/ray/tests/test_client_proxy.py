@@ -272,9 +272,9 @@ def test_prepare_runtime_init_req_no_modification():
         ),
     )
     req, new_config = proxier.prepare_runtime_init_req(init_req)
-    assert new_config.serialize() == job_config.serialize()
+    assert new_config._serialize() == job_config._serialize()
     assert isinstance(req, ray_client_pb2.DataRequest)
-    assert pickle.loads(req.init.job_config).serialize() == new_config.serialize()
+    assert pickle.loads(req.init.job_config)._serialize() == new_config._serialize()
     assert json.loads(req.init.ray_init_kwargs) == {"log_to_driver": False}
 
 
@@ -301,7 +301,7 @@ def test_prepare_runtime_init_req_modified_job():
         req, new_config = proxier.prepare_runtime_init_req(init_req)
 
     assert new_config.ray_namespace == "test_value"
-    assert pickle.loads(req.init.job_config).serialize() == new_config.serialize()
+    assert pickle.loads(req.init.job_config)._serialize() == new_config._serialize()
     assert json.loads(req.init.ray_init_kwargs) == {"log_to_driver": False}
 
 

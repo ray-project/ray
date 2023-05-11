@@ -118,7 +118,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     ) -> ray_client_pb2.InitResponse:
         if request.job_config:
             job_config = pickle.loads(request.job_config)
-            job_config.client_job = True
+            job_config._client_job = True
         else:
             job_config = None
         current_job_config = None
@@ -144,7 +144,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # that tests the behavior of multiple clients with the same job config
         # connecting to one server (test_client_init.py::test_num_clients),
         # so I'm leaving it here for now.
-        job_config = job_config.get_proto_job_config()
+        job_config = job_config._get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config:
