@@ -115,46 +115,53 @@ class TestGPUs(unittest.TestCase):
 
 
 class TestGPUsLargeBatch(unittest.TestCase):
-    def test_larger_train_batch_size_multi_gpu_train_one_step(self):
-        # Tests that we can use a `train_batch_size` larger than GPU memory with our
-        # experimental setting `_load_only_minibatch_onto_device` with
-        # multi_gpu_train_one_step.
+    """Test for batches larger than GPU memory.
 
-        # These values make it so that one large minibatch and the optimizer
-        # variables can fit onto the device, but the whole sample_batch is already too
-        # large for the GPU itself.
-        sgd_minibatch_size = int(1e4)
-        train_batch_size = int(sgd_minibatch_size * 1e5)
+    If this test fails, this can mean one of the following:
+    1. The size of the GPU is not fit. It should have a size such that putting the complete batch onto it will fail. In this case, adapt SGD_MINIBATCH_SIZE and TRAIN_BATCH_SIZE.
+    2. Anything else
+
+    """
+
+    # These values make it so that one large minibatch and the optimizer
+    # variables can fit onto the device, but the whole sample_batch is already too
+    # large for the GPU itself.
+    SGD_MINIBATCH_SIZE = int(1e4)
+    TRAIN_BATCH_SIZE = int(SGD_MINIBATCH_SIZE * 5e4)
+
+    def test_larger_train_batch_size_multi_gpu_train_one_step(self):
+        """Tests that we can use a train batch size larger than GPU memory with our experimental setting `_load_only_minibatch_onto_device` with multi_gpu_train_one_step."""
+
+        b = self.TRAIN_BATCH_SIZE
 
         # Fake CartPole episode of n time steps.
         CARTPOLE_FAKE_BATCH = SampleBatch(
             {
-                SampleBatch.OBS: np.zeros((train_batch_size, 4), dtype=np.float32),
-                SampleBatch.ACTIONS: np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.OBS: np.zeros((b, 4), dtype=np.float32),
+                SampleBatch.ACTIONS: np.zeros((b,), dtype=np.float32),
                 SampleBatch.PREV_ACTIONS: np.zeros(
-                    (train_batch_size,), dtype=np.float32
+                    (b,), dtype=np.float32
                 ),
-                SampleBatch.REWARDS: np.zeros((train_batch_size,), dtype=np.float32),
+                SampleBatch.REWARDS: np.zeros((b,), dtype=np.float32),
                 SampleBatch.PREV_REWARDS: np.zeros(
-                    (train_batch_size,), dtype=np.float32
+                    (b,), dtype=np.float32
                 ),
-                "value_targets": np.zeros((train_batch_size,), dtype=np.float32),
-                SampleBatch.TERMINATEDS: np.array([False] * train_batch_size),
-                SampleBatch.TRUNCATEDS: np.array([False] * train_batch_size),
-                "advantages": np.zeros((train_batch_size,), dtype=np.float32),
-                SampleBatch.VF_PREDS: np.zeros((train_batch_size,), dtype=np.float32),
+                "value_targets": np.zeros((b,), dtype=np.float32),
+                SampleBatch.TERMINATEDS: np.array([False] * b),
+                SampleBatch.TRUNCATEDS: np.array([False] * b),
+                "advantages": np.zeros((b,), dtype=np.float32),
+                SampleBatch.VF_PREDS: np.zeros((b,), dtype=np.float32),
                 SampleBatch.ACTION_DIST_INPUTS: np.zeros(
-                    (train_batch_size, 2), dtype=np.float32
+                    (b, 2), dtype=np.float32
                 ),
                 SampleBatch.ACTION_LOGP: np.zeros(
-                    (train_batch_size,), dtype=np.float32
+                    (b,), dtype=np.float32
                 ),
-                SampleBatch.EPS_ID: np.zeros((train_batch_size,), dtype=np.int64),
-                SampleBatch.AGENT_INDEX: np.zeros((train_batch_size,), dtype=np.int64),
+                SampleBatch.EPS_ID: np.zeros((b,), dtype=np.int64),
+                SampleBatch.AGENT_INDEX: np.zeros((b,), dtype=np.int64),
             }
         )
 
-        # Test if we can even fail this test due too a GPU OOM
         try:
             batch_copy = copy.deepcopy(CARTPOLE_FAKE_BATCH)
             batch_copy.to_device(0)
@@ -173,9 +180,9 @@ class TestGPUsLargeBatch(unittest.TestCase):
             .resources(num_gpus=1)
             .rollouts(num_rollout_workers=0)
             .training(
-                train_batch_size=train_batch_size,
+                train_batch_size=b,
                 num_sgd_iter=1,
-                sgd_minibatch_size=sgd_minibatch_size,
+                sgd_minibatch_size=self.SGD_MINIBATCH_SIZE,
             )
             .experimental(
                 # This setting makes it so that we don't load a batch of
