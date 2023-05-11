@@ -1,7 +1,7 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
-load("@py_deps_buildkite//:requirements.bzl", bk_require = "requirement")
 load("@python3_8//:defs.bzl", bk_python = "interpreter")
+load("@py_deps_buildkite//:requirements.bzl", bk_require = "requirement")
 
 compile_pip_requirements(
     name = "requirements_buildkite",
