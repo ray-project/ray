@@ -8,7 +8,7 @@ from typing import Dict
 
 # Load data.
 ds = ray.data.from_items(["Test", "String", "Test String"])
-# -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
+# -> Dataset(num_blocks=1, num_rows=3, schema={item: string})
 
 # Define the transform function.
 def to_lowercase(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -28,7 +28,7 @@ from typing import Dict, Any
 
 # Load data.
 ds = ray.data.from_items(["Test", "String", "Test String"])
-# -> Datastream(num_blocks=1, num_rows=3, schema={item: string})
+# -> Dataset(num_blocks=1, num_rows=3, schema={item: string})
 
 # Define the transform function.
 def to_lowercase(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -48,11 +48,11 @@ from typing import Dict
 
 ds = ray.data.read_csv("example://iris.csv")
 
-def numpy_transform(arr: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    new_col = arr["sepal.length"] / np.max(arr["sepal.length"])
-    arr["normalized.sepal.length"] = new_col
-    del arr["sepal.length"]
-    return arr
+def numpy_transform(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
+    batch["normalized.sepal.length"] = new_col
+    del batch["sepal.length"]
+    return batch
 
 ds.map_batches(numpy_transform, batch_format="numpy").show(2)
 # -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
@@ -100,21 +100,21 @@ ds.map_batches(pyarrow_transform, batch_format="pyarrow").show(2)
 #     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
 # __writing_arrow_udfs_end__
 
-# __datastream_compute_strategy_begin__
+# __dataset_compute_strategy_begin__
 import ray
-import pandas
-import numpy
+import pandas as pd
+import numpy as np
 from ray.data import ActorPoolStrategy
 
 # Dummy model to predict Iris variety.
-def predict_iris(df: pandas.DataFrame) -> pandas.DataFrame:
+def predict_iris(df: pd.DataFrame) -> pd.DataFrame:
     conditions = [
         (df["sepal.length"] < 5.0),
         (df["sepal.length"] >= 5.0) & (df["sepal.length"] < 6.0),
         (df["sepal.length"] >= 6.0)
     ]
     values = ["Setosa", "Versicolor", "Virginica"]
-    return pandas.DataFrame({"predicted_variety": numpy.select(conditions, values)})
+    return pd.DataFrame({"predicted_variety": np.select(conditions, values)})
 
 class IrisInferModel:
     # Do any expensive model setup in the __init__ function.
@@ -122,7 +122,7 @@ class IrisInferModel:
         self._model = predict_iris
 
     # This method is called repeatedly by Ray Data to process batches.
-    def __call__(self, batch: pandas.DataFrame) -> pandas.DataFrame:
+    def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
         return self._model(batch)
 
 ds = ray.data.read_csv("example://iris.csv").repartition(10)
@@ -133,7 +133,7 @@ predicted = ds.map_batches(predict_iris, batch_format="pandas")
 # Batch inference processing with Ray actors (pool of size 5).
 predicted = ds.map_batches(
     IrisInferModel, compute=ActorPoolStrategy(size=5), batch_size=10)
-# __datastream_compute_strategy_end__
+# __dataset_compute_strategy_end__
 
 # __writing_generator_udfs_begin__
 import ray
@@ -155,19 +155,19 @@ ds.map_batches(repeat_dataframe, batch_format="pandas").show(2)
 # __shuffle_begin__
 import ray
 
-# The datastream starts off with 1000 blocks.
+# The dataset starts off with 1000 blocks.
 ds = ray.data.range(10000, parallelism=1000)
-# -> Datastream(num_blocks=1000, num_rows=10000, schema={id: int64})
+# -> Dataset(num_blocks=1000, num_rows=10000, schema={id: int64})
 
 # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
 # data movement during this operation by merging adjacent blocks.
 ds = ds.repartition(100, shuffle=False).materialize()
-# -> MaterializedDatastream(num_blocks=100, num_rows=10000, schema={id: int64})
+# -> MaterializedDataset(num_blocks=100, num_rows=10000, schema={id: int64})
 
 # Repartition the data into 200 blocks, and force a full data shuffle.
 # This operation will be more expensive
-ds = ds.repartition(200, shuffle=True)
-# -> MaterializedDatastream(num_blocks=50, num_rows=10000, schema={id: int64})
+ds = ds.repartition(200, shuffle=True).materialize()
+# -> MaterializedDataset(num_blocks=200, num_rows=10000, schema={id: int64})
 # __shuffle_end__
 
 # __map_groups_begin__
@@ -181,7 +181,7 @@ ds = ray.data.read_csv("example://iris.csv")
 # The user function signature for `map_groups` is the same as that of `map_batches`.
 # It takes in a batch representing the grouped data, and must return a batch of
 # zero or more records as the result.
-def process_group(group: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def custom_count(group: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     # Since we are grouping by variety, all elements in this batch are equal.
     variety = group["variety"][0]
     count = len(group["variety"])
@@ -191,7 +191,7 @@ def process_group(group: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         "count": np.array([count]),
     }
 
-ds = ds.groupby("variety").map_groups(process_group)
+ds = ds.groupby("variety").map_groups(custom_count)
 ds.show()
 # -> {'variety': 'Setosa', 'count': 50}
 #    {'variety': 'Versicolor', 'count': 50}

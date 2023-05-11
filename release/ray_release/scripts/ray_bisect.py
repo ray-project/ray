@@ -4,11 +4,14 @@ import os
 import json
 import time
 from typing import Dict, List, Set
+
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
     read_and_validate_release_test_collection,
+    parse_python_version,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
+    DEFAULT_PYTHON_VERSION,
     Test,
 )
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -48,7 +51,9 @@ def main(
             f"Concurrency input need to be a positive number, received: {concurrency}"
         )
     test = _get_test(test_name)
-    pre_sanity_check = _sanity_check(test, passing_commit, failing_commit)
+    pre_sanity_check = _sanity_check(
+        test, passing_commit, failing_commit, run_per_commit
+    )
     if not pre_sanity_check:
         logger.info(
             "Failed pre-saniy check, the test might be flaky or fail due to"
@@ -93,7 +98,9 @@ def _bisect(
     return commit_list[-1]
 
 
-def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> bool:
+def _sanity_check(
+    test: Test, passing_revision: str, failing_revision: str, run_per_commit: int
+) -> bool:
     """
     Sanity check that the test indeed passes on the passing revision, and fails on the
     failing revision
@@ -102,15 +109,14 @@ def _sanity_check(test: Test, passing_revision: str, failing_revision: str) -> b
         f"Sanity check passing revision: {passing_revision}"
         f" and failing revision: {failing_revision}"
     )
-    outcomes = _run_test(test, [passing_revision, failing_revision])
-    return (
-        outcomes[passing_revision][0] == "passed"
-        and outcomes[failing_revision][0] != "passed"
-    )
+    outcomes = _run_test(test, [passing_revision, failing_revision], run_per_commit)
+    if any(map(lambda x: x != "passed", outcomes[passing_revision].values())):
+        return False
+    return any(map(lambda x: x != "passed", outcomes[failing_revision].values()))
 
 
 def _run_test(
-    test: Test, commits: Set[str], run_per_commit: int = 1
+    test: Test, commits: Set[str], run_per_commit: int
 ) -> Dict[str, Dict[int, str]]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
@@ -119,9 +125,12 @@ def _run_test(
 
 
 def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
+    python_version = DEFAULT_PYTHON_VERSION
+    if "python" in test:
+        python_version = parse_python_version(test["python"])
+
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        commit,
-        timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
+        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
     )
     for run in range(run_per_commit):
         step = get_step(

@@ -9,7 +9,7 @@ import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import ray
-from ray.train.huggingface import HuggingFaceTrainer
+from ray.train.hf_transformers import TransformersTrainer
 from ray.air.config import ScalingConfig
 
 
@@ -81,7 +81,7 @@ def trainer_init_per_worker(train_dataset, eval_dataset, **config):
 
 
 scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
-trainer = HuggingFaceTrainer(
+trainer = TransformersTrainer(
     trainer_init_per_worker=trainer_init_per_worker,
     scaling_config=scaling_config,
     datasets={"train": ray_train_ds, "evaluation": ray_evaluation_ds},

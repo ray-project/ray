@@ -178,8 +178,8 @@ const ActorTable = ({
       ),
     },
     { label: "Uptime" },
-    { label: "Job Id" },
-    { label: "Pid" },
+    { label: "Job ID" },
+    { label: "PID" },
     { label: "IP" },
     {
       label: "Restarted",
@@ -190,16 +190,16 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Placement Group Id",
+      label: "Placement group ID",
       helpInfo: (
         <Typography>
-          The id of the placement group this actor is scheduled to.
+          The ID of the placement group this actor is scheduled to.
           <br />
         </Typography>
       ),
     },
     {
-      label: "Required Resources",
+      label: "Required resources",
       helpInfo: (
         <Typography>
           The required Ray resources to start an actor.
@@ -217,7 +217,7 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Exit Detail",
+      label: "Exit detail",
       helpInfo: (
         <Typography>
           The detail of an actor exit. Only available when an actor is dead.

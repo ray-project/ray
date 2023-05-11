@@ -5,6 +5,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
+from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -15,18 +16,19 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
+class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
-
-    def __init__(self, *args, **kwargs):
-        TorchLearner.__init__(self, *args, **kwargs)
-        ImpalaLearner.__init__(self, *args, **kwargs)
 
     @override(TorchLearner)
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        target_policy_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         values = fwd_out[SampleBatch.VF_PREDS]
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
@@ -40,26 +42,22 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
             target_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         values_time_major = make_time_major(
             values,
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
             trajectory_len=self.hps.rollout_frag_or_episode_len,
             recurrent_seq_len=self.hps.recurrent_seq_len,
-            drop_last=self.hps.vtrace_drop_last_ts,
         )
 
         # the discount factor that is used should be gamma except for timesteps where
@@ -70,7 +68,6 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
                 batch[SampleBatch.TERMINATEDS],
                 trajectory_len=self.hps.rollout_frag_or_episode_len,
                 recurrent_seq_len=self.hps.recurrent_seq_len,
-                drop_last=self.hps.vtrace_drop_last_ts,
             ).type(dtype=torch.float32)
         ) * self.hps.discount_factor
 
@@ -78,7 +75,7 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
         #  dist_class` in the old code torch impala policy?
         device = behaviour_actions_logp_time_major[0].device
 
-        # TODO(Artur): See if we should compute v-trace corrected targets on CPU
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
@@ -110,16 +107,18 @@ class ImpalaTorchLearner(TorchLearner, ImpalaLearner):
         mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
-        entropy_loss = -torch.sum(target_actions_logp_time_major)
+        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
             pi_loss
             + vf_loss * self.hps.vf_loss_coeff
-            + entropy_loss * self.hps.entropy_coeff
+            + mean_entropy_loss
+            * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
         return {
             self.TOTAL_LOSS_KEY: total_loss,
             "pi_loss": mean_pi_loss,
             "vf_loss": mean_vf_loss,
+            ENTROPY_KEY: -mean_entropy_loss,
         }
