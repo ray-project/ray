@@ -58,7 +58,7 @@ def _add_serve_context_tag_values(tag_keys: Tuple, tags: Dict[str, str]):
     """Add serve context tag values to the metric tags"""
 
     _request_context = ray.serve.context._serve_request_context.get()
-    if ROUTE_TAG in tag_keys:
+    if ROUTE_TAG in tag_keys and ROUTE_TAG not in tags:
         tags[ROUTE_TAG] = _request_context.route
 
 
@@ -81,8 +81,7 @@ class Counter(metrics.Counter):
         """Increment the counter by the given value, add serve context
         tag values to the tags
         """
-        if ROUTE_TAG in self._tag_keys and ROUTE_TAG not in tags:
-            _add_serve_context_tag_values(self._tag_keys, tags)
+        _add_serve_context_tag_values(self._tag_keys, tags)
         super().inc(value, tags)
 
 
@@ -105,8 +104,7 @@ class Gauge(metrics.Gauge):
         """Set the gauge to the given value, add serve context
         tag values to the tags
         """
-        if ROUTE_TAG in self._tag_keys and ROUTE_TAG not in tags:
-            _add_serve_context_tag_values(self._tag_keys, tags)
+        _add_serve_context_tag_values(self._tag_keys, tags)
         super().set(value, tags)
 
 
@@ -133,6 +131,5 @@ class Histogram(metrics.Histogram):
         """Observe the given value, add serve context
         tag values to the tags
         """
-        if ROUTE_TAG in self._tag_keys and ROUTE_TAG not in tags:
-            _add_serve_context_tag_values(self._tag_keys, tags)
+        _add_serve_context_tag_values(self._tag_keys, tags)
         super().observe(value, tags)
