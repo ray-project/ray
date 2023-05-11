@@ -182,29 +182,32 @@ class TorchPolicyV2(Policy):
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
-        self._optimizers = force_list(self.optimizer())
 
-        # Backward compatibility workaround so Policy will call self.loss() directly.
-        # TODO(jungong): clean up after all policies are migrated to new sub-class
-        #  implementation.
-        self._loss = None
+        if not self.config.get("_enable_learner_api", False):
+            self._optimizers = force_list(self.optimizer())
 
-        # Store, which params (by index within the model's list of
-        # parameters) should be updated per optimizer.
-        # Maps optimizer idx to set or param indices.
-        self.multi_gpu_param_groups: List[Set[int]] = []
-        main_params = {p: i for i, p in enumerate(self.model.parameters())}
-        for o in self._optimizers:
-            param_indices = []
-            for pg_idx, pg in enumerate(o.param_groups):
-                for p in pg["params"]:
-                    param_indices.append(main_params[p])
-            self.multi_gpu_param_groups.append(set(param_indices))
+            # Backward compatibility workaround so Policy will call self.loss()
+            # directly.
+            # TODO (jungong): clean up after all policies are migrated to new sub-class
+            #  implementation.
+            self._loss = None
 
-        # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
-        # one with m towers (num_gpus).
-        num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
-        self._loaded_batches = [[] for _ in range(num_buffers)]
+            # Store, which params (by index within the model's list of
+            # parameters) should be updated per optimizer.
+            # Maps optimizer idx to set or param indices.
+            self.multi_gpu_param_groups: List[Set[int]] = []
+            main_params = {p: i for i, p in enumerate(self.model.parameters())}
+            for o in self._optimizers:
+                param_indices = []
+                for pg_idx, pg in enumerate(o.param_groups):
+                    for p in pg["params"]:
+                        param_indices.append(main_params[p])
+                self.multi_gpu_param_groups.append(set(param_indices))
+
+            # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
+            # one with m towers (num_gpus).
+            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+            self._loaded_batches = [[] for _ in range(num_buffers)]
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -1104,21 +1107,26 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        extra_fetches = {}
+        extra_fetches = None
         if isinstance(self.model, RLModule):
             if explore:
+                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
-            else:
-                fwd_out = self.model.forward_inference(input_dict)
-            # anything but action_dist and state_out is an extra fetch
-            action_dist = fwd_out.pop("action_dist")
-
-            if explore:
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_inference_action_dist_cls()
+                fwd_out = self.model.forward_inference(input_dict)
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                action_dist = action_dist.to_deterministic()
                 actions = action_dist.sample()
                 logp = None
+
             state_out = fwd_out.pop("state_out", {})
             extra_fetches = fwd_out
             dist_inputs = None
@@ -1166,7 +1174,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if not extra_fetches:
+        if extra_fetches is None:
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )
