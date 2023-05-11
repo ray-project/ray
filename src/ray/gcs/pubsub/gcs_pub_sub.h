@@ -171,7 +171,8 @@ class RAY_EXPORT PythonGcsSubscriber {
   explicit PythonGcsSubscriber(
     const std::string &gcs_address,
     rpc::ChannelType channel_type,
-    const std::string& subscriber_id
+    const std::string& subscriber_id,
+    const std::string& worker_id
   );
 
   /// Connect to the subscriber service of the GCS.
@@ -206,6 +207,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   rpc::ChannelType channel_type_;
   std::string subscriber_id_;
   std::string publisher_id_;
+  std::string worker_id_;
   int64_t max_processed_sequence_id_;
   std::deque<rpc::PubMessage> queue_;
 };

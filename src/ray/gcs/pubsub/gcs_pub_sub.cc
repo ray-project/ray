@@ -302,8 +302,9 @@ Status PythonGcsPublisher::PublishFunctionKey(
 PythonGcsSubscriber::PythonGcsSubscriber(
     const std::string &gcs_address,
     rpc::ChannelType channel_type,
-    const std::string& subscriber_id
-  ) : channel_type_(channel_type), subscriber_id_(subscriber_id) {
+    const std::string& subscriber_id,
+    const std::string& worker_id
+  ) : channel_type_(channel_type), subscriber_id_(subscriber_id), worker_id_(worker_id) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   RAY_CHECK(address.size() == 2);
@@ -327,8 +328,7 @@ Status PythonGcsSubscriber::Subscribe() {
 
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
-  // TODO: Fill this out
-  // request.set_sender_id("XXXXX");
+  request.set_sender_id(worker_id_);
   auto *cmd = request.add_commands();
   cmd->set_channel_type(channel_type_);
   cmd->mutable_subscribe_message();

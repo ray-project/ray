@@ -1817,11 +1817,11 @@ cdef class GcsErrorSubscriber:
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 
-    def __cinit__(self, address):
+    def __cinit__(self, address, worker_id):
         # _subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, subscriber_id))
+        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, subscriber_id, worker_id))
         check_status(self.inner.get().Connect())
 
     def subscribe(self):

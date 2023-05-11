@@ -2225,7 +2225,7 @@ def connect(
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
-    worker.gcs_error_subscriber = GcsErrorSubscriber(
+    worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
     worker.gcs_log_subscriber = GcsLogSubscriber(
