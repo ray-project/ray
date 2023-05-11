@@ -154,21 +154,17 @@ Learn more about Ray Data
 Ray Train abstracts away the complexity of setting up a distributed training
 system. 
 
-````{note}
-To run this example install Ray Train:
-
-```bash
-pip install -U "ray[train]"
-```
-````
-
 `````{tab-set}
 
 ````{tab-item} PyTorch
 
 This example shows how you can use Ray Train with PyTorch.
 
+To run this example install Ray Train and PyTorch packages:
 
+```bash
+pip install -U "ray[train]" torch torchvision
+```
 
 Set up your dataset and model.
 
@@ -195,13 +191,13 @@ This training function can be executed with:
 :dedent: 0
 ```
 
-Now let's convert this to a distributed multi-worker training function!
+Convert this to a distributed multi-worker training function.
 
-All you have to do is use the ``ray.train.torch.prepare_model`` and
+Use the ``ray.train.torch.prepare_model`` and
 ``ray.train.torch.prepare_data_loader`` utility functions to
-easily setup your model & data for distributed training.
-This will automatically wrap your model with ``DistributedDataParallel``
-and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
+set up your model and data for distributed training.
+This automatically wraps the model with ``DistributedDataParallel``
+and places it on the right device, and adds ``DistributedSampler`` to the DataLoaders.
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
@@ -209,8 +205,8 @@ and place it on the right device, and add ``DistributedSampler`` to your DataLoa
 :end-before: __torch_distributed_end__
 ```
 
-Then, instantiate a ``TorchTrainer``
-with 4 workers, and use it to run the new training function!
+Instantiate a ``TorchTrainer``
+with 4 workers, and use it to run the new training function.
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
@@ -225,7 +221,13 @@ with 4 workers, and use it to run the new training function!
 This example shows how you can use Ray Train to set up [Multi-worker training
 with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).
 
-First, set up your dataset and model.
+To run this example install Ray Train and Tensorflow packages:
+
+```bash
+pip install -U "ray[train]" tensorflow
+```
+
+Set up your dataset and model.
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
@@ -250,13 +252,12 @@ This training function can be executed with:
 :dedent: 0
 ```
 
-Now let's convert this to a distributed multi-worker training function!
-All you need to do is:
+Now convert this to a distributed multi-worker training function.
 
-1. Set the *global* batch size - each worker will process the same size
+1. Set the *global* batch size - each worker processes the same size
    batch as in the single-worker code.
-2. Choose your TensorFlow distributed training strategy. In this example
-   we use the ``MultiWorkerMirroredStrategy``.
+2. Choose your TensorFlow distributed training strategy. This examples
+   uses the ``MultiWorkerMirroredStrategy``.
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
@@ -264,8 +265,8 @@ All you need to do is:
 :end-before: __tf_distributed_end__
 ```
 
-Then, instantiate a ``TensorflowTrainer``
-with 4 workers, and use it to run the new training function!
+Instantiate a ``TensorflowTrainer``
+with 4 workers, and use it to run the new training function.
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
