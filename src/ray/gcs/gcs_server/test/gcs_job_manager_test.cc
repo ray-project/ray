@@ -120,7 +120,9 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
     // client factory to create a core worker client with number of running tasks
     // equal to the address port.
     rpc::Address address;
-    address.set_port(i);
+    // Set the number of running tasks to 0 for even jobs and i for odd jobs.
+    int num_running_tasks = i % 2 == 0 ? 0 : i;
+    address.set_port(num_running_tasks);
 
     // Populate other fields, the value is not important.
     address.set_raylet_id(NodeID::FromRandom().Binary());
@@ -158,7 +160,8 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
   // Check that the is_running_tasks field is correct for each job.
   for (int i = 0; i < num_jobs; ++i) {
     auto job_info = all_job_info_reply.job_info_list(i);
-    ASSERT_EQ(all_job_info_reply.job_info_list(i).is_running_tasks(), i > 0);
+    int job_id = JobID::FromBinary(job_info.job_id()).ToInt();
+    ASSERT_EQ(job_info.is_running_tasks(), job_id % 2 != 0);
   }
 }
 
