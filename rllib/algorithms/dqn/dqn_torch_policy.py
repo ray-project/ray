@@ -286,7 +286,6 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
             is_training=True,
         )
 
-
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(
         train_batch[SampleBatch.ACTIONS].long(), policy.action_space.n
