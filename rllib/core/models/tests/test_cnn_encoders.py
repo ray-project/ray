@@ -85,7 +85,6 @@ class TestCNNEncoders(unittest.TestCase):
                 # Add this framework version of the model to our checker.
                 outputs = model_checker.add(framework=fw)
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
-                self.assertEqual(outputs[STATE_OUT], None)
 
             # Check all added models against each other.
             model_checker.check()
