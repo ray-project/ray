@@ -629,8 +629,9 @@ def multiplexed(
 
 
     Args:
-        max_num_models_per_replica: the maximum number of models to be loaded on each replica.
-        By default, it is -1, which means there is no number limit to load models.
+        max_num_models_per_replica: the maximum number of models
+        to be loaded on each replica. By default, it is -1, which
+        means there is no number limit to load models.
     """
 
     raise NotImplementedError("Multiplexed deployment is not supported yet.")
