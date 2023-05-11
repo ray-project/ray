@@ -16,6 +16,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -179,6 +180,7 @@ if __name__ == "__main__":
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
         download_ssh_key()
+        run_ray_commands(cluster_config, retries, no_config_cache)
     elif provider_type == "gcp":
         print("======================================")
         print("GCP provider detected. Skipping ssh key download step.")
@@ -207,10 +209,15 @@ if __name__ == "__main__":
             f"Injecting GCP project '{project_id}' into cluster configuration file..."
         )
         config_yaml["provider"]["project_id"] = project_id
-        cluster_config.write_text(yaml.dump(config_yaml))
+
+        # Create a new temporary file and dump the updated configuration into it
+        with tempfile.NamedTemporaryFile(suffix=".yaml") as temp:
+            temp.write(yaml.dump(config_yaml).encode("utf-8"))
+            temp.flush()
+            cluster_config = Path(temp.name)
+            run_ray_commands(cluster_config, retries, no_config_cache)
+
     else:
         print("======================================")
         print("Provider type not recognized. Exiting script.")
         sys.exit(1)
-
-    run_ray_commands(cluster_config, retries, no_config_cache)
