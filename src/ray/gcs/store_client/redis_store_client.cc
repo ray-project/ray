@@ -278,13 +278,13 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
         std::move(args),
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
-          for (auto &op : Progress(keys)) {
-            op();
-          }
+      for (auto &op : Progress(keys)) {
+        op();
+      }
 
-          if (redis_callback) {
-            redis_callback(reply);
-          }
+      if (redis_callback) {
+        redis_callback(reply);
+      }
         }));
   };
 
