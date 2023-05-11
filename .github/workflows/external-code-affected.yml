@@ -75,7 +75,7 @@ jobs:
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
-          const commentHeader = `## Attention: External code changed`
+          const commentHeader = `## Attention: External code changed`;
           
           // Get existing GitHub PR comments
           const existingComments = await github.rest.issues.listComments({
