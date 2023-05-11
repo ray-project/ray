@@ -66,7 +66,7 @@ def download_ssh_key():
 
     # Set the name of the S3 bucket and the key to download
     bucket_name = "aws-cluster-launcher-test"
-    key_name = "aws-cluster-launcher-test.pem"
+    key_name = "ray-autoscaler_59_us-west-2.pem"
 
     # Download the key from the S3 bucket to a local file
     local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
