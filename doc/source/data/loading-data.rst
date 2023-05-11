@@ -7,6 +7,7 @@ Loading Data
 .. testcode::
     :hide:
 
+    import ray
     ray.shutdown()
 
 .. testcode::
