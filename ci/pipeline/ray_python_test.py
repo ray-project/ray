@@ -96,7 +96,6 @@ def _run_tests(test_type: str, test_targets: Set[str]) -> None:
             "bazel",
             "test",
             "--config=ci",
-            "$(./ci/run/bazel_export_options)",
             "--test_tag_filters",
             TEST_TYPE_TO_BAZEL_CONFIG[test_type]["test_tag_filters"],
         ]
