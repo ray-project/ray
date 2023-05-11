@@ -1,6 +1,6 @@
 from typing import Mapping, Any
 
-from ray.rllib.algorithms.ppo.ppo_base_rl_module import PPORLModuleBase
+from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT, STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -13,12 +13,12 @@ from ray.rllib.utils.nested_dict import NestedDict
 torch, nn = try_import_torch()
 
 
-class PPOTorchRLModule(PPORLModuleBase, TorchRLModule):
+class PPOTorchRLModule(PPORLModule, TorchRLModule):
     framework: str = "torch"
 
     def __init__(self, *args, **kwargs):
         TorchRLModule.__init__(self, *args, **kwargs)
-        PPORLModuleBase.__init__(self, *args, **kwargs)
+        PPORLModule.__init__(self, *args, **kwargs)
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
