@@ -780,7 +780,7 @@ tutorials and examples:
 
         .. button-ref:: /data/examples/nyc_taxi_basic_processing
 
-            Object Detection Batch Inference with PyTorch & torchvision
+            Batch Inference on NYC taxi data using Ray Data
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
@@ -788,7 +788,7 @@ tutorials and examples:
 
         .. button-ref:: /data/examples/batch_inference_object_detection
 
-            Batch Image Object Detection using Ray Data
+            Object Detection Batch Inference with PyTorch
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
