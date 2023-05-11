@@ -1537,7 +1537,7 @@ async def test_state_data_source_client(ray_start_cluster):
     assert isinstance(result, dict)
 
     """
-    Test tasks 
+    Test tasks
     """
     with pytest.raises(ValueError):
         # Since we didn't register this node id, it should raise an exception.
