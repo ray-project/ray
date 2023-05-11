@@ -48,8 +48,10 @@ class TorchDistribution(Distribution, abc.ABC):
     def sample(
         self,
         *,
-        sample_shape=torch.Size(),
+        sample_shape=None,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        if sample_shape is None:
+            sample_shape = torch.Size()
         sample = self._dist.sample(sample_shape)
         return sample
 
@@ -57,8 +59,10 @@ class TorchDistribution(Distribution, abc.ABC):
     def rsample(
         self,
         *,
-        sample_shape=torch.Size(),
+        sample_shape=None,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        if sample_shape is None:
+            sample_shape = torch.Size()
         rsample = self._dist.rsample(sample_shape)
         return rsample
 
