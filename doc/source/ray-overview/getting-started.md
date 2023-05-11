@@ -648,6 +648,7 @@ Learn more about launching Ray Clusters
 
 Use built-in observability tools to monitor and debug Ray applications and clusters.
 
+
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
 :animate: fade-in-slide-down
 
@@ -658,10 +659,10 @@ Ray dashboard provides a visual interface that displays real-time system metrics
 ```
 
 ````{note}
-To get started with ray dashboard install the Ray default installation as follows.
+To get started with the dashboard, install the default installation as follows:
 
 ```bash
-pip install "ray[default]"
+pip install -U "ray[default]"
 ```
 ````
 
@@ -681,10 +682,10 @@ Learn more about Ray Dashboard
 Ray state APIs allow users to conveniently access the current state (snapshot) of Ray through CLI or Python SDK.
 
 ````{note}
-To get started with ray state API install the Ray default installation as follows.
+To get started with the state API, install the default installation as follows:
 
 ```bash
-pip install "ray[default]"
+pip install -U "ray[default]"
 ```
 ````
 
