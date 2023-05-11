@@ -12,6 +12,8 @@ import ray.experimental.state.api as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve.drivers import DAGDriver
+from ray.serve.http_adapters import json_request
 
 
 @pytest.fixture
@@ -194,6 +196,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_requests[0]["route"] == "/fake_route"
     assert num_requests[0]["method"] == "GET"
     assert num_requests[0]["application"] == ""
+    assert num_requests[0]["status_code"] == "404"
     print("serve_num_http_requests working as expected.")
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
@@ -223,7 +226,68 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["route"] == "/real_route"
     assert latency_metrics[0]["application"] == "app"
+    assert latency_metrics[0]["status_code"] == "500"
     print("serve_http_request_latency_ms working as expected.")
+
+
+def test_http_redirect_metrics(serve_start_shutdown):
+    """Tests the http redirect metrics' behavior."""
+
+    def verify_metrics_with_route(metrics, expected_metrics):
+        assert len(metrics) == len(expected_metrics)
+        for metric_dict in metrics:
+            match_metric = None
+            for expected_metric in expected_metrics:
+                if expected_metric["route"] == metric_dict["route"]:
+                    match_metric = expected_metric
+                    break
+            assert match_metric is not None
+            for key in match_metric:
+                assert match_metric[key] == metric_dict[key]
+
+    @serve.deployment
+    class Model:
+        def __call__(self, *args):
+            return "123"
+
+    serve.run(
+        DAGDriver.bind(Model.bind(), http_adapter=json_request), route_prefix="/bar"
+    )
+    resp = requests.get("http://localhost:8000/bar", json=["123"])
+    assert resp.status_code == 200
+    assert resp.text == '"123"'
+
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
+        timeout=20,
+    )
+    num_http_requests = get_metric_dictionaries("serve_num_http_requests")
+    expected_output = [
+        {
+            "route": "/bar/",
+            "application": "default",
+            "method": "GET",
+            "status_code": "200",
+        },
+        {
+            "route": "/bar",
+            "application": "default",
+            "method": "GET",
+            "status_code": "307",
+        },
+    ]
+    verify_metrics_with_route(num_http_requests, expected_output)
+
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum")) == 2,
+        timeout=20,
+    )
+    http_latency = get_metric_dictionaries("serve_num_http_requests")
+    expected_output = [
+        {"route": "/bar/", "application": "default", "status_code": "200"},
+        {"route": "/bar", "application": "default", "status_code": "307"},
+    ]
+    verify_metrics_with_route(http_latency, expected_output)
 
 
 def test_replica_metrics_fields(serve_start_shutdown):
