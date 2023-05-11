@@ -235,6 +235,12 @@ export const JobLogsLink = ({
 }: JobLogsLinkProps) => {
   const { ipLogMap } = useContext(GlobalContext);
 
+  if (type === "SUBMISSION") {
+    // For submission jobs, send them to the job detail page because we have logs there already.
+    const link = `/jobs/${job_id ? job_id : submission_id}`;
+    return <Link to={link}>Log</Link>;
+  }
+
   let link: string | undefined;
 
   if (driver_agent_http_address) {

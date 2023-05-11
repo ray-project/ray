@@ -1,6 +1,4 @@
-import { Grid } from "@material-ui/core";
-import dayjs from "dayjs";
-import React, { useState } from "react";
+import React from "react";
 import ActorTable, { ActorTableProps } from "../../components/ActorTable";
 import { Actor } from "../../type/actor";
 import { useActorList } from "./hook/useActorList";
@@ -16,17 +14,11 @@ const ActorList = ({
   jobId?: string | null;
   detailPathPrefix?: string;
 } & Pick<ActorTableProps, "filterToActorId" | "onFilterChange">) => {
-  const [timeStamp] = useState(dayjs());
   const data: { [actorId: string]: Actor } | undefined = useActorList();
   const actors: { [actorId: string]: Actor } = data ? data : {};
 
   return (
     <div>
-      <Grid container alignItems="center">
-        <Grid item>
-          Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
-        </Grid>
-      </Grid>
       <ActorTable
         actors={actors}
         jobId={jobId}

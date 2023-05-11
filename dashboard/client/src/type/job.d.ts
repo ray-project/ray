@@ -72,6 +72,7 @@ export type UnifiedJob = {
   runtime_env: { [key: string]: string } | null;
   driver_info: DriverInfo | null;
   driver_agent_http_address: string | null;
+  driver_node_id: string | null;
 };
 
 export type DriverInfo = {
