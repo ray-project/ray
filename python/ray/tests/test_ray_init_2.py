@@ -245,6 +245,7 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         "dashboard_agent_listen_port": get_current_unused_port(),
         "port": get_current_unused_port(),  # gcs_server_port
         "node_manager_port": get_current_unused_port(),
+        "runtime_env_agent_port": get_current_unused_port(),
     }
     # Start a ray head node with customized ports.
     cmd = "ray start --head --block".split(" ")
@@ -267,6 +268,7 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         assert node.dashboard_agent_listen_port == ports["dashboard_agent_listen_port"]
         assert str(ports["port"]) in node.gcs_address
         assert node.node_manager_port == ports["node_manager_port"]
+        assert node.runtime_env_agent_port == ports["runtime_env_agent_port"]
         return True
 
     try:

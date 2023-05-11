@@ -262,11 +262,14 @@ class Node:
             "dashboard_agent_listen_port",
             default_port=ray_params.dashboard_agent_listen_port,
         )
-
+        self._runtime_env_agent_port = self._get_cached_port(
+            "runtime_env_agent_port", default_port=ray_params.runtime_env_agent_port
+        )
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._dashboard_agent_listen_port,
+            runtime_env_agent_port=self._runtime_env_agent_port,
         )
 
         # Pick a GCS server port.
@@ -575,7 +578,13 @@ class Node:
             "gcs_address": self.gcs_address,
             "address": self.address,
             "dashboard_agent_listen_port": self.dashboard_agent_listen_port,
+            "runtime_env_agent_port": self._runtime_env_agent_port,
         }
+
+    @property
+    def runtime_env_agent_port(self):
+        """Get the port that exposes metrics"""
+        return self._runtime_env_agent_port
 
     def is_head(self):
         return self.head
@@ -1048,6 +1057,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
+            runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1091,7 +1101,7 @@ class Node:
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            metrics_agent_port=self._ray_params.metrics_agent_port,
+            runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
         )
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

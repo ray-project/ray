@@ -530,6 +530,12 @@ def debug(address):
     default=False,
     help="If True, the usage stats collection will be disabled.",
 )
+@click.option(
+    "--runtime-env-agent-port",
+    type=int,
+    default=None,
+    help="the port for runtime env agents to listen for grpc on.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -574,6 +580,7 @@ def start(
     tracing_startup_hook,
     ray_debugger_external,
     disable_usage_stats,
+    runtime_env_agent_port,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -652,6 +659,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        runtime_env_agent_port=runtime_env_agent_port,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:

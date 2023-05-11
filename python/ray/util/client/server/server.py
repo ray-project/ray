@@ -869,7 +869,7 @@ def main():
         help="Password for connecting to Redis",
     )
     parser.add_argument(
-        "--metrics-agent-port",
+        "--runtime-env-agent-port",
         required=False,
         type=int,
         default=0,
@@ -887,7 +887,7 @@ def main():
             hostport,
             args.address,
             redis_password=args.redis_password,
-            runtime_env_agent_port=args.metrics_agent_port,
+            runtime_env_agent_port=args.runtime_env_agent_port,
         )
     else:
         server = serve(hostport, ray_connect_handler)
