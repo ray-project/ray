@@ -1,1 +1,5 @@
-../../02_many_model_training/requirements.txt
+numpy==1.23.5
+pandas==2.0.0
+pyarrow==11.0.0
+scikit-learn==1.2.2
+statsforecast==1.5.0

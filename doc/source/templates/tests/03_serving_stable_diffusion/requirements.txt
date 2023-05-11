@@ -1,1 +1,8 @@
-../../03_serving_stable_diffusion/requirements.txt
+accelerate==0.19.0
+diffusers==0.15.1
+fastapi==0.95.1
+matplotlib==3.7.1
+numpy==1.23.5
+Pillow==9.5.0
+torch==2.0.0
+transformers==4.28.1
