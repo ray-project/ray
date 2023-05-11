@@ -138,9 +138,10 @@ Execution
 ---------
 
 .. autosummary::
-   :toctree: doc/
+    :toctree: doc/
 
-   Datastream.materialize
+    Datastream.materialize
+    ActorPoolStrategy
 
 Serialization
 -------------

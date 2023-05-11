@@ -32,7 +32,7 @@ Ray Data Glossary
             4   4
 
         To learn more about batch formats, read
-        :ref:`UDF Input Batch Formats <transform_datastreams_batch_formats>`.
+        :ref:`Configuring batch formats <transform_datastreams_batch_formats>`.
 
     Block
         A processing unit of data. A :class:`~ray.data.Datastream` consists of a
@@ -47,10 +47,9 @@ Ray Data Glossary
     Block format
         The way :term:`blocks <Block>` are represented.
 
-        Blocks are represented as
-        `Arrow tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`_,
-        `pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`_,
-        and Python lists.
+        Blocks are internally represented as
+        `Arrow tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`_ or
+        `pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`_.
 
     Ray Data (library)
         A library for distributed data processing.
@@ -81,73 +80,10 @@ Ray Data Glossary
         To learn more about Datasources, read :ref:`Creating a Custom Datasource <custom_datasources>`.
 
     Record
-        A single data item.
-
-        If your datastream is :term:`tabular <Tabular Datastream>`, then records are :class:`TableRows <ray.data.row.TableRow>`.
-        If your datastream is :term:`simple <Simple Datastream>`, then records are arbitrary Python objects.
-        If your datastream is :term:`tensor <Tensor Datastream>`, then records are `NumPy ndarrays <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_.
+        A single data item, which is always a ``Dict[str, Any]``.
 
     Schema
-        The data type of a datastream.
-
-        If your datastream is :term:`tabular <Tabular Datastream>`, then the schema describes
-        the column names and data types. If your datastream is :term:`simple <Simple Datastream>`,
-        then the schema describes the Python object type. If your datastream is
-        :term:`tensor <Tensor Datastream>`, then the schema describes the per-element
-        tensor shape and data type.
+        The name and type of the datastream fields.
 
         To determine a datastream's schema, call
         :meth:`Datastream.schema() <ray.data.Datastream.schema>`.
-
-    Simple Datastream
-        A Datastream that represents a collection of arbitrary Python objects.
-
-        .. doctest::
-
-            >>> import ray
-            >>> ray.data.from_items(["spam", "ham", "eggs"])
-            MaterializedDatastream(num_blocks=3, num_rows=3, schema={item: string})
-
-    Tensor Datastream
-        A Datastream that represents a collection of ndarrays.
-
-        :term:`Tabular datastreams <Tabular Datastream>` that contain tensor columns aren’t tensor datastreams.
-
-        .. doctest::
-
-            >>> import numpy as np
-            >>> import ray
-            >>> ray.data.from_numpy(np.zeros((100, 32, 32, 3)))
-            MaterializedDatastream(
-               num_blocks=1,
-               num_rows=100,
-               schema={data: numpy.ndarray(shape=(32, 32, 3), dtype=double)}
-            )
-
-    Tabular Datastream
-        A Datastream that represents columnar data.
-
-        .. doctest::
-
-            >>> import ray
-            >>> ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-            Datastream(
-               num_blocks=1,
-               num_rows=150,
-               schema={
-                  sepal length (cm): double,
-                  sepal width (cm): double,
-                  petal length (cm): double,
-                  petal width (cm): double,
-                  target: int64
-               }
-            )
-
-    User-defined function (UDF)
-        A callable that transforms batches or :term:`records <Record>` of data. UDFs let you arbitrarily transform datastreams.
-
-        Call :meth:`Datastream.map_batches() <ray.data.Datastream.map_batches>`,
-        :meth:`Datastream.map() <ray.data.Datastream.map>`, or
-        :meth:`Datastream.flat_map() <ray.data.Datastream.flat_map>` to apply UDFs.
-
-        To learn more about UDFs, read :ref:`Writing User-Defined Functions <transform_datastreams_writing_udfs>`.

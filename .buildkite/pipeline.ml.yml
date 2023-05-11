@@ -326,10 +326,10 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) python/ray/tests/ray_lightning/...
 
-### NEW EXECUTION PATH
+### OLD EXECUTION PATH COMPAT
 
 
-- label: ":octopus: :sunny: New execution path: Tune tests and examples (small)"
+- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (small)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   parallelism: 3
@@ -339,11 +339,11 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=1
+      --test_env=TUNE_NEW_EXECUTION=0
       --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
       python/ray/tune/...
 
-- label: ":octopus: :sunny: New execution path:Tune tests and examples (medium)"
+- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (medium)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: medium
   commands:
@@ -351,11 +351,11 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=1
+      --test_env=TUNE_NEW_EXECUTION=0
       --test_tag_filters=medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
       python/ray/tune/...
 
-- label: ":octopus: :brain: :sunny: New execution path: Tune tests and examples {using RLlib}"
+- label: ":octopus: :brain: :last_quarter_moon_with_face: Old execution path: Tune tests and examples {using RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
   instance_size: large
   commands:
@@ -363,10 +363,10 @@
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=1
+      --test_env=TUNE_NEW_EXECUTION=0
       --test_tag_filters=-gpu_only,rllib,-exclude_new_execution python/ray/tune/...
 
-- label: ":octopus: :sunny: New execution path: Tune tests and examples. Python 3.7"
+- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   commands:
@@ -374,10 +374,10 @@
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
-      --test_env=TUNE_NEW_EXECUTION=1
+      --test_env=TUNE_NEW_EXECUTION=0
       --test_tag_filters=py37,-client python/ray/tune/...
 
-- label: ":octopus: :sunny: New execution path: ML library integrations tests and examples. Python 3.7"
+- label: ":octopus: :last_quarter_moon_with_face: Old execution path: ML library integrations tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   commands:
