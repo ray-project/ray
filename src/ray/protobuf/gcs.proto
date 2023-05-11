@@ -274,8 +274,10 @@ message TaskEventData {
   // We only drop task attempts if task state update is lost on the worker
   // due to too many events being generated.
   repeated TaskAttempt dropped_task_attempts = 2;
-  // A map of job id to profile events dropped.
-  map<string, int32> profile_events_dropped = 3;
+  // Number of profile events dropped on the worker.
+  int32 num_profile_events_dropped = 3;
+  // Current job the worker is reporting data for.
+  bytes job_id = 4;
 }
 
 message ResourceTableData {

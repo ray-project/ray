@@ -375,10 +375,9 @@ void GcsTaskManager::RecordDataLossFromWorker(const rpc::TaskEventData &data) {
                              data.dropped_task_attempts_size());
   }
 
-  if (data.profile_events_dropped_size() > 0) {
-    for (const auto &[job, drop_count] : data.profile_events_dropped()) {
-      stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, drop_count);
-    }
+  if (data.num_profile_events_dropped() > 0) {
+    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                             data.num_profile_events_dropped());
   }
 }
 

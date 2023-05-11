@@ -166,6 +166,8 @@ enum TaskEventBufferCounter {
   kNumTaskAttemptsDroppedStored,
   /// Total number of task events dropped on the worker due to network issue.
   kTotalNumTaskEventsDropped,
+  /// Number of profile events dropped since the last report.
+  kNumTaskProfileEventDroppedSinceLastFlush,
   /// Total number of task events reported to GCS.
   kTotalNumTaskEventsReported,
   /// Total bytes of task events reported to GCS.
@@ -187,8 +189,9 @@ enum TaskEventBufferCounter {
 ///
 /// For profiling events:
 ///   - If the number of profiling events for a task attempt exceeds the limit specified
-///   by `RAY_task_max_profile_events_per_task`, any new profiling events will be dropped.
-///   Dropping of profile events will not result in the entire task attempt being dropped.
+///   by `RAY_task_events_max_num_profile_events_for_task`, any new profiling events will
+///   be dropped. Dropping of profile events will not result in the entire task attempt
+///   being dropped.
 ///
 /// For task status events:
 ///   - If any task status change event is dropped, the entire task attempt will be
@@ -258,7 +261,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
+  /// \param job_id Corresponding Job ID
+  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client, const JobID &job_id);
 
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       LOCKS_EXCLUDED(mutex_) override;
@@ -289,14 +293,26 @@ class TaskEventBufferImpl : public TaskEventBuffer {
     return stats_counter_.Get(TaskEventBufferCounter::kTotalNumTaskEventsReported);
   }
 
+  /// Test only function.
+  size_t GetNumProfileTaskEventsDroppedSinceLastFlush() {
+    return stats_counter_.Get(
+        TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
+  }
+
   /// Test only functions.
   gcs::GcsClient *GetGcsClient() {
     absl::MutexLock lock(&mutex_);
     return gcs_client_.get();
   }
 
+  /// Test only functions.
+  const JobID &GetJobId() const { return job_id_; }
+
   /// Mutex guarding task_events_data_.
   absl::Mutex mutex_;
+
+  /// Job id.
+  const JobID job_id_;
 
   /// IO service event loop owned by TaskEventBuffer.
   instrumented_io_context io_service_;
@@ -326,10 +342,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
   std::atomic<bool> grpc_in_progress_ = false;
-
-  /// Profile events dropped per job, to be reported to GCS. Reported data loss
-  /// will be removed from this.
-  absl::flat_hash_map<JobID, uint32_t> profile_events_dropped_ GUARDED_BY(mutex_);
 
   /// Task attempts dropped on this worker that are to be reported to GCS. Reported
   /// data loss will be removed.
