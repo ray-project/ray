@@ -46,7 +46,8 @@ struct CoreWorkerOptions {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
-      bool *is_application_error,
+      // Application error string, empty if no error.
+      std::string *application_error,
       // The following 2 parameters `defined_concurrency_groups` and
       // `name_of_concurrency_group_to_execute` are used for Python
       // asyncio actor only.
@@ -86,7 +87,9 @@ struct CoreWorkerOptions {
         connect_on_start(true),
         runtime_env_hash(0),
         session_name(""),
-        entrypoint("") {}
+        entrypoint(""),
+        worker_launch_time_ms(-1),
+        worker_launched_time_ms(-1) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -183,6 +186,8 @@ struct CoreWorkerOptions {
   /// Session name (Cluster ID) of the cluster.
   std::string session_name;
   std::string entrypoint;
+  int64_t worker_launch_time_ms;
+  int64_t worker_launched_time_ms;
 };
 }  // namespace core
 }  // namespace ray

@@ -6,6 +6,14 @@ import pytest
 
 import ray
 from ray import serve
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
+
+
+def get_deployment_name(name: str):
+    return f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{name}"
 
 
 def test_deploy_with_consistent_constructor_failure(serve_instance):
@@ -23,8 +31,9 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
     # Assert no replicas are running in deployment deployment after failed
     # deploy call
+    deployment_name = get_deployment_name("ConstructorFailureDeploymentOneReplica")
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    assert deployment_dict["ConstructorFailureDeploymentOneReplica"] == []
+    assert deployment_dict[deployment_name] == []
 
     # # Test failed to deploy with total of 2 replicas
     @serve.deployment(num_replicas=2)
@@ -40,8 +49,9 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
     # Assert no replicas are running in deployment deployment after failed
     # deploy call
+    deployment_name = get_deployment_name("ConstructorFailureDeploymentTwoReplicas")
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    assert deployment_dict["ConstructorFailureDeploymentTwoReplicas"] == []
+    assert deployment_dict[deployment_name] == []
 
 
 def test_deploy_with_partial_constructor_failure(serve_instance):
@@ -75,7 +85,8 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy call
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    assert len(deployment_dict["PartialConstructorFailureDeployment"]) == 2
+    deployment_name = get_deployment_name("PartialConstructorFailureDeployment")
+    assert len(deployment_dict[deployment_name]) == 2
 
 
 def test_deploy_with_transient_constructor_failure(serve_instance):
@@ -101,7 +112,8 @@ def test_deploy_with_transient_constructor_failure(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    assert len(deployment_dict["TransientConstructorFailureDeployment"]) == 2
+    deployment_name = get_deployment_name("TransientConstructorFailureDeployment")
+    assert len(deployment_dict[deployment_name]) == 2
 
 
 if __name__ == "__main__":

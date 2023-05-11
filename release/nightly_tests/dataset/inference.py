@@ -58,7 +58,7 @@ def get_paths(bucket, path, max_files=100 * 1000):
 
 def preprocess(batch):
     preprocessor = Preprocessor()
-    return preprocessor(batch)
+    return {"bytes": preprocessor(batch["bytes"])}
 
 
 infer_initialized = False
@@ -72,7 +72,7 @@ def infer(batch):
         model_fn = ImageModel()
     ndarr_obj = batch.values
     input_tensor_np = np.array([img.numpy() for img in ndarr_obj.reshape(-1)])
-    return list(model_fn(input_tensor_np))
+    return {"out": list(model_fn(input_tensor_np))}
 
 
 ray.init()
@@ -86,17 +86,21 @@ ds = ray.data.read_binary_files(
     ray_remote_args={"num_cpus": 0.5},
 )
 # Do a blocking map so that we can measure the download time.
-ds = ds.map(lambda x: x).fully_executed()
+ds = ds.map(lambda x: x).materialize()
 
 end_download_time = time.time()
 print("Preprocessing...")
-ds = ds.map(preprocess).fully_executed()
+ds = ds.map(preprocess).materialize()
 end_preprocess_time = time.time()
 print("Inferring...")
 # NOTE: set a small batch size to avoid OOM on GRAM when doing inference.
 ds = ds.map_batches(
-    infer, num_gpus=0.25, batch_size=128, batch_format="pandas", compute="actors"
-).fully_executed()
+    infer,
+    num_gpus=0.25,
+    batch_size=128,
+    batch_format="pandas",
+    compute=ray.data.ActorPoolStrategy(),
+).materialize()
 
 end_time = time.time()
 

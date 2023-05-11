@@ -11,6 +11,8 @@ For more information on these tools, check out the more comprehensive :ref:`Obse
 
 The rest of this page will focus on how to access these services when running a Ray Cluster.
 
+.. _monitor-cluster-via-dashboard:
+
 Monitoring the cluster via the dashboard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -19,32 +21,34 @@ including the running jobs, actors, workers, nodes, etc.
 By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
 not publicly expose the port.
 
-.. tabbed:: If using the VM cluster launcher
+.. tab-set::
 
-    You can securely port-forward local traffic to the dashboard via the ``ray
-    dashboard`` command.
+    .. tab-item:: If using the VM cluster launcher
 
-    .. code-block:: shell
+        You can securely port-forward local traffic to the dashboard via the ``ray
+        dashboard`` command.
 
-        $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
+        .. code-block:: shell
 
-    The dashboard will now be visible at ``http://localhost:8265``.
+            $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
 
-.. tabbed:: If using Kubernetes
+        The dashboard will now be visible at ``http://localhost:8265``.
 
-    The KubeRay operator makes the dashboard available via a Service targeting
-    the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
-    dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
+    .. tab-item:: If using Kubernetes
 
-    You can also view the dashboard from outside the Kubernetes cluster by
-    using port-forwarding:
+        The KubeRay operator makes the dashboard available via a Service targeting
+        the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
+        dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
-    .. code-block:: shell
+        You can also view the dashboard from outside the Kubernetes cluster by
+        using port-forwarding:
 
-        $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+        .. code-block:: shell
 
-    For more information about configuring network access to a Ray cluster on
-    Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
+            $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+
+        For more information about configuring network access to a Ray cluster on
+        Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
 
 
 Using Ray Cluster CLI tools
@@ -61,38 +65,40 @@ These CLI commands can be run on any node in a Ray Cluster. Examples for
 executing these commands from a machine outside the Ray Cluster are provided
 below.
 
-.. tabbed:: If using the VM cluster launcher
+.. tab-set::
 
-    Execute a command on the cluster using ``ray exec``:
+    .. tab-item:: If using the VM cluster launcher
 
-    .. code-block:: shell
+        Execute a command on the cluster using ``ray exec``:
 
-        $ ray exec <cluster config file> "ray status"
+        .. code-block:: shell
 
-.. tabbed:: If using Kubernetes
+            $ ray exec <cluster config file> "ray status"
 
-    Execute a command on the cluster using ``kubectl exec`` and the configured
-    RayCluster name. We will use the Service targeting the Ray head pod to
-    execute a CLI command on the cluster.
+    .. tab-item:: If using Kubernetes
 
-    .. code-block:: shell
+        Execute a command on the cluster using ``kubectl exec`` and the configured
+        RayCluster name. We will use the Service targeting the Ray head pod to
+        execute a CLI command on the cluster.
 
-        # First, find the name of the Ray head service.
-        $ kubectl get pod | grep <RayCluster name>-head
-        # NAME                                             READY   STATUS    RESTARTS   AGE
-        # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+        .. code-block:: shell
 
-        # Then, use the name of the Ray head service to run `ray status`.
-        $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
+            # First, find the name of the Ray head service.
+            $ kubectl get pod | grep <RayCluster name>-head
+            # NAME                                             READY   STATUS    RESTARTS   AGE
+            # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+
+            # Then, use the name of the Ray head service to run `ray status`.
+            $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
 
 .. _multi-node-metrics:
 
 Prometheus
 ^^^^^^^^^^
-Ray supports prometheus for emitting and recording time-series metrics.
+Ray supports Prometheus for emitting and recording time-series metrics.
 See :ref:`metrics <ray-metrics>` for more details of the metrics emitted.
-When using Prometheus in a Ray cluster, one must decide where they want to host prometheus and then configure
-Prometheus so that Prometheus can scrape the metrics from Ray.
+To use Prometheus in a Ray cluster, decide where to host it, then configure
+it so that it can scrape the metrics from Ray.
 
 Scraping metrics
 ################
@@ -202,24 +208,24 @@ Ray Cluster information. Here, we will use a Python script and the
 
 Grafana
 ^^^^^^^
-Ray dashboard integrates with grafana to show visualizations of time-series metrics.
+Ray dashboard integrates with Grafana to show visualizations of time-series metrics.
 
 .. image:: images/graphs.png
     :align: center
 
-First, you must decide where you want to host Grafana. One common place is to run it on the head node of the cluster.
-See :ref:`here <grafana>` for instructions on how to install Grafana and how to use the default Grafana configurations
+First decide where to host Grafana. A common location is on the head node of the cluster.
+See :ref:`instructions <grafana>` for installing Grafana and using the default Grafana configurations
 exported by Ray.
 
-Next, the head node must be able to access Prometheus and Grafana and the browser of the dashboard user
-must be able to access Grafana. You can configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
+Next, the head node must be able to access Prometheus and Grafana, and the browser of the dashboard user
+must be able to access Grafana. Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`,
 and `RAY_GRAFANA_IFRAME_HOST` environment variables.
 
-* `RAY_GRAFANA_HOST` should be set to an address that the head node can use to access Grafana.
-* `RAY_PROMETHEUS_HOST` should be set to an address the head node can use to access Prometheus.
-* `RAY_GRAFANA_IFRAME_HOST` can be set to an address for the user's browsers to use to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST` will be equal to `RAY_GRAFANA_HOST`.
+* Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana.
+* Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
+*  You can set`RAY_GRAFANA_IFRAME_HOST` to an address for the user's browsers to access Grafana. By default, `RAY_GRAFANA_IFRAME_HOST` is equal to `RAY_GRAFANA_HOST`.
 
-For example, if the ip of the head node is 55.66.77.88 and grafana is hosted on port 3000. One should set the value
+For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value
 to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
 
 
@@ -228,7 +234,7 @@ to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
 Using an existing Grafana instance
 ##################################
 
-When you want to use existing Grafana instance, before starting your Ray cluster you will need to setup environment variable `RAY_GRAFANA_HOST` with an URL of your Grafana. After starting Ray, you can find Grafana dashboard json at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
+To use an existing Grafana instance, set up the environment variable `RAY_GRAFANA_HOST` environment variable with a URL of your Grafana, before starting your Ray cluster. After starting Ray, find the Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
 
 If Grafana reports that datasource is not found, you can `add a datasource variable <https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable>`_ and using `JSON model view <https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model>`_ change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
 

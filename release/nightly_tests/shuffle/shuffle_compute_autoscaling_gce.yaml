@@ -1,0 +1,22 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs: 
+    - us-west1-c
+
+#aws:
+#    BlockDeviceMappings:
+#        - DeviceName: /dev/sda1
+#          Ebs:
+#            DeleteOnTermination: true
+#            VolumeSize: 500
+
+head_node_type:
+    name: head_node
+    instance_type: n2-highmem-16 # i3.4xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: n2-highmem-16 # i3.4xlarge
+      min_workers: 0
+      max_workers: 19
+      use_spot: false

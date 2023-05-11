@@ -10,16 +10,16 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    BatchUDF,
+    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    RowUDF,
+    StrictModeError,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -36,14 +36,11 @@ BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
-    # Callable[[Block, BatchUDF, ...], Iterable[Block]],
+    # Callable[[Block, UserDefinedFunction, ...], Iterable[Block]],
     Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, UserDefinedFunction], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
-
-# UDF on a batch or row.
-UDF = Union[BatchUDF, RowUDF]
 
 
 @DeveloperAPI
@@ -68,22 +65,20 @@ class TaskPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
-        assert (
-            not DatasetContext.get_current().new_execution_backend
-        ), "Legacy backend off"
+        assert not DataContext.get_current().new_execution_backend, "Legacy backend off"
         assert fn_constructor_args is None and fn_constructor_kwargs is None
         if fn_args is None:
             fn_args = tuple()
         if fn_kwargs is None:
             fn_kwargs = {}
 
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
 
         # Handle empty datasets.
         if block_list.initial_num_blocks() == 0:
@@ -179,7 +174,7 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, TaskPoolStrategy)
+        return isinstance(other, TaskPoolStrategy) or other == "tasks"
 
 
 @PublicAPI
@@ -190,9 +185,9 @@ class ActorPoolStrategy(ComputeStrategy):
     for a given Dataset transform. This is useful for stateful setup of callable
     classes.
 
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
     To autoscale from ``m`` to ``n`` actors, specify
-    ``compute=ActorPoolStrategy(m, n)``.
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
+    ``ActorPoolStrategy(min_size=m, max_size=n)``.
 
     To increase opportunities for pipelining task dependency prefetching with
     computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
@@ -202,13 +197,20 @@ class ActorPoolStrategy(ComputeStrategy):
 
     def __init__(
         self,
-        min_size: int = 1,
+        # Deprecated: kwargs will be required for all args in a future release.
+        legacy_min_size: Optional[int] = None,
+        legacy_max_size: Optional[int] = None,
+        *,
+        size: Optional[int] = None,
+        min_size: Optional[int] = None,
         max_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
         Args:
+            size: Specify a fixed size actor pool of this size. It is an error to
+                specify both `size` and `min_size` or `max_size`.
             min_size: The minimize size of the actor pool.
             max_size: The maximum size of the actor pool.
             max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
@@ -217,10 +219,38 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
-        if min_size < 1:
-            raise ValueError("min_size must be > 1", min_size)
-        if max_size is not None and min_size > max_size:
-            raise ValueError("min_size must be <= max_size", min_size, max_size)
+        ctx = DataContext.get_current()
+        if legacy_min_size is not None or legacy_max_size is not None:
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    "In Ray 2.5, ActorPoolStrategy requires min_size and "
+                    "max_size to be explicit kwargs."
+                )
+            else:
+                logger.warning(
+                    "DeprecationWarning: ActorPoolStrategy will require min_size and "
+                    "max_size to be explicit kwargs in a future release"
+                )
+            if legacy_min_size is not None:
+                min_size = legacy_min_size
+            if legacy_max_size is not None:
+                max_size = legacy_max_size
+        if size:
+            if size < 1:
+                raise ValueError("size must be >= 1", size)
+            if max_size is not None or min_size is not None:
+                raise ValueError(
+                    "min_size and max_size cannot be set at the same time as `size`"
+                )
+            min_size = size
+            max_size = size
+        if min_size is not None and min_size < 1:
+            raise ValueError("min_size must be >= 1", min_size)
+        if max_size is not None:
+            if min_size is None:
+                min_size = 1  # Legacy default.
+            if min_size > max_size:
+                raise ValueError("min_size must be <= max_size", min_size, max_size)
         if (
             max_tasks_in_flight_per_actor is not None
             and max_tasks_in_flight_per_actor < 1
@@ -229,7 +259,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 "max_tasks_in_flight_per_actor must be >= 1, got: ",
                 max_tasks_in_flight_per_actor,
             )
-        self.min_size = min_size
+        self.min_size = min_size or 1
         self.max_size = max_size or float("inf")
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.num_workers = 0
@@ -243,16 +273,14 @@ class ActorPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
-        assert (
-            not DatasetContext.get_current().new_execution_backend
-        ), "Legacy backend off"
+        assert not DataContext.get_current().new_execution_backend, "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
         if fn_kwargs is None:
@@ -359,7 +387,7 @@ class ActorPoolStrategy(ComputeStrategy):
             remote_args["num_cpus"] = 1
 
         if "scheduling_strategy" not in remote_args:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
                 remote_args["scheduling_strategy"] = "SPREAD"
             else:
@@ -470,7 +498,15 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
-    if not compute_spec or compute_spec == "tasks":
+    ctx = DataContext.get_current()
+    if ctx.strict_mode and not isinstance(
+        compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
+    ):
+        raise StrictModeError(
+            "In Ray 2.5, the compute spec must be either "
+            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+        )
+    elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
     elif compute_spec == "actors":
         return ActorPoolStrategy()
@@ -491,7 +527,7 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 def _map_block_split(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
@@ -519,7 +555,7 @@ def _map_block_split(
 def _map_block_nosplit(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
@@ -585,7 +621,7 @@ def _check_batch_size(
         if meta.num_rows and meta.size_bytes:
             batch_size_bytes = math.ceil(batch_size * (meta.size_bytes / meta.num_rows))
             break
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     if (
         batch_size_bytes is not None
         and batch_size_bytes > context.target_max_block_size
@@ -597,6 +633,6 @@ def _check_batch_size(
             "may result in out-of-memory errors for certain workloads, and you may "
             "want to decrease your batch size or increase the configured target max "
             "block size, e.g.: "
-            "from ray.data.context import DatasetContext; "
-            "DatasetContext.get_current().target_max_block_size = 4_000_000_000"
+            "from ray.data.context import DataContext; "
+            "DataContext.get_current().target_max_block_size = 4_000_000_000"
         )

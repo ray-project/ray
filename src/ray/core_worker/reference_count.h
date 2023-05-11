@@ -315,6 +315,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
+  size_t NumObjectOwnedByUs() const LOCKS_EXCLUDED(mutex_);
+
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
 
@@ -1010,6 +1012,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
   std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
+
+  /// Keep track of objects owend by this worker.
+  size_t num_objects_owned_by_us_ GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace core

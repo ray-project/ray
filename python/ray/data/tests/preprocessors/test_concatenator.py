@@ -28,7 +28,7 @@ class TestConcatenator:
         )
 
         with pytest.raises(ValueError, match="'b'"):
-            prep.transform(ds).fully_executed()
+            prep.transform(ds).materialize()
 
     @pytest.mark.parametrize("exclude", ("b", ["b"]))
     def test_exclude(self, exclude):

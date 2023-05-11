@@ -34,7 +34,7 @@ from tensorflow.keras import layers
 
 from ray.air import session
 from ray.air.config import ScalingConfig
-from ray.air.integrations.keras import Callback as KerasCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
 
 
@@ -55,7 +55,7 @@ def train_loop_per_worker(config):
     epochs = config["num_epochs"]
     num_features = config["num_features"]
 
-    # Get the Ray Dataset shard for this data parallel worker,
+    # Get the Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
     train_data = session.get_dataset_shard("train")
 
@@ -79,7 +79,7 @@ def train_loop_per_worker(config):
         )
         multi_worker_model.fit(
             tf_dataset,
-            callbacks=[KerasCallback()],
+            callbacks=[ReportCheckpointCallback()],
             verbose=0,
         )
 
@@ -103,8 +103,8 @@ trainer = TensorflowTrainer(
     preprocessor=preprocessor,
 )
 
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 8.997025489807129, ...}
 # __air_tf_train_end__
 

@@ -1,12 +1,14 @@
+import tempfile
+import unittest
+from typing import Mapping
+
 import gymnasium as gym
 import tensorflow as tf
-import tensorflow_probability as tfp
-from typing import Mapping
-import unittest
 
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -45,11 +47,13 @@ class TestRLModule(unittest.TestCase):
         )
         with tf.GradientTape() as tape:
             output = module.forward_train({"obs": obs})
-            loss = -tf.math.reduce_mean(output["action_dist"].log_prob(actions))
+            action_dist_class = module.get_train_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                output[SampleBatch.ACTION_DIST_INPUTS]
+            )
+            loss = -tf.math.reduce_mean(action_dist.logp(actions))
 
         self.assertIsInstance(output, Mapping)
-        self.assertIn("action_dist", output)
-        self.assertIsInstance(output["action_dist"], tfp.distributions.Categorical)
 
         grads = tape.gradient(loss, module.trainable_variables)
 
@@ -104,7 +108,7 @@ class TestRLModule(unittest.TestCase):
         state2_after = module2.get_state()
         check(state, state2_after)
 
-    def test_serialize_deserialize(self):
+    def test_checkpointing(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
             config=RLModuleConfig(
@@ -113,20 +117,11 @@ class TestRLModule(unittest.TestCase):
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module.save_to_checkpoint(tmpdir)
+            new_module = DiscreteBCTFModule.from_checkpoint(tmpdir)
 
-        # create a new module from the old module
-        new_module = module.deserialize(module.serialize())
-
-        # check that the new module is the same type
-        self.assertIsInstance(new_module, type(module))
-
-        # check that a parameter of their's is the same
-        self.assertEqual(new_module._input_dim, module._input_dim)
-
-        # check that their states are the same
         check(module.get_state(), new_module.get_state())
-
-        # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
 
 

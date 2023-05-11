@@ -26,6 +26,15 @@ _op_name_white_list = [
     "ReadTFRecord",
     "ReadBinary",
     "ReadCustom",
+    # From
+    "FromItems",
+    "FromPandasRefs",
+    "FromHuggingFace",
+    "FromDask",
+    "FromModin",
+    "FromMars",
+    "FromNumpyRefs",
+    "FromArrowRefs",
     # Write
     "WriteParquet",
     "WriteJSON",
@@ -45,6 +54,8 @@ _op_name_white_list = [
     "Repartition",
     "Sort",
     "Aggregate",
+    # N-ary
+    "Zip",
 ]
 
 

@@ -17,7 +17,7 @@ def _reduce(ds: ray.data.Dataset):
         if "serialize_lineage" in tb:
             _already_in_out_of_band_serialization = True
             break
-    if not _already_in_out_of_band_serialization:
+    if not _already_in_out_of_band_serialization and ds.has_serializable_lineage():
         return _deserialize_and_fully_execute_if_needed, (ds.serialize_lineage(),)
     else:
         return ds.__reduce__()

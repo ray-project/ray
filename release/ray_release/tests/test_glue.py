@@ -4,7 +4,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Type, Callable
+from typing import Type, Callable, Optional
 import unittest
 from unittest.mock import patch
 
@@ -44,7 +44,6 @@ from ray_release.glue import (
     run_release_test,
     type_str_to_command_runner,
     command_runner_to_cluster_manager,
-    command_runner_to_file_manager,
     TIMEOUT_BUFFER_MINUTES,
 )
 from ray_release.logger import logger
@@ -138,7 +137,9 @@ class GlueTest(unittest.TestCase):
                 self,
                 cluster_manager: ClusterManager,
                 file_manager: FileManager,
-                working_dir: str,
+                working_dir,
+                sdk=None,
+                artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
                     cluster_manager, file_manager, this_tempdir
@@ -159,7 +160,6 @@ class GlueTest(unittest.TestCase):
 
         type_str_to_command_runner["unit_test"] = MockCommandRunner
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
-        command_runner_to_file_manager[MockCommandRunner] = MockFileManager
 
         self.test = Test(
             name="unit_test_end_to_end",
@@ -242,7 +242,7 @@ class GlueTest(unittest.TestCase):
         if until == "fetch_results":
             return
 
-        self.command_runner_return["get_last_logs"] = "Lorem ipsum"
+        self.command_runner_return["get_last_logs_ex"] = "Lorem ipsum"
 
         if until == "get_last_logs":
             return
@@ -629,14 +629,13 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("fetch_results")
 
-        self.command_runner_return["get_last_logs"] = _fail_on_call(LogsError)
+        self.command_runner_return["get_last_logs_ex"] = _fail_on_call(LogsError)
 
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
             self.assertTrue(any("Error fetching logs" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "finished")
-        self.assertIn("No logs", result.last_logs)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
@@ -663,7 +662,7 @@ class GlueTest(unittest.TestCase):
         self._succeed_until("complete")
 
         class FailReporter(Reporter):
-            def report_result(self, test: Test, result: Result):
+            def report_result_ex(self, test: Test, result: Result):
                 raise RuntimeError
 
         with self.assertLogs(logger, "ERROR") as cm:

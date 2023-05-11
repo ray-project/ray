@@ -1,4 +1,4 @@
-import { Color } from "@material-ui/core";
+import { Color, createStyles, makeStyles } from "@material-ui/core";
 import {
   blue,
   blueGrey,
@@ -6,12 +6,20 @@ import {
   green,
   grey,
   lightBlue,
+  orange,
   red,
+  yellow,
 } from "@material-ui/core/colors";
 import { CSSProperties } from "@material-ui/core/styles/withStyles";
+import classNames from "classnames";
 import React, { ReactNode } from "react";
 import { ActorEnum } from "../type/actor";
 import { PlacementGroupState } from "../type/placementGroup";
+import {
+  ServeApplicationStatus,
+  ServeDeploymentStatus,
+  ServeReplicaState,
+} from "../type/serve";
 import { TypeTaskStatus } from "../type/task";
 
 const colorMap = {
@@ -56,6 +64,25 @@ const colorMap = {
     [PlacementGroupState.REMOVED]: red,
     [PlacementGroupState.RESCHEDULING]: "#cfcf08",
   },
+  serveApplication: {
+    [ServeApplicationStatus.NOT_STARTED]: grey,
+    [ServeApplicationStatus.DEPLOYING]: yellow,
+    [ServeApplicationStatus.RUNNING]: green,
+    [ServeApplicationStatus.DEPLOY_FAILED]: red,
+    [ServeApplicationStatus.DELETING]: yellow,
+  },
+  serveDeployment: {
+    [ServeDeploymentStatus.UPDATING]: yellow,
+    [ServeDeploymentStatus.HEALTHY]: green,
+    [ServeDeploymentStatus.UNHEALTHY]: red,
+  },
+  serveReplica: {
+    [ServeReplicaState.STARTING]: yellow,
+    [ServeReplicaState.UPDATING]: yellow,
+    [ServeReplicaState.RECOVERING]: orange,
+    [ServeReplicaState.RUNNING]: green,
+    [ServeReplicaState.STOPPING]: red,
+  },
 } as {
   [key: string]: {
     [key: string]: Color | string;
@@ -70,23 +97,35 @@ const typeMap = {
   [key: string]: Color;
 };
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    root: {
+      padding: "2px 8px",
+      border: "solid 1px",
+      borderRadius: 4,
+      fontSize: 12,
+      margin: 2,
+      display: "inline-flex",
+      alignItems: "center",
+    },
+    afterIcon: {
+      marginLeft: 4,
+    },
+  }),
+);
+
 export const StatusChip = ({
   type,
   status,
   suffix,
+  icon,
 }: {
   type: string;
   status: string | ActorEnum | ReactNode;
   suffix?: string;
+  icon?: ReactNode;
 }) => {
-  const style = {
-    padding: "2px 8px",
-    border: "solid 1px",
-    borderRadius: 4,
-    fontSize: 12,
-    margin: 2,
-  } as CSSProperties;
-
+  const classes = useStyles();
   let color: Color | string = blueGrey;
 
   if (typeMap[type]) {
@@ -101,6 +140,7 @@ export const StatusChip = ({
 
   const colorValue = typeof color === "string" ? color : color[500];
 
+  const style: CSSProperties = {};
   style.color = colorValue;
   style.borderColor = colorValue;
   if (color !== blueGrey) {
@@ -108,8 +148,11 @@ export const StatusChip = ({
   }
 
   return (
-    <span style={style}>
-      {status}
+    <span className={classes.root} style={style}>
+      {icon}
+      <span className={classNames({ [classes.afterIcon]: icon !== undefined })}>
+        {status}
+      </span>
       {suffix}
     </span>
   );

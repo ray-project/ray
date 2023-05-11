@@ -8,8 +8,6 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 torch, nn = try_import_torch()
 
 
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
 @DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
@@ -17,6 +15,8 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
         if lr_schedule is None:
             self.cur_lr = lr
         else:
@@ -28,7 +28,7 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule:
+        if self._lr_schedule and not self.config.get("_enable_learner_api", False):
             self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
             for opt in self._optimizers:
                 for p in opt.param_groups:
@@ -42,7 +42,11 @@ class EntropyCoeffSchedule:
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if entropy_coeff_schedule is None or (
+            self.config.get("_enable_learner_api", False)
+        ):
             self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
@@ -172,7 +176,7 @@ class TargetNetworkMixin:
 
     - Adds the `update_target` method to the policy.
       Calling `update_target` updates all target Q-networks' weights from their
-      respective "main" Q-metworks, based on tau (smooth, partial updating).
+      respective "main" Q-networks, based on tau (smooth, partial updating).
     """
 
     def __init__(self):
@@ -184,17 +188,32 @@ class TargetNetworkMixin:
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
         tau = tau or self.config.get("tau", 1.0)
+
         model_state_dict = self.model.state_dict()
+
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
-        target_state_dict = next(iter(self.target_models.values())).state_dict()
-        model_state_dict = {
-            k: tau * model_state_dict[k] + (1 - tau) * v
-            for k, v in target_state_dict.items()
-        }
 
-        for target in self.target_models.values():
-            target.load_state_dict(model_state_dict)
+        if self.config.get("_enable_rl_module_api", False):
+            target_current_network_pairs = self.model.get_target_network_pairs()
+            for target_network, current_network in target_current_network_pairs:
+                current_state_dict = current_network.state_dict()
+                new_state_dict = {
+                    k: tau * current_state_dict[k] + (1 - tau) * v
+                    for k, v in target_network.state_dict().items()
+                }
+                target_network.load_state_dict(new_state_dict)
+        else:
+            # Support partial (soft) synching.
+            # If tau == 1.0: Full sync from Q-model to target Q-model.
+            target_state_dict = next(iter(self.target_models.values())).state_dict()
+            model_state_dict = {
+                k: tau * model_state_dict[k] + (1 - tau) * v
+                for k, v in target_state_dict.items()
+            }
+
+            for target in self.target_models.values():
+                target.load_state_dict(model_state_dict)
 
     @override(TorchPolicy)
     def set_weights(self, weights):

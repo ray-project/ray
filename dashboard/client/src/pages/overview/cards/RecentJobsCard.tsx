@@ -2,12 +2,8 @@ import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import classNames from "classnames";
 import _ from "lodash";
 import React from "react";
-import {
-  RiCheckboxCircleFill,
-  RiCloseCircleFill,
-  RiLoader4Line,
-} from "react-icons/ri";
 import { Link } from "react-router-dom";
+import { JobStatusIcon } from "../../../common/JobStatus";
 import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
@@ -40,6 +36,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
+
   const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   return (
@@ -57,7 +54,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
           <Typography variant="h4">No jobs yet...</Typography>
         )}
       </div>
-      <LinkWithArrow text="View all jobs" to="/new/jobs" />
+      <LinkWithArrow text="View all jobs" to="/jobs" />
     </OverviewCard>
   );
 };
@@ -70,33 +67,6 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       flexWrap: "nowrap",
       alignItems: "center",
       textDecoration: "none",
-    },
-    icon: {
-      width: 24,
-      height: 24,
-      marginRight: theme.spacing(1),
-      flex: "0 0 20px",
-    },
-    "@keyframes spinner": {
-      from: {
-        transform: "rotate(0deg)",
-      },
-      to: {
-        transform: "rotate(360deg)",
-      },
-    },
-    colorSuccess: {
-      color: theme.palette.success.main,
-    },
-    colorError: {
-      color: theme.palette.error.main,
-    },
-    iconRunning: {
-      color: "#1E88E5",
-      animationName: "$spinner",
-      animationDuration: "1000ms",
-      animationIterationCount: "infinite",
-      animationTimingFunction: "linear",
     },
     textContainer: {
       flex: "1 1 auto",
@@ -111,6 +81,9 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       whiteSpace: "nowrap",
       color: "#5F6469",
     },
+    icon: {
+      marginRight: theme.spacing(1),
+    },
   }),
 );
 
@@ -122,46 +95,33 @@ type RecentJobListItemProps = {
 const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
   const classes = useRecentJobListItemStyles();
 
-  const icon = (() => {
-    switch (job.status) {
-      case "SUCCEEDED":
-        return (
-          <RiCheckboxCircleFill
-            className={classNames(classes.icon, classes.colorSuccess)}
-          />
-        );
-      case "FAILED":
-      case "STOPPED":
-        return (
-          <RiCloseCircleFill
-            className={classNames(classes.icon, classes.colorError)}
-          />
-        );
-      default:
-        return (
-          <RiLoader4Line
-            className={classNames(classes.icon, classes.iconRunning)}
-          />
-        );
-    }
-  })();
+  const cardContent = (
+    <React.Fragment>
+      <JobStatusIcon className={classes.icon} job={job} />
+      <div className={classes.textContainer}>
+        <Typography className={classes.title} variant="body2">
+          {job.job_id ?? job.submission_id}
+        </Typography>
+        <Typography
+          className={classes.entrypoint}
+          title={job.entrypoint}
+          variant="caption"
+        >
+          {job.entrypoint}
+        </Typography>
+      </div>
+    </React.Fragment>
+  );
+
   return (
     <div className={className}>
-      <Link className={classes.root} to={`/new/jobs/${job.job_id}`}>
-        {icon}
-        <div className={classes.textContainer}>
-          <Typography className={classes.title} variant="body2">
-            {job.job_id ?? job.submission_id}
-          </Typography>
-          <Typography
-            className={classes.entrypoint}
-            title={job.entrypoint}
-            variant="caption"
-          >
-            {job.entrypoint}
-          </Typography>
-        </div>
-      </Link>
+      {job.job_id !== null && job.job_id !== "" ? (
+        <Link className={classes.root} to={`/jobs/${job.job_id}`}>
+          {cardContent}
+        </Link>
+      ) : (
+        <div className={classes.root}>{cardContent}</div>
+      )}
     </div>
   );
 };

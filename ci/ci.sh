@@ -77,15 +77,17 @@ reload_env() {
   fi
 }
 
-need_wheels() {
-  local error_code=1
+_need_wheels() {
+  local result="false"
   case "${OSTYPE}" in
-    linux*) if [ "${LINUX_WHEELS-}" = 1 ]; then error_code=0; fi;;
-    darwin*) if [ "${MAC_WHEELS-}" = 1 ]; then error_code=0; fi;;
-    msys*) if [ "${WINDOWS_WHEELS-}" = 1 ]; then error_code=0; fi;;
+    linux*) if [[ "${LINUX_WHEELS-}" == "1" ]]; then result="true"; fi;;
+    darwin*) if [[ "${MAC_WHEELS-}" == "1" ]]; then result="true"; fi;;
+    msys*) if [[ "${WINDOWS_WHEELS-}" == "1" ]]; then result="true"; fi;;
   esac
-  return "${error_code}"
+  echo "${result}"
 }
+
+NEED_WHEELS="$(_need_wheels)"
 
 upload_wheels() {
   local branch="" commit
@@ -152,7 +154,7 @@ prepare_docker() {
     EXPOSE 8000
     EXPOSE 10001
     RUN pip install /${wheel}[serve]
-    RUN sudo apt update && sudo apt install curl -y
+    RUN (sudo apt update || true) && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
     pushd $tmp_dir
@@ -258,13 +260,14 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0 flush_logs=0
+  local result=0
+  local flush_logs=0
 
-  if need_wheels; then
+  if [[ "${NEED_WHEELS}" == "true" ]]; then
     "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
   fi
 
-  if [ 0 -ne "${flush_logs}" ]; then
+  if [[ 0 -ne "${flush_logs}" ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
@@ -284,6 +287,8 @@ install_npm_project() {
 build_dashboard_front_end() {
   if [ "${OSTYPE}" = msys ]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
+  elif [ "${NO_DASHBOARD-}" = "1" ]; then
+    echo "Skipping dashboard build"
   else
     (
       cd ray/dashboard/client
@@ -308,9 +313,10 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make html
+      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
+      FAST=True make develop
       pip install datasets==2.0.0
-      RAY_MOCK_MODULES=0 make doctest
+      RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
   )
 }
@@ -321,7 +327,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      make linkcheck
+      FAST=True make linkcheck
     fi
   )
 }
@@ -415,10 +421,10 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    WHL_COMMIT=$(unzip -p "$whl" | grep "^__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" "*ray/__init__.py" | grep "^__commit__" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
-      echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
+      echo "Wheel ${basename} has incorrect commit: (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
       exit 1
     fi
 
@@ -453,6 +459,7 @@ build_wheels() {
         -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
+        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
       )
 
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
@@ -489,7 +496,11 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      if [ "$(uname -m)" = "arm64" ]; then
+        "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
+      else
+        "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      fi
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
@@ -546,12 +557,12 @@ lint_bazel() {
 lint_bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
-  for team in "team:ml" "team:rllib" "team:serve"; do
+  for team in "team:core" "team:ml" "team:rllib" "team:serve"; do
     # this does the following:
     # - find all py_test rules in bazel that have the specified team tag EXCEPT ones with "no_main" tag and outputs them as xml
     # - converts the xml to json
     # - feeds the json into pytest_checker.py
-    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python scripts/pytest_checker.py
+    bazel query "kind(py_test.*, tests(python/...) intersect attr(tags, \"\b$team\b\", python/...) except attr(tags, \"\bno_main\b\", python/...))" --output xml | xq | python ci/lint/pytest_checker.py
   done
 }
 
@@ -739,7 +750,7 @@ build() {
     _bazel_build_protobuf
   fi
 
-  if ! need_wheels; then
+  if [[ "${NEED_WHEELS}" != "true" ]]; then
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
@@ -755,7 +766,7 @@ build() {
     install_go
   fi
 
-  if need_wheels; then
+  if [[ "${NEED_WHEELS}" == "true" ]]; then
     build_wheels
   fi
 }
@@ -789,20 +800,8 @@ run_minimal_test() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
   # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
 
-  # Todo: Make compatible with python 3.9/3.10
-  if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
-    # shellcheck disable=SC2086
-    bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
-  fi
-
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_serve_ray_minimal
   # shellcheck disable=SC2086
@@ -815,6 +814,7 @@ run_minimal_test() {
 
 test_minimal() {
   ./ci/env/install-minimal.sh "$1"
+  echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
   python ./ci/env/check_minimal_install.py
   run_minimal_test "$1"
@@ -823,8 +823,11 @@ test_minimal() {
 
 test_latest_core_dependencies() {
   ./ci/env/install-minimal.sh "$1"
+  echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
   ./ci/env/install-core-prerelease-dependencies.sh
+  echo "Installed Core prerelease dependencies."
+  ./ci/env/env_info.sh
   run_minimal_test "$1"
 }
 

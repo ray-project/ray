@@ -1,10 +1,10 @@
 import builtins
-from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
+from copy import copy
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
 import ray
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
@@ -12,9 +12,8 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
-    T,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -22,7 +21,7 @@ WriteResult = Any
 
 
 @PublicAPI
-class Datasource(Generic[T]):
+class Datasource:
     """Interface for defining a custom ``ray.data.Dataset`` datasource.
 
     To read a datasource into a dataset, use ``ray.data.read_datasource()``.
@@ -35,7 +34,7 @@ class Datasource(Generic[T]):
     ``write()`` are called in remote tasks.
     """
 
-    def create_reader(self, **read_args) -> "Reader[T]":
+    def create_reader(self, **read_args) -> "Reader":
         """Return a Reader for the given read arguments.
 
         The reader object will be responsible for querying the read metadata, and
@@ -47,7 +46,7 @@ class Datasource(Generic[T]):
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
-    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask[T]"]:
+    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
@@ -130,7 +129,7 @@ class Datasource(Generic[T]):
 
 
 @PublicAPI
-class Reader(Generic[T]):
+class Reader:
     """A bound read operation for a datasource.
 
     This is a stateful class so that reads can be prepared in multiple stages.
@@ -145,7 +144,7 @@ class Reader(Generic[T]):
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask[T]"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
@@ -168,7 +167,7 @@ class _LegacyDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask[T]"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
@@ -202,7 +201,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
             DeprecationWarning(
@@ -222,7 +221,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
 
 
 @PublicAPI
-class RangeDatasource(Datasource[Union[ArrowRow, int]]):
+class RangeDatasource(Datasource):
     """An example datasource that generates ranges of numbers from [0..n).
 
     Examples:
@@ -236,17 +235,25 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     def create_reader(
         self,
         n: int,
-        block_format: str = "list",
+        block_format: str = "arrow",
         tensor_shape: Tuple = (1,),
+        column_name: Optional[str] = None,
     ) -> List[ReadTask]:
-        return _RangeDatasourceReader(n, block_format, tensor_shape)
+        return _RangeDatasourceReader(n, block_format, tensor_shape, column_name)
 
 
 class _RangeDatasourceReader(Reader):
-    def __init__(self, n: int, block_format: str = "list", tensor_shape: Tuple = (1,)):
+    def __init__(
+        self,
+        n: int,
+        block_format: str = "list",
+        tensor_shape: Tuple = (1,),
+        column_name: Optional[str] = None,
+    ):
         self._n = n
         self._block_format = block_format
         self._tensor_shape = tensor_shape
+        self._column_name = column_name
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
@@ -272,7 +279,8 @@ class _RangeDatasourceReader(Reader):
                 import pyarrow as pa
 
                 return pa.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"]
+                    [np.arange(start, start + count)],
+                    names=[self._column_name or "value"],
                 )
             elif block_format == "tensor":
                 import pyarrow as pa
@@ -281,38 +289,43 @@ class _RangeDatasourceReader(Reader):
                     np.arange(start, start + count),
                     tuple(range(1, 1 + len(tensor_shape))),
                 )
-                return BlockAccessor.batch_to_block(tensor)
+                return BlockAccessor.batch_to_block(
+                    {self._column_name: tensor} if self._column_name else tensor
+                )
             else:
                 return list(builtins.range(start, start + count))
+
+        if block_format == "arrow":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            schema = pa.Table.from_pydict({self._column_name or "value": [0]}).schema
+        elif block_format == "tensor":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
+            )
+            schema = BlockAccessor.batch_to_block(
+                {self._column_name: tensor} if self._column_name else tensor
+            ).schema
+        elif block_format == "list":
+            schema = int
+        else:
+            raise ValueError("Unsupported block type", block_format)
+        if block_format == "tensor":
+            element_size = np.product(tensor_shape)
+        else:
+            element_size = 1
 
         i = 0
         while i < n:
             count = min(block_size, n - i)
-            if block_format == "arrow":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                schema = pa.Table.from_pydict({"value": [0]}).schema
-            elif block_format == "tensor":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                    np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-                )
-                schema = BlockAccessor.batch_to_block(tensor).schema
-            elif block_format == "list":
-                schema = int
-            else:
-                raise ValueError("Unsupported block type", block_format)
-            if block_format == "tensor":
-                element_size = np.product(tensor_shape)
-            else:
-                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=schema,
+                schema=copy(schema),
                 input_files=None,
                 exec_stats=None,
             )
@@ -325,7 +338,7 @@ class _RangeDatasourceReader(Reader):
 
 
 @DeveloperAPI
-class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
+class DummyOutputDatasource(Datasource):
     """An example implementation of a writable datasource for testing.
 
     Examples:
@@ -337,7 +350,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """
 
     def __init__(self):
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
 
         # Setup a dummy actor to send the data. In a real datasource, write
         # tasks would send data to an external system instead of a Ray actor.
@@ -375,7 +388,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == ["ok"] for w in write_results), write_results
+        assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
@@ -385,7 +398,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
 
 @DeveloperAPI
-class RandomIntRowDatasource(Datasource[ArrowRow]):
+class RandomIntRowDatasource(Datasource):
     """An example datasource that generates rows with random int64 columns.
 
     Examples:

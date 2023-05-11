@@ -1,11 +1,14 @@
+import tempfile
+import unittest
+from typing import Mapping
+
 import gymnasium as gym
 import torch
-from typing import Mapping
-import unittest
 
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -43,10 +46,13 @@ class TestRLModule(unittest.TestCase):
         output = module.forward_train({"obs": obs})
 
         self.assertIsInstance(output, Mapping)
-        self.assertIn("action_dist", output)
-        self.assertIsInstance(output["action_dist"], torch.distributions.Categorical)
+        self.assertIn(SampleBatch.ACTION_DIST_INPUTS, output)
 
-        loss = -output["action_dist"].log_prob(actions.view(-1)).mean()
+        action_dist_inputs = output[SampleBatch.ACTION_DIST_INPUTS]
+        action_dist_class = module.get_train_action_dist_cls()
+        action_dist = action_dist_class.from_logits(action_dist_inputs)
+
+        loss = -action_dist.logp(actions.view(-1)).mean()
         loss.backward()
 
         # check that all neural net parameters have gradients
@@ -100,7 +106,7 @@ class TestRLModule(unittest.TestCase):
         state2_after = module2.get_state()
         check(state, state2_after)
 
-    def test_serialize_deserialize(self):
+    def test_checkpointing(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
@@ -109,20 +115,12 @@ class TestRLModule(unittest.TestCase):
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = "/tmp/rl_module_test"
+            module.save_to_checkpoint(tmpdir)
+            new_module = DiscreteBCTorchModule.from_checkpoint(tmpdir)
 
-        # create a new module from the old module
-        new_module = module.deserialize(module.serialize())
-
-        # check that the new module is the same type
-        self.assertIsInstance(new_module, type(module))
-
-        # check that a parameter of their's is the same
-        self.assertEqual(new_module.input_dim, module.input_dim)
-
-        # check that their states are the same
         check(module.get_state(), new_module.get_state())
-
-        # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
 
 

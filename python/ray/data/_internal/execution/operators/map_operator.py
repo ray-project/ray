@@ -2,10 +2,15 @@ from abc import ABC, abstractmethod
 import copy
 from dataclasses import dataclass
 import itertools
-from typing import List, Iterator, Any, Dict, Optional, Union
+from typing import Callable, List, Iterator, Any, Dict, Optional, Union
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockExecStats,
+)
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
@@ -66,6 +71,7 @@ class MapOperator(PhysicalOperator, ABC):
         cls,
         transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
+        init_fn: Optional[Callable[[], None]] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -83,6 +89,7 @@ class MapOperator(PhysicalOperator, ABC):
         Args:
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
+            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
@@ -117,8 +124,15 @@ class MapOperator(PhysicalOperator, ABC):
                 compute_strategy
             )
             autoscaling_policy = AutoscalingPolicy(autoscaling_config)
+
+            if init_fn is None:
+
+                def init_fn():
+                    pass
+
             return ActorPoolMapOperator(
                 transform_fn,
+                init_fn,
                 input_op,
                 autoscaling_policy=autoscaling_policy,
                 name=name,
@@ -129,6 +143,7 @@ class MapOperator(PhysicalOperator, ABC):
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
     def start(self, options: "ExecutionOptions"):
+        super().start(options)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = _OrderedOutputQueue()
@@ -151,6 +166,7 @@ class MapOperator(PhysicalOperator, ABC):
                     args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                         self.locs[self.i],
                         soft=True,
+                        _spill_on_unavailable=True,
                     )
                     self.i += 1
                     self.i %= len(self.locs)
@@ -161,7 +177,6 @@ class MapOperator(PhysicalOperator, ABC):
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._transform_fn_ref = ray.put(self._transform_fn)
-        super().start(options)
 
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index

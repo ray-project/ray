@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Type, Union
 
-import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -30,8 +29,6 @@ class A3CTorchPolicy(
     """PyTorch Policy class used with A3C."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.a3c.a3c.A3CConfig().to_dict(), **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,

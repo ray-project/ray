@@ -20,7 +20,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
@@ -213,20 +212,3 @@ class CQL(SAC):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(CQLConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-CQL_DEFAULT_CONFIG = DEFAULT_CONFIG

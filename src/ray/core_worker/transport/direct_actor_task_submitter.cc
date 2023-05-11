@@ -140,8 +140,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       absl::MutexLock lock(&mu_);
       const auto queue_it = client_queues_.find(task_spec.ActorId());
       const auto &death_cause = queue_it->second.death_cause;
-      error_type = GenErrorTypeFromDeathCause(death_cause);
       error_info = GetErrorInfoFromActorDeathCause(death_cause);
+      error_type = error_info.error_type();
     }
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
@@ -304,8 +304,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     // Failing tasks has to be done without mu_ hold because the callback
     // might require holding mu_ which will lead to a deadlock.
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
-    rpc::ErrorType error_type = GenErrorTypeFromDeathCause(death_cause);
     const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
+    const auto error_type = error_info.error_type();
 
     for (auto &task_id : task_ids_to_fail) {
       // No need to increment the number of completed tasks since the actor is
@@ -528,7 +528,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
       const auto &death_cause = queue.death_cause;
       error_info = GetErrorInfoFromActorDeathCause(death_cause);
-      error_type = GenErrorTypeFromDeathCause(death_cause);
+      error_type = error_info.error_type();
       fail_immediatedly = error_info.has_actor_died_error() &&
                           error_info.actor_died_error().has_oom_context() &&
                           error_info.actor_died_error().oom_context().fail_immediately();
@@ -597,6 +597,19 @@ bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_i
   RAY_CHECK(it != client_queues_.end());
   return it->second.max_pending_calls > 0 &&
          it->second.cur_pending_calls >= it->second.max_pending_calls;
+}
+
+size_t CoreWorkerDirectActorTaskSubmitter::NumPendingTasks(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  return it->second.cur_pending_calls;
+}
+
+bool CoreWorkerDirectActorTaskSubmitter::CheckActorExists(const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  return client_queues_.find(actor_id) != client_queues_.end();
 }
 
 std::string CoreWorkerDirectActorTaskSubmitter::DebugString(

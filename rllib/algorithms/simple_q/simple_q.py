@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -117,7 +117,13 @@ class SimpleQConfig(AlgorithmConfig):
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
-        self.grad_clip = 40
+
+        self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.tau = 1.0
         # __sphinx_doc_end__
         # fmt: on
@@ -379,20 +385,3 @@ class SimpleQ(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SimpleQConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.simple_q::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.simple_q.simple_q::SimpleQConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

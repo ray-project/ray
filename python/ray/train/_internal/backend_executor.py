@@ -120,6 +120,13 @@ class BackendExecutor:
         # TODO remove
         if self._trial_info and self._trial_info.driver_ip:
             self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+
+        worker_locs = [
+            f"{w.metadata.pid} ({w.metadata.node_ip})"
+            for w in self.worker_group.workers
+        ]
+        logger.info(f"Starting distributed worker processes: {worker_locs}")
+
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
@@ -240,6 +247,7 @@ class BackendExecutor:
 
         futures = []
         for node_id, gpu_ids in node_id_to_gpu_ids.items():
+            gpu_ids = sorted(gpu_ids)
             all_gpu_ids = ",".join(gpu_ids)
 
             def set_gpu_ids():
@@ -333,7 +341,7 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Ray Dataset to be
+            dataset_spec: A specification for the Dataset to be
                 passed to the training workers, and the logic on how to shard the Ray
                 Dataset.
             checkpoint: The checkpoint data that

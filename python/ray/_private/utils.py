@@ -1,9 +1,9 @@
 import asyncio
 import binascii
+from collections import defaultdict
 import contextlib
 import errno
 import functools
-import hashlib
 import importlib
 import inspect
 import json
@@ -19,15 +19,23 @@ import tempfile
 import threading
 import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
-import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union, Coroutine
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    Coroutine,
+    List,
+)
 
 import grpc
-import numpy as np
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -68,6 +76,9 @@ win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
+
+# This global variable is used for testing only
+_CALLED_FREQ = defaultdict(lambda: 0)
 
 
 def get_user_temp_dir():
@@ -128,14 +139,6 @@ def read_ray_address(temp_dir: Optional[str] = None) -> str:
         return None
     with open(address_file, "r") as f:
         return f.read().strip()
-
-
-def _random_string():
-    id_hash = hashlib.shake_128()
-    id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
-    assert len(id_bytes) == ray_constants.ID_SIZE
-    return id_bytes
 
 
 def format_error_message(exception_message: str, task_exception: bool = False):
@@ -232,32 +235,6 @@ def publish_error_to_driver(
         logger.exception(f"Failed to publish error {error_data}")
 
 
-def random_string():
-    """Generate a random string to use as an ID.
-
-    Note that users may seed numpy, which could cause this function to generate
-    duplicate IDs. Therefore, we need to seed numpy ourselves, but we can't
-    interfere with the state of the user's random number generator, so we
-    extract the state of the random number generator and reset it after we are
-    done.
-
-    TODO(rkn): If we want to later guarantee that these are generated in a
-    deterministic manner, then we will need to make some changes here.
-
-    Returns:
-        A random byte string of length ray_constants.ID_SIZE.
-    """
-    # Get the state of the numpy random number generator.
-    numpy_state = np.random.get_state()
-    # Try to use true randomness.
-    np.random.seed(None)
-    # Generate the random ID.
-    random_id = np.random.bytes(ray_constants.ID_SIZE)
-    # Reset the state of the numpy random number generator.
-    np.random.set_state(numpy_state)
-    return random_id
-
-
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     """Make this unicode in Python 3, otherwise leave it as bytes.
 
@@ -275,10 +252,7 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
 
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
-    if sys.version_info >= (3, 0):
-        return byte_str.decode(encode_type)
-    else:
-        return byte_str
+    return byte_str.decode(encode_type)
 
 
 def ensure_str(s, encoding="utf-8", errors="strict"):
@@ -304,8 +278,7 @@ def binary_to_task_id(binary_task_id):
 
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
-    if sys.version_info >= (3, 0):
-        hex_identifier = hex_identifier.decode()
+    hex_identifier = hex_identifier.decode()
     return hex_identifier
 
 
@@ -1271,9 +1244,7 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["36", "37"]:
-        darwin_os_string = "macosx_10_15_intel"
-    elif py_version_str in ["38", "39"]:
+    if py_version_str in ["37", "38", "39"]:
         darwin_os_string = "macosx_10_15_x86_64"
     else:
         darwin_os_string = "macosx_10_15_universal2"
@@ -1295,7 +1266,7 @@ def get_wheel_filename(
 
     wheel_filename = (
         f"ray-{ray_version}-cp{py_version_str}-"
-        f"cp{py_version_str}{'m' if py_version_str in ['36', '37'] else ''}"
+        f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1404,9 +1375,9 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1438,9 +1409,9 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1495,10 +1466,10 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             return gcs_client.internal_kv_put(
                 key, value, overwrite=True, namespace=namespace
             )
-        except grpc.RpcError as e:
-            if e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+        except ray.exceptions.RpcError as e:
+            if e.rpc_code in (
+                grpc.StatusCode.UNAVAILABLE.value[0],
+                grpc.StatusCode.UNKNOWN.value[0],
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1510,7 +1481,7 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
             error = e
-    # Reraise the last grpc.RpcError.
+    # Reraise the last error.
     raise error
 
 
@@ -1829,9 +1800,7 @@ class DeferSigint(contextlib.AbstractContextManager):
         if threading.current_thread() == threading.main_thread():
             return cls()
         else:
-            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
-            # dropped.
-            return contextlib.suppress()
+            return contextlib.nullcontext()
 
     def _set_task_cancelled(self, signum, frame):
         """SIGINT handler that defers the signal."""
@@ -1912,3 +1881,37 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     # completion:
     task.add_done_callback(background_tasks.discard)
     return task
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def update_envs(env_vars: Dict[str, str]):
+    """
+    When updating the environment variable, if there is ${X},
+    it will be replaced with the current environment variable.
+    """
+    if not env_vars:
+        return
+
+    replaceable_keys = [
+        "PATH",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_PRELOAD",
+    ]
+
+    for key, value in env_vars.items():
+        if key in replaceable_keys:
+            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
+        else:
+            os.environ[key] = value
