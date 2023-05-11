@@ -18,9 +18,7 @@ import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { JOB_LIST } from "./hook/mockedUseJobList";
 import { useJobList } from "./hook/useJobList";
-
 import { JobRow } from "./JobRow";
 
 const useStyles = makeStyles((theme) => ({

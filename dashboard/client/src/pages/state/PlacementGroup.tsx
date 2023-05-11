@@ -4,21 +4,18 @@ import React, { useState } from "react";
 import PlacementGroupTable from "../../components/PlacementGroupTable";
 import { getPlacementGroup } from "../../service/placementGroup";
 import { PlacementGroup } from "../../type/placementGroup";
-import { mockData } from "./hook/mockedPlacementGroup";
 import { useStateApiList } from "./hook/useStateApi";
+
 /**
  * Represent the embedable actors page.
  */
-
 const PlacementGroupList = ({ jobId = null }: { jobId?: string | null }) => {
   const [timeStamp] = useState(dayjs());
   const data: PlacementGroup[] | undefined = useStateApiList(
     "usePlacementGroup",
     getPlacementGroup,
   );
-  // const placementGroups = data ? data : [];
-  const placementGroups = mockData;
-  console.log("placementGroups: ", placementGroups);
+  const placementGroups = data ? data : [];
 
   return (
     <div>
