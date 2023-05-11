@@ -15,8 +15,9 @@ class HuggingFacePredictor:
         self.model = pipeline("text-generation", model="gpt2")
 
     def __call__(self, batch: Dict[str, np.ndarray]):
-        model_out = self.model(list(batch["data"]), max_length=20)
-        return {"output": model_out}
+        model_out = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
+        batch["output"] = [sequence[0]["generated_text"] for sequence in model_out]
+        return batch
 
 scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
@@ -54,8 +55,9 @@ class HuggingFacePredictor:
         self.model = pipeline("text-generation", model="gpt2")
 
     def __call__(self, batch: Dict[str, np.ndarray]):  # <2>
-        model_out = self.model(list(batch["data"]), max_length=20)
-        return {"output": np.asarray(model_out)}
+        model_out = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
+        batch["output"] = [sequence[0]["generated_text"] for sequence in model_out]
+        return batch
 # __hf_quickstart_model_end__
 
 
