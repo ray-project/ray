@@ -24,19 +24,19 @@ TEST_TYPE_TO_BAZEL_CONFIG = {
     "medium_k_z": {
         "test_tag_filters": "-kubernetes,medium_size_python_tests_k_to_z",
     },
-    "external_redis_small": {
+    "redis_small": {
         "test_tag_filters": "client_tests,small_size_python_tests",
         "test_env": [
             "TEST_EXTERNAL_REDIS=1",
         ],
     },
-    "external_redis_medium_a_j": {
+    "redis_medium_a_j": {
         "test_tag_filters": "-kubernetes,medium_size_python_tests_a_to_j",
         "test_env": [
             "TEST_EXTERNAL_REDIS=1",
         ],
     },
-    "external_redis_medium_k_z": {
+    "redis_medium_k_z": {
         "test_tag_filters": "-kubernetes,medium_size_python_tests_k_to_z",
         "test_env": [
             "TEST_EXTERNAL_REDIS=1",
