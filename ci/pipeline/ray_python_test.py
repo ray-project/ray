@@ -81,14 +81,26 @@ def _run_tests(test_type: str, test_targets: Set[str]) -> None:
     """
     Run the tests.
     """
+    bazel_options = (
+        subprocess.check_output(
+            [
+                "./ci/run/bazel_export_options",
+            ]
+        )
+        .decode("utf-8")
+        .strip()
+        .split(" ")
+    )
     subprocess.check_call(
         [
             "bazel",
             "test",
             "--config=ci",
             "$(./ci/run/bazel_export_options)",
-            f"--test_tag_filters={TEST_TYPE_TO_BAZEL_CONFIG[test_type]['test_tag_filters']}",
+            "--test_tag_filters",
+            TEST_TYPE_TO_BAZEL_CONFIG[test_type]["test_tag_filters"],
         ]
+        + bazel_options
         + [
             f"--test_env={env}"
             for env in TEST_TYPE_TO_BAZEL_CONFIG[test_type].get("test_env", [])
