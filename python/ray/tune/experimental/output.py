@@ -538,7 +538,7 @@ def _detect_reporter(
     mode: Optional[str] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
-    rich_enabled = bool(int(os.environ.get("RAY_AIR_ENABLE_RICH", "0")))
+    rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
     if num_samples and num_samples > 1:
         if rich_enabled:
             if not rich:
@@ -548,7 +548,9 @@ def _detect_reporter(
             reporter = TuneTerminalReporter(verbosity, num_samples, metric, mode)
     else:
         if rich_enabled:
-            logger.warning("`RAY_AIR_ENABLE_RICH` is only effective with Tune usecase.")
+            logger.warning(
+                "`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase."
+            )
         reporter = TrainReporter(verbosity)
     return reporter
 

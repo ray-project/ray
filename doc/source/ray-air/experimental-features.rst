@@ -7,8 +7,8 @@ Experimental features in Ray AIR
 We're testing a number of experimental features in Ray AIR.
 
 During development and internal dogfooding, the features
-are disabled per default. You can opt-in by setting an
-environment variable.
+are disabled per default. You can opt-in by setting a
+feature-specific environment variable.
 
 After some time, we enable the feature per default to gather
 more feedback from the community. In that case, they can still
@@ -62,23 +62,31 @@ or Ray client is used.
 
 .. _air-experimental-rich:
 
-Sticky table layout
--------------------
+Rich layout (sticky status)
+---------------------------
 
 .. note::
 
     This feature is *disabled per default*.
 
-    To enable, set the environment variable ``RAY_AIR_ENABLE_RICH=1``.
+    To enable, set the environment variable ``RAY_AIR_RICH_LAYOUT=1``.
 
 As part of the :ref:`new output engine <air-experimental-new-output>`,
-we've introduced a sticky table layout. The regular console
-logs will continue to be printed as before, but the trial
-overview table (in Ray Tune) will be stuck to the bottom of the
+we've introduced an advanced layout using the
+`rich <https://github.com/Textualize/rich>`_ library.
+
+In the current iteration, the *rich* layout provides a sticky
+status table: The regular console logs will continue to be printed
+as before, but the trial overview table (in Ray Tune) will be stuck to the bottom of the
 screen and periodically updated.
 
 This feature is still in development. You can opt-in to try
 it out.
+
+To opt-in, you need to set the ``RAY_AIR_RICH_LAYOUT=1`` environment variable
+and have rich installed (``pip install rich``).
+
+.. figure:: images/rich-stick-status.png
 
 
 .. _air-experimental-execution:

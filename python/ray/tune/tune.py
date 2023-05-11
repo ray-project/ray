@@ -982,7 +982,7 @@ def run(
             air_verbosity, search_alg.total_samples, metric=metric, mode=mode
         )
 
-    # rich live context manager has to be called encapsulting
+    # rich live context manager has to be called encapsulating
     # the while loop. For other kind of reporters, no op.
     # `ExitStack` allows us to *conditionally* apply context manager.
     with contextlib.ExitStack() as stack:

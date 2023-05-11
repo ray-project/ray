@@ -112,7 +112,7 @@ Please also see the :ref:`Ray Tune environment variables <tune-env-vars>`.
   are printed. Defaults to 0 (disabled).
 - **RAY_AIR_NEW_OUTPUT**: If set to 0, this will disable
   the :ref:`experimental new console output <air-experimental-new-output>`.
-- **RAY_AIR_ENABLE_RICH**: If set to 1, this will enable
+- **RAY_AIR_RICH_LAYOUT**: If set to 1, this will enable
   the :ref:`stick table layout <air-experimental-rich>`
   (currently only available for Ray Tune).
 
