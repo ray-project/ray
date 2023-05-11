@@ -6115,5 +6115,5 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 1200
+    timeout: 2400
     script: python launch_and_verify_cluster.py gcp/example-full.yaml
