@@ -583,7 +583,7 @@ def delete(name: str, _blocking: bool = True):
 def multiplexed(
     func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = -1
 ):
-    """Coverts a function or method to a multiplexed function.
+    """[EXPERIMENTAL] Coverts a function or method to a multiplexed function.
 
     The function can be standalone function or a method of a class. The
     function must have exact one argument with type `str` and the argument
@@ -696,7 +696,7 @@ def multiplexed(
 
 @PublicAPI(stability="alpha")
 def get_model_id() -> str:
-    """Returns the model id of the current request.
+    """[EXPERIMENTAL] Returns the model id of the current request.
 
     When user defines a multiplexed deployment, the model id of the current request
     can be retrieved by calling `serve.get_model_id()`.
