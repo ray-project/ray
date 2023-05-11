@@ -576,8 +576,8 @@ ray::Status NodeManager::RegisterGcs() {
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
                 }
-                *checking_ptr = false;
               }
+              *checking_ptr = false;
             },
             /* timeout_ms = */ 30000));
       },
