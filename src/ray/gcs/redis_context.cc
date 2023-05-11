@@ -174,31 +174,30 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
-  auto fn = +[](struct redisAsyncContext *async_context,
-               void *redis_reply,
-               void *privdata) {
-    auto *request_cxt = (RedisRequestContext *)privdata;
-    // Error happened.
-    if (redis_reply == nullptr) {
-      RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
-                     << "]"
-                     << " failed due to error " << async_context->errstr << ". "
-                     << request_cxt->pending_retries_ << " retries left.";
-      request_cxt->Run();
-    } else {
-      auto reply =
-          std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
-      request_cxt->io_service_.post(
-          [reply, callback = std::move(request_cxt->callback_)]() {
-            callback(std::move(reply));
-          },
-          "RedisRequestContext.Callback");
-      auto end_time = absl::Now();
-      ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
-                                      absl::Milliseconds(1));
-      delete request_cxt;
-    }
-  };
+  auto fn =
+      +[](struct redisAsyncContext *async_context, void *redis_reply, void *privdata) {
+        auto *request_cxt = (RedisRequestContext *)privdata;
+        // Error happened.
+        if (redis_reply == nullptr) {
+          RAY_LOG(ERROR) << "Redis request ["
+                         << absl::StrJoin(request_cxt->redis_cmds_, " ") << "]"
+                         << " failed due to error " << async_context->errstr << ". "
+                         << request_cxt->pending_retries_ << " retries left.";
+          request_cxt->Run();
+        } else {
+          auto reply = std::make_shared<CallbackReply>(
+              reinterpret_cast<redisReply *>(redis_reply));
+          request_cxt->io_service_.post(
+              [reply, callback = std::move(request_cxt->callback_)]() {
+                callback(std::move(reply));
+              },
+              "RedisRequestContext.Callback");
+          auto end_time = absl::Now();
+          ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
+                                          absl::Milliseconds(1));
+          delete request_cxt;
+        }
+      };
 
   Status status = redis_context_->RedisAsyncCommandArgv(
       fn, this, argv_.size(), argv_.data(), argc_.data());
