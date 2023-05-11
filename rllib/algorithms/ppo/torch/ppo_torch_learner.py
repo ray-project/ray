@@ -39,10 +39,12 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        action_dist_class_train = self._module[module_id].get_train_action_dist_cls()
-        action_dist_class_exploration = self._module[
-            module_id
-        ].get_exploration_action_dist_cls()
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        action_dist_class_exploration = (
+            self.module[module_id].unwrapped().get_exploration_action_dist_cls()
+        )
 
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -68,8 +70,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                     "This can happen naturally in deterministic "
                     "environments where the optimal policy has zero mass "
                     "for a specific action. To fix this issue, consider "
-                    "setting the coefficient for the KL loss term to "
-                    "zero or increasing policy entropy."
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
                 )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)

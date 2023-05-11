@@ -6,12 +6,12 @@ import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { ActorResp, getActor } from "../../../service/actor";
 
 export const useActorDetail = () => {
-  const params = useParams() as { id: string };
+  const params = useParams() as { actorId: string };
   const [msg, setMsg] = useState("Loading the actor infos...");
   const { namespaceMap } = useContext(GlobalContext);
 
   const { data: actorDetail, isLoading } = useSWR(
-    ["useActorDetail", params.id],
+    ["useActorDetail", params.actorId],
     async ([_, actorId]) => {
       const actor_resp = await getActor(actorId);
       const data: ActorResp = actor_resp?.data;

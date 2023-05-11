@@ -278,9 +278,10 @@ class GetLogOptions:
     filename: Optional[str] = None
     # The actor id of the log. It is used only for worker logs.
     actor_id: Optional[str] = None
-    # The task id of the log. It is used only for worker logs.
-    # This is currently not working. TODO(sang): Support task log.
+    # The task id of the log.
     task_id: Optional[str] = None
+    # The attempt number of the task.
+    attempt_number: int = 0
     # The pid of the log. It is used only for worker logs.
     pid: Optional[int] = None
     # Total log lines to return.
@@ -298,9 +299,6 @@ class GetLogOptions:
         if self.interval:
             self.interval = float(self.interval)
         self.lines = int(self.lines)
-
-        if self.task_id:
-            raise NotImplementedError("task_id is not supported yet.")
 
         if self.media_type == "file":
             assert self.interval is None
