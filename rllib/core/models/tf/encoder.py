@@ -134,8 +134,8 @@ class TfMLPEncoder(Encoder, TfModel):
                 SampleBatch.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="tf2"
                 ),
-                # STATE_IN: None,
-                # SampleBatch.SEQ_LENS: None,
+                STATE_IN: None,
+                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -155,7 +155,7 @@ class TfMLPEncoder(Encoder, TfModel):
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: None,  # inputs[STATE_IN],
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 
