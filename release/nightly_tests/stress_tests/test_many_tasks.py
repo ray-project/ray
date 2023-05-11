@@ -27,6 +27,9 @@ class Actor(object):
     def method(self, size, *xs):
         return np.ones(size, dtype=np.uint8)
 
+    def ready(self):
+        pass
+
 
 # Stage 0: Submit a bunch of small tasks with large returns.
 def stage0(smoke=False):
@@ -99,6 +102,7 @@ def stage3(total_num_remote_cpus, smoke=False):
     start_time = time.time()
     logger.info("Creating %s actors.", total_num_remote_cpus)
     actors = [Actor.remote() for _ in range(total_num_remote_cpus)]
+    ray.get([actor.ready.remote() for actor in actors])
     stage_3_creation_time = time.time() - start_time
     logger.info("Finished stage 3 actor creation in %s seconds.", stage_3_creation_time)
 

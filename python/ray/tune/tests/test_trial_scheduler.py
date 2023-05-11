@@ -15,7 +15,7 @@ import ray
 from ray import tune
 from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.tune import Trainable
+from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
@@ -33,7 +33,6 @@ from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
 from ray.tune.search._mock import _MockSearcher
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.experiment import Trial
-from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
 
@@ -852,7 +851,7 @@ class _MockTrial(Trial):
         self.trial_name_creator = None
         self.logger_running = False
         self.restored_checkpoint = None
-        self.resources = Resources(1, 0)
+        self.placement_group_factory = PlacementGroupFactory([{"CPU": 1}])
         self.custom_trial_name = None
         self.custom_dirname = None
         self._local_dir = None

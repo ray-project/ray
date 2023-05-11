@@ -29,6 +29,8 @@ class DBReporter(Reporter):
             "team": test.get("team", ""),
             "frequency": test.get("frequency", ""),
             "cluster_url": result.cluster_url or "",
+            "job_id": result.job_id or "",
+            "job_url": result.job_url or "",
             "cluster_id": result.cluster_id or "",
             "wheel_url": result.wheels_url or "",
             "buildkite_url": result.buildkite_url or "",

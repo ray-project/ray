@@ -7,6 +7,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train.session import _TrainSessionImpl
 from ray.util import log_once
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DatasetIterator
@@ -37,6 +38,7 @@ def _warn_session_misuse(default_value: Any = None):
     return inner
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """Report metrics and optionally save a checkpoint.
@@ -90,6 +92,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     _get_session().report(metrics, checkpoint=checkpoint)
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the session's last checkpoint to resume from if applicable.
@@ -140,30 +143,35 @@ def get_checkpoint() -> Optional[Checkpoint]:
     return _get_session().loaded_checkpoint
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_experiment_name() -> str:
     """Experiment name for the corresponding trial."""
     return _get_session().experiment_name
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_name() -> str:
     """Trial name for the corresponding trial."""
     return _get_session().trial_name
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_id() -> str:
     """Trial id for the corresponding trial."""
     return _get_session().trial_id
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
     """Trial resources for the corresponding trial."""
     return _get_session().trial_resources
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_dir() -> str:
     """Log directory corresponding to the trial directory for a Tune session.
@@ -186,6 +194,7 @@ def get_trial_dir() -> str:
     return _get_session().trial_dir
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=1)
 def get_world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
@@ -216,6 +225,7 @@ def get_world_size() -> int:
     return session.world_size
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=0)
 def get_world_rank() -> int:
     """Get the world rank of this worker.
@@ -249,6 +259,7 @@ def get_world_rank() -> int:
     return session.world_rank
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=0)
 def get_local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
@@ -281,6 +292,7 @@ def get_local_rank() -> int:
     return session.local_rank
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=0)
 def get_local_world_size() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
@@ -311,6 +323,7 @@ def get_local_world_size() -> int:
     return session.local_world_size
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=0)
 def get_node_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
@@ -341,6 +354,7 @@ def get_node_rank() -> int:
     return session.node_rank
 
 
+@PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_dataset_shard(
     dataset_name: Optional[str] = None,

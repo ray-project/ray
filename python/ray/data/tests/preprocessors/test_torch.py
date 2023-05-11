@@ -24,14 +24,20 @@ class TestTorchVisionPreprocessor:
             == "TorchVisionPreprocessor(columns=['spam'], transform=StubTransform())"
         )
 
-    def test_transform_images(self):
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            transforms.ToTensor(),  # `ToTensor` accepts an `np.ndarray` as input
+            transforms.Lambda(lambda tensor: tensor.permute(2, 0, 1)),
+        ],
+    )
+    def test_transform_images(self, transform):
         dataset = ray.data.from_items(
             [
                 {"image": np.zeros((32, 32, 3)), "label": 0},
                 {"image": np.zeros((32, 32, 3)), "label": 1},
             ]
         )
-        transform = transforms.ToTensor()
         preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
 
         transformed_dataset = preprocessor.transform(dataset)
@@ -98,6 +104,21 @@ class TestTorchVisionPreprocessor:
         assert all(image.dtype == np.double for image in transformed_images)
         labels = {record["label"] for record in transformed_dataset.take_all()}
         assert labels == {0, 1}
+
+    def test_invalid_transform_raises_value_error(self):
+        dataset = ray.data.from_items(
+            [
+                {"image": np.zeros((32, 32, 3)), "label": 0},
+                {"image": np.zeros((32, 32, 3)), "label": 1},
+            ]
+        )
+        # `TorchVisionPreprocessor` expects transforms to return `torch.Tensor`s, but
+        # this `transform` returns a `np.ndarray`.
+        transform = transforms.Lambda(lambda tensor: tensor.numpy())
+        preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
+
+        with pytest.raises(ValueError):
+            preprocessor.transform(dataset).fully_executed()
 
 
 if __name__ == "__main__":

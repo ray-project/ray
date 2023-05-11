@@ -104,7 +104,7 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
 
 def _with_interactive(cmd):
     force_interactive = (
-        f"true && source ~/.bashrc && "
+        f"source ~/.bashrc; "
         f"export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({cmd})"
     )
     return ["bash", "--login", "-c", "-i", quote(force_interactive)]

@@ -7,7 +7,7 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
-from ray.data._internal.logical.optimizers import get_execution_dag
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
@@ -31,6 +31,7 @@ from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
     RefBundle,
+    TaskContext,
 )
 
 
@@ -51,7 +52,17 @@ def execute_to_legacy_block_iterator(
     Returns:
         The output as a block iterator.
     """
-    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if DatasetContext.get_current().optimizer_enabled:
+        dag, stats = get_execution_plan(plan._logical_plan).dag, None
+    else:
+        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+
+    # Enforce to preserve ordering if the plan has stages required to do so, such as
+    # Zip and Sort.
+    # TODO(chengsu): implement this for operator as well.
+    if plan.require_preserve_order():
+        executor._options.preserve_order = True
+
     bundle_iter = executor.execute(dag, initial_stats=stats)
 
     for bundle in bundle_iter:
@@ -77,12 +88,21 @@ def execute_to_legacy_block_list(
         The output as a legacy block list.
     """
     if DatasetContext.get_current().optimizer_enabled:
-        dag, stats = get_execution_dag(plan._logical_plan.dag), None
+        dag, stats = get_execution_plan(plan._logical_plan).dag, None
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+
+    # Enforce to preserve ordering if the plan has stages required to do so, such as
+    # Zip and Sort.
+    # TODO(chengsu): implement this for operator as well.
+    if plan.require_preserve_order():
+        executor._options.preserve_order = True
+
     bundles = executor.execute(dag, initial_stats=stats)
+    block_list = _bundles_to_block_list(bundles)
+    # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-    return _bundles_to_block_list(bundles)
+    return block_list
 
 
 def _to_operator_dag(
@@ -119,6 +139,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
     if hasattr(blocks, "_tasks"):
         read_tasks = blocks._tasks
+        remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
         inputs = InputDataBuffer(
             [
@@ -147,11 +168,13 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for b in i.blocks:
                 trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
 
-        def do_read(blocks: Iterator[Block]) -> Iterator[Block]:
+        def do_read(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
             for read_task in blocks:
                 yield from read_task()
 
-        return MapOperator.create(do_read, inputs, name="DoRead")
+        return MapOperator.create(
+            do_read, inputs, name="DoRead", ray_remote_args=remote_args
+        )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
         for i in output:
@@ -214,8 +237,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
 
-        def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
-            yield from block_fn(blocks, *fn_args, **fn_kwargs)
+        def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
+            yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
 
         return MapOperator.create(
             do_map,
@@ -231,14 +254,18 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         remote_args = stage.ray_remote_args
         stage_name = stage.name
 
-        def bulk_fn(refs: List[RefBundle]) -> Tuple[List[RefBundle], StatsDict]:
+        def bulk_fn(
+            refs: List[RefBundle], ctx: TaskContext
+        ) -> Tuple[List[RefBundle], StatsDict]:
             input_owned = all(b.owns_blocks for b in refs)
             if isinstance(stage, RandomizeBlocksStage):
                 output_owned = input_owned  # Passthrough ownership hack.
             else:
                 output_owned = True
             block_list = _bundles_to_block_list(refs)
-            block_list, stats_dict = fn(block_list, input_owned, block_udf, remote_args)
+            block_list, stats_dict = fn(
+                block_list, ctx, input_owned, block_udf, remote_args
+            )
             output = _block_list_to_bundles(block_list, owns_blocks=output_owned)
             if not stats_dict:
                 stats_dict = {stage_name: block_list.get_metadata()}
@@ -256,11 +283,13 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
 def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     blocks, metadata = [], []
+    owns_blocks = True
     for ref_bundle in bundles:
+        if not ref_bundle.owns_blocks:
+            owns_blocks = False
         for block, meta in ref_bundle.blocks:
             blocks.append(block)
             metadata.append(meta)
-    owns_blocks = all(b.owns_blocks for b in bundles)
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 

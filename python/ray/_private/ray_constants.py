@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,16 @@ def env_integer(key, default):
 
 def env_bool(key, default):
     if key in os.environ:
-        return True if os.environ[key].lower() == "true" else False
+        return (
+            True
+            if os.environ[key].lower() == "true" or os.environ[key] == "1"
+            else False
+        )
     return default
+
+
+def env_set_by_user(key):
+    return key in os.environ
 
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
@@ -355,6 +364,8 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
+# Please keep this in sync with the definition kRayInternalNamespacePrefix
+# in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 
 
@@ -368,3 +379,11 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
 RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+
+# Whether to enable Ray clusters (in addition to local Ray).
+# Ray clusters are not explicitly supported for Windows and OSX.
+ENABLE_RAY_CLUSTERS_ENV_VAR = "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"
+ENABLE_RAY_CLUSTER = env_bool(
+    ENABLE_RAY_CLUSTERS_ENV_VAR,
+    not (sys.platform == "darwin" or sys.platform == "win32"),
+)

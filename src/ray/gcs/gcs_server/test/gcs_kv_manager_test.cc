@@ -73,6 +73,16 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   });
   kv_instance->Get("N2", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
   kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_TRUE(b.has_value()); });
+  kv_instance->MultiGet("N1", {"A_1", "A_2", "A_3"}, [](auto b) {
+    ASSERT_EQ(3, b.size());
+    ASSERT_EQ("B", b["A_1"]);
+    ASSERT_EQ("C", b["A_2"]);
+    ASSERT_EQ("C", b["A_3"]);
+  });
+  // MultiGet with empty keys.
+  kv_instance->MultiGet("N1", {}, [](auto b) { ASSERT_EQ(0, b.size()); });
+  // MultiGet with non-existent keys.
+  kv_instance->MultiGet("N1", {"A_4", "A_5"}, [](auto b) { ASSERT_EQ(0, b.size()); });
   {
     // Delete by prefix are two steps in redis mode, so we need sync here.
     std::promise<void> p;
@@ -101,6 +111,9 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
     });
     p.get_future().get();
   }
+  // Check the keys are deleted.
+  kv_instance->MultiGet(
+      "N1", {"A_1", "A_2", "A_3"}, [](auto b) { ASSERT_EQ(0, b.size()); });
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,

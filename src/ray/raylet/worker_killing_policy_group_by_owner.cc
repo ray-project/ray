@@ -89,7 +89,8 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   auto worker_to_kill = selected_group.SelectWorkerToKill();
 
   RAY_LOG(INFO) << "Sorted list of tasks based on the policy:\n"
-                << PolicyDebugString(sorted, system_memory);
+                << PolicyDebugString(sorted, system_memory)
+                << "\nTask should be retried? " << should_retry;
 
   return std::make_pair(worker_to_kill, should_retry);
 }

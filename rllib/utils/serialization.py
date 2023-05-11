@@ -186,7 +186,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
 def space_to_dict(space: gym.spaces.Space) -> Dict:
     d = {"space": gym_space_to_dict(space)}
     if "original_space" in space.__dict__:
-        d["original_space"] = gym_space_to_dict(space.original_space)
+        d["original_space"] = space_to_dict(space.original_space)
     return d
 
 
@@ -280,7 +280,14 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
 def space_from_dict(d: Dict) -> gym.spaces.Space:
     space = gym_space_from_dict(d["space"])
     if "original_space" in d:
-        space.original_space = gym_space_from_dict(d["original_space"])
+        assert "space" in d["original_space"]
+        if isinstance(d["original_space"]["space"], str):
+            # For backward compatibility reasons, if d["original_space"]["space"]
+            # is a string, this original space was serialized by gym_space_to_dict.
+            space.original_space = gym_space_from_dict(d["original_space"])
+        else:
+            # Otherwise, this original space was serialized by space_to_dict.
+            space.original_space = space_from_dict(d["original_space"])
     return space
 
 

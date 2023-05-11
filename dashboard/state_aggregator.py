@@ -253,7 +253,7 @@ class StateAPIManager:
 
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["placement_group_id", "creator_job_id"],
+                fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -427,6 +427,7 @@ class StateAPIManager:
                 for key in keys:
                     task_state[key] = src.get(key)
 
+            task_state["creation_time_ms"] = None
             task_state["start_time_ms"] = None
             task_state["end_time_ms"] = None
             events = []
@@ -443,6 +444,8 @@ class StateAPIManager:
                             "created_ms": ts_ms,
                         }
                     )
+                    if state == "PENDING_ARGS_AVAIL":
+                        task_state["creation_time_ms"] = ts_ms
                     if state == "RUNNING":
                         task_state["start_time_ms"] = ts_ms
                     if state == "FINISHED" or state == "FAILED":
@@ -693,24 +696,41 @@ class StateAPIManager:
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
+        summary_by = option.summary_by or "func_name"
+        if summary_by not in ["func_name", "lineage"]:
+            raise ValueError('summary_by must be one of "func_name" or "lineage".')
+
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
                 timeout=option.timeout,
                 limit=RAY_MAX_LIMIT_FROM_API_SERVER,
                 filters=option.filters,
+                detail=summary_by == "lineage",
             )
         )
-        summary = StateSummary(
-            node_id_to_summary={
-                "cluster": TaskSummaries.to_summary(tasks=result.result)
-            }
-        )
+        if summary_by == "func_name":
+            summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
+        else:
+            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
+        summary = StateSummary(node_id_to_summary={"cluster": summary_results})
+        warnings = result.warnings
+        if (
+            summary_results.total_actor_scheduled
+            + summary_results.total_actor_tasks
+            + summary_results.total_tasks
+            < result.num_filtered
+        ):
+            warnings = warnings or []
+            warnings.append(
+                "There is missing data in this aggregation. "
+                "Possibly due to task data being evicted to preserve memory."
+            )
         return SummaryApiResponse(
             total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            warnings=result.warnings,
+            warnings=warnings,
             num_after_truncation=result.num_after_truncation,
             num_filtered=result.num_filtered,
         )

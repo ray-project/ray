@@ -45,3 +45,13 @@ CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
 COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
     "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
 )
+
+# Integer value which if set will disable lazy checkpointing
+# (avoiding unnecessary serialization if worker is on the same node
+# as Trainable)
+DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
+
+# Name of the marker dropped by the Trainable. If a worker detects
+# the presence of the marker in the trial dir, it will use lazy
+# checkpointing.
+LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"

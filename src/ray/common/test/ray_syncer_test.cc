@@ -905,6 +905,7 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   ASSERT_TRUE(s != nullptr);
   ASSERT_TRUE(c != nullptr);
   s->Finish(grpc::Status::CANCELLED);
+  s->disconnected_ = true;
   auto c_cleanup = client_cleanup.get_future().get();
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);

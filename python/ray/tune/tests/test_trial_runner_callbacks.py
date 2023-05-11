@@ -172,7 +172,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.executor.next_future_result = _ExecutorEvent(
             event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
-            result={"future_result": result},
+            result={_ExecutorEvent.KEY_FUTURE_RESULT: result},
         )
         self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
@@ -184,7 +184,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
         self.executor.next_future_result = _ExecutorEvent(
-            event_type=_ExecutorEventType.RESTORING_RESULT, trial=trials[1]
+            event_type=_ExecutorEventType.RESTORING_RESULT,
+            trial=trials[1],
+            result={_ExecutorEvent.KEY_FUTURE_RESULT: None},
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
@@ -209,7 +211,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the first trial error
         self.executor.next_future_result = _ExecutorEvent(
-            event_type=_ExecutorEventType.ERROR,
+            event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[0],
             result={_ExecutorEvent.KEY_EXCEPTION: Exception()},
         )

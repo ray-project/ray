@@ -118,7 +118,7 @@ ray::Status Raylet::RegisterGcs() {
                   << ":" << self_node_info_.node_manager_port()
                   << " object_manager address: " << self_node_info_.node_manager_address()
                   << ":" << self_node_info_.object_manager_port()
-                  << " hostname: " << self_node_info_.node_manager_address();
+                  << " hostname: " << self_node_info_.node_manager_hostname();
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };
 

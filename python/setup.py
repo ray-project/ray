@@ -18,13 +18,22 @@ import zipfile
 from enum import Enum
 from itertools import chain
 
+# Workaround for setuptools_scm (used on macos) adding junk files
+# https://stackoverflow.com/a/61274968/8162137
+try:
+    import setuptools_scm.integration
+
+    setuptools_scm.integration.find_files = lambda _: []
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
-SUPPORTED_BAZEL = (4, 2, 2)
+SUPPORTED_BAZEL = (5, 4, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -101,7 +110,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
 
@@ -248,9 +257,9 @@ if setup_spec.type == SetupType.RAY:
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
-            "opentelemetry-api==1.1.0",
-            "opentelemetry-sdk==1.1.0",
-            "opentelemetry-exporter-otlp==1.1.0",
+            "opentelemetry-api",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-otlp",
         ],
     }
 
@@ -789,6 +798,11 @@ setuptools.setup(
         "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
+    exclude_package_data={
+        # Empty string means "any package".
+        # Therefore, exclude BUILD from every package:
+        "": ["BUILD"],
+    },
     zip_safe=False,
     license="Apache 2.0",
 ) if __name__ == "__main__" else None

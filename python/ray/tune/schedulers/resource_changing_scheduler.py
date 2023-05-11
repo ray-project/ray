@@ -9,7 +9,6 @@ import warnings
 from ray.air.execution.resources.request import _sum_bundles
 from ray.util.annotations import PublicAPI
 from ray.tune.execution import trial_runner
-from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -625,7 +624,7 @@ class ResourceChangingScheduler(TrialScheduler):
             The callable must take four arguments: ``TrialRunner``, current
             ``Trial``, current result :class:`dict` and the
             ``ResourceChangingScheduler`` calling it. The callable must
-            return a ``PlacementGroupFactory``, ``Resources``, :class:`dict`
+            return a ``PlacementGroupFactory``
             or None (signifying no need for an update). If
             ``resources_allocation_function`` is None, no resource
             requirements will be changed at any time.
@@ -673,7 +672,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     Dict[str, Any],
                     "ResourceChangingScheduler",
                 ],
-                Optional[Union[PlacementGroupFactory, Resources]],
+                Optional[PlacementGroupFactory],
             ]
         ] = _DistributeResourcesDefault,
     ) -> None:
@@ -686,9 +685,7 @@ class ResourceChangingScheduler(TrialScheduler):
             )
         self._resources_allocation_function = resources_allocation_function
         self._base_scheduler = base_scheduler or FIFOScheduler()
-        self._base_trial_resources: Optional[
-            Union[Resources, PlacementGroupFactory]
-        ] = None
+        self._base_trial_resources: Optional[PlacementGroupFactory] = None
         self._trials_to_reallocate: Dict[
             Trial, Optional[Union[dict, PlacementGroupFactory]]
         ] = {}
@@ -701,7 +698,7 @@ class ResourceChangingScheduler(TrialScheduler):
         return self._base_scheduler._metric
 
     @property
-    def base_trial_resources(self) -> Optional[Union[Resources, PlacementGroupFactory]]:
+    def base_trial_resources(self) -> Optional[PlacementGroupFactory]:
         return self._base_trial_resources
 
     def set_search_properties(

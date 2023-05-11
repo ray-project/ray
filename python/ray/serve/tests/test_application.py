@@ -66,7 +66,12 @@ class TestServeRun:
         the client to wait until the deployments finish deploying.
         """
 
-        serve.run(Application(deployments), _blocking=blocking)
+        for i in range(len(deployments)):
+            serve.run(
+                Application([deployments[i]]),
+                name=f"app{i}",
+                _blocking=blocking,
+            )
 
         def check_all_deployed():
             try:
@@ -113,7 +118,7 @@ class TestServeRun:
         deployments deploy correctly.
         """
 
-        @serve.deployment
+        @serve.deployment(route_prefix=None)
         class MutualHandles:
             async def __init__(self, handle_name):
                 self.handle = serve.get_deployment(handle_name).get_handle()
@@ -236,13 +241,13 @@ class TestServeRun:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_import_path_deployment_decorated(self, serve_instance):
-        func = serve.deployment(
-            name="decorated_func",
-        )("ray.serve.tests.test_application.decorated_func")
+        func = serve.deployment(name="decorated_func", route_prefix="/decorated_func")(
+            "ray.serve.tests.test_application.decorated_func"
+        )
 
-        clss = serve.deployment(
-            name="decorated_clss",
-        )("ray.serve.tests.test_application.DecoratedClass")
+        clss = serve.deployment(name="decorated_clss", route_prefix="/decorated_clss")(
+            "ray.serve.tests.test_application.DecoratedClass"
+        )
 
         deployments = [func, clss]
         responses = ["got decorated func", "got decorated class"]

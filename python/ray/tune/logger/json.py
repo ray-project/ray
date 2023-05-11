@@ -73,6 +73,8 @@ class JsonLoggerCallback(LoggerCallback):
     JsonLoggerCallback to be compatible with the ExperimentAnalysis tool.
     """
 
+    _SAVED_FILE_TEMPLATES = [EXPR_RESULT_FILE, EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE]
+
     def __init__(self):
         self._trial_configs: Dict["Trial", Dict] = {}
         self._trial_files: Dict["Trial", TextIO] = {}

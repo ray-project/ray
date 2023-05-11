@@ -154,13 +154,13 @@ def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> Li
 
 
 def _split_all_blocks(
-    block_list: BlockList,
+    blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
     per_block_split_indices: List[List[int]],
+    owned_by_consumer: bool,
 ) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Split all the input blocks based on the split indices"""
     split_single_block = cached_remote_fn(_split_single_block)
 
-    blocks_with_metadata = block_list.get_blocks_with_metadata()
     all_blocks_split_results: List[BlockPartition] = [None] * len(blocks_with_metadata)
 
     per_block_split_metadata_futures = []
@@ -203,7 +203,7 @@ def _split_all_blocks(
     # We make a copy for the blocks that have been splitted, so the input blocks
     # can be cleared if they are owned by consumer (consumer-owned blocks will
     # only be consumed by the owner).
-    if block_list._owned_by_consumer:
+    if owned_by_consumer:
         for b in blocks_splitted:
             trace_deallocation(b, "split._split_all_blocks")
     else:
@@ -246,26 +246,32 @@ def _generate_global_split_results(
 
 
 def _split_at_indices(
-    block_list: BlockList,
+    blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
     indices: List[int],
+    owned_by_consumer: bool = True,
+    block_rows: List[int] = None,
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Split blocks at the provided indices.
 
     Args:
         blocks_with_metadata: Block futures to split, including the associated metadata.
         indices: The (global) indices at which to split the blocks.
+        owned_by_consumer: Whether the provided blocks are owned by the consumer.
+        block_rows: The number of rows for each block, in case it has already been
+            computed.
+
     Returns:
         The block split futures and their metadata. If an index split is empty, the
         corresponding block split will be empty .
     """
 
-    blocks_with_metadata = block_list.get_blocks_with_metadata()
     # We implement the split in 3 phases.
     # phase 1: calculate the per block split indices.
     blocks_with_metadata = list(blocks_with_metadata)
     if len(blocks_with_metadata) == 0:
         return ([[]] * (len(indices) + 1), [[]] * (len(indices) + 1))
-    block_rows: List[int] = _calculate_blocks_rows(blocks_with_metadata)
+    if block_rows is None:
+        block_rows = _calculate_blocks_rows(blocks_with_metadata)
     valid_indices = _generate_valid_indices(block_rows, indices)
     per_block_split_indices: List[List[int]] = _generate_per_block_split_indices(
         block_rows, valid_indices
@@ -274,7 +280,9 @@ def _split_at_indices(
     # phase 2: split each block based on the indices from previous step.
     all_blocks_split_results: Iterable[
         Tuple[ObjectRef[Block], BlockMetadata]
-    ] = _split_all_blocks(block_list, per_block_split_indices)
+    ] = _split_all_blocks(
+        blocks_with_metadata, per_block_split_indices, owned_by_consumer
+    )
 
     # phase 3: generate the final split.
 
@@ -306,5 +314,7 @@ def _split_at_index(
     Returns:
         The block split futures and their metadata for left and right of the index.
     """
-    blocks_splits, metadata_splits = _split_at_indices(block_list, [index])
+    blocks_splits, metadata_splits = _split_at_indices(
+        block_list.get_blocks_with_metadata(), [index], block_list._owned_by_consumer
+    )
     return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]

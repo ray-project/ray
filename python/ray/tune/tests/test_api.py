@@ -32,7 +32,6 @@ from ray.tune.experiment import Experiment
 from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import _noop_logger_creator
-from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
     DONE,
@@ -156,7 +155,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "time_since_restore",
             "experiment_id",
             "date",
-            "warmup_time",
         }
 
         self.assertEqual(len(class_output), len(results))
@@ -261,7 +259,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class B(Trainable):
             @classmethod
             def default_resource_request(cls, config):
-                return Resources(cpu=config["cpu"], gpu=config["gpu"])
+                return PlacementGroupFactory(
+                    [{"CPU": config["cpu"], "GPU": config["gpu"]}]
+                )
 
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
@@ -871,7 +871,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         results1 = [dict(mean_accuracy=5, done=i == 99) for i in range(100)]
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
-        self.assertTrue(all(log[TIMESTEPS_TOTAL] is None for log in logs1))
+        self.assertTrue(all(TIMESTEPS_TOTAL not in log for log in logs1))
 
         # Test that no timesteps_this_iter are logged if only timesteps_total
         # are returned.
@@ -891,7 +891,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertFalse(any(hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2))
 
         # Test that timesteps_total and episodes_total are reported when
-        # timesteps_this_iter and episodes_this_iter despite only return zeros.
+        # timesteps_this_iter and episodes_this_iter are provided by user,
+        # despite only return zeros.
         results3 = [
             dict(timesteps_this_iter=0, episodes_this_iter=0) for i in range(10)
         ]
@@ -1055,8 +1056,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 pass  # delete
 
         class TestDurable(Trainable):
-            def has_custom_syncer(self):
-                return bool(self.custom_syncer)
+            def has_syncer(self):
+                return isinstance(self.sync_config.syncer, Syncer)
 
         upload_dir = "s3://test-bucket/path"
 
@@ -1076,17 +1077,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                custom_syncer=trial.custom_syncer,
+                sync_config=trial.sync_config,
             )
             return actor
 
-        # This actor should create a default aws syncer, so check should fail
+        # This actor should create a default syncer, so check should pass
         actor1 = _create_remote_actor(TestDurable, "auto")
-        self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
+        self.assertTrue(ray.get(actor1.has_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
         actor2 = _create_remote_actor(TestDurable, CustomSyncer())
-        self.assertTrue(ray.get(actor2.has_custom_syncer.remote()))
+        self.assertTrue(ray.get(actor2.has_syncer.remote()))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):

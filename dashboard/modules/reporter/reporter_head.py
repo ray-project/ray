@@ -21,6 +21,7 @@ from ray._private.ray_constants import (
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
+from ray.autoscaler._private.commands import debug_status
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -75,6 +76,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
         """
+        return_formatted_output = req.query.get("format", "0") == "1"
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
@@ -94,13 +96,21 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             if formatted_status_string
             else {}
         )
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Got cluster status.",
-            autoscaling_status=legacy_status.decode() if legacy_status else None,
-            autoscaling_error=error.decode() if error else None,
-            cluster_status=formatted_status if formatted_status else None,
-        )
+
+        if not return_formatted_output:
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message="Got cluster status.",
+                autoscaling_status=legacy_status.decode() if legacy_status else None,
+                autoscaling_error=error.decode() if error else None,
+                cluster_status=formatted_status if formatted_status else None,
+            )
+        else:
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message="Got formatted cluster status.",
+                cluster_status=debug_status(formatted_status_string, error),
+            )
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:

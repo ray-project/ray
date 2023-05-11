@@ -43,8 +43,8 @@ class Deployment:
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
-        _internal=False,
         is_driver_deployment: Optional[bool] = False,
+        _internal=False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -87,6 +87,15 @@ class Deployment:
         if init_kwargs is None:
             init_kwargs = {}
 
+        docs_path = None
+        if (
+            inspect.isclass(func_or_class)
+            and hasattr(func_or_class, "__module__")
+            and func_or_class.__module__ == "ray.serve.api"
+            and hasattr(func_or_class, "__fastapi_docs_path__")
+        ):
+            docs_path = func_or_class.__fastapi_docs_path__
+
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
@@ -96,6 +105,7 @@ class Deployment:
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
         self._is_driver_deployment = is_driver_deployment
+        self._docs_path = docs_path
 
     @property
     def name(self) -> str:

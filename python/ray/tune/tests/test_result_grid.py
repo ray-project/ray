@@ -12,6 +12,7 @@ import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.air.result import Result
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
@@ -142,7 +143,12 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     )
     trial.pickled_error_filename = None
     trial.error_filename = None
-    result_grid = ResultGrid(None)
+
+    class MockExperimentAnalysis:
+        trials = []
+        trial_dataframes = None
+
+    result_grid = ResultGrid(MockExperimentAnalysis())
 
     # Internal result grid conversion
     result = result_grid._trial_to_result(trial)
@@ -222,6 +228,55 @@ def test_result_repr(ray_start_2_cpus):
 
     representation = result.__repr__()
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
+
+
+def test_result_grid_repr():
+    class MockExperimentAnalysis:
+        trials = []
+
+    result_grid = ResultGrid(experiment_analysis=MockExperimentAnalysis())
+
+    result_grid._results = [
+        Result(
+            metrics={"loss": 1.0},
+            checkpoint=Checkpoint(data_dict={"weight": 1.0}),
+            log_dir=Path("./log_1"),
+            error=None,
+            metrics_dataframe=None,
+            best_checkpoints=None,
+        ),
+        Result(
+            metrics={"loss": 2.0},
+            checkpoint=Checkpoint(data_dict={"weight": 2.0}),
+            log_dir=Path("./log_2"),
+            error=RuntimeError(),
+            metrics_dataframe=None,
+            best_checkpoints=None,
+        ),
+    ]
+
+    representation = result_grid.__repr__()
+
+    from ray.tune.result import AUTO_RESULT_KEYS
+
+    assert len(result_grid) == 2
+    assert not any(key in representation for key in AUTO_RESULT_KEYS)
+
+    expected_repr = """ResultGrid<[
+  Result(
+    metrics={'loss': 1.0},
+    log_dir=PosixPath('log_1'),
+    checkpoint=Checkpoint(data_dict={'weight': 1.0})
+  ),
+  Result(
+    error='RuntimeError',
+    metrics={'loss': 2.0},
+    log_dir=PosixPath('log_2'),
+    checkpoint=Checkpoint(data_dict={'weight': 2.0})
+  )
+]>"""
+
+    assert representation == expected_repr
 
 
 def test_no_metric_mode(ray_start_2_cpus):

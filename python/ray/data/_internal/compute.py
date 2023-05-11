@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
@@ -27,14 +28,17 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 U = TypeVar("U")
 
+DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 2
+
+
 # Block transform function applied by task and actor pools.
 BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Iterable[Block]], Iterable[Block]],
-    Callable[[Iterable[Block], Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
 
@@ -174,6 +178,9 @@ class TaskPoolStrategy(ComputeStrategy):
             owned_by_consumer=in_block_owned_by_consumer,
         )
 
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, TaskPoolStrategy)
+
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
@@ -197,7 +204,7 @@ class ActorPoolStrategy(ComputeStrategy):
         self,
         min_size: int = 1,
         max_size: Optional[int] = None,
-        max_tasks_in_flight_per_actor: Optional[int] = 2,
+        max_tasks_in_flight_per_actor: Optional[int] = None,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -214,7 +221,10 @@ class ActorPoolStrategy(ComputeStrategy):
             raise ValueError("min_size must be > 1", min_size)
         if max_size is not None and min_size > max_size:
             raise ValueError("min_size must be <= max_size", min_size, max_size)
-        if max_tasks_in_flight_per_actor < 1:
+        if (
+            max_tasks_in_flight_per_actor is not None
+            and max_tasks_in_flight_per_actor < 1
+        ):
             raise ValueError(
                 "max_tasks_in_flight_per_actor must be >= 1, got: ",
                 max_tasks_in_flight_per_actor,
@@ -363,6 +373,9 @@ class ActorPoolStrategy(ComputeStrategy):
         ]
         tasks = {w.ready.remote(): w for w in workers}
         tasks_in_flight = collections.defaultdict(int)
+        max_tasks_in_flight_per_actor = (
+            self.max_tasks_in_flight_per_actor or DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+        )
         metadata_mapping = {}
         block_indices = {}
         ready_workers = set()
@@ -409,7 +422,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 # Schedule a new task.
                 while (
                     block_bundles
-                    and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+                    and tasks_in_flight[worker] < max_tasks_in_flight_per_actor
                 ):
                     blocks, metas = block_bundles.pop()
                     # TODO(swang): Support block splitting for compute="actors".
@@ -446,6 +459,14 @@ class ActorPoolStrategy(ComputeStrategy):
                 logger.exception(f"Error killing workers: {err}")
             finally:
                 raise e from None
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, ActorPoolStrategy) and (
+            self.min_size == other.min_size
+            and self.max_size == other.max_size
+            and self.max_tasks_in_flight_per_actor
+            == other.max_tasks_in_flight_per_actor
+        )
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:

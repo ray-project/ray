@@ -38,10 +38,13 @@ type NodeCountCardProps = {
 export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   const classes = useStyles();
 
-  const { grafanaHost, prometheusHealth, sessionName } =
-    useContext(GlobalContext);
-  const path =
-    "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24";
+  const {
+    grafanaHost,
+    prometheusHealth,
+    sessionName,
+    grafanaDefaultDashboardUid = "rayDefaultDashboard",
+  } = useContext(GlobalContext);
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24`;
   const timeRangeParams = "&from=now-30m&to=now";
 
   return (

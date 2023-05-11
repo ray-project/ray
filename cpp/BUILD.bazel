@@ -23,7 +23,6 @@ cc_binary(
     deps = [
         ":ray_api",
         ":symbols/ray_api_exported_symbols_linux.lds",
-        ":symbols/ray_api_exported_symbols_mac.lds",
     ],
 )
 

@@ -14,6 +14,7 @@ from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
+from ray.data.context import DatasetContext
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import BatchMapper
 from ray.tune.impl import tuner_internal
@@ -97,6 +98,9 @@ def test_trainer_fit(ray_start_4_cpus):
 
 
 def test_preprocess_datasets(ray_start_4_cpus):
+    ctx = DatasetContext.get_current()
+    ctx.execution_options.preserve_order = True
+
     def training_loop(self):
         assert self.datasets["my_dataset"].take() == [2, 3, 4]
 

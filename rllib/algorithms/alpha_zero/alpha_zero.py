@@ -23,6 +23,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.typing import ResultDict
@@ -344,9 +345,10 @@ class AlphaZero(Algorithm):
         """
 
         # Sample n MultiAgentBatches from n workers.
-        new_sample_batches = synchronous_parallel_sample(
-            worker_set=self.workers, concat=False
-        )
+        with self._timers[SAMPLE_TIMER]:
+            new_sample_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
 
         for batch in new_sample_batches:
             # Update sampling step counters.

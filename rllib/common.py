@@ -120,8 +120,8 @@ example_help = dict(
 
 
 train_help = dict(
-    env="The environment specifier to use. This could be an openAI gym "
-    "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
+    env="The environment specifier to use. This could be an Farama-Foundation "
+    "Gymnasium specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
     filetype="The file type of the config file. Defaults to 'yaml' and can also be "
@@ -160,8 +160,8 @@ eval_help = dict(
     algo="The algorithm or model to train. This may refer to the name of a built-in "
     "Algorithm (e.g. RLlib's `DQN` or `PPO`), or a user-defined trainable "
     "function or class registered in the Tune registry.",
-    env="The environment specifier to use. This could be an openAI gym "
-    "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
+    env="The environment specifier to use. This could be an Farama-Foundation gymnasium"
+    " specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     local_mode="Run Ray in local mode for easier debugging.",
     render="Render the environment while evaluating. Off by default",

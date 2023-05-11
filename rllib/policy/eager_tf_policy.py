@@ -174,13 +174,20 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
+            # NOTE: In the new RLModule stack the sampling side is not traced with this
+            # justification that in order to speed up sampling we need to use more
+            # actors.
             # Create a traced version of `self._compute_actions_helper`.
-            if self._traced_compute_actions_helper is False and not self._no_tracing:
+            if (
+                not self.config.get("_enable_rl_module_api", False)
+                and self._traced_compute_actions_helper is False
+                and not self._no_tracing
+            ):
                 self._compute_actions_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_actions_helper = True
@@ -206,7 +213,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_learn_on_batch_helper = True
@@ -226,7 +233,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_gradients_helper = True
@@ -246,7 +253,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._apply_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_apply_gradients_helper = True
@@ -763,7 +770,7 @@ def _build_eager_tf_policy(
             within this TfModelV2 class that is-a tf.keras.Model. This base model
             will be used here for the export.
             TODO (kourosh): This restriction will be resolved once we move Policy and
-             ModelV2 to the new RLTrainer/RLModule APIs.
+            ModelV2 to the new Learner/RLModule APIs.
 
             Args:
                 export_dir: Local writable directory.

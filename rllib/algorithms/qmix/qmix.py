@@ -20,6 +20,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict
@@ -82,7 +83,7 @@ class QMixConfig(SimpleQConfig):
         # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
         # alternative `learn_on_loaded_batch` alternative for the GPU.
         # TODO: This hack will be resolved once we move all algorithms to the new
-        #  RLModule/RLTrainer APIs.
+        #  RLModule/Learner APIs.
         self.simple_optimizer = True
 
         # Override some of AlgorithmConfig's default values with QMix-specific values.
@@ -256,9 +257,10 @@ class QMix(SimpleQ):
             The results dict from executing the training iteration.
         """
         # Sample n batches from n workers.
-        new_sample_batches = synchronous_parallel_sample(
-            worker_set=self.workers, concat=False
-        )
+        with self._timers[SAMPLE_TIMER]:
+            new_sample_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
 
         for batch in new_sample_batches:
             # Update counters.

@@ -14,4 +14,3 @@ You may also be interested in visiting the design patterns section for :ref:`tas
     :maxdepth: -1
 
     concurrent-operations-async-actor
-    fault-tolerance-actor-checkpointing

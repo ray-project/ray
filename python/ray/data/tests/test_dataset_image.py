@@ -1,5 +1,4 @@
 import os
-import time
 from typing import Dict
 
 import numpy as np
@@ -114,12 +113,15 @@ class TestReadImages:
             "image-datasets/simple/image3.jpg",
         ]
 
-    def test_e2e_prediction(self, ray_start_regular_shared):
+    def test_e2e_prediction(self, shutdown_only):
         from ray.train.torch import TorchCheckpoint, TorchPredictor
         from ray.train.batch_predictor import BatchPredictor
 
         from torchvision import transforms
         from torchvision.models import resnet18
+
+        ray.shutdown()
+        ray.init(num_cpus=2)
 
         dataset = ray.data.read_images("example://image-datasets/simple")
         transform = transforms.ToTensor()
@@ -132,7 +134,10 @@ class TestReadImages:
         model = resnet18(pretrained=True)
         checkpoint = TorchCheckpoint.from_model(model=model)
         predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictor.predict(dataset)
+        predictions = predictor.predict(dataset)
+
+        for _ in predictions.iter_batches():
+            pass
 
     @pytest.mark.parametrize(
         "image_size,image_mode,expected_size,expected_ratio",
@@ -188,16 +193,9 @@ class TestReadImages:
             # Verify dynamic block splitting taking effect to generate more blocks.
             assert ds.num_blocks() == 3
 
-            # NOTE: Need to wait for 1 second before checking stats, because we report
-            # stats to stats actors asynchronously when returning the blocks metadata.
-            # TODO(chengsu): clean it up after refactoring lazy block list.
-            time.sleep(1)
-            assert "3 blocks executed" in ds.stats()
-
             # Test union of same datasets
             union_ds = ds.union(ds, ds, ds).fully_executed()
             assert union_ds.num_blocks() == 12
-            assert "3 blocks executed" in union_ds.stats()
         finally:
             ctx.target_max_block_size = target_max_block_size
             ctx.block_splitting_enabled = block_splitting_enabled

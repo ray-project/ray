@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import override
 
 
 class _MockTrainer(Algorithm):
-    """Mock trainer for use in tests"""
+    """Mock trainer for use in tests."""
 
     @classmethod
     @override(Algorithm)

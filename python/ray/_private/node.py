@@ -294,12 +294,12 @@ class Node:
                     self.gcs_address,
                     self._plasma_store_socket_name,
                 )
-            except TimeoutError:
+            except TimeoutError as te:
                 raise Exception(
-                    "The current node has not been updated within 30 "
-                    "seconds, this could happen because of some of "
-                    "the Ray processes failed to startup."
-                )
+                    "The current node timed out during startup. This "
+                    "could happen because some of the Ray processes "
+                    "failed to startup."
+                ) from te
             node_info = ray._private.services.get_node_to_connect_for_driver(
                 self.gcs_address,
                 self._raylet_ip_address,

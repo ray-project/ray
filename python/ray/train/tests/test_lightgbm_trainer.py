@@ -25,6 +25,14 @@ def ray_start_6_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 scale_config = ScalingConfig(num_workers=2)
 
 data_raw = load_breast_cancer()
@@ -183,11 +191,11 @@ def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
     assert preprocessor.fitted_
 
 
-def test_tune(ray_start_6_cpus):
+def test_tune(ray_start_8_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = LightGBMTrainer(
-        scaling_config=scale_config,
+        scaling_config=ScalingConfig(num_workers=2, resources_per_worker={"CPU": 1}),
         label_column="target",
         params={**params, **{"max_depth": 1}},
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},

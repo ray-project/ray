@@ -39,7 +39,7 @@ class MinimalClusterManager(ClusterManager):
                     dict(
                         project_id=self.project_id,
                         name=dict(equals=self.cluster_env_name),
-                        paging=dict(count=50, token=paging_token),
+                        paging=dict(count=50, paging_token=paging_token),
                     )
                 )
                 paging_token = result.metadata.next_paging_token
@@ -197,7 +197,7 @@ class MinimalClusterManager(ClusterManager):
                         project_id=self.project_id,
                         name=dict(equals=self.cluster_compute_name),
                         include_anonymous=True,
-                        paging=dict(token=paging_token),
+                        paging=dict(paging_token=paging_token),
                     )
                 )
                 paging_token = result.metadata.next_paging_token

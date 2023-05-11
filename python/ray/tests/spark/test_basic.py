@@ -46,6 +46,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
     @classmethod
     def teardown_class(cls):
         time.sleep(10)  # Wait all background spark job canceled.
+        os.environ.pop("SPARK_WORKER_CORES", None)
         cls.spark.stop()
 
     @staticmethod
@@ -70,6 +71,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 self.num_cpus_per_spark_task * 2,
                 MAX_NUM_WORKER_NODES,
             ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task * 2,
+                self.max_spark_tasks // 2 + 1,
+            ),  # Test case: requesting resources exceeding all cluster resources
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
@@ -92,6 +98,12 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
             )
+
+            assert (
+                os.environ["RAY_ADDRESS"]
+                == ray.util.spark.cluster_init._active_ray_cluster.address
+            )
+
             ray.init()
 
             @ray.remote
@@ -103,6 +115,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert results == [i * i for i in range(32)]
 
             shutdown_ray_cluster()
+
+            assert "RAY_ADDRESS" not in os.environ
 
             time.sleep(7)
             # assert temp dir is removed.
@@ -121,7 +135,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             if ray.util.spark.cluster_init._active_ray_cluster is not None:
                 # if the test raised error and does not destroy cluster,
                 # destroy it here.
-                ray.util.spark._active_ray_cluster.shutdown()
+                ray.util.spark.cluster_init._active_ray_cluster.shutdown()
                 time.sleep(5)
             shutil.rmtree(ray_temp_root_dir, ignore_errors=True)
             shutil.rmtree(collect_log_to_path, ignore_errors=True)

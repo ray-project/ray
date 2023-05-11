@@ -52,6 +52,7 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(single_col_udf)
+ds.fully_executed()
 # -> Dataset(num_blocks=17, num_rows=1000,
 #            schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
@@ -73,6 +74,7 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(multi_col_udf)
+ds.fully_executed()
 # -> Dataset(num_blocks=17, num_rows=1000,
 #            schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64),
 #                    embed: TensorDtype(shape=(256,), dtype=uint8)})
@@ -487,17 +489,21 @@ print(read_ds.schema())
 # fmt: off
 # __create_variable_shaped_tensors_begin___
 # Create a Dataset of variable-shaped tensors.
-arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
-ds = ray.data.from_numpy([arr, arr])
+ragged_array = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
+df = pd.DataFrame({"feature": ragged_array, "label": [1, 1]})
+ds = ray.data.from_pandas([df, df])
 # -> Dataset(num_blocks=2, num_rows=4,
-#            schema={__value__: ArrowVariableShapedTensorType(dtype=double)})
+#            schema={feature: TensorDtype(shape=(None, None), dtype=float64), 
+#            label: int64})
 
 ds.take(2)
-# -> [array([[1., 1.],
-#            [1., 1.]]),
-#     array([[1., 1., 1.],
-#            [1., 1., 1.],
-#            [1., 1., 1.]])]
+# -> [{'feature': array([[1., 1.],
+#                       [1., 1.]]), 
+#       'label': 1}, 
+#     {'feature': array([[1., 1., 1.],
+#                        [1., 1., 1.],
+#                        [1., 1., 1.]]), 
+#       'label': 1}]
 # __create_variable_shaped_tensors_end__
 
 # fmt: off
@@ -505,13 +511,16 @@ ds.take(2)
 # Convert Ray Dataset to a TensorFlow Dataset.
 tf_ds = ds.to_tf(
     batch_size=2,
-    output_signature=tf.RaggedTensorSpec(shape=(None, None, None), dtype=tf.float64),
+    feature_columns="feature",
+    label_columns="label"
 )
 # Iterate through the tf.RaggedTensors.
 for ragged_tensor in tf_ds:
     print(ragged_tensor)
-# -> <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
-#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
-#    <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
-#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
+# -> (<tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#                      [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>,
+#     <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 1])>)
+# (<tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#                   [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>,
+#  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 1])>)
 # __tf_variable_shaped_tensors_end__

@@ -38,6 +38,9 @@ def ray_start_4_cpus():
 
 
 def train_function(train_dataset, eval_dataset=None, **config):
+    # Check that train_dataset has len
+    assert len(train_dataset)
+
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     training_args = TrainingArguments(

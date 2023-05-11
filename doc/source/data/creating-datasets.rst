@@ -663,12 +663,10 @@ parallelism.
 Deferred Read Task Execution
 ============================
 
-Datasets created via the ``ray.data.read_*()`` APIs are semi-lazy: initially, only the
-first read task will be executed. This avoids blocking Dataset creation on the reading
-of all data files, enabling inspection functions like
-:meth:`ds.schema() <ray.data.Dataset.schema>` and
-:meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
-transformations on the Dataset will trigger execution of all read tasks, and execution
+Datasets created via the ``ray.data.read_*()`` APIs are lazy: no read tasks are
+executed until a downstream consumption operation triggers execution. Metadata
+inspection functions like :meth:`ds.schema() <ray.data.Dataset.schema>` and
+:meth:`ds.show() <ray.data.Dataset.show>` will trigger execution of only one or some
+tasks, instead of all tasks. This allows metadata to be inspected right away. Execution
 of all read tasks can be triggered manually using the
 :meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` API.
-

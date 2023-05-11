@@ -43,10 +43,10 @@ class SkOptSearch(Searcher):
 
         pip install scikit-optimize
 
-    This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
+    This Search Algorithm requires you to pass in a `skopt Optimizer object
+    <https://scikit-optimize.github.io/stable/modules/generated/skopt.Optimizer.html#skopt.Optimizer>`_.
 
-    This searcher will automatically filter out any NaN, inf or -inf
-    results.
+    This searcher will automatically filter out any NaN, inf or -inf results.
 
     Parameters:
         optimizer: Optimizer provided

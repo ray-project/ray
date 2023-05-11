@@ -4,9 +4,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import os
 
 import numpy as np
 import pytest
+from unittest import mock
 
 import ray
 import ray.cluster_utils
@@ -163,6 +165,8 @@ def test_fork_support(shutdown_only):
     sys.platform not in ["win32", "darwin"],
     reason="Only listen on localhost by default on mac and windows.",
 )
+@mock.patch("ray._private.services.ray_constants.ENABLE_RAY_CLUSTER", False)
+@mock.patch.dict(os.environ, {"RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "0"})
 @pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
 def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default

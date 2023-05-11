@@ -1,12 +1,14 @@
 from collections import defaultdict
 from typing import Dict
 import pytest
+import threading
 import time
 
 import ray
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     raw_metrics,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
@@ -124,6 +126,214 @@ def test_fault_tolerance_parent_failed(shutdown_only):
     )
 
 
+def test_parent_task_id_threaded_task(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    # Task starts a thread
+    @ray.remote
+    def main_task():
+        def thd_task():
+            @ray.remote
+            def thd_task():
+                pass
+
+            ray.get(thd_task.remote())
+
+        thd = threading.Thread(target=thd_task)
+        thd.start()
+        thd.join()
+
+    ray.get(main_task.remote())
+
+    def verify():
+        tasks = list_tasks()
+        assert len(tasks) == 2
+        expect_parent_task_id = None
+        actual_parent_task_id = None
+        for task in tasks:
+            if task["name"] == "main_task":
+                expect_parent_task_id = task["task_id"]
+            elif task["name"] == "thd_task":
+                actual_parent_task_id = task["parent_task_id"]
+        assert actual_parent_task_id is not None
+        assert expect_parent_task_id == actual_parent_task_id
+
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_parent_task_id_non_concurrent_actor(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    def run_task_in_thread():
+        def thd_task():
+            @ray.remote
+            def thd_task():
+                pass
+
+            ray.get(thd_task.remote())
+
+        thd = threading.Thread(target=thd_task)
+        thd.start()
+        thd.join()
+
+    @ray.remote
+    class Actor:
+        def main_task(self):
+            run_task_in_thread()
+
+    a = Actor.remote()
+    ray.get(a.main_task.remote())
+
+    def verify():
+        tasks = list_tasks()
+        expect_parent_task_id = None
+        actual_parent_task_id = None
+        for task in tasks:
+            if "main_task" in task["name"]:
+                expect_parent_task_id = task["task_id"]
+            elif "thd_task" in task["name"]:
+                actual_parent_task_id = task["parent_task_id"]
+        print(tasks)
+        assert actual_parent_task_id is not None
+        assert expect_parent_task_id == actual_parent_task_id
+
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize("actor_concurrency", [3, 10])
+def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
+    # Test tasks runs in user started thread from actors have a parent_task_id
+    # as the actor's creation task.
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    def run_task_in_thread(name, i):
+        def thd_task():
+            @ray.remote
+            def thd_task():
+                pass
+
+            ray.get(thd_task.options(name=f"{name}_{i}").remote())
+
+        thd = threading.Thread(target=thd_task)
+        thd.start()
+        thd.join()
+
+    @ray.remote
+    class AsyncActor:
+        async def main_task(self, i):
+            run_task_in_thread("async_thd_task", i)
+
+    @ray.remote
+    class ThreadedActor:
+        def main_task(self, i):
+            run_task_in_thread("threaded_thd_task", i)
+
+    def verify(actor_method_name, actor_class_name):
+        tasks = list_tasks()
+        print(tasks)
+        expect_parent_task_id = None
+        actual_parent_task_id = None
+        for task in tasks:
+            if f"{actor_class_name}.__init__" in task["name"]:
+                expect_parent_task_id = task["task_id"]
+
+        assert expect_parent_task_id is not None
+        for task in tasks:
+            if f"{actor_method_name}" in task["name"]:
+                actual_parent_task_id = task["parent_task_id"]
+                assert expect_parent_task_id == actual_parent_task_id, task
+
+        return True
+
+    async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
+    ray.get([async_actor.main_task.remote(i) for i in range(20)])
+    wait_for_condition(
+        verify, actor_class_name="AsyncActor", actor_method_name="async_thd_task"
+    )
+
+    thd_actor = ThreadedActor.options(max_concurrency=actor_concurrency).remote()
+    ray.get([thd_actor.main_task.remote(i) for i in range(20)])
+    wait_for_condition(
+        verify, actor_class_name="ThreadedActor", actor_method_name="threaded_thd_task"
+    )
+
+
+def test_parent_task_id_tune_e2e(shutdown_only):
+    # Test a tune e2e workload should not have any task with parent_task_id that's
+    # not found.
+    ray.init(_system_config=_SYSTEM_CONFIG)
+    job_id = ray.get_runtime_context().get_job_id()
+    script = """
+import numpy as np
+import ray
+from ray import tune
+import time
+
+ray.init("auto")
+
+@ray.remote
+def train_step_1():
+    time.sleep(0.5)
+    return 1
+
+def train_function(config):
+    for i in range(5):
+        loss = config["mean"] * np.random.randn() + ray.get(
+            train_step_1.remote())
+        tune.report(loss=loss, nodes=ray.nodes())
+
+
+def tune_function():
+    analysis = tune.run(
+        train_function,
+        metric="loss",
+        mode="min",
+        config={
+            "mean": tune.grid_search([1, 2, 3, 4, 5]),
+        },
+        resources_per_trial=tune.PlacementGroupFactory([{
+            'CPU': 1.0
+        }] + [{
+            'CPU': 1.0
+        }] * 3),
+    )
+    return analysis.best_config
+
+
+tune_function()
+    """
+
+    run_string_as_driver(script)
+    client = StateApiClient()
+
+    def list_tasks():
+        return client.list(
+            StateResource.TASKS,
+            # Filter out this driver
+            options=ListApiOptions(
+                exclude_driver=False, filters=[("job_id", "!=", job_id)], limit=1000
+            ),
+            raise_on_missing_output=True,
+        )
+
+    def verify():
+        tasks = list_tasks()
+
+        task_id_map = {task["task_id"]: task for task in tasks}
+        for task in tasks:
+            if task["type"] == "DRIVER_TASK":
+                continue
+            assert task_id_map.get(task["parent_task_id"], None) is not None, task
+
+        return True
+
+    wait_for_condition(verify)
+
+
 def test_handle_driver_tasks(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
@@ -232,11 +442,13 @@ ray.get(parent.remote())
         timeout=10,
         retry_interval_ms=500,
     )
+    time_sleep_s = 2
+    time.sleep(time_sleep_s)
 
     proc.kill()
 
     def verify():
-        tasks = list_tasks()
+        tasks = list_tasks(detail=True)
         assert len(tasks) == 7, (
             "Incorrect number of tasks are reported. "
             "Expected length: 1 parent + 2 finished child +  2 failed child + "
@@ -251,6 +463,12 @@ ray.get(parent.remote())
                 assert (
                     task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
+
+                duration_ms = task["end_time_ms"] - task["start_time_ms"]
+                assert (
+                    duration_ms > time_sleep_s * 1000
+                    and duration_ms < 2 * time_sleep_s * 1000
+                )
 
         return True
 

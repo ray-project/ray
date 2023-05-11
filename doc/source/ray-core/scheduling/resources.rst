@@ -61,14 +61,24 @@ Some use cases for custom resources:
 Specifying Node Resources
 -------------------------
 
-By default, Ray nodes start with pre-defiend CPU, GPU, and memory resources. The quantities of these resources on each node are set to the physical quantities auto detected by Ray.
-For example, if you start a head node with ``ray start --head`` then the quantity of logical CPU resources will be equal to the number of physical CPUs on the machine.
+By default, Ray nodes start with pre-defined CPU, GPU, and memory resources. The quantities of these resources on each node are set to the physical quantities auto detected by Ray.
+By default, logical resources are configured by the following rule.
+
+.. warning::
+
+    Ray **does not permit dynamic updates of resource capacities after Ray has been started on a node**.
+
+- **Number of logical CPUs (``num_cpus``)**: Set to the number of CPUs of the machine/container.
+- **Number of logical GPUs (``num_gpus)**: Set to the number of GPUs of the machine/container.
+- **Memory (``memory``)**: Set to 70% of "available memory" when ray runtime starts.
+- **Object Store Memory (``object_store_memory``)**: Set to 30% of "available memory" when ray runtime starts. Note that the object store memory is not logical resource, and users cannot use it for scheduling.
+
 However, you can always override that by manually specifying the quantities of pre-defined resources and adding custom resources.
 There are several ways to do that depending on how you start the Ray cluster:
 
 .. tabbed:: ray.init()
 
-    If you are using :ref:`ray.init() <ray-init-ref>` to start a single node Ray cluster, you can do the following to manually specify node resources:
+    If you are using :func:`ray.init() <ray.init>` to start a single node Ray cluster, you can do the following to manually specify node resources:
 
     .. literalinclude:: ../doc_code/resources.py
         :language: python
@@ -126,7 +136,8 @@ The default resource requirements for actors was chosen for historical reasons.
 It's recommended to always explicitly set ``num_cpus`` for actors to avoid any surprises.
 If resources are specified explicitly, they are required for both scheduling and running.)
 
-You can also explicitly specify a task's or actor's resource requirements (for example, one task may require a GPU) instead of using default ones via :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
+You can also explicitly specify a task's or actor's resource requirements (for example, one task may require a GPU) instead of using default ones via :func:`ray.remote() <ray.remote>`
+and :meth:`task.options() <ray.remote_function.RemoteFunction.options>`/:meth:`actor.options() <ray.actor.ActorClass.options>`.
 
 .. tabbed:: Python
 

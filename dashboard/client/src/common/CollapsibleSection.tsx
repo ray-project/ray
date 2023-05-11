@@ -1,6 +1,11 @@
 import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import classNames from "classnames";
-import React, { PropsWithChildren, useEffect, useState } from "react";
+import React, {
+  forwardRef,
+  PropsWithChildren,
+  useEffect,
+  useState,
+} from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "./props";
 
@@ -30,6 +35,12 @@ const useStyles = makeStyles((theme) =>
 
 type CollapsibleSectionProps = PropsWithChildren<
   {
+    /**
+     * Allows the parent component to control if this section is expanded.
+     * If undefined, the child wil own the expansion state
+     */
+    expanded?: boolean;
+    onExpandButtonClick?: () => void;
     title: string;
     startExpanded?: boolean;
     /**
@@ -40,50 +51,62 @@ type CollapsibleSectionProps = PropsWithChildren<
   } & ClassNameProps
 >;
 
-export const CollapsibleSection = ({
-  title,
-  startExpanded = false,
-  className,
-  children,
-  keepRendered,
-}: CollapsibleSectionProps) => {
-  const classes = useStyles();
-  const [expanded, setExpanded] = useState(startExpanded);
-  const [rendered, setRendered] = useState(expanded);
+export const CollapsibleSection = forwardRef<
+  HTMLDivElement,
+  CollapsibleSectionProps
+>(
+  (
+    {
+      title,
+      expanded,
+      onExpandButtonClick,
+      startExpanded = false,
+      className,
+      children,
+      keepRendered,
+    },
+    ref,
+  ) => {
+    const classes = useStyles();
+    const [internalExpanded, setInternalExpanded] = useState(startExpanded);
+    const finalExpanded = expanded !== undefined ? expanded : internalExpanded;
+    const [rendered, setRendered] = useState(finalExpanded);
 
-  useEffect(() => {
-    if (expanded) {
-      setRendered(true);
-    }
-  }, [expanded]);
+    useEffect(() => {
+      if (finalExpanded) {
+        setRendered(true);
+      }
+    }, [finalExpanded]);
 
-  const handleExpandClick = () => {
-    setExpanded(!expanded);
-  };
+    const handleExpandClick = () => {
+      onExpandButtonClick?.();
+      setInternalExpanded(!finalExpanded);
+    };
 
-  return (
-    <div className={className}>
-      <Typography
-        className={classes.title}
-        variant="h4"
-        onClick={handleExpandClick}
-      >
-        {expanded ? (
-          <RiArrowDownSLine className={classes.icon} />
-        ) : (
-          <RiArrowRightSLine className={classes.icon} />
-        )}
-        {title}
-      </Typography>
-      {(expanded || (keepRendered && rendered)) && (
-        <div
-          className={classNames(classes.body, {
-            [classes.bodyHidden]: !expanded,
-          })}
+    return (
+      <div ref={ref} className={className}>
+        <Typography
+          className={classes.title}
+          variant="h4"
+          onClick={handleExpandClick}
         >
-          {children}
-        </div>
-      )}
-    </div>
-  );
-};
+          {finalExpanded ? (
+            <RiArrowDownSLine className={classes.icon} />
+          ) : (
+            <RiArrowRightSLine className={classes.icon} />
+          )}
+          {title}
+        </Typography>
+        {(finalExpanded || (keepRendered && rendered)) && (
+          <div
+            className={classNames(classes.body, {
+              [classes.bodyHidden]: !finalExpanded,
+            })}
+          >
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  },
+);

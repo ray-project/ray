@@ -156,12 +156,30 @@ Status TaskExecutor::ExecuteTask(
   ArgsBufferList ray_args_buffer;
   for (size_t i = 0; i < args_buffer.size(); i++) {
     auto &arg = args_buffer.at(i);
+    std::string meta_str = "";
+    if (arg->GetMetadata() != nullptr) {
+      meta_str = std::string((const char *)arg->GetMetadata()->Data(),
+                             arg->GetMetadata()->Size());
+    }
     msgpack::sbuffer sbuf;
-    if (cross_lang) {
-      sbuf.write((const char *)(arg->GetData()->Data()) + XLANG_HEADER_LEN,
-                 arg->GetData()->Size() - XLANG_HEADER_LEN);
+    const char *arg_data = nullptr;
+    size_t arg_data_size = 0;
+    if (arg->GetData()) {
+      arg_data = reinterpret_cast<const char *>(arg->GetData()->Data());
+      arg_data_size = arg->GetData()->Size();
+    }
+    if (meta_str == METADATA_STR_RAW) {
+      // TODO(LarryLian) In order to minimize the modification,
+      // there is an extra serialization here, but the performance will be a little worse.
+      // This code can be optimized later to improve performance
+      const auto &raw_buffer = Serializer::Serialize(arg_data, arg_data_size);
+      sbuf.write(raw_buffer.data(), raw_buffer.size());
+    } else if (cross_lang) {
+      RAY_CHECK(arg_data != nullptr)
+          << "Task " << task_name << " no." << i << " arg data is null.";
+      sbuf.write(arg_data + XLANG_HEADER_LEN, arg_data_size - XLANG_HEADER_LEN);
     } else {
-      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+      sbuf.write(arg_data, arg_data_size);
     }
 
     ray_args_buffer.push_back(std::move(sbuf));

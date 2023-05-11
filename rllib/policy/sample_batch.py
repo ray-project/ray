@@ -804,7 +804,7 @@ class SampleBatch(dict):
     def size_bytes(self) -> int:
         """Returns sum over number of bytes of all data buffers.
 
-        For numpy arrays, we use `.nbytes`. For all other value types, we use
+        For numpy arrays, we use ``.nbytes``. For all other value types, we use
         sys.getsizeof(...).
 
         Returns:

@@ -26,7 +26,7 @@ def try_import_jax(error: bool = False):
     """
     if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
         logger.warning("Not importing JAX for test purposes.")
-        return None
+        return None, None
 
     try:
         import jax
@@ -113,6 +113,10 @@ def try_import_tf(error: bool = False):
 class _TFStub:
     def __init__(self) -> None:
         self.keras = _KerasStub()
+
+    def __bool__(self):
+        # if tf should return False
+        return False
 
 
 # Fake module for tf.keras.

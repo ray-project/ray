@@ -30,10 +30,14 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+class GcsMonitorServerTest;
 namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
+namespace raylet_scheduling_policy {
+class HybridSchedulingPolicyTest;
+}
 namespace gcs {
 class GcsActorSchedulerTest;
 }  // namespace gcs
@@ -183,8 +187,10 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(GcsMonitorServerTest, TestGetSchedulingStatus);
 
   friend class raylet::SchedulingPolicyTest;
+  friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;
 };
 
 }  // end namespace ray

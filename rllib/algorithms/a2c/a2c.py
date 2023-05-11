@@ -19,6 +19,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import ResultDict
 
@@ -178,14 +179,16 @@ class A2C(A3C):
         # apply the averaged gradient in one SGD step. This conserves GPU
         # memory, allowing for extremely large experience batches to be
         # used.
-        if self.config.count_steps_by == "agent_steps":
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.microbatch_size
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config.microbatch_size
-            )
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_agent_steps=self.config.microbatch_size
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_env_steps=self.config.microbatch_size
+                )
+
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
 
