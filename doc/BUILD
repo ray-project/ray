@@ -309,9 +309,9 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "medium",
-    include = ["doc/external/*.py"],
+    size = "large",
+    include = ["external/*.py"],
     exclude = [],
     extra_srcs = [],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:ml", "external"],
 )
