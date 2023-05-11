@@ -162,8 +162,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// a single rpc::TaskEvents entry, as reported by multiple rpc calls from workers.
   ///
   /// When more than `RAY_task_events_max_num_task_in_gcs` task events are stored in the
-  /// the storage, older task events will be replaced by new task events, where older
-  /// task events are approximately task events that arrived in earlier rpc.
+  /// the storage, tasks with lower gc priority as specified by
+  /// `TaskEventGcPolicyInterface` will be evicted first. When new nevents from the
+  /// already evicted task attempts are reported to GCS, those events will also be
+  /// dropped.
   class GcsTaskManagerStorage {
     class TaskEventLocator;
     class JobTaskSummary;
@@ -234,17 +236,24 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
                                      const rpc::WorkerTableData &worker_failure_data);
 
+    /// Get the job task summary given a job id.
+    ///
+    /// Caller should make sure the job id exists by calling HasJob() first.
+    ///
+    /// \param job_id Job ID.
     const JobTaskSummary &GetJobTaskSummary(const JobID &job_id) const {
       auto it = job_task_summary_.find(job_id);
       RAY_CHECK(it != job_task_summary_.end());
       return it->second;
     }
 
+    /// Return if a job exists in the storage.
     bool HasJob(const JobID &job_id) const {
       auto it = job_task_summary_.find(job_id);
       return it != job_task_summary_.end();
     }
 
+    /// Return total number of profile events dropped from all jobs.
     size_t NumProfileEventsDropped() const {
       size_t num_profile_events_dropped = 0;
       for (const auto &job_summary : job_task_summary_) {
@@ -253,6 +262,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       return num_profile_events_dropped;
     }
 
+    /// Return total number of task attempts dropped from all jobs.
     size_t NumTaskAttemptsDropped() const {
       size_t num_task_attempts_dropped = 0;
       for (const auto &job_summary : job_task_summary_) {
@@ -262,6 +272,21 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     }
 
    private:
+    /// A helper class to locate a task event in the storage.
+    ///
+    /// Task events of each task attempt is stored in multiple lists in the storage. Each
+    /// list has a different GC priority, i.e. if the storage is full (in terms of task
+    /// attempts tracked), it will evict task events from the list with the lowest GC
+    /// priority. The GC priority and the number of task lists is specified by the
+    /// `TaskEventsGcPolicyInterface`.
+    ///
+    /// Each locator contains the iterator to the list and the index of the list.
+    /// - When a task event is added to the storage, a locator is created and added to the
+    /// indices.
+    /// - When a task event is removed from the storage, the locator is removed from the
+    /// indices.
+    /// - When a task event is updated, it might move between different lists, and the
+    /// locator will be updated accordingly.
     class TaskEventLocator {
      public:
       TaskEventLocator(std::list<rpc::TaskEvents>::iterator iter, size_t task_list_index)
@@ -282,28 +307,57 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       }
 
      private:
+      /// Iterator to the task list.
       std::list<rpc::TaskEvents>::iterator iter_;
+      /// Index of the task list.
       size_t task_list_index_;
     };
 
+    /// A helper class to summarize the stats of a job.
+    ///
+    /// This class contains stats of:
+    /// - Number of task attempts dropped, it's used to determine if task events should be
+    /// dropped if data from the task attempt is being already dropped.
+    /// - Number of profile events dropped.
     class JobTaskSummary {
      public:
+      /// Record a task attempt as dropped.
+      ///
+      /// \param task_attempt Task attempt.
       void RecordTaskAttemptDropped(const TaskAttempt &task_attempt) {
-        dropped_task_attempts_.insert(task_attempt);
+        auto inserted = dropped_task_attempts_.insert(task_attempt);
+        if (inserted.second) {
+          num_task_attempts_dropped_++;
+        }
       }
 
-      void RecordProfileEventsDropped(int32_t cnt) { num_profile_events_dropped += cnt; }
+      /// Record a number of profile event as dropped.
+      void RecordProfileEventsDropped(int32_t cnt) { num_profile_events_dropped_ += cnt; }
 
+      /// Return if a task attempt should be dropped.
+      ///
+      /// A task attempt should be dropped if some task events from the attempt are
+      /// already dropped.
       bool ShouldDropTaskAttempt(const TaskAttempt &task_attempt) const {
         return dropped_task_attempts_.count(task_attempt) > 0;
       }
 
-      size_t NumProfileEventsDropped() const { return num_profile_events_dropped; }
+      size_t NumProfileEventsDropped() const { return num_profile_events_dropped_; }
 
-      size_t NumTaskAttemptsDropped() const { return dropped_task_attempts_.size(); }
+      size_t NumTaskAttemptsDropped() const { return num_task_attempts_dropped_; }
+
+      /// Callback when job is finished.
+      ///
+      /// When a job is finished, there will be no more task events from the job. So we
+      /// can clear the cached dropped task attempts.
+      void OnJobEnds() { dropped_task_attempts_.clear(); }
 
      private:
-      int64_t num_profile_events_dropped = 0;
+      int64_t num_profile_events_dropped_ = 0;
+
+      bool is_job_done_ = false;
+
+      int64_t num_task_attempts_dropped_ = 0;
 
       absl::flat_hash_set<TaskAttempt> dropped_task_attempts_;
     };
@@ -320,27 +374,43 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                                        int64_t failed_ts,
                                        const rpc::RayErrorInfo &error_info);
 
-    /// Max number of task events allowed in the storage.
-    const size_t max_num_task_events_ = 0;
-
-    /// Reference to the counter map owned by the GcsTaskManager.
-    CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
-
+    /// Update or init a task event locator for the task events.
+    ///
+    /// \param events_by_task Task events.
+    /// \return The task event locator.
     std::shared_ptr<TaskEventLocator> UpdateOrInitTaskEventLocator(
         rpc::TaskEvents &&events_by_task);
 
-    void UpdateExistingTaskEvent(const std::shared_ptr<TaskEventLocator> &loc,
-                                 const rpc::TaskEvents &task_events);
+    /// Update an existing task attempt given the locator and the task events.
+    ///
+    /// \param loc The task event locator.
+    /// \param task_events The task events updates for the task attempt.
+    void UpdateExistingTaskAttempt(const std::shared_ptr<TaskEventLocator> &loc,
+                                   const rpc::TaskEvents &task_events);
 
+    /// Add a new task event given the task events to the storage, and
+    /// returns a locator to the task event.
+    ///
+    /// \param events_by_task Task events.
+    /// \return The task event locator.
     std::shared_ptr<TaskEventLocator> AddNewTaskEvent(rpc::TaskEvents &&events_by_task);
 
+    /// Add the locator to indices.
+    ///
+    /// \param loc The task event locator.
     void AddToIndex(const std::shared_ptr<TaskEventLocator> &loc);
 
-    void RemoveFromIndex(const rpc::TaskEvents &task_event,
-                         const std::shared_ptr<TaskEventLocator> &loc);
+    /// Remove the locator from indices.
+    ///
+    /// \param loc The locator
+    /// \return The task event locator.
+    void RemoveFromIndex(const std::shared_ptr<TaskEventLocator> &loc);
 
+    /// Record data loss from a worker.
+    /// \param data
     void RecordDataLossFromWorker(const rpc::TaskEventData &data);
 
+    /// Evict task events of a task attempt from the storage.
     void EvictTaskEvent();
 
     /// Test only functions.
@@ -348,6 +418,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
         const TaskAttempt &task_attempt) const {
       return primary_index_.at(task_attempt);
     }
+
+    /// Reference to the counter map owned by the GcsTaskManager.
+    CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
+
+    /// Max number of task events allowed in the storage.
+    const size_t max_num_task_events_ = 0;
 
     // Primary index from task attempt to the locator.
     absl::flat_hash_map<TaskAttempt, std::shared_ptr<TaskEventLocator>> primary_index_;
@@ -360,14 +436,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<WorkerID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
         worker_index_;
 
-    // Cache of tasks dropped that are not finished yet.
-    absl::flat_hash_set<TaskAttempt> dropped_non_finished_tasks_;
-
     // A summary for per job stats.
     absl::flat_hash_map<JobID, JobTaskSummary> job_task_summary_;
 
+    /// GC policy.
     std::unique_ptr<TaskEventsGcPolicyInterface> gc_policy_;
 
+    /// Task events lists.
     std::vector<std::list<rpc::TaskEvents>> task_events_list_;
 
     friend class GcsTaskManager;

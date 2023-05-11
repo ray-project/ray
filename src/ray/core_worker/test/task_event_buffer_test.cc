@@ -44,7 +44,7 @@ class TaskEventBufferTest : public ::testing::Test {
   )");
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>());
+        std::make_unique<ray::gcs::MockGcsClient>(), JobID::FromInt(1));
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -408,6 +408,8 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
       });
 
   task_event_buffer_->FlushEvents(false);
+
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
@@ -415,18 +417,11 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
   size_t num_total_profile_events = 1000;
   std::vector<std::unique_ptr<TaskEvent>> profile_events;
   auto task_id1 = RandomTaskId();
-  auto task_id2 = RandomTaskId();
-  auto job1 = JobID::FromInt(1);
-  auto job2 = JobID::FromInt(2);
+  const auto &job_id = task_event_buffer_->GetJobId();
 
   // Generate data for the same task attempts from job 1
   for (size_t i = 0; i < num_total_profile_events; ++i) {
-    profile_events.push_back(GenProfileTaskEvent(task_id1, 0, job1));
-  }
-
-  // Generate data for the same task attempts from job 1
-  for (size_t i = 0; i < num_total_profile_events; ++i) {
-    profile_events.push_back(GenProfileTaskEvent(task_id2, 0, job2));
+    profile_events.push_back(GenProfileTaskEvent(task_id1, 0, job_id));
   }
 
   // Add all
@@ -442,16 +437,17 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
                     ray::gcs::StatusCallback callback) {
-        EXPECT_EQ(actual_data->profile_events_dropped().size(), 2);
-        EXPECT_EQ(actual_data->profile_events_dropped().at(job1.Hex()),
+        EXPECT_EQ(actual_data->num_profile_events_dropped(),
                   num_total_profile_events - num_profile_events_per_task);
-        EXPECT_EQ(actual_data->profile_events_dropped().at(job2.Hex()),
-                  num_total_profile_events - num_profile_events_per_task);
+        EXPECT_EQ(actual_data->job_id(), job_id.Binary());
         callback(Status::OK());
         return Status::OK();
       });
 
   task_event_buffer_->FlushEvents(false);
+
+  // Counter is reset correctly.
+  EXPECT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(), 0);
 }
 
 }  // namespace worker

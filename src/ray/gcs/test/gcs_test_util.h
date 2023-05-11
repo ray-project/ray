@@ -274,10 +274,8 @@ struct Mocker {
       *(data.add_dropped_task_attempts()) = rpc_task_attempt;
     }
 
-    for (int i = 0; i < num_profile_task_events_dropped; ++i) {
-      (*data.mutable_profile_events_dropped())[JobID::FromInt(0).Hex()] =
-          num_profile_task_events_dropped;
-    }
+    data.set_num_profile_events_dropped(num_profile_task_events_dropped);
+    data.set_job_id(JobID::FromInt(0).Binary());
     return data;
   }
 };

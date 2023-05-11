@@ -137,7 +137,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
   }
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskEvent(
+void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
     const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
     const rpc::TaskEvents &task_events) {
   auto &existing_task = loc->GetTaskEvents();
@@ -213,7 +213,8 @@ void GcsTaskManager::GcsTaskManagerStorage::AddToIndex(
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
-    const rpc::TaskEvents &task_events, const std::shared_ptr<TaskEventLocator> &loc) {
+    const std::shared_ptr<TaskEventLocator> &loc) {
+  const auto &task_events = loc->GetTaskEvents();
   const auto task_attempt = GetTaskAttempt(task_events);
   const auto job_id = JobID::FromBinary(task_events.job_id());
   const auto task_id = TaskID::FromBinary(task_events.task_id());
@@ -259,7 +260,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
   auto loc_itr = primary_index_.find(task_attempt);
   if (loc_itr != primary_index_.end()) {
     // Merge with an existing entry.
-    UpdateExistingTaskEvent(loc_itr->second, events_by_task);
+    UpdateExistingTaskAttempt(loc_itr->second, events_by_task);
     return loc_itr->second;
   }
 
@@ -285,7 +286,8 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
   const auto &loc_iter = primary_index_.find(GetTaskAttempt(to_evict));
   RAY_CHECK(loc_iter != primary_index_.end());
 
-  // Copy the pointer.
+  // Copy the pointer, otherwise the iterator will be invalidated when
+  // removed from primary index.
   auto loc = loc_iter->second;
   const auto job_id = JobID::FromBinary(to_evict.job_id());
 
@@ -298,9 +300,9 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
   stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, NumProfileEvents(to_evict));
 
   // Remove from the index.
-  RemoveFromIndex(to_evict, loc);
+  RemoveFromIndex(loc);
 
-  // Remove from the underlying list.
+  // Lastly, remove from the underlying list.
   task_events_list_[loc->GetCurrentListIndex()].erase(loc->GetCurrentListIterator());
 }
 
@@ -412,9 +414,11 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
   }
 
-  for (const auto &[job_id, drop_count] : data.profile_events_dropped()) {
-    job_task_summary_[JobID::FromHex(job_id)].RecordProfileEventsDropped(drop_count);
-    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, drop_count);
+  if (data.num_profile_events_dropped() > 0) {
+    job_task_summary_[JobID::FromBinary(data.job_id())].RecordProfileEventsDropped(
+        data.num_profile_events_dropped());
+    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                             data.num_profile_events_dropped());
   }
 }
 
