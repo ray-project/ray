@@ -109,6 +109,8 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
+  std::vector<std::function<void()>> Progress(const std::vector<std::string> &keys);
+
   Status DoPut(const std::string &key,
                const std::string &data,
                bool overwrite,
@@ -124,8 +126,6 @@ class RedisStoreClient : public StoreClient {
   void MGetValues(const std::string &table_name,
                   const std::vector<std::string> &keys,
                   const MapCallback<std::string, std::string> &callback);
-
-  void ProcessNext(std::string key);
 
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;

@@ -228,23 +228,27 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
-void RedisStoreClient::ProcessNext(std::string key) {
-  std::function<void()> op;
+std::vector<std::function<()>> RedisStoreClient::Progress(
+    const std::vector<std::string> &keys) {
+  std::vector<std::function<void()>> op;
   {
     absl::MutexLock lock(&mu_);
-    auto op_iter = redis_ops_.find(key);
-    RAY_CHECK(op_iter != redis_ops_.end()) << " redis ops stats failed for key: " << key;
-    auto &queue = op_iter->second;
-    // All write operations have been consumed, remove this entry
-    if (queue.empty()) {
-      redis_ops_.erase(op_iter);
-    } else {
-      op = std::move(queue.front());
+    for (const auto &key : keys) {
+      auto op_iter = redis_ops_.find(key);
+      RAY_CHECK(op_iter != redis_ops_.end())
+          << " redis ops stats failed for key: " << key;
+      auto &queue = op_iter->second;
+      // All write operations have been consumed, remove this entry
+      if (queue.empty()) {
+        redis_ops_.erase(op_iter);
+      } else {
+        if (queue.front()) {
+          op.push_back(std::move(queue));
+        }
+      }
     }
   }
-  if (op) {
-    op();
-  }
+  return op;
 }
 
 void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
@@ -256,28 +260,17 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                      keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
-    {
-      // Pop the operations from the queue because it's activately
-      // executing it.
-      absl::MutexLock lock(&mu_);
-      for (size_t i = 0; i < keys.size(); ++i) {
-        auto op_iter = redis_ops_.find(keys[i]);
-        RAY_CHECK(op_iter != redis_ops_.end());
-        auto &queue = op_iter->second;
-        RAY_CHECK(!queue.empty()) << " check redis ops failed for key: " << keys[i];
-        queue.pop();
-      }
-    }
+    RAY_CHECK(Progress(keys).empty());
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
     RAY_CHECK_OK(cxt->RunArgvAsync(
         std::move(args),
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
-          // Fire the next request
-          for (const auto &key : keys) {
-            ProcessNext(key);
+          for (auto &op : Progress(keys)) {
+            op();
           }
+
           if (redis_callback) {
             redis_callback(reply);
           }
