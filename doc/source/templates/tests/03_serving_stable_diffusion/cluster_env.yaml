@@ -1,0 +1,19 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py39") }}
+
+env_vars: {}
+
+python:
+  pip_packages:
+    - accelerate==0.19.0
+    - diffusers==0.15.1
+    - fastapi==0.95.1
+    - matplotlib==3.7.1
+    - numpy==1.23.5
+    - Pillow==9.5.0
+    - torch==2.0.0
+    - transformers==4.28.1
+
+post_build_cmds:
+  # Install Ray
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
