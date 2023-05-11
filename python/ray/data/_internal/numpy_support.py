@@ -4,6 +4,7 @@ import numpy as np
 
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _truncated_repr
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 
 logger = DatasetLogger(__name__)
 
@@ -55,10 +56,10 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                     f"{_truncated_repr(udf_return_col)}. Falling back to "
                     "object dtype for these results."
                 )
-                dtype = object
+                # This util works around some limitations of np.array(dtype=object).
+                udf_return_col = create_ragged_ndarray(udf_return_col)
             else:
-                dtype = None
-            udf_return_col = np.array(udf_return_col, dtype=dtype)
+                udf_return_col = np.array(udf_return_col)
         except Exception as e:
             raise ValueError(
                 "Failed to convert column values to numpy array: "
