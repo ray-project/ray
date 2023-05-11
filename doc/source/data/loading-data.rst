@@ -5,6 +5,11 @@ Loading Data
 ====================
 
 .. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
 
     import ray
     ray.init()
