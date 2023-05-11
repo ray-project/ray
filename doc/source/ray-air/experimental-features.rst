@@ -86,7 +86,7 @@ it out.
 To opt-in, you need to set the ``RAY_AIR_RICH_LAYOUT=1`` environment variable
 and have rich installed (``pip install rich``).
 
-.. figure:: images/rich-stick-status.png
+.. figure:: images/rich-sticky-status.png
 
 
 .. _air-experimental-execution:
