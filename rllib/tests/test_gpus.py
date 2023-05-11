@@ -118,7 +118,9 @@ class TestGPUsLargeBatch(unittest.TestCase):
     """Test for batches larger than GPU memory.
 
     If this test fails, this can mean one of the following:
-    1. The size of the GPU is not fit. It should have a size such that putting the complete batch onto it will fail. In this case, adapt SGD_MINIBATCH_SIZE and TRAIN_BATCH_SIZE.
+    1. The size of the GPU is not fit. It should have a size such that putting the
+       complete batch onto it will fail. In this case, adapt SGD_MINIBATCH_SIZE and
+       TRAIN_BATCH_SIZE.
     2. Anything else
 
     """
@@ -130,7 +132,9 @@ class TestGPUsLargeBatch(unittest.TestCase):
     TRAIN_BATCH_SIZE = int(SGD_MINIBATCH_SIZE * 5e4)
 
     def test_larger_train_batch_size_multi_gpu_train_one_step(self):
-        """Tests that we can use a train batch size larger than GPU memory with our experimental setting `_load_only_minibatch_onto_device` with multi_gpu_train_one_step."""
+        # Tests that we can use a train batch size larger than GPU memory with our
+        # experimental setting `_load_only_minibatch_onto_device` with
+        # multi_gpu_train_one_step.
 
         b = self.TRAIN_BATCH_SIZE
 
@@ -139,24 +143,16 @@ class TestGPUsLargeBatch(unittest.TestCase):
             {
                 SampleBatch.OBS: np.zeros((b, 4), dtype=np.float32),
                 SampleBatch.ACTIONS: np.zeros((b,), dtype=np.float32),
-                SampleBatch.PREV_ACTIONS: np.zeros(
-                    (b,), dtype=np.float32
-                ),
+                SampleBatch.PREV_ACTIONS: np.zeros((b,), dtype=np.float32),
                 SampleBatch.REWARDS: np.zeros((b,), dtype=np.float32),
-                SampleBatch.PREV_REWARDS: np.zeros(
-                    (b,), dtype=np.float32
-                ),
+                SampleBatch.PREV_REWARDS: np.zeros((b,), dtype=np.float32),
                 "value_targets": np.zeros((b,), dtype=np.float32),
                 SampleBatch.TERMINATEDS: np.array([False] * b),
                 SampleBatch.TRUNCATEDS: np.array([False] * b),
                 "advantages": np.zeros((b,), dtype=np.float32),
                 SampleBatch.VF_PREDS: np.zeros((b,), dtype=np.float32),
-                SampleBatch.ACTION_DIST_INPUTS: np.zeros(
-                    (b, 2), dtype=np.float32
-                ),
-                SampleBatch.ACTION_LOGP: np.zeros(
-                    (b,), dtype=np.float32
-                ),
+                SampleBatch.ACTION_DIST_INPUTS: np.zeros((b, 2), dtype=np.float32),
+                SampleBatch.ACTION_LOGP: np.zeros((b,), dtype=np.float32),
                 SampleBatch.EPS_ID: np.zeros((b,), dtype=np.int64),
                 SampleBatch.AGENT_INDEX: np.zeros((b,), dtype=np.int64),
             }
