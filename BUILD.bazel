@@ -222,10 +222,10 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":runtime_env_agent_manager_cc_grpc",
         ":agent_manager_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
+        ":runtime_env_agent_manager_cc_grpc",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -237,10 +237,9 @@ cc_grpc_library(
     srcs = ["//src/ray/protobuf:runtime_env_agent_proto"],
     grpc_only = True,
     deps = [
-        "//src/ray/protobuf:runtime_env_agent_manager_cc_proto",
-        "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/protobuf:runtime_env_agent_manager_cc_proto",
     ],
 )
 
@@ -2887,7 +2886,6 @@ alias(
 filegroup(
     name = "all_py_proto",
     srcs = [
-        "//src/ray/protobuf:runtime_env_agent_manager_py_proto",
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
@@ -2900,6 +2898,7 @@ filegroup(
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
+        "//src/ray/protobuf:runtime_env_agent_manager_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",
         "//src/ray/protobuf:runtime_env_common_py_proto",
         "//src/ray/protobuf:usage_py_proto",
