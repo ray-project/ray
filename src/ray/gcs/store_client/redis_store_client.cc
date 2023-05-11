@@ -312,7 +312,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
       RAY_CHECK(iter != redis_ops_.end());
       // Only push the actual operations into the queue of the key
       // which has the most pending works to avoid duplicate copies.
-      if (i == busiest_key_idx) {
+      if (!can_fire && i == busiest_key_idx) {
         iter->second.push(std::move(send_redis));
       } else {
         iter->second.push(nullptr);
@@ -323,9 +323,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
   // If we can fire the request, fire it now.
   // Otherwise, it'll be handled by the callback of the inflight requests.
   if (can_fire) {
-    RAY_CHECK(redis_ops_[keys[busiest_key_idx]].front() != nullptr);
-    auto op = std::move(redis_ops_[keys[busiest_key_idx]].front());
-    op();
+    send_redis();
   }
 }
 
