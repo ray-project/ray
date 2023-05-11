@@ -397,15 +397,6 @@ Learn more about Ray RLlib
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications. 
 
-````{note}
-To run this example install Ray Core:
-
-```bash
-pip install -U "ray"
-```
-````
-
-For Java, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
@@ -414,10 +405,16 @@ For Java, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) a
 
 ````{tab-item} Python
 
-First, you import Ray and and initialize it with `ray.init()`.
-Then you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
-Lastly, you call that function with ``.remote()`` instead of calling it normally.
-This remote call yields a future, a so-called Ray _object reference_, that you can then fetch with ``ray.get``.
+To run this example install Ray Core:
+
+```bash
+pip install -U "ray"
+```
+
+Import Ray and and initialize it with `ray.init()`.
+Then decorate the function with ``@ray.remote`` to declare that you want to run this function remotely.
+Lastly, call the function with ``.remote()`` instead of calling it normally.
+This remote call yields a future, a Ray _object reference_, that you can then fetch with ``ray.get``.
 
 ```{code-block} python
 
@@ -436,10 +433,14 @@ print(ray.get(futures)) # [0, 1, 4, 9]
 
 ````{tab-item} Java
 
-First, use `Ray.init` to initialize Ray runtime.
-Then you can use `Ray.task(...).remote()` to convert any Java static method into a Ray task. 
-The task will run asynchronously in a remote worker process. The `remote` method will return an ``ObjectRef``,
-and you can then fetch the actual result with ``get``.
+```{note}
+To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
+```
+
+Use `Ray.init` to initialize Ray runtime.
+Then use `Ray.task(...).remote()` to convert any Java static method into a Ray task. 
+The task runs asynchronously in a remote worker process. The `remote` method returns an ``ObjectRef``,
+and you can fetch the actual result with ``get``.
 
 ```{code-block} java
 
@@ -498,6 +499,12 @@ maintain its own internal state.
 
 ````{tab-item} Python
 
+To run this example install Ray Core:
+
+```bash
+pip install -U "ray"
+```
+
 ```{code-block} python
 
 import ray
@@ -522,6 +529,12 @@ print(ray.get(futures)) # [1, 1, 1, 1]
 ````
 
 ````{tab-item} Java
+
+
+```{note}
+To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
+```
+
 ```{code-block} java
 
 import io.ray.api.ActorHandle;
