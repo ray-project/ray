@@ -589,13 +589,13 @@ def multiplexed(
     an async function. It is recommended to define coroutines for long running
     IO tasks in the function to avoid blocking the event loop.
 
-    The multiplexed function is called to load a model with a given model ID when
+    The multiplexed function is called to load a model with the given model ID when
     necessary.
 
     When the number of models in one replica is larger than max_num_models_per_replica,
     the models will be unloaded using an LRU policy.
 
-    If you want to release resource after the model is loaded, you can define
+    If you want to release resources after the model is loaded, you can define
     a `__del__` method in your model class. The `__del__` method will be called when
     the model is unloaded.
 
@@ -629,7 +629,7 @@ def multiplexed(
 
 
     Args:
-        max_num_models_per_replica: number of models to be loaded on each replica.
+        max_num_models_per_replica: the maximum number of models to be loaded on each replica.
         By default, it is -1, which means there is no number limit to load models.
     """
 
