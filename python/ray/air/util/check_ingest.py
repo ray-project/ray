@@ -33,11 +33,6 @@ class DummyTrainer(DataParallelTrainer):
         prefetch_batches: The number of batches to prefetch ahead of the
             current block during the scan. This is the same as
             :meth:`~ray.data.Dataset.iter_batches`
-        time_preprocessing_separately: Whether to time the preprocessing separately
-            from actual iteration during training. If set to True, preprocessing
-            execution is fully executed before training begins and the preprocessing
-            time is printed out. Defaults to False, which mimics the actual behavior of
-            Trainers.
     """
 
     def __init__(
@@ -47,40 +42,18 @@ class DummyTrainer(DataParallelTrainer):
         num_epochs: int = 1,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 4096,
-        time_preprocessing_separately: bool = False,
-        # Deprecated.
-        prefetch_blocks: int = 0,
         **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_batches, prefetch_blocks, batch_size
+                num_epochs, prefetch_batches, batch_size
             ),
             *args,
             scaling_config=scaling_config,
             **kwargs,
         )
-        self.time_preprocessing_separately = time_preprocessing_separately
-
-    def preprocess_datasets(self):
-        print("Starting dataset preprocessing")
-        super().preprocess_datasets()
-        if self.time_preprocessing_separately:
-            for dataset_name, ds in list(self.datasets.items()):
-                start = time.perf_counter()
-                # Force execution to time preprocessing since Datasets are lazy by
-                # default.
-                self.datasets[dataset_name] = ds.materialize()
-                print(
-                    f"Preprocessed {dataset_name} in",
-                    time.perf_counter() - start,
-                    "seconds",
-                )
-                if self.preprocessor:
-                    print("Preprocessor", self.preprocessor)
-                    print("Preprocessor transform stats:\n\n{}".format(ds.stats()))
 
     @staticmethod
     def make_train_loop(
@@ -208,20 +181,20 @@ if __name__ == "__main__":
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
     # into 100 blocks (parallelism=100).
-    dataset = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
 
     # An example preprocessor chain that just scales all values by 4.0 in two stages.
     preprocessor = Chain(
         BatchMapper(lambda df: df * 2, batch_format="pandas"),
         BatchMapper(lambda df: df * 2, batch_format="pandas"),
     )
+    ds = preprocessor.transform(ds)
 
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.
     trainer = DummyTrainer(
         scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
-        datasets={"train": dataset},
-        preprocessor=preprocessor,
+        datasets={"train": ds},
         num_epochs=args.num_epochs,
         prefetch_batches=args.prefetch_batches,
         dataset_config=DataConfig(),
