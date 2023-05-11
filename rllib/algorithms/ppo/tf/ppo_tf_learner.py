@@ -67,8 +67,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
                     "This can happen naturally in deterministic "
                     "environments where the optimal policy has zero mass "
                     "for a specific action. To fix this issue, consider "
-                    "setting the coefficient for the KL loss term to "
-                    "zero or increasing policy entropy."
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
                 )
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
@@ -100,9 +100,9 @@ class PPOTfLearner(PPOLearner, TfLearner):
             )
 
         total_loss = tf.reduce_mean(
-            -surrogate_loss
+            - surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.entropy_coeff_scheduler.get_current_value(module_id) * mean_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),

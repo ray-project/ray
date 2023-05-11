@@ -70,8 +70,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                     "This can happen naturally in deterministic "
                     "environments where the optimal policy has zero mass "
                     "for a specific action. To fix this issue, consider "
-                    "setting the coefficient for the KL loss term to "
-                    "zero or increasing policy entropy."
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
                 )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
