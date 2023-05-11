@@ -355,8 +355,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
      private:
       int64_t num_profile_events_dropped_ = 0;
 
-      bool is_job_done_ = false;
-
       int64_t num_task_attempts_dropped_ = 0;
 
       absl::flat_hash_set<TaskAttempt> dropped_task_attempts_;
