@@ -174,7 +174,7 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
-  auto fn = [](struct redisAsyncContext *async_context,
+  auto fn = +[](struct redisAsyncContext *async_context,
                void *redis_reply,
                void *privdata) {
     auto *request_cxt = (RedisRequestContext *)privdata;
@@ -205,7 +205,7 @@ void RedisRequestContext::Run() {
 
   if (!status.ok()) {
     RAY_CHECK(!status.IsDisconnected()) << "Redis is disconnected";
-    fn(redis_context_, nullptr, this);
+    fn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
   }
 }
 
