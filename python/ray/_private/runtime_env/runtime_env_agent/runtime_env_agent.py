@@ -680,10 +680,6 @@ class RuntimeEnvAgent(
         await asyncio.gather(*tasks)
         await self._grpc_server.wait_for_termination()
 
-    @staticmethod
-    def is_minimal_module():
-        return True
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")
