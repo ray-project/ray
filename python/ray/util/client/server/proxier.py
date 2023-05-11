@@ -294,8 +294,8 @@ class ProxyManager:
             f"ray_client_server_{specific_server.port}", unique=True
         )
 
-        serialized_runtime_env = job_config.get_serialized_runtime_env()
-        runtime_env_config = job_config.get_proto_runtime_env_config()
+        serialized_runtime_env = job_config._get_serialized_runtime_env()
+        runtime_env_config = job_config._get_proto_runtime_env_config()
         if not serialized_runtime_env or serialized_runtime_env == "{}":
             # TODO(edoakes): can we just remove this case and always send it
             # to the agent?
