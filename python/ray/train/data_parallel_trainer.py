@@ -236,7 +236,9 @@ class DataParallelTrainer(BaseTrainer):
         "placement_strategy",
     ]
 
-    _dataset_config = {
+    _dataset_config = None
+
+    _legacy_dataset_config = {
         TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
         WILDCARD_KEY: DatasetConfig(split=False),
     }
@@ -262,12 +264,17 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
-        if isinstance(dataset_config, dict):
+        if isinstance(dataset_config, dict) or self._dataset_config is not None:
             logger.warning(
                 "The dict form of `dataset_config` is deprecated. Use the "
                 "DataConfig class instead. Support for this will be dropped "
                 "in a future release."
             )
+            if isinstance(dataset_config, DataConfig):
+                raise ValueError(
+                    "When the legacy field Trainer._dataset_config is defined, "
+                    "dataset_config must be specified in dict form."
+                )
             self._data_config = _LegacyDataConfigWrapper(
                 self._dataset_config, dataset_config, datasets
             )
