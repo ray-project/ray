@@ -1,9 +1,12 @@
 import logging
+from typing import Tuple
 
+import concurrent.futures
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray._private.ray_constants import env_integer
 import asyncio
 import grpc
 import io
@@ -14,6 +17,10 @@ from pathlib import Path
 
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray._private.ray_constants import (
+    LOG_PREFIX_TASK_ATTEMPT_START,
+    LOG_PREFIX_TASK_ATTEMPT_END,
+)
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -23,6 +30,41 @@ BLOCK_SIZE = 1 << 16
 
 # Keep-alive interval for reading the file
 DEFAULT_KEEP_ALIVE_INTERVAL_SEC = 1
+
+RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT = env_integer(
+    "RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT", default=2
+)
+
+
+def find_offset_of_content_in_file(
+    file: io.BufferedIOBase, content: bytes, start_offset: int = 0
+) -> int:
+    """Find the offset of the first occurrence of content in a file.
+
+    Args:
+        file: File object
+        content: Content to find
+        start_offset: Start offset to read from, inclusive.
+
+    Returns:
+        Offset of the first occurrence of content in a file.
+    """
+    logger.debug(f"Finding offset of content {content} in file")
+    file.seek(start_offset, io.SEEK_SET)  # move file pointer to start of file
+    offset = start_offset
+    while True:
+        # Read in block
+        block_data = file.read(BLOCK_SIZE)
+        if block_data == b"":
+            # Stop reading
+            return -1
+        # Find the offset of the first occurrence of content in the block
+        block_offset = block_data.find(content)
+        if block_offset != -1:
+            # Found the offset in the block
+            return offset + block_offset
+        # Continue reading
+        offset += len(block_data)
 
 
 def find_end_offset_file(file: io.BufferedIOBase) -> int:
@@ -220,6 +262,11 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
         return False
 
 
+_task_log_search_worker_pool = concurrent.futures.ThreadPoolExecutor(
+    max_workers=RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT
+)
+
+
 class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
@@ -252,6 +299,77 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             log_files.append(p.name)
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
+    @classmethod
+    async def _find_task_log_offsets(
+        cls, task_id: str, attempt_number: int, lines: int, f: io.BufferedIOBase
+    ) -> Tuple[int, int]:
+        """Find the start and end offsets in the log file for a task attempt
+        Current task log is in the format of below:
+
+            :job_id:xxx
+            :task_name:xxx
+            :task_attempt_start:<task_id>-<attempt_number>
+            ...
+            actual user logs
+            ...
+            :task_attempt_end:<task_id>-<attempt_number>
+            ... (other tasks)
+
+
+        For async actor tasks, task logs from multiple tasks might however
+        be interleaved.
+        """
+
+        # Find start
+        task_attempt_start_magic_line = (
+            f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
+        )
+
+        # Offload the heavy IO CPU work to a thread pool to avoid blocking the
+        # event loop for concurrent requests.
+        task_attempt_magic_line_offset = (
+            await asyncio.get_running_loop().run_in_executor(
+                _task_log_search_worker_pool,
+                find_offset_of_content_in_file,
+                f,
+                task_attempt_start_magic_line.encode(),
+            )
+        )
+
+        if task_attempt_magic_line_offset == -1:
+            raise FileNotFoundError(
+                f"Log for task attempt({task_id},{attempt_number}) not found"
+            )
+        start_offset = task_attempt_magic_line_offset + len(
+            task_attempt_start_magic_line
+        )
+
+        # Find the end of the task log, which is the start of the next task log if any
+        # with the LOG_PREFIX_TASK_ATTEMPT_END magic line.
+        task_attempt_end_magic_line = (
+            f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
+        )
+        end_offset = await asyncio.get_running_loop().run_in_executor(
+            _task_log_search_worker_pool,
+            find_offset_of_content_in_file,
+            f,
+            task_attempt_end_magic_line.encode(),
+            start_offset,
+        )
+
+        if end_offset == -1:
+            # No other tasks (might still be running), stream til the end.
+            end_offset = find_end_offset_file(f)
+
+        if lines != -1:
+            # Tail lines specified, find end_offset - lines offsets.
+            start_offset = max(
+                find_start_offset_last_n_lines_from_offset(f, end_offset, lines),
+                start_offset,
+            )
+
+        return start_offset, end_offset
+
     async def StreamLog(self, request, context):
         """
         Streams the log in real time starting from `request.lines` number of lines from
@@ -265,6 +383,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         # NOTE: If the client side connection is closed, this handler will
         # be automatically terminated.
         lines = request.lines if request.lines else 1000
+        task_id = request.task_id if request.HasField("task_id") else None
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
         if not os.path.isfile(filepath):
@@ -279,7 +398,20 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                 start_offset = 0
                 end_offset = find_end_offset_file(f)
 
-                if lines != -1:
+                if task_id is not None:  # Stream from task log.
+                    attempt_number = (
+                        request.attempt_number
+                        if request.HasField("attempt_number")
+                        else 0
+                    )
+                    start_offset, end_offset = await self._find_task_log_offsets(
+                        task_id, attempt_number, lines, f
+                    )
+                    logger.info(
+                        f"Tailing task logs from {start_offset} to {end_offset} for"
+                        f"task attempt({task_id}, {attempt_number}) in {f.name}"
+                    )
+                elif lines != -1:  # Default tailing files
                     # If specified tail line number,
                     # look for the file offset with the line count
                     start_offset = find_start_offset_last_n_lines_from_offset(
@@ -299,8 +431,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                     end_offset = -1
 
                 logger.info(
-                    f"Tailing logs from {start_offset} to {end_offset} for {lines}, "
-                    f"with keep_alive={keep_alive_interval_sec}"
+                    f"Tailing logs from {start_offset} to {end_offset} for "
+                    f"lines={lines}, with keep_alive={keep_alive_interval_sec}"
                 )
 
                 # Read and send the file data in chunk

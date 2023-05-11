@@ -348,6 +348,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
+  int64_t GetCurrentTaskAttemptNumber() const {
+    return worker_context_.GetCurrentTask() != nullptr
+               ? worker_context_.GetCurrentTask()->AttemptNumber()
+               : 0;
+  }
+
   JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
   const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
