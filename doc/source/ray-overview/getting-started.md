@@ -104,10 +104,10 @@ Ray Data provides basic distributed data transformations such as `map`, `filter`
 They are compatible with a variety of file formats, datasources, and distributed frameworks.
 
 ````{note}
-To get started with this example install Ray Data as follows.
+To run this example install Ray Data and Dask:
 
 ```bash
-pip install -U "ray[default,data]" dask
+pip install -U "ray[data]" dask
 ```
 ````
 
@@ -160,7 +160,15 @@ system. Let's take following simple examples:
 
 This example shows how you can use Ray Train with PyTorch.
 
-First, set up your dataset and model.
+````{note}
+To run this example install Ray Train:
+
+```bash
+pip install -U "ray[train]"
+```
+````
+
+Set up your dataset and model.
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
@@ -286,7 +294,7 @@ With Tune, you can launch a multi-node distributed hyperparameter sweep in less 
 Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 
 ````{note}
-To run this example, you will need to install the following:
+To run this example, install Ray Tune:
 
 ```bash
 pip install "ray[tune]"
@@ -324,12 +332,13 @@ Learn more about Ray Tune
 [Ray Serve](../serve/index) is a scalable model-serving library built on Ray. 
 
 ````{note}
-To run this example, you will need to install the following libraries.
+To run this example, install Ray Serve and scikit-learn:
 
 ```{code-block} bash
 pip install "ray[serve]" scikit-learn
 ```
 ````
+
 This example runs serves a scikit-learn gradient boosting classifier.
 
 ```{literalinclude} ../serve/doc_code/sklearn_quickstart.py
@@ -358,7 +367,7 @@ Learn more about Ray Serve
 RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 ````{note}
-To run this example, you will need to install `rllib` and either `tensorflow` or `pytorch`.
+To run this example, install `rllib` and either `tensorflow` or `pytorch`:
 ```bash
 pip install "ray[rllib]" tensorflow  # or torch
 ```
@@ -384,6 +393,13 @@ Learn more about Ray RLlib
 
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications. 
+
+Install Ray Core with: 
+
+```
+pip install -U "ray"
+```
+For Java, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
