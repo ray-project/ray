@@ -31,7 +31,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
-    RAY_SERVE_REQUEST_MODEL_ID,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -426,20 +425,11 @@ class HTTPProxy:
             scope["root_path"] = root_path + route_prefix
 
         start_time = time.time()
-
-        model_id = None
-        for key, value in scope["headers"]:
-            if RAY_SERVE_REQUEST_MODEL_ID == key.decode():
-                model_id = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(
-                route_path,
-                get_random_letters(10),
-                model_id=model_id if model_id else None,
-                app_name=app_name,
+                route_path, get_random_letters(10), app_name
             )
         )
-
         status_code = await _send_request_to_handle(handle, scope, receive, send)
 
         self.request_counter.inc(

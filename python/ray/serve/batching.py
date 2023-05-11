@@ -10,7 +10,6 @@ from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
 from ray.util.annotations import PublicAPI
-from ray.serve._private.utils import _extract_self_if_method_call
 
 
 @dataclass
@@ -170,6 +169,30 @@ class _BatchQueue:
         # causes some errors when the process exits due to the asyncio loop
         # already being destroyed.
         self._handle_batch_task.cancel()
+
+
+def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
+    """Check if this is a method rather than a function.
+
+    Does this by checking to see if `func` is the attribute of the first
+    (`self`) argument under `func.__name__`. Unfortunately, this is the most
+    robust solution to this I was able to find. It would also be preferable
+    to do this check when the decorator runs, rather than when the method is.
+
+    Returns the `self` object if it's a method call, else None.
+
+    Arguments:
+        args (List[Any]): arguments to the function/method call.
+        func: the unbound function that was called.
+    """
+    if len(args) > 0:
+        method = getattr(args[0], func.__name__, False)
+        if method:
+            wrapped = getattr(method, "__wrapped__", False)
+            if wrapped and wrapped == func:
+                return args[0]
+
+    return None
 
 
 T = TypeVar("T")

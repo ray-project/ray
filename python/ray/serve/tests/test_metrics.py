@@ -12,8 +12,11 @@ import ray.experimental.state.api as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+<<<<<<< HEAD
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
+=======
+>>>>>>> 3299f23ea4 (Update & trim pr)
 
 
 @pytest.fixture
@@ -406,10 +409,6 @@ class TestRequestContextMetrics:
             ]
         return metrics_summary_route, metrics_summary_app
 
-    def verify_metrics(self, metric, expected_output):
-        for key in expected_output:
-            assert metric[key] == expected_output[key]
-
     def test_request_context_pass_for_http_proxy(self, serve_start_shutdown):
         """Test HTTP proxy passing request context"""
 
@@ -479,7 +478,7 @@ class TestRequestContextMetrics:
             "serve_deployment_processing_latency_ms_sum",
         ]:
             metrics_route, metrics_app_name = self._generate_metrics_summary(
-                get_metric_dictionaries(metric_name)
+                get_metric_dictionaries("serve_handle_request_counter")
             )
             assert metrics_route["app1_f"] == {"/app1"}
             assert metrics_route["app2_g"] == {"/app2"}
@@ -598,7 +597,6 @@ class TestRequestContextMetrics:
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
             timeout=20,
         )
-
         counter_metrics = get_metric_dictionaries("my_counter")
         assert len(counter_metrics) == 1
         expected_metrics = {
@@ -621,7 +619,11 @@ class TestRequestContextMetrics:
         }
         gauge_metrics = get_metric_dictionaries("my_gauge")
         assert len(counter_metrics) == 1
-        self.verify_metrics(gauge_metrics[0], expected_metrics)
+        gauge_metrics[0]["my_static_tag"] == "static_value"
+        gauge_metrics[0]["my_runtime_tag"] == "300"
+        gauge_metrics[0]["replica"] == replica_tag
+        gauge_metrics[0]["deployment"] == deployment_name
+        gauge_metrics[0]["application"] == "app"
 
         expected_metrics = {
             "my_static_tag": "static_value",
@@ -633,7 +635,11 @@ class TestRequestContextMetrics:
         }
         histogram_metrics = get_metric_dictionaries("my_histogram_sum")
         assert len(histogram_metrics) == 1
-        self.verify_metrics(histogram_metrics[0], expected_metrics)
+        histogram_metrics[0]["my_static_tag"] == "static_value"
+        histogram_metrics[0]["my_runtime_tag"] == "200"
+        histogram_metrics[0]["replica"] == replica_tag
+        histogram_metrics[0]["deployment"] == deployment_name
+        gauge_metrics[0]["application"] == "app"
 
     @pytest.mark.parametrize("use_actor", [False, True])
     def test_serve_metrics_outside_serve(self, use_actor, serve_start_shutdown):
@@ -734,22 +740,15 @@ class TestRequestContextMetrics:
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
             timeout=20,
         )
-
         counter_metrics = get_metric_dictionaries("my_counter")
         assert len(counter_metrics) == 1
-        expected_metrics = {
-            "my_static_tag": "static_value",
-            "my_runtime_tag": "100",
-        }
-        self.verify_metrics(counter_metrics[0], expected_metrics)
+        counter_metrics[0]["my_static_tag"] == "static_value"
+        counter_metrics[0]["my_runtime_tag"] == "100"
 
         gauge_metrics = get_metric_dictionaries("my_gauge")
         assert len(counter_metrics) == 1
-        expected_metrics = {
-            "my_static_tag": "static_value",
-            "my_runtime_tag": "300",
-        }
-        self.verify_metrics(gauge_metrics[0], expected_metrics)
+        gauge_metrics[0]["my_static_tag"] == "static_value"
+        gauge_metrics[0]["my_runtime_tag"] == "300"
 
         histogram_metrics = get_metric_dictionaries("my_histogram_sum")
         assert len(histogram_metrics) == 1

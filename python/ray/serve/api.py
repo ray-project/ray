@@ -2,7 +2,6 @@ import collections
 import inspect
 import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union
-from functools import wraps
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -46,13 +45,9 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
-    _extract_self_if_method_call,
 )
 
 from ray.serve._private import api as _private_api
-
-import ray
-from ray.serve.multiplex import _ModelMultiplexWrapper
 
 
 logger = logging.getLogger(__file__)
@@ -598,7 +593,7 @@ def multiplexed(
     necessary.
 
     When the number of models in one replica is larger than max_num_models_per_replica,
-    the multiplexed function will unload the model with LRU policy.
+    the models will be unloaded using an LRU policy.
 
     If you want to release resource after the model is loaded, you can define
     a `__del__` method in your model class. The `__del__` method will be called when
@@ -611,6 +606,10 @@ def multiplexed(
 
             @serve.deployment
             class MultiplexedDeployment:
+
+                def __init__(self):
+                    # Define s3 base path to load models
+                    self.s3_base_path = "s3://my_bucket/my_models"
 
                 @serve.multiplexed(max_num_models_per_replica=5)
                 async def load_model(self, model_id: str) -> Any:
@@ -633,69 +632,12 @@ def multiplexed(
         max_num_models_per_replica: number of models to be loaded on each replica.
         By default, it is -1, which means there is no number limit to load models.
     """
-    if func is not None:
-        if not callable(func):
-            raise TypeError(
-                "@serve.multiplex can only be used to decorate functions or methods."
-            )
 
-    if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:
-        raise ValueError("max_num_models_per_replica must be larger than 0.")
-
-    def _multiplex_decorator(func):
-
-        signature = inspect.signature(func)
-        if len(signature.parameters) == 0:
-            raise ValueError(
-                "@serve.multiplex can only be used to decorate functions or methods "
-                "with at least one 'model_id: str' argument."
-            )
-
-        # func must be ascyn function or method
-        if not inspect.iscoroutinefunction(func):
-            raise ValueError(
-                "@serve.multiplex can only be used to decorate async "
-                "functions or methods."
-            )
-
-        @wraps(func)
-        async def _multiplex_wrapper(*args):
-            self = _extract_self_if_method_call(args, func)
-            signature = inspect.signature(func)
-            if self is None:
-                if len(signature.parameters) != 1:
-                    raise ValueError(
-                        "The function must have exact one argument with type `str` "
-                        "as model_id."
-                    )
-                multiplex_object = func
-                model_id = args[0]
-            else:
-                # count self as an argument
-                if len(signature.parameters) != 2:
-                    raise ValueError(
-                        "The method must have exact one argument with type `str` "
-                        "as model_id."
-                    )
-                multiplex_object = self
-                model_id = args[1]
-            multiplex_attr = f"__serve_multiplex_{func.__name__}"
-            if not hasattr(multiplex_object, multiplex_attr):
-                model_multiplex_wrapper = _ModelMultiplexWrapper(
-                    func, self, max_num_models_per_replica
-                )
-                setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
-            else:
-                model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
-            return await model_multiplex_wrapper.load_model(model_id)
-
-        return _multiplex_wrapper
-
-    return _multiplex_decorator(func) if callable(func) else _multiplex_decorator
+    raise NotImplementedError("Multiplexed deployment is not supported yet.")
 
 
 @PublicAPI(stability="alpha")
-def get_model_id() -> str:
+def get_multiplexed_model_id() -> str:
     """[EXPERIMENTAL] Returns the model id of the current request.
 
     When user defines a multiplexed deployment, the model id of the current request
@@ -725,5 +667,4 @@ def get_model_id() -> str:
 
 
     """
-    _request_context = ray.serve.context._serve_request_context.get()
-    return _request_context.model_id
+    raise NotImplementedError("get_multiplexed_model_id API is not supported yet.")
