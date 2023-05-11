@@ -258,7 +258,7 @@ time.sleep(100)
     )
 
 
-def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
+def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
     cluster = ray_start_cluster
     # head
     cluster.add_node(num_cpus=0)
@@ -271,14 +271,14 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
         assert raylet is not None
 
         children = psutil.Process(raylet.pid).children()
-        assert len(children) == 1
-        agent = psutil.Process(children[0].pid)
+        assert len(children) == 2
+        agent = psutil.Process(children[1].pid)
         return raylet, agent
 
     # Make sure raylet exits gracefully upon agent terminated by SIGTERM.
     worker = cluster.add_node(num_cpus=0)
-    raylet, agent = get_raylet_agent_procs(worker)
-    agent.terminate()
+    raylet, runtime_env_agent = get_raylet_agent_procs(worker)
+    runtime_env_agent.terminate()
     exit_code = raylet.wait()
     # When the agent is terminated
     assert exit_code == 0
@@ -288,8 +288,8 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
     # not possible because we cannot detect the exit code of children process
     # from cpp code.
     worker = cluster.add_node(num_cpus=0)
-    raylet, agent = get_raylet_agent_procs(worker)
-    agent.kill()
+    raylet, runtime_env_agent = get_raylet_agent_procs(worker)
+    runtime_env_agent.kill()
     exit_code = raylet.wait()
     # When the agent is terminated
     assert exit_code == 0
