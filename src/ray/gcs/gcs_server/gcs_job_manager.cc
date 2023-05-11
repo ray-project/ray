@@ -207,26 +207,31 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_data_key_to_indices[job_data_key].push_back(i);
       }
 
-      // Get is_running_tasks from the core worker for the driver.
-      auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
-      std::unique_ptr<rpc::NumPendingTasksRequest> request(
-          new rpc::NumPendingTasksRequest());
-      client->NumPendingTasks(
-          std::move(request),
-          [reply, i, num_processed_jobs, try_send_reply](
-              const Status &status,
-              const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-            if (!status.ok()) {
-              RAY_LOG(ERROR) << "Failed to get is_running_tasks from core worker: "
-                             << status.ToString();
-            }
-            bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
-            reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
-
-            // Increase the counter for the jobs processed and try sending the reply
-            num_processed_jobs->fetch_add(1);
-            try_send_reply();
-          });
+      // If job is not dead, get is_running_tasks from the core worker for the driver.
+      if (data.second.is_dead()) {
+        reply->mutable_job_info_list(i)->set_is_running_tasks(false);
+        num_processed_jobs->fetch_add(1);
+        try_send_reply();
+      } else {
+        // Get is_running_tasks from the core worker for the driver.
+        auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
+        std::unique_ptr<rpc::NumPendingTasksRequest> request(
+            new rpc::NumPendingTasksRequest());
+        client->NumPendingTasks(
+            std::move(request),
+            [reply, i, num_processed_jobs, try_send_reply](
+                const Status &status,
+                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to get is_running_tasks from core worker: "
+                               << status.ToString();
+              }
+              bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
+              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
+              num_processed_jobs->fetch_add(1);
+              try_send_reply();
+            });
+      }
       i++;
     }
 
@@ -258,7 +263,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               }
             }
           }
-          // Set the metadata callback completion flag and try sending the reply
           kv_callback_done->store(true);
           try_send_reply();
         };
