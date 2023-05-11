@@ -548,9 +548,7 @@ def _detect_reporter(
             reporter = TuneTerminalReporter(verbosity, num_samples, metric, mode)
     else:
         if rich_enabled:
-            logger.warning(
-                "`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase."
-            )
+            logger.warning("`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase.")
         reporter = TrainReporter(verbosity)
     return reporter
 
