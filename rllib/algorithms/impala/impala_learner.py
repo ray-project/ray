@@ -93,7 +93,7 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     """Reduce/Aggregate a list of results from Impala Learners.
 
     Average the values of the result dicts. Add keys for the number of agent and env
-    steps trained.
+    steps trained (on all modules).
 
     Args:
         results: result dicts to reduce.

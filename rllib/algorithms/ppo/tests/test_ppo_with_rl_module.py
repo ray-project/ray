@@ -61,10 +61,10 @@ class MyCallbacks(DefaultCallbacks):
             0.05 if algorithm.iteration == 1 else 0.0,
         )
 
-        # Learning rate should decrease by 0.0001 per iteration.
+        # Learning rate should decrease by 0.0001/4 per iteration.
         check(
             stats[LEARNER_RESULTS_CURR_LR_KEY],
-            0.0003 if algorithm.iteration == 1 else 0.0002,
+            0.0000075 if algorithm.iteration == 1 else 0.000005,
         )
         # Compare reported curr lr vs the actual lr found in the optimizer object.
         optim = algorithm.learner_group._learner._named_optimizers[DEFAULT_POLICY_ID]
@@ -94,7 +94,7 @@ class TestPPO(unittest.TestCase):
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
-                lr_schedule=[[0, 0.0004], [512, 0.0]],  # 512=4x128
+                lr_schedule=[[0, 0.00001], [512, 0.0]],  # 512=4x128
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,

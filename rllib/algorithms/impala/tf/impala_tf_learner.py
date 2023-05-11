@@ -19,7 +19,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        action_dist_class_train = self._module[module_id].get_train_action_dist_cls()
+        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
         target_policy_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
@@ -95,7 +95,8 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         total_loss = (
             pi_loss
             + vf_loss * self.hps.vf_loss_coeff
-            + mean_entropy_loss * self.hps.entropy_coeff
+            + mean_entropy_loss
+            * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
         return {
             self.TOTAL_LOSS_KEY: total_loss,

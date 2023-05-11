@@ -7,6 +7,9 @@ import queue
 import random
 from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
+import numpy as np
+import tree  # pip install dm_tree
+
 import ray
 from ray import ObjectRef
 from ray.rllib import SampleBatch
@@ -938,35 +941,39 @@ class Impala(Algorithm):
             Aggregated results from the learner group after an update is completed.
 
         """
-        result = {}
-        # There are batches on the queue -> Send them to the learner group.
+        # There are batches on the queue -> Send them all to the learner group.
         if self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner.pop(0)
+            batches = self.batches_to_place_on_learner[:]
+            self.batches_to_place_on_learner.clear()
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
-            lg_results = self.learner_group.update(
-                batch,
-                reduce_fn=_reduce_impala_results,
-                block=blocking,
-                num_iters=self.config.num_sgd_iter,
-                minibatch_size=self.config.minibatch_size,
-            )
-        # Nothing on the queue -> Don't send requests to learner group.
-        else:
-            lg_results = None
-
-        if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
-                NUM_ENV_STEPS_TRAINED
-            )
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
-                NUM_AGENT_STEPS_TRAINED
-            )
+            results = []
+            for batch in batches:
+                result = self.learner_group.update(
+                    batch,
+                    reduce_fn=_reduce_impala_results,
+                    block=blocking,
+                    num_iters=self.config.num_sgd_iter,
+                    minibatch_size=self.config.minibatch_size,
+                )
+                if result:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                        NUM_ENV_STEPS_TRAINED
+                    )
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                        NUM_AGENT_STEPS_TRAINED
+                    )
+                    results.append(result)
             self._counters.update(self.learner_group.get_in_queue_stats())
-            result = lg_results
+            # If there are results, reduce-mean over each individual value and return.
+            if results:
+                return tree.map_structure(lambda *x: np.mean(x), *results)
 
-        return result
+        # Nothing on the queue -> Don't send requests to learner group
+        # or no results ready (from previous `self.learner_group.update()` calls) for
+        # reducing.
+        return {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.

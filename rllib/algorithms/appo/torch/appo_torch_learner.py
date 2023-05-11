@@ -5,7 +5,7 @@ from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
-    OLD_ACTION_DIST_KEY,
+    OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
@@ -37,12 +37,15 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
     ) -> TensorType:
 
         values = fwd_out[SampleBatch.VF_PREDS]
-        action_dist_cls_train = self._module[module_id].get_train_action_dist_cls()
+        action_dist_cls_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
         target_policy_dist = action_dist_cls_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-
-        old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
+        old_target_policy_dist = action_dist_cls_train.from_logits(
+            fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
+        )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )
@@ -133,7 +136,10 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         total_loss = (
             mean_pi_loss
             + (mean_vf_loss * self.hps.vf_loss_coeff)
-            + (mean_entropy_loss * self.hps.entropy_coeff)
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_scheduler.get_current_value(module_id)
+            )
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 

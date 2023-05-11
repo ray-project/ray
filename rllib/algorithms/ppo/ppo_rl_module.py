@@ -3,11 +3,11 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
+from typing import Type
 
 from ray.rllib.core.models.base import ActorCriticEncoder
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
@@ -15,10 +15,7 @@ from ray.rllib.utils.annotations import override
 
 
 @ExperimentalAPI
-class PPORLModuleBase(RLModule, abc.ABC):
-    def __init__(self, config: RLModuleConfig):
-        super().__init__(config)
-
+class PPORLModule(RLModule, abc.ABC):
     def setup(self):
         # __sphinx_doc_begin__
         catalog = self.config.get_catalog()
@@ -33,13 +30,13 @@ class PPORLModuleBase(RLModule, abc.ABC):
 
         assert isinstance(self.encoder, ActorCriticEncoder)
 
-    def get_train_action_dist_cls(self) -> Distribution:
+    def get_train_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
-    def get_exploration_action_dist_cls(self) -> Distribution:
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
-    def get_inference_action_dist_cls(self) -> Distribution:
+    def get_inference_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
     @override(RLModule)
