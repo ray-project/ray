@@ -193,7 +193,7 @@ def _setup_signal_catching() -> threading.Event:
             "to skip. "
         )
         experiment_interrupted_event.set()
-        # Restore original signal handler to react to future SIGINT signals
+        # Restore original signal handler to react to future SIGINT signals.
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
