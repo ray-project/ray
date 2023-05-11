@@ -388,7 +388,7 @@ def run(
         checkpoint_at_end: Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose.
             If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief

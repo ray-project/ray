@@ -716,7 +716,7 @@ class RunConfig:
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose.
             If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
