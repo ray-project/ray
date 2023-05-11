@@ -1571,37 +1571,6 @@ async def test_state_data_source_client(ray_start_cluster):
         assert isinstance(result, GetObjectsInfoReply)
 
     """
-    Test tasks
-    """
-
-    @ray.remote
-    def long_running():
-        import time
-
-        time.sleep(300)
-
-    @ray.remote
-    def f():
-        ray.get([long_running.remote() for _ in range(2)])
-
-    # Driver: 2 * f
-    # Each worker: 2 * long_running
-    # -> 2 * f + 4 * long_running
-
-    refs = [f.remote() for _ in range(2)]  # noqa
-
-    async def verify():
-        result = await client.get_task_info(node_id, limit=2)
-        assert result.total == 6
-        assert len(result.owned_task_info_entries) == 2
-        return True
-
-    await async_wait_for_condition_async_predicate(verify)
-    for ref in refs:
-        ray.cancel(ref, force=True, recursive=True)
-    del refs
-
-    """
     Test runtime env
     """
     with pytest.raises(ValueError):
@@ -1749,6 +1718,37 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
         client.register_raylet_client(node_id, ip, port)
+
+    """
+    Test tasks
+    """
+
+    @ray.remote
+    def long_running():
+        import time
+
+        time.sleep(300)
+
+    @ray.remote
+    def f():
+        ray.get([long_running.remote() for _ in range(2)])
+
+    # Driver: 2 * f
+    # Each worker: 2 * long_running
+    # -> 2 * f + 4 * long_running
+
+    refs = [f.remote() for _ in range(2)]  # noqa
+
+    async def verify():
+        result = await client.get_task_info(node_id, limit=2)
+        assert result.total == 6
+        assert len(result.owned_task_info_entries) == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+    for ref in refs:
+        ray.cancel(ref, force=True, recursive=True)
+    del refs
 
     """
     Test objects
