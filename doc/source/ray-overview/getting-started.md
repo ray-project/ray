@@ -382,9 +382,8 @@ Learn more about Ray RLlib
 
 ## Ray Core Quickstart
 
-Ray Core provides simple primitives for building and running distributed applications.
-Below are examples of how to turn functions and classes easily into Ray tasks and actors,
-for Python and Java.
+Turn functions and classes easily into Ray tasks and actors,
+for Python and Java, with simple primitives for building and running distributed applications. 
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
