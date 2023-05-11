@@ -255,15 +255,13 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
-# Templates that only require CPU
-
 py_test_run_all_notebooks(
     size = "large",
     # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
     include = ["source/templates/tests/02_many_model_training/many_model_training.ipynb"],
     exclude = [],
     data = ["//doc:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air"],
+    tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs"],
     env = {"SMOKE_TEST": "1"},
 )
 
