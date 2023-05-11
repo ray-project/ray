@@ -45,7 +45,7 @@ const columns = [
     helpInfo: (
       <Typography>
         The progress of the all submitted tasks per job. Tasks that are not yet
-        submitted will not show up in the progress bar.
+        submitted do not show up in the progress bar.
       </Typography>
     ),
   },
