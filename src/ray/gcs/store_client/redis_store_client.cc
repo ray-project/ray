@@ -260,7 +260,18 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                      keys,
                      args = std::move(args),
                      redis_callback = std::move(redis_callback)]() mutable {
-    RAY_CHECK(Progress(keys).empty());
+    {
+      absl::MutexLock lock(&mu_);
+      for (const auto &key : keys) {
+        auto op_iter = redis_ops_.find(key);
+        RAY_CHECK(op_iter != redis_ops_.end())
+            << " redis ops stats failed for key: " << key;
+        auto &queue = op_iter->second;
+        // All write operations have been consumed, remove this entry
+        RAY_CHECK(!queue.empty());
+        queue.pop();
+      }
+    }
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
     RAY_CHECK_OK(cxt->RunArgvAsync(
