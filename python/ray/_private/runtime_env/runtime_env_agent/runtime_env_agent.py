@@ -205,6 +205,7 @@ class RuntimeEnvAgent(
         self._logging_params = logging_params
         self._gcs_address = gcs_address
         self._node_manager_port = node_manager_port
+        self._node_id = os.environ["RAY_NODE_ID"]
 
         self._logger = default_logger
         self._logger = setup_component_logger(
@@ -665,6 +666,13 @@ class RuntimeEnvAgent(
             runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
                 self, self._grpc_server
             )
+        # Save agent port to redis
+        await self._gcs_aio_client.internal_kv_put(
+            f"{agent_consts.RUNTIME_ENV_AGENT_PORT_PREFIX}{self._node_id}".encode(),
+            json.dumps([self._grpc_port]).encode(),
+            True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
         # Register agent to agent manager.
         raylet_stub = (
             runtime_env_agent_manager_pb2_grpc.RuntimeEnvAgentManagerServiceStub(

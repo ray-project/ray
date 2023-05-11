@@ -11,6 +11,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._private.runtime_env.runtime_env_agent import agent_consts
 from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
@@ -180,18 +181,26 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 agents = dict(DataSource.agents)
                 for node_id in alive_node_ids:
-                    # Since the agent fate shares with a raylet,
-                    # the agent port will never change once it is discovered.
-                    if node_id not in agents:
-                        key = (
-                            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}"
-                            f"{node_id}"
-                        )
-                        agent_port = await self._gcs_aio_client.internal_kv_get(
-                            key.encode(), namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-                        )
-                        if agent_port:
-                            agents[node_id] = json.loads(agent_port)
+                    # Since the dashboard agent doesn't fate shares with a raylet,
+                    # We need to update dashboard agent port from time to time.
+                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" f"{node_id}"
+                    agent_port = await self._gcs_aio_client.internal_kv_get(
+                        key.encode(), namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+                    )
+                    runtime_env_agent_port_key = (
+                        f"{agent_consts.RUNTIME_ENV_AGENT_PORT_PREFIX}" f"{node_id}"
+                    )
+                    runtime_env_agent_port = await self._gcs_aio_client.internal_kv_get(
+                        runtime_env_agent_port_key.encode(),
+                        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    )
+                    if agent_port:
+                        agent_ports = json.loads(agent_port)
+                        if runtime_env_agent_port:
+                            agent_ports.extend(json.loads(runtime_env_agent_port))
+                        if agent_ports != agents.get(node_id, None):
+                            agents[node_id] = agent_ports
+
                 for node_id in agents.keys() - set(alive_node_ids):
                     agents.pop(node_id, None)
 
