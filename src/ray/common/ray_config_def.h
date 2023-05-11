@@ -441,7 +441,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, false)
+RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -800,7 +800,7 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
 // By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks
