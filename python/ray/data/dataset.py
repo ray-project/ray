@@ -24,9 +24,10 @@ from uuid import uuid4
 import numpy as np
 
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 import ray.cloudpickle as pickle
-from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -133,7 +134,10 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
+from ray.widgets.util import (
+    ensure_ipywidgets_dep,
+    repr_fallback_if_colab,
+)
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -3211,8 +3215,7 @@ class Dataset:
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, resize tensors or
-            :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
 
         Examples:
             >>> import ray
@@ -4215,26 +4218,38 @@ class Dataset:
         else:
             return result
 
-    @ensure_notebook_deps(
-        ["ipywidgets", "8"],
-    )
-    @fallback_if_colab
-    def _ipython_display_(self):
-        from ipywidgets import HTML, VBox, Layout
-        from IPython.display import display
+    @ensure_ipywidgets_dep("8")
+    @repr_fallback_if_colab
+    def _repr_mimebundle_(self, **kwargs):
+        """Return a mimebundle with an ipywidget repr and a simple text repr.
 
-        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        Depending on the frontend where the data is being displayed,
+        different mimetypes will be used from this bundle.
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html
+        for information about this method, and
+        https://ipywidgets.readthedocs.io/en/latest/embedding.html
+        for more information about the jupyter widget mimetype.
+
+        Returns:
+            A mimebundle containing an ipywidget repr and a simple text repr.
+        """
+        import ipywidgets
+
+        title = ipywidgets.HTML(f"<h2>{self.__class__.__name__}</h2>")
         tab = self._tab_repr_()
+        widget = ipywidgets.VBox([title, tab], layout=ipywidgets.Layout(width="100%"))
 
-        if tab:
-            display(VBox([title, tab], layout=Layout(width="100%")))
+        # Get the widget mime bundle, but replace the plaintext
+        # with the Datastream repr
+        bundle = widget._repr_mimebundle_(**kwargs)
+        bundle.update(
+            {
+                "text/plain": repr(self),
+            }
+        )
+        return bundle
 
-    @ensure_notebook_deps(
-        ["tabulate", None],
-        ["ipywidgets", "8"],
-    )
     def _tab_repr_(self):
-        from ray._private.thirdparty.tabulate.tabulate import tabulate
         from ipywidgets import Tab, HTML
 
         metadata = {
@@ -4336,7 +4351,8 @@ class Dataset:
         if ray.util.log_once("dataset_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. Consider using `.map_batches()` instead."
+                "can be very slow. If you're using a vectorized transformation, "
+                "consider using `.map_batches()` instead."
             )
 
     def _synchronize_progress_bar(self):

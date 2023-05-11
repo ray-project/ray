@@ -699,7 +699,7 @@
   jailed: true
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
@@ -726,7 +726,7 @@
   jailed: true
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
@@ -753,7 +753,7 @@
   jailed: true
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16_worker_nodes_2.yaml
@@ -4304,7 +4304,7 @@
       env: gce
       frequency: manual
       cluster:
-        # TODO(https://github.com/ray-project/ray/issues/34591) 
+        # TODO(https://github.com/ray-project/ray/issues/34591)
         # Revert to the comment below once ^ closed.
         # cluster_env: app_config.yaml
         cluster_env: debug_app_config.yaml
@@ -5636,6 +5636,8 @@
   group: data-tests
   working_dir: nightly_tests
 
+  stable: false
+
   frequency: nightly
   team: data
   cluster:
@@ -5906,6 +5908,8 @@
 - name: chaos_dataset_shuffle_sort_1tb
   group: data-tests
   working_dir: nightly_tests
+
+  stable: false
 
   frequency: nightly
   team: data
