@@ -31,7 +31,7 @@ namespace gcs {
 class RedisStoreClient : public StoreClient {
  public:
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
-
+  
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
@@ -89,8 +89,10 @@ class RedisStoreClient : public StoreClient {
                         size_t shard_index,
                         const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
-
+    /// The table name that the scanner will scan.
     std::string table_name_;
+    
+    // The namespace of the external storage. Used for isolation.
     std::string external_storage_namespace_;
 
     /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
@@ -109,7 +111,32 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
-  std::vector<std::function<void()>> Progress(const std::vector<std::string> &keys);
+  // Iterate the pending queue and call the progress_fn for each key.
+  //
+  // \param keys The keys to scan
+  // \param progress_fn The function to call for the queue of each key.
+  // \return The number of queues that have been added or deleted.
+  template<typename F>
+  std::pair<size_t, size_t> Progress(const std::vector<std::string> &keys, F progress_fn) {
+    size_t added_cnt = 0;
+    size_t deleted_cnt = 0;
+    {
+      absl::MutexLock lock(&mu_);
+      for (const auto &key : keys) {
+        auto [op_iter, added] = pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
+        if(added) {
+          added_cnt++;
+          progress_fn(op_iter->second);
+        } else if (op_iter->second.empty()) {
+          deleted_cnt++;
+          pending_redis_request_by_key_.erase(op_iter);
+        } else {
+          progress_fn(op_iter->second);
+        }
+      }
+    }
+    return {added_cnt, deleted_cnt};
+  }
 
   Status DoPut(const std::string &key,
                const std::string &data,
@@ -119,6 +146,13 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
+  // Send the redis command to the server. This method will make request to be
+  // serialized for each key in keys. At a given time, only one request for a key
+  // will be in flight.
+  //
+  // \param keys The keys in the request.
+  // \param args The redis commands
+  // \param redis_callback The callback to call when the reply is received.
   void SendRedisCmd(std::vector<std::string> keys,
                     std::vector<std::string> args,
                     RedisCallback redis_callback);
@@ -130,8 +164,11 @@ class RedisStoreClient : public StoreClient {
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> redis_ops_
-      GUARDED_BY(mu_);
+
+  // The pending redis requests queue for each key.
+  // The queue will be poped when the request is processed.
+  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> 
+  pending_redis_request_by_key_ GUARDED_BY(mu_);
 };
 
 }  // namespace gcs
