@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, TYPE_CHE
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
 from ray.air._internal.util import StartTraceback
+from ray.data import Dataset
 from ray.train.data_config import DataConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
@@ -26,9 +27,6 @@ from ray.train.base_trainer import (  # noqa: F401
     TrainingFailedError,
 )
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    from ray.data import Dataset
 
 T = TypeVar("T")
 S = TypeVar("S")

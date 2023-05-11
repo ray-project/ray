@@ -13,6 +13,7 @@ from ray.data import Dataset, DataIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.data_config import DataConfig
 from ray.util.annotations import DeveloperAPI
 
 
@@ -223,7 +224,7 @@ if __name__ == "__main__":
         preprocessor=preprocessor,
         num_epochs=args.num_epochs,
         prefetch_batches=args.prefetch_batches,
-        dataset_config={"train": DatasetConfig()},
+        dataset_config=DataConfig(),
         batch_size=None,
     )
     print("Dataset config", trainer.get_dataset_config())

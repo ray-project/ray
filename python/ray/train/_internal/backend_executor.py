@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, TYPE_CHECKING
 
 import ray
+from ray.data import Dataset
 from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
 from ray.train.data_config import DataConfig
@@ -26,9 +27,6 @@ from ray.train.constants import (
     DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
-
-if TYPE_CHECKING:
-    from ray.data import Dataset
 
 T = TypeVar("T")
 

@@ -265,7 +265,8 @@ class DataParallelTrainer(BaseTrainer):
         if isinstance(dataset_config, dict):
             logger.warning(
                 "The dict form of `dataset_config` is deprecated. Use the "
-                "DataConfig class instead."
+                "DataConfig class instead. Support for this will be dropped "
+                "in a future release."
             )
             self._data_config = _LegacyDataConfigWrapper(
                 self._dataset_config, dataset_config, datasets
@@ -437,6 +438,7 @@ class DataParallelTrainer(BaseTrainer):
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
+            datasets=self.datasets,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.resume_from_checkpoint,

@@ -3,17 +3,15 @@ from typing import Optional, Dict, List, TYPE_CHECKING
 from ray.actor import ActorHandle
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.util.annotations import PublicAPI, DeveloperAPI
-
-if TYPE_CHECKING:
-    from ray.air.config import DatasetConfig
-    from ray.data import (
-        Dataset,
-        DataIterator,
-        ExecutionOptions,
-        ExecutionResources,
-        NodeIdStr,
-    )
-    from ray.data.preprocessor import Preprocessor
+from ray.air.config import DatasetConfig
+from ray.data import (
+    Dataset,
+    DataIterator,
+    ExecutionOptions,
+    ExecutionResources,
+    NodeIdStr,
+)
+from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI
@@ -89,7 +87,6 @@ class _LegacyDataConfigWrapper(DataConfig):
         self._ingest_spec = DataParallelIngestSpec(
             dataset_config=self._dataset_config,
         )
-        self._preprocessed_dataset = None
 
     def configure(
         self,
@@ -104,5 +101,4 @@ class _LegacyDataConfigWrapper(DataConfig):
     def _legacy_preprocessing(
         self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
     ) -> Dict[str, Dataset]:
-        self._ingest_spec.preprocess_datasets(preprocessor, datasets)
-        return self._preprocessed_datasets
+        return self._ingest_spec.preprocess_datasets(preprocessor, datasets)
