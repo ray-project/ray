@@ -586,8 +586,8 @@ def multiplexed(
     be loaded.
 
     User have to define the function with `async def` and the function must be
-    an async function. It is recommended to define courotine for long running
-    IO tasks in the function, it can prevent blocking the event loop.
+    an async function. It is recommended to define coroutines for long running
+    IO tasks in the function to avoid blocking the event loop.
 
     The multiplexed function is called to load a model with a given model ID when
     necessary.
