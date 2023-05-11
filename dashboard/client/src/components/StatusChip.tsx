@@ -6,7 +6,6 @@ import {
   green,
   grey,
   red,
-  yellow,
 } from "@material-ui/core/colors";
 import { CSSProperties } from "@material-ui/core/styles/withStyles";
 import classNames from "classnames";
@@ -22,6 +21,7 @@ import {
 import { TypeTaskStatus } from "../type/task";
 
 const orange = "#DB6D00";
+
 const colorMap = {
   node: {
     ALIVE: green,
@@ -47,7 +47,7 @@ const colorMap = {
     [TypeTaskStatus.PENDING_ARGS_AVAIL]: orange,
     [TypeTaskStatus.NIL]: grey,
   },
-  jobStatus: {
+  job: {
     [JobStatus.PENDING]: orange,
     [JobStatus.RUNNING]: blue,
     [JobStatus.STOPPED]: grey,

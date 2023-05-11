@@ -73,13 +73,11 @@ const JobList = () => {
     isLoading,
     isRefreshing,
     onSwitchChange,
+    jobList,
     changeFilter,
     page,
     setPage,
   } = useJobList();
-
-  let { jobList } = useJobList();
-  jobList = JOB_LIST;
 
   return (
     <div className={classes.root}>
