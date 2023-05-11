@@ -14,7 +14,7 @@ class HuggingFaceTrainer(TransformersTrainer):
     # than __init__
     def __new__(cls: type, *args, **kwargs):
         warnings.warn(deprecation_msg, DeprecationWarning)
-        return super(HuggingFaceTrainer, cls).__new__(cls)
+        return super(HuggingFaceTrainer, cls).__new__(cls, *args, **kwargs)
 
 
 __all__ = [
