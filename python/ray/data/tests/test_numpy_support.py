@@ -89,6 +89,15 @@ def test_scalar_array_like(ray_start_regular_shared):
     assert_structure_equals(output, np.array([[1, 2, 3], [1, 2, 3]], dtype=np.float32))
 
 
+def test_scalar_ragged_arrays(ray_start_regular_shared):
+    data = [np.array([1, 2, 3]), np.array([1, 2])]
+    ds = ray.data.range(2)
+    ds = ds.map(lambda x: {"output": data[x["id"]]})
+    output = ds.take_batch()["output"]
+    assert_structure_equals(
+        output, np.array([np.array([1, 2, 3]), np.array([1, 2])], dtype=object)
+    )
+
 def test_scalar_ragged_array_like(ray_start_regular_shared):
     data = [torch.Tensor([1, 2, 3]), torch.Tensor([1, 2])]
     ds = ray.data.range(2)
