@@ -247,8 +247,8 @@ class Dataset:
         assert isinstance(plan, ExecutionPlan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
-        if ray.util.log_once("strict_mode_explanation"):
-            logger.warning(STRICT_MODE_EXPLANATION)
+        # if ray.util.log_once("strict_mode_explanation"):
+        #     logger.warning(STRICT_MODE_EXPLANATION)
 
         self._plan = plan
         self._uuid = uuid4().hex
