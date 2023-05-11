@@ -26,12 +26,12 @@ namespace rpc {
 #define RAY_RUNTIME_ENV_AGENT_MANAGER_RPC_HANDLERS \
   RPC_SERVICE_HANDLER(RuntimeEnvAgentManagerService, RegisterRuntimeEnvAgent, -1)
 
-/// Implementations of the `AgentManagerGrpcService`, check interface in
-/// `src/ray/protobuf/agent_manager.proto`.
+/// Implementations of the `RuntimeEnvAgentManagerGrpcService`, check interface in
+/// `src/ray/protobuf/runtime_env_agent_manager.proto`.
 class RuntimeEnvAgentManagerServiceHandler {
  public:
   virtual ~RuntimeEnvAgentManagerServiceHandler() = default;
-  /// Handle a `RegisterAgent` request.
+  /// Handle a `RegisterRuntimeEnvAgent` request.
   /// The implementation can handle this request asynchronously. When handling is done,
   /// the `send_reply_callback` should be called.
   ///
