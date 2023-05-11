@@ -475,6 +475,7 @@ def call_ray_start_context(request):
         "--max-worker-port=0 --port 0"
     )
     parameter = getattr(request, "param", default_cmd)
+    env = None
 
     if isinstance(parameter, dict):
         if "env" in parameter:
