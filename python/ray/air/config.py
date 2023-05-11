@@ -20,7 +20,7 @@ from typing import (
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
 
@@ -293,7 +293,10 @@ class ScalingConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@Deprecated(
+    message="Use `ray.train.data_config.DataConfig` instead of DatasetConfig to "
+    "configure data ingest for training."
+)
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
