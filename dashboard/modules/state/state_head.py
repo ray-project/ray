@@ -411,6 +411,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
             suffix=req.query.get("suffix", "out"),
+            attempt_number=req.query.get("attempt_number", 0),
         )
 
         response = aiohttp.web.StreamResponse()

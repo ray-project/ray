@@ -374,7 +374,6 @@ class StateDataSourceClient:
     ) -> Optional[GetTasksInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -438,6 +437,8 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
+        task_id: Optional[str] = None,
+        attempt_number: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
@@ -448,6 +449,8 @@ class StateDataSourceClient:
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
+                task_id=task_id,
+                attempt_number=attempt_number,
             ),
             timeout=timeout,
         )

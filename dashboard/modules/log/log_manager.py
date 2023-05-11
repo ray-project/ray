@@ -4,7 +4,11 @@ import re
 from collections import defaultdict
 from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
 
-from ray.experimental.state.common import GetLogOptions
+from ray.experimental.state.common import (
+    GetLogOptions,
+    protobuf_to_task_state_dict,
+    DEFAULT_RPC_TIMEOUT,
+)
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
@@ -76,6 +80,7 @@ class LogsManager:
             log_filename=options.filename,
             actor_id=options.actor_id,
             task_id=options.task_id,
+            attempt_number=options.attempt_number,
             pid=options.pid,
             get_actor_fn=DataSource.actors.get,
             timeout=options.timeout,
@@ -93,6 +98,8 @@ class LogsManager:
             # otherwise the stream will be terminated forcefully
             # after the deadline is expired.
             timeout=options.timeout if not keep_alive else None,
+            task_id=options.task_id,
+            attempt_number=options.attempt_number,
         )
 
         async for streamed_log in stream:
@@ -110,16 +117,55 @@ class LogsManager:
             )
         assert node_id is not None
 
+    async def _resolve_worker_file(
+        self,
+        node_id: str,
+        worker_id: Optional[str],
+        pid: Optional[int],
+        suffix: str,
+        timeout: int,
+    ) -> Optional[str]:
+        """Resolve worker log file."""
+        if worker_id is not None and pid is not None:
+            raise ValueError(
+                f"Only one of worker id({worker_id}) or pid({pid}) should be provided."
+            )
+
+        if worker_id is not None:
+            log_files = await self.list_logs(
+                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
+            )
+        else:
+            log_files = await self.list_logs(
+                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
+            )
+
+        # Find matching worker logs.
+        for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
+            # Worker logs look like worker-[worker_id]-[job_id]-[pid].out
+            if worker_id is not None:
+                worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
+                if worker_id_from_filename == worker_id:
+                    return filename
+            else:
+                worker_pid_from_filename = int(
+                    WORKER_LOG_PATTERN.match(filename).group(3)
+                )
+                if worker_pid_from_filename == pid:
+                    return filename
+        return None
+
     async def resolve_filename(
         self,
         *,
-        node_id: str,
-        log_filename: Optional[str],
-        actor_id: Optional[str],
-        task_id: Optional[str],
-        pid: Optional[str],
-        get_actor_fn: Callable[[str], Dict],
-        timeout: int,
+        node_id: Optional[str] = None,
+        log_filename: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        attempt_number: Optional[int] = None,
+        pid: Optional[str] = None,
+        get_actor_fn: Optional[Callable[[str], Dict]] = None,
+        timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
     ) -> Tuple[str, str]:
         """Return the file name given all options.
@@ -137,6 +183,9 @@ class LogsManager:
                 resolving by other ids'. Default to "out".
         """
         if actor_id:
+            if get_actor_fn is None:
+                raise ValueError("get_actor_fn needs to be specified for actor_id")
+
             actor_data = get_actor_fn(actor_id)
             if actor_data is None:
                 raise ValueError(f"Actor ID {actor_id} not found.")
@@ -158,33 +207,70 @@ class LogsManager:
                 )
             self._verify_node_registered(node_id)
 
-            # List all worker logs that match actor's worker id.
-            log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
+            log_filename = await self._resolve_worker_file(
+                node_id=node_id,
+                worker_id=worker_id,
+                pid=None,
+                suffix=suffix,
+                timeout=timeout,
+            )
+        elif task_id:
+            reply = await self.client.get_all_task_info(
+                filters=[("task_id", "=", task_id)], timeout=timeout
+            )
+            # Check if the task is found.
+            if len(reply.events_by_task) == 0:
+                raise FileNotFoundError(
+                    f"Could not find log file for task: {task_id}"
+                    f" (attempt {attempt_number}) with suffix: {suffix}"
+                )
+            task_event = None
+            for t in reply.events_by_task:
+                if t.attempt_number == attempt_number:
+                    task_event = t
+                    break
+
+            if task_event is None:
+                raise FileNotFoundError(
+                    "Could not find log file for task attempt:"
+                    f"{task_id}({attempt_number})"
+                )
+
+            # Get the worker id and node id.
+            task = protobuf_to_task_state_dict(task_event)
+
+            worker_id = task.get("worker_id", None)
+            node_id = task.get("node_id", None)
+
+            if worker_id is None or node_id is None:
+                raise FileNotFoundError(
+                    "Could not find log file for task attempt:"
+                    f"{task_id}({attempt_number})."
+                    f"Worker id = {worker_id}, node id = {node_id}"
+                )
+
+            log_filename = await self._resolve_worker_file(
+                node_id=node_id,
+                worker_id=worker_id,
+                pid=None,
+                suffix=suffix,
+                timeout=timeout,
             )
 
-            # Find matching worker logs.
-            for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
-                # Worker logs look like worker-[worker_id]-[job_id]-[pid].out
-                worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
-                if worker_id_from_filename == worker_id:
-                    log_filename = filename
-                    break
-        elif task_id:
-            raise NotImplementedError("task_id is not supported yet.")
         elif pid:
-            self._verify_node_registered(node_id)
-            log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
-            )
-            for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
-                # worker-[worker_id]-[job_id]-[pid].out
-                worker_pid_from_filename = int(
-                    WORKER_LOG_PATTERN.match(filename).group(3)
+            if node_id is None:
+                raise ValueError(
+                    "Node id needs to be specified for resolving"
+                    f" filenames of pid {pid}"
                 )
-                if worker_pid_from_filename == pid:
-                    log_filename = filename
-                    break
+            self._verify_node_registered(node_id)
+            log_filename = await self._resolve_worker_file(
+                node_id=node_id,
+                worker_id=None,
+                pid=pid,
+                suffix=suffix,
+                timeout=timeout,
+            )
 
         if log_filename is None:
             raise FileNotFoundError(
