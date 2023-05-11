@@ -278,9 +278,21 @@ to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 Troubleshooting
 ---------------
 
+Getting Prometheus and Grafana to use the Ray configurations when installed via homebrew on macOS X
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With homebrew, Prometheus and Grafana are installed as services that are automatically launched for you.
+Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+
+Instead, follow these instructions:
+1. Change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+2. Update `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+
+You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
+
 .. _unverified-developer:
 
-Mac does not trust the developer when installing prometheus or grafana
+MacOS does not trust the developer to install Prometheus or Grafana
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You may have received an error that looks like this:
@@ -295,6 +307,10 @@ See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app
 
 Grafana dashboards are not embedded in the Ray dashboard
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
-That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
-Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
+If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite having set it up, check that:
+You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
+
+Certificate Authority (CA error)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
