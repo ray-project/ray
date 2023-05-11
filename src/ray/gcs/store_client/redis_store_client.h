@@ -31,7 +31,7 @@ namespace gcs {
 class RedisStoreClient : public StoreClient {
  public:
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
-  
+
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
@@ -91,7 +91,7 @@ class RedisStoreClient : public StoreClient {
                         const StatusCallback &callback);
     /// The table name that the scanner will scan.
     std::string table_name_;
-    
+
     // The namespace of the external storage. Used for isolation.
     std::string external_storage_namespace_;
 
@@ -116,22 +116,23 @@ class RedisStoreClient : public StoreClient {
   // \param keys The keys to scan
   // \param progress_fn The function to call for the queue of each key.
   // \return The number of queues that have been added or deleted.
-  template<typename F>
-  std::pair<size_t, size_t> Progress(const std::vector<std::string> &keys, F progress_fn) {
+  template <typename F>
+  std::pair<size_t, size_t> Progress(const std::vector<std::string> &keys,
+                                     F progress_fn) {
     size_t added_cnt = 0;
     size_t deleted_cnt = 0;
     {
       absl::MutexLock lock(&mu_);
       for (const auto &key : keys) {
-        auto [op_iter, added] = pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
-        if(added) {
+        auto [op_iter, added] = pending_redis_request_by_key_.emplace(
+            key, std::queue<std::function<void()>>());
+        if (added) {
           added_cnt++;
-          progress_fn(op_iter->second);
-        } else if (op_iter->second.empty()) {
+        }
+        progress_fn(op_iter->second);
+        if (op_iter->second.empty()) {
           deleted_cnt++;
           pending_redis_request_by_key_.erase(op_iter);
-        } else {
-          progress_fn(op_iter->second);
         }
       }
     }
@@ -167,8 +168,8 @@ class RedisStoreClient : public StoreClient {
 
   // The pending redis requests queue for each key.
   // The queue will be poped when the request is processed.
-  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> 
-  pending_redis_request_by_key_ GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
+      pending_redis_request_by_key_ GUARDED_BY(mu_);
 };
 
 }  // namespace gcs

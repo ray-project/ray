@@ -240,16 +240,9 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                      redis_callback = std::move(redis_callback)]() mutable {
     *counter += 1;
     // There are still pending requets for these keys.
-    if(*counter != keys.size()) {
+    if (*counter != keys.size()) {
       return;
     }
-    auto [added_cnt, deleted_cnt] = Progress(keys, [](auto& queue) {
-        // All write operations have been consumed, remove this entry
-        RAY_CHECK(!queue.empty());
-        queue.pop();
-    });
-    RAY_CHECK(added_cnt == 0);
-    RAY_CHECK(deleted_cnt == 0);
 
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
@@ -258,12 +251,18 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
           std::vector<std::function<void()>> requests;
-          
+
           // No new queues should have been added here
-          RAY_CHECK(Progress(keys, [&requests](auto& queue) mutable {
-              // All write operations have been consumed, remove this entry
-              requests.push_back(std::move(queue.front()));
-          }).first == 0);
+          RAY_CHECK(Progress(keys, [&requests](auto &queue) mutable {
+                      // All write operations have been consumed, remove this entry
+                      // Pop the current request
+                      queue.pop();
+                      // Push the next one
+                      if (!queue.empty()) {
+                        requests.push_back(std::move(queue.front()));
+                      }
+                    }).first == 0);
+
           for (auto &request : requests) {
             request();
           }
@@ -274,9 +273,8 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
         }));
   };
 
-  auto [added_cnt, del_cnt] = Progress(keys, [send_redis](auto& queue) mutable {
-    queue.push(send_redis);
-  });
+  auto [added_cnt, del_cnt] =
+      Progress(keys, [send_redis](auto &queue) mutable { queue.push(send_redis); });
   RAY_CHECK(del_cnt == 0);
   // If the added count equals with the keys size, it means that there is no
   // pending request for these keys. We can send the request directly.
