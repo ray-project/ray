@@ -40,7 +40,7 @@ class DataConfig:
         for name, ds in datasets.items():
             ds = ds.copy(ds)
             ds.context.execution_options = self._execution_options
-            if name in self._datasets_to_splits:
+            if name in self._datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
                         world_size, equal=True, locality_hints=worker_node_ids
