@@ -100,7 +100,7 @@ Call :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches` to t
     ds.map_batches(batch_increase_brightness)
 
 In this example, we return ``np.ndarray`` directly as the output. Ray Data will also treat
-lists of ``np.ndarray`` and objects implementing ``__array__`` as tensor data.
+returned lists of ``np.ndarray`` and objects implementing ``__array__`` as tensor data.
 
 For more information on transforming data, read
 :ref:`Transforming data <transforming_data>`.

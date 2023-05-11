@@ -134,7 +134,5 @@ def _convert_outputs_to_ndarray_batch(
     batch = collections.defaultdict(list)
     for output in outputs:
         for key, value in output.items():
-            batch[key].append(value.cpu().detach().numpy())
-    for key, value in batch.items():
-        batch[key] = create_ragged_ndarray(value)
+            batch[key].append(value.cpu().detach())
     return batch
