@@ -18,7 +18,6 @@ from ray.air._internal.uri_utils import URI
 from ray.air.config import ScalingConfig
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import _detect_checkpoint_function
-from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -41,27 +40,6 @@ class TrainableUtil:
     def load_metadata(checkpoint_dir: str) -> Dict:
         with open(os.path.join(checkpoint_dir, _TUNE_METADATA_FILENAME), "rb") as f:
             return pickle.load(f)
-
-    @staticmethod
-    def pickle_checkpoint(checkpoint_path: str):
-        """Pickles checkpoint data."""
-        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        data = {}
-        for basedir, _, file_names in os.walk(checkpoint_dir):
-            for file_name in file_names:
-                path = os.path.join(basedir, file_name)
-                with open(path, "rb") as f:
-                    data[os.path.relpath(path, checkpoint_dir)] = f.read()
-        # Use normpath so that a directory path isn't mapped to empty string.
-        name = os.path.relpath(os.path.normpath(checkpoint_path), checkpoint_dir)
-        name += os.path.sep if os.path.isdir(checkpoint_path) else ""
-        data_dict = pickle.dumps(
-            {
-                "checkpoint_name": name,
-                "data": data,
-            }
-        )
-        return data_dict
 
     @staticmethod
     def find_checkpoint_dir(checkpoint_path):
@@ -216,56 +194,6 @@ class TrainableUtil:
         rel_local_path = os.path.relpath(local_path, local_path_prefix)
         uri = URI(remote_path_prefix)
         return str(uri / rel_local_path)
-
-
-@DeveloperAPI
-class PlacementGroupUtil:
-    @staticmethod
-    def get_remote_worker_options(
-        num_workers: int,
-        num_cpus_per_worker: int,
-        num_gpus_per_worker: int,
-        num_workers_per_host: Optional[int],
-        timeout_s: Optional[int],
-    ) -> (Dict[str, Any], placement_group):
-        """Returns the option for remote workers.
-
-        Args:
-            num_workers: Number of training workers to include in
-                world.
-            num_cpus_per_worker: Number of CPU resources to reserve
-                per training worker.
-            num_gpus_per_worker: Number of GPU resources to reserve
-                per training worker.
-            num_workers_per_host: Optional[int]: Number of workers to
-                colocate per host.
-            timeout_s: Seconds before the torch process group
-                times out. Useful when machines are unreliable. Defaults
-                to 60 seconds. This value is also reused for triggering
-                placement timeouts if forcing colocation.
-
-
-        Returns:
-            type: option that contains CPU/GPU count of
-                the remote worker and the placement group information.
-            pg: return a reference to the placement group
-        """
-        pg = None
-        options = dict(num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
-        if num_workers_per_host:
-            num_hosts = int(num_workers / num_workers_per_host)
-            cpus_per_node = num_cpus_per_worker * num_workers_per_host
-            gpus_per_node = num_gpus_per_worker * num_workers_per_host
-            bundle = {"CPU": cpus_per_node, "GPU": gpus_per_node}
-
-            all_bundles = [bundle] * num_hosts
-            pg = placement_group(all_bundles, strategy="STRICT_SPREAD")
-            logger.debug("Waiting for placement_group to start.")
-            ray.get(pg.ready(), timeout=timeout_s)
-            logger.debug("Placement_group started.")
-            options["placement_group"] = pg
-
-        return options, pg
 
 
 @PublicAPI(stability="beta")
