@@ -21,7 +21,7 @@ from ray.job_config import JobConfig
 
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-    agent_port = ray._private.worker.global_worker.node.metrics_agent_port
+    agent_port = ray._private.worker.global_worker.node._runtime_env_agent_port
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
