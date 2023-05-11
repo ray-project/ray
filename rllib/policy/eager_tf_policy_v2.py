@@ -3,12 +3,13 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gymnasium as gym
 import logging
 import os
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
+
+import gymnasium as gym
+import tree  # pip install dm_tree
 
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
@@ -852,17 +853,23 @@ class EagerTFPolicyV2(Policy):
             input_dict[SampleBatch.SEQ_LENS] = seq_lens
 
             if explore:
+                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
-            else:
-                fwd_out = self.model.forward_inference(input_dict)
-
-            action_dist = fwd_out[SampleBatch.ACTION_DIST]
-            if explore:
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_inference_action_dist_cls()
+                fwd_out = self.model.forward_inference(input_dict)
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                action_dist = action_dist.to_deterministic()
                 actions = action_dist.sample()
                 logp = None
+
             state_out = fwd_out.get("state_out", {})
 
             # anything but action_dist and state_out is an extra fetch
