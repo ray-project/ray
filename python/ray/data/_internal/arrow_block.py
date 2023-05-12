@@ -34,6 +34,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
+from ray.data.extensions.tensor_extension import create_ragged_ndarray
 from ray.data.row import TableRow
 
 try:
@@ -178,7 +179,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 # NOTE: we don't cast generic iterables, since types like
                 # `str` are also Iterable.
                 try:
-                    col = np.array(col)
+                    col = create_ragged_ndarray(col)
                 except Exception:
                     raise ValueError(
                         "Failed to convert column values to numpy array: "

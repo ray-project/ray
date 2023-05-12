@@ -895,6 +895,20 @@ def test_ragged_tensors(ray_start_regular_shared):
     ]
 
 
+def test_cast_list_to_ragged_array(ray_start_regular_shared):
+    ds = ray.data.range(1)
+
+    def fn(batch):
+        return {"output": [np.zeros((3, 1)), np.zeros((3, 2))]}
+
+    batch = ds.map_batches(fn).take_batch()
+    assert len(batch["output"]) == 2
+    assert batch["output"][0].shape == (3, 1)
+    assert batch["output"][0].dtype == float
+    assert batch["output"][1].shape == (3, 2)
+    assert batch["output"][1].dtype == float
+
+
 if __name__ == "__main__":
     import sys
 
