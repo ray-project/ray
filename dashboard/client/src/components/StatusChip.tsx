@@ -1,12 +1,5 @@
 import { Color, createStyles, makeStyles } from "@material-ui/core";
-import {
-  blue,
-  blueGrey,
-  cyan,
-  green,
-  grey,
-  red,
-} from "@material-ui/core/colors";
+import { blue, blueGrey, cyan, green, red } from "@material-ui/core/colors";
 import { CSSProperties } from "@material-ui/core/styles/withStyles";
 import classNames from "classnames";
 import React, { ReactNode } from "react";
@@ -22,6 +15,7 @@ import {
 import { TypeTaskStatus } from "../type/task";
 
 const orange = "#DB6D00";
+const grey = "#5F6469";
 
 const colorMap = {
   node: {
