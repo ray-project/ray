@@ -1,6 +1,7 @@
-from typing import Optional, Dict, List, TYPE_CHECKING
+from typing import Optional, Dict, List
 
 from ray.actor import ActorHandle
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.air.config import DatasetConfig
@@ -21,7 +22,9 @@ class DataConfig:
         datasets_to_split: Optional[List[str]] = None,
         execution_options: Optional[ExecutionOptions] = None,
     ):
-        self._datasets_to_split: List[str] = datasets_to_split or []
+        self._datasets_to_split: List[str] = (
+            datasets_to_split if datasets_to_split is not None else [TRAIN_DATASET_KEY]
+        )
         self._execution_options: ExecutionOptions = (
             execution_options or DataConfig.default_ingest_options()
         )

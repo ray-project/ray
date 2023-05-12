@@ -228,15 +228,6 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _dataset_config = {
-        # training dataset should be split by us
-        "train": DatasetConfig(fit=True, split=True),
-        # do not split eval dataset, as HF has a system to parallelize
-        # evaluation across workers, and it requires each worker
-        # to have the full eval dataset
-        "evaluation": DatasetConfig(split=False),
-    }
-
     def __init__(
         self,
         trainer_init_per_worker: Callable[

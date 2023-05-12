@@ -236,12 +236,8 @@ class DataParallelTrainer(BaseTrainer):
         "placement_strategy",
     ]
 
+    # For backwards compatibility with the legacy dataset config API.
     _dataset_config = None
-
-    _legacy_dataset_config = {
-        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
-        WILDCARD_KEY: DatasetConfig(split=False),
-    }
 
     _fields_for_tuner_param_space = BaseTrainer._fields_for_tuner_param_space + [
         "train_loop_config"
@@ -265,6 +261,7 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_config = train_loop_config
 
         if isinstance(dataset_config, dict) or self._dataset_config is not None:
+            # For backwards compatibility with the legacy dataset config API.
             logger.warning(
                 "The dict form of `dataset_config` is deprecated. Use the "
                 "DataConfig class instead. Support for this will be dropped "
@@ -275,8 +272,15 @@ class DataParallelTrainer(BaseTrainer):
                     "When the legacy field Trainer._dataset_config is defined, "
                     "dataset_config must be specified in dict form."
                 )
+            if self._dataset_config is None:
+                base_dataset_config = {
+                    TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
+                    WILDCARD_KEY: DatasetConfig(split=False),
+                }
+            else:
+                base_dataset_config = self._dataset_config
             self._data_config = _LegacyDataConfigWrapper(
-                self._dataset_config, dataset_config, datasets
+                base_dataset_config, dataset_config, datasets
             )
         elif isinstance(dataset_config, DataConfig):
             self._data_config = dataset_config
