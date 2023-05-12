@@ -38,12 +38,17 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
 .. tab-set::
 
     .. tab-item:: Python
+        .. testcode::
+          :hide:
+
+          import ray
+          ray.shutdown()
 
         .. testcode::
 
-            import ray
-            # Other Ray APIs will not work until `ray.init()` is called.
-            ray.init()
+          import ray
+          # Other Ray APIs will not work until `ray.init()` is called.
+          ray.init()
 
     .. tab-item:: Java
 

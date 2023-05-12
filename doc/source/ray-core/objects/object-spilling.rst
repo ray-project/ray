@@ -12,6 +12,12 @@ Ray uses object spilling by default. Without any setting, objects are spilled to
 To configure the directory where objects are spilled to, use:
 
 .. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
 
     import json
     import ray

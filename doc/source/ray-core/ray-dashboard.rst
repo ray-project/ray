@@ -37,6 +37,12 @@ To use the dashboard, you should use the `ray[default]` installation:
 You can access the dashboard through a URL printed when Ray is initialized (the default URL is **http://localhost:8265**) or via the context object returned from `ray.init`.
 
 .. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
 
     import ray
 
