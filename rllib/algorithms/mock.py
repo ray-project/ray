@@ -2,7 +2,7 @@ import os
 import pickle
 import numpy as np
 
-from ray.tune import result as tune_result
+from ray.air.constants import SHOULD_CHECKPOINT
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
 from ray.rllib.utils.annotations import override
 
@@ -51,7 +51,7 @@ class _MockTrainer(Algorithm):
         )
         if self.config.user_checkpoint_freq > 0 and self.iteration > 0:
             if self.iteration % self.config.user_checkpoint_freq == 0:
-                result.update({tune_result.SHOULD_CHECKPOINT: True})
+                result.update({SHOULD_CHECKPOINT: True})
         return result
 
     @override(Algorithm)
