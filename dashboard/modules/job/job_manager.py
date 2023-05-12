@@ -197,6 +197,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
@@ -755,6 +756,8 @@ class JobManager:
         env_vars = runtime_env.get("env_vars")
         if env_vars is None:
             env_vars = {}
+
+        env_vars[ray_constants.RAY_WORKER_NICENESS] = "0"
 
         if not resources_specified:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the

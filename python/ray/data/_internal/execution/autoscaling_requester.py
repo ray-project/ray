@@ -19,7 +19,7 @@ ARTIFICIAL_CPU_SCALING_FACTOR = 1.2
 
 @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
-    """Actor to make resource requests to autoscaler for the datastreams.
+    """Actor to make resource requests to autoscaler for the datasets.
 
     The resource requests are set to timeout after RESOURCE_REQUEST_TIMEOUT seconds.
     For those live requests, we keep track of the last request made for each execution,
