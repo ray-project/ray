@@ -254,6 +254,8 @@ def run(
     checkpoint_score_attr: Optional[str] = None,
     checkpoint_freq: int = 0,
     checkpoint_at_end: bool = False,
+    checkpoint_keep_all_ranks: bool = False,
+    checkpoint_upload_from_workers: bool = False,
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
@@ -388,6 +390,10 @@ def run(
         checkpoint_at_end: Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
+        checkpoint_keep_all_ranks: Whether to save checkpoints from all ranked
+            training workers.
+        checkpoint_upload_from_workers: Whether to upload checkpoint files
+            directly from distributed training workers.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief trial
             results, 3 = status and detailed trial results. Defaults to 3.
@@ -665,6 +671,8 @@ def run(
         checkpoint_score_order=checkpoint_score_order,
         checkpoint_frequency=checkpoint_freq,
         checkpoint_at_end=checkpoint_at_end,
+        _checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
+        _checkpoint_upload_from_workers=checkpoint_upload_from_workers,
     )
 
     if num_samples == -1:

@@ -81,6 +81,14 @@ class TrainableUtil:
         return os.path.join(tokens[0])
 
     @staticmethod
+    def _make_checkpoint_dir_name(index: Union[int, str]):
+        """Get the name of the checkpoint directory suffix."""
+        suffix = "checkpoint"
+        if index is not None:
+            suffix += f"_{index:06d}" if isinstance(index, int) else f"_{index}"
+        return suffix
+
+    @staticmethod
     def make_checkpoint_dir(
         checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
@@ -93,9 +101,7 @@ class TrainableUtil:
             override: Deletes checkpoint_dir before creating
                 a new one.
         """
-        suffix = "checkpoint"
-        if index is not None:
-            suffix += f"_{index:06d}" if isinstance(index, int) else f"_{index}"
+        suffix = TrainableUtil._make_checkpoint_dir_name(index)
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
         if override and os.path.exists(checkpoint_dir):
