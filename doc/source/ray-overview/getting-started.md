@@ -162,9 +162,11 @@ This example shows how you can use Ray Train with PyTorch.
 
 To run this example install Ray Train and PyTorch packages:
 
+:::{note}
 ```bash
 pip install -U "ray[train]" torch torchvision
 ```
+:::
 
 Set up your dataset and model.
 
@@ -223,9 +225,11 @@ with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_ke
 
 To run this example install Ray Train and Tensorflow packages:
 
+:::{note}
 ```bash
 pip install -U "ray[train]" tensorflow
 ```
+:::
 
 Set up your dataset and model.
 
@@ -300,7 +304,7 @@ Tune supports any deep learning framework, including PyTorch, TensorFlow, and Ke
 To run this example, install Ray Tune:
 
 ```bash
-pip install "ray[tune]"
+pip install -U "ray[tune]"
 ```
 ````
 
@@ -338,7 +342,7 @@ Learn more about Ray Tune
 To run this example, install Ray Serve and scikit-learn:
 
 ```{code-block} bash
-pip install "ray[serve]" scikit-learn
+pip install -U "ray[serve]" scikit-learn
 ```
 ````
 
@@ -373,7 +377,7 @@ RLlib offers high scalability and unified APIs for a variety of industry- and re
 To run this example, install `rllib` and either `tensorflow` or `pytorch`:
 
 ```bash
-pip install "ray[rllib]" tensorflow  # or torch
+pip install -U "ray[rllib]" tensorflow  # or torch
 ```
 ````
 
