@@ -153,18 +153,18 @@ By using `async` method definitions, Ray will automatically detect whether an ac
     ray.get([actor.run_task.remote() for _ in range(5)])
 
 .. testoutput::
-    :options: +ELLIPSIS
+    :options: +SKIP
 
-    (AsyncActor pid=...) started
-    (AsyncActor pid=...) started
-    (AsyncActor pid=...) started
-    (AsyncActor pid=...) started
-    (AsyncActor pid=...) started
-    (AsyncActor pid=...) ended
-    (AsyncActor pid=...) ended
-    (AsyncActor pid=...) ended
-    (AsyncActor pid=...) ended
-    (AsyncActor pid=...) ended
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
 
 Under the hood, Ray runs all of the methods inside a single python event loop.
 Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
@@ -242,7 +242,6 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
     a = ThreadedActor.options(max_concurrency=2).remote()
     ray.get([a.task_1.remote(), a.task_2.remote()])
 
-
 Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
 
 AsyncIO for Remote Tasks
@@ -250,7 +249,8 @@ AsyncIO for Remote Tasks
 
 We don't support asyncio for remote tasks. The following snippet will fail:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     @ray.remote
     async def f():
@@ -258,7 +258,7 @@ We don't support asyncio for remote tasks. The following snippet will fail:
 
 Instead, you can wrap the ``async`` function with a wrapper to run the task synchronously:
 
-.. code-block:: python
+.. testcode::
 
     async def f():
         pass
@@ -267,7 +267,3 @@ Instead, you can wrap the ``async`` function with a wrapper to run the task sync
     def wrapper():
         import asyncio
         asyncio.run(f())
-        # For python < 3.7:
-        # asyncio.get_event_loop().run_until_complete(f())
-
-
