@@ -3,7 +3,7 @@ import sys
 import threading
 from time import sleep
 from ray._private.test_utils import wait_for_condition
-from pytest_docker_tools import container, fetch, network
+from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
 from http.client import HTTPConnection
 
@@ -59,6 +59,11 @@ class Container(wrappers.Container):
         port = self.ports["8000/tcp"][0]
         return HTTPConnection(f"localhost:{port}")
 
+    def print_logs(self):
+        for (name, content) in self.get_files("/tmp"):
+            print(f"===== log start:  {name} ====")
+            print(content.decode())
+
 
 gcs_network = network(driver="bridge")
 
@@ -69,6 +74,9 @@ redis = container(
     network="{gcs_network.name}",
     command=("redis-server --save 60 1 --loglevel" " warning"),
 )
+
+head_node_vol = volume()
+worker_node_vol = volume()
 
 head_node = container(
     image="ray_ci:v1",
@@ -86,6 +94,7 @@ head_node = container(
         "--node-manager-port",
         "9379",
     ],
+    volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
@@ -110,6 +119,7 @@ worker_node = container(
         "--node-manager-port",
         "9379",
     ],
+    volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={

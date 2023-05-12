@@ -1,4 +1,4 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Box, createStyles, makeStyles, Typography } from "@material-ui/core";
 import classNames from "classnames";
 import React, {
   forwardRef,
@@ -18,6 +18,7 @@ const useStyles = makeStyles((theme) =>
       alignItems: "center",
       fontWeight: 500,
       cursor: "pointer",
+      marginRight: theme.spacing(1),
     },
     icon: {
       marginRight: theme.spacing(1),
@@ -44,6 +45,10 @@ type CollapsibleSectionProps = PropsWithChildren<
     title: string;
     startExpanded?: boolean;
     /**
+     * Icon to show to the right of the title.
+     */
+    icon?: React.ReactNode;
+    /**
      * An optimization to not avoid re-rendering the contents of the collapsible section.
      * When enabled, we will keep the content around when collapsing but hide it via css.
      */
@@ -64,6 +69,7 @@ export const CollapsibleSection = forwardRef<
       className,
       children,
       keepRendered,
+      icon,
     },
     ref,
   ) => {
@@ -85,18 +91,21 @@ export const CollapsibleSection = forwardRef<
 
     return (
       <div ref={ref} className={className}>
-        <Typography
-          className={classes.title}
-          variant="h4"
-          onClick={handleExpandClick}
-        >
-          {finalExpanded ? (
-            <RiArrowDownSLine className={classes.icon} />
-          ) : (
-            <RiArrowRightSLine className={classes.icon} />
-          )}
-          {title}
-        </Typography>
+        <Box display="flex" flexDirection="row" alignItems="center">
+          <Typography
+            className={classes.title}
+            variant="h4"
+            onClick={handleExpandClick}
+          >
+            {finalExpanded ? (
+              <RiArrowDownSLine className={classes.icon} />
+            ) : (
+              <RiArrowRightSLine className={classes.icon} />
+            )}
+            {title}
+          </Typography>
+          {icon}
+        </Box>
         {(finalExpanded || (keepRendered && rendered)) && (
           <div
             className={classNames(classes.body, {
