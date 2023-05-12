@@ -576,7 +576,7 @@ def delete(name: str, _blocking: bool = True):
 
 @PublicAPI(stability="alpha")
 def multiplexed(
-    func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = -1
+    func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
 ):
     """[EXPERIMENTAL] Defines a function or method used to load multiplexed
     models in a replica.
@@ -631,8 +631,11 @@ def multiplexed(
 
     Args:
         max_num_models_per_replica: the maximum number of models
-        to be loaded on each replica. By default, it is -1, which
-        means there is no number limit to load models.
+        to be loaded on each replica. By default, it is 3, which
+        means that each replica can cache up to 3 models. You can
+        set it to a larger number if you have enough memory on
+        the node resource, in opposite, you can set it to a smaller
+        number if you want to save memory on the node resource.
     """
 
     raise NotImplementedError("Multiplexed deployment is not supported yet.")
@@ -654,11 +657,8 @@ def get_multiplexed_model_id() -> str:
             # "ray_serve_request_model_id" when sending requests to the http proxy.
             requests.get("http://localhost:8000",
                 headers={"ray_serve_request_model_id": "model_1"})
-
-            # Internally model_id will be set in the request context
-            # inside the http proxy. The request context information
-            # will be passed to the replica.
-            # ray.serve.context.set_request_context(model_id="model_1")
+            # Or user can also set model id inside the serve handle.
+            handle.options(model_id="model_1").remote("blablabla")
 
             # In replica, You can retrieve the model id from the
             # request context.
