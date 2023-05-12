@@ -399,7 +399,7 @@ void TaskManager::HandleIntermediateResult(
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma*/store_in_plasma_ids.count(object_id));
+                     /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
   RAY_LOG(DEBUG) << "SANG-TODO Finished handling intermediate result";
 }

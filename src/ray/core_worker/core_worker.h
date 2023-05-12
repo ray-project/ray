@@ -704,15 +704,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
-  
+
   /// SANG-TODO Update the docstring.
   /// SANG-TODO Support close separately.
   Status ObjectRefStreamWrite(
-        const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
-        const ObjectID &generator_id,
-        const rpc::Address &caller_address,
-        int64_t idx,
-        bool finished);
+      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      const ObjectID &generator_id,
+      const rpc::Address &caller_address,
+      int64_t idx,
+      bool finished);
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///

@@ -196,7 +196,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class StreamingObjectRefGeneratorV2:
+class StreamingObjectRefGenerator:
     def __init__(self, generator_ref):
         self._generator_ref = generator_ref
         self._generator_task_completed_time = None
@@ -234,8 +234,8 @@ class StreamingObjectRefGeneratorV2:
                     # has been terminated 30 seconds ago.
                     assert False, "Unexpected network failure occured."
 
-
-            time.sleep(0.001)
+            # 100us busy waiting
+            time.sleep(0.0001)
             obj = self._handle_next()
         return obj
 
@@ -792,18 +792,14 @@ cdef execute_streaming_generator(
                 and core_worker.get_current_task_retry_exceptions()
             ):
                 logger.debug("Task failed with retryable exception:"
-                                " {}.".format(
-                                task_id),
-                                exc_info=True)
+                             " {}.".format(task_id), exc_info=True)
                 # Raise an exception directly and halt the execution
                 # because there's no need to set the exception
                 # for the return value when the task is retryable.
                 raise e
 
             logger.debug("Task failed with unretryable exception:"
-                            " {}.".format(
-                            task_id),
-                            exc_info=True)
+                         " {}.".format(task_id), exc_info=True)
 
             error_id = (CCoreWorkerProcess.GetCoreWorker()
                         .AllocateDynamicReturnId(caller_address))
@@ -822,11 +818,16 @@ cdef execute_streaming_generator(
             CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
                 intermediate_result.back(),
                 generator_id, caller_address, generator_index, False)
+
+            if intermediate_result.size() > 0:
+                intermediate_result.pop_back()
+            generator_index += 1
             break
         else:
             # Report the intermediate result if there was no error.
-            return_id = (CCoreWorkerProcess.GetCoreWorker()
-                            .AllocateDynamicReturnId(caller_address))
+            return_id = (
+                CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
+                    caller_address))
             intermediate_result.push_back(
                     c_pair[CObjectID, shared_ptr[CRayObject]](
                         return_id, shared_ptr[CRayObject]()))
@@ -839,23 +840,25 @@ cdef execute_streaming_generator(
             # print("SANG-TODO Writes an index ", i)
             assert intermediate_result.size() == 1
             del output
-            
+
             CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
                 intermediate_result.back(),
                 generator_id,
                 caller_address,
                 generator_index,
                 False)
-        finally:
+
             if intermediate_result.size() > 0:
                 intermediate_result.pop_back()
             generator_index += 1
 
-    # Close it.
-    # SANG-TODO Implement the close API.
+    # All the intermediate result has to be popped and reported.
+    assert intermediate_result.size() == 0
+    # Report the owner that there's no more objects.
     # print("SANG-TODO Closes an index ", i)
     CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
-        c_pair[CObjectID, shared_ptr[CRayObject]](CObjectID.Nil(), shared_ptr[CRayObject]()),
+        c_pair[CObjectID, shared_ptr[CRayObject]](
+            CObjectID.Nil(), shared_ptr[CRayObject]()),
         generator_id,
         caller_address,
         generator_index,
@@ -1121,12 +1124,12 @@ cdef void execute_task(
                             if not inspect.isgenerator(outputs):
                                 raise ValueError(
                                         "Functions with "
-                                        "@ray.remote(num_returns=\"streaming\" must return a "
-                                        "generator")
+                                        "@ray.remote(num_returns=\"streaming\" "
+                                        "must return a generator")
 
                             execute_streaming_generator(
                                     outputs,
-                                    returns[0][0].first, # generator object ID.
+                                    returns[0][0].first,  # generator object ID.
                                     task_type,
                                     caller_address,
                                     task_id,
@@ -1220,10 +1223,9 @@ cdef void execute_task(
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
-                num_returns = returns[0].size()
                 # TODO(sang): Remove it once we use streaming generator
                 # by default.
-                if dynamic_returns != NULL:
+                if dynamic_returns != NULL and not is_streaming_generator:
                     if not inspect.isgenerator(outputs):
                         raise ValueError(
                                 "Functions with "
@@ -3298,7 +3300,9 @@ cdef class CoreWorker:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
-        check_status(CCoreWorkerProcess.GetCoreWorker().GetNextObjectRef(c_generator_id, &c_object_ref))
+        check_status(
+            CCoreWorkerProcess.GetCoreWorker().GetNextObjectRef(
+                c_generator_id, &c_object_ref))
         return ObjectRef(
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),

@@ -220,7 +220,9 @@ bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynami
 
 // TODO(sang): Merge this with ReturnsDynamic once migrating to the
 // streaming generator.
-bool TaskSpecification::IsStreamingGenerator() const { return message_->streaming_generator(); }
+bool TaskSpecification::IsStreamingGenerator() const {
+  return message_->streaming_generator();
+}
 
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());

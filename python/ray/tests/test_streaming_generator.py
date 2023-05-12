@@ -1,24 +1,17 @@
-import asyncio
 import pytest
 import numpy as np
 import sys
 import time
 
 import ray
-from ray.util.client.ray_client_helpers import (
-    ray_start_client_server_for_address,
-)
-from ray._private.client_mode_hook import enable_client_mode
-from ray.tests.conftest import call_ray_start_context
 from ray._private.test_utils import wait_for_condition
-from ray.experimental.state.api import list_tasks
-from ray._raylet import StreamingObjectRefGeneratorV2
 
 
 def test_generator_basic(shutdown_only):
     ray.init(num_cpus=1)
 
     """Basic cases"""
+
     @ray.remote
     def f():
         for i in range(5):
@@ -63,8 +56,6 @@ def test_generator_basic(shutdown_only):
 
         def f(self):
             for i in range(5):
-                import time
-
                 time.sleep(0.1)
                 yield i
 
@@ -90,7 +81,7 @@ def test_generator_basic(shutdown_only):
             next(gen)
 
     """Retry exceptions"""
-    # TODO(sang): Enable it
+    # TODO(sang): Enable it once retry is supported.
     # @ray.remote
     # class Actor:
     #     def __init__(self):
@@ -175,16 +166,26 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         remote_generator_fn = generator
 
     """Verify num_returns="streaming" is streaming"""
-    gen = remote_generator_fn.options(num_returns="streaming").remote(3, store_in_plasma)
+    gen = remote_generator_fn.options(num_returns="streaming").remote(
+        3, store_in_plasma
+    )
+    i = 0
     for ref in gen:
         id = ref.hex()
-        print(ray.get(ref))
+        if store_in_plasma:
+            expected = np.ones(1_000_000, dtype=np.int8) * i
+            assert np.array_equal(ray.get(ref), expected)
+        else:
+            expected = [i]
+            assert ray.get(ref) == expected
+
         del ref
         from ray.experimental.state.api import list_objects
 
         wait_for_condition(
             lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
         )
+        i += 1
 
 
 def test_generator_dist_chain(ray_start_cluster):
@@ -207,7 +208,9 @@ def test_generator_dist_chain(ray_start_cluster):
                     time.sleep(0.1)
                     yield np.ones(5 * 1024 * 1024)
             else:
-                for data in self.child.get_data.options(num_returns="streaming").remote():
+                for data in self.child.get_data.options(
+                    num_returns="streaming"
+                ).remote():
                     yield ray.get(data)
 
     chain_actor = ChainActor.remote()

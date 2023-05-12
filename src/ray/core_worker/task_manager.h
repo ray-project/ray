@@ -181,7 +181,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
-
   // SANG-TODO Docstring + change the method.
   void HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) override;
 

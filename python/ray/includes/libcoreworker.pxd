@@ -145,12 +145,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id
-        )
-        void DelGenerator(const CObjectID &generator_id) 
-        CRayStatus GetNextObjectRef(const CObjectID &generator_id, CObjectReference *object_ref_out) 
+            const CObjectID& generator_id)
+        void DelGenerator(const CObjectID &generator_id)
+        CRayStatus GetNextObjectRef(
+            const CObjectID &generator_id,
+            CObjectReference *object_ref_out)
         CObjectID AllocateDynamicReturnId(const CAddress &owner_address)
-
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
