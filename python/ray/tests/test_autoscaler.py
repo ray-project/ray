@@ -1686,6 +1686,7 @@ class AutoscalingTest(unittest.TestCase):
     # To test scale-down behavior, we parameterize the DynamicScaling test
     # manually over outcomes for the DrainNode RPC call.
     def testDynamicScaling1(self):
+        print("what")
         self.helperDynamicScaling(DrainNodeOutcome.Succeeded)
 
     def testDynamicScaling2(self):
