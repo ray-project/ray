@@ -343,7 +343,7 @@ Status PythonGcsSubscriber::Subscribe() {
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* data) {
+Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
   absl::MutexLock lock(&mu_);
 
   grpc::ClientContext context;
@@ -354,6 +354,7 @@ Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* 
   request.set_publisher_id(publisher_id_);
 
   rpc::GcsSubscriberPollReply reply;
+  // TODO: Add error handling
   grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
 
   if (publisher_id_ != reply.publisher_id()) {
@@ -366,15 +367,27 @@ Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* 
     queue_.emplace_back(std::move(message));
   }
 
-  if (queue_.size() == 0) {
-    *key_id = "";
-  } else {
-    auto message = queue_.front();
+  if (queue_.size() > 0) {
+    *message = queue_.front();
     queue_.pop_front();
-    *key_id = message.key_id();
-    *data = message.error_info_message();
   }
 
+  return Status::OK();
+}
+
+Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* data) {
+  rpc::PubMessage message;
+  RAY_RETURN_NOT_OK(DoPoll(&message));
+  *key_id = message.key_id();
+  *data = message.error_info_message();
+  return Status::OK();
+}
+
+Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
+  // rpc::PubMessage message;
+  // RAY_RETURN_NOT_OK(DoPoll(&message));
+  // *key_id = message.key_id();
+  // *data = message.log_batch_message();
   return Status::OK();
 }
 

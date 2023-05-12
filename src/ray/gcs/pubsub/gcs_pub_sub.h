@@ -198,6 +198,8 @@ class RAY_EXPORT PythonGcsSubscriber {
   Status PollFunctionKey(std::string* key_id, rpc::PythonFunction* data);
 
  private:
+  Status DoPoll(rpc::PubMessage* message);
+
   mutable absl::Mutex mu_;
 
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;

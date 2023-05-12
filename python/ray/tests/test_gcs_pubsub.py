@@ -5,7 +5,6 @@ import re
 
 import ray
 from ray._private.gcs_pubsub import (
-    GcsLogSubscriber,
     GcsFunctionKeySubscriber,
     GcsAioPublisher,
     GcsAioErrorSubscriber,
@@ -61,7 +60,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsLogSubscriber(address=gcs_server_addr)
+    subscriber = ray._private.gcs_pubsub.GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
@@ -182,7 +181,7 @@ def test_two_subscribers(ray_start_regular):
     t1.start()
 
     logs = []
-    log_subscriber = GcsLogSubscriber(address=gcs_server_addr)
+    log_subscriber = ray._private.gcs_pubsub.GcsLogSubscriber(address=gcs_server_addr)
     # Make sure subscription is registered before publishing starts.
     log_subscriber.subscribe()
 
