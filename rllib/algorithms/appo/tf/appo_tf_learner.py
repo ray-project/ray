@@ -132,7 +132,10 @@ class APPOTfLearner(AppoLearner, TfLearner):
         total_loss = (
             mean_pi_loss
             + (mean_vf_loss * self.hps.vf_loss_coeff)
-            + (mean_entropy_loss * self.hps.entropy_coeff)
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_scheduler.get_current_value(module_id)
+            )
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
