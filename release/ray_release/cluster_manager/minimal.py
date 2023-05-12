@@ -33,28 +33,28 @@ class MinimalClusterManager(ClusterManager):
                 f"cluster envs with this name."
             )
 
-            paging_token = None
-            while not self.cluster_env_id:
-                result = self.sdk.search_cluster_environments(
-                    dict(
-                        project_id=self.project_id,
-                        name=dict(equals=self.cluster_env_name),
-                        paging=dict(count=50, paging_token=paging_token),
-                    )
-                )
-                paging_token = result.metadata.next_paging_token
-
-                for res in result.results:
-                    if res.name == self.cluster_env_name:
-                        self.cluster_env_id = res.id
-                        logger.info(
-                            f"Cluster env already exists with ID "
-                            f"{self.cluster_env_id}"
-                        )
-                        break
-
-                if not paging_token or self.cluster_env_id:
-                    break
+            #            paging_token = None
+            #            while not self.cluster_env_id:
+            #                result = self.sdk.search_cluster_environments(
+            #                    dict(
+            #                        project_id=self.project_id,
+            #                        name=dict(equals=self.cluster_env_name),
+            #                        paging=dict(count=50, paging_token=paging_token),
+            #                    )
+            #                )
+            #                paging_token = result.metadata.next_paging_token
+            #
+            #                for res in result.results:
+            #                    if res.name == self.cluster_env_name:
+            #                        self.cluster_env_id = res.id
+            #                        logger.info(
+            #                            f"Cluster env already exists with ID "
+            #                            f"{self.cluster_env_id}"
+            #                        )
+            #                        break
+            #
+            #                if not paging_token or self.cluster_env_id:
+            #                    break
 
             if not self.cluster_env_id:
                 logger.info("Cluster env not found. Creating new one.")
