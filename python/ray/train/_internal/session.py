@@ -344,9 +344,13 @@ class _TrainSession:
             if log_once("keep_all_ranks_dict_checkpoint"):
                 logger.warning(
                     "Saving checkpoints from all ranks does not work with "
-                    "dictionary checkpoints. Set _checkpoint_keep_all_ranks "
-                    "to False, or write checkpoints to a directory and report "
-                    "directory checkpoints instead."
+                    "dictionary checkpoints. Set `ray.air.CheckpointConfig"
+                    "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
+                    "to a directory and report directory checkpoints that "
+                    "contain unique files per worker rank. For example, "
+                    "use filenames that contain the unique rank. You can "
+                    "retrieve the rank with `session.get_world_rank()` within "
+                    "your training loop per worker."
                 )
 
         upload_from_workers = (
