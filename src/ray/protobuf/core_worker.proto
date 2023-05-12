@@ -382,15 +382,26 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
-message WriteObjectRefStreamRequest {
+message ReportIntermediateTaskReturnRequest {
+  // The intermediate return object that's dynamically
+  // generated from the executor side.
   repeated ReturnObject dynamic_return_objects = 1;
+  // The address of the executor.
   Address worker_addr = 2;
+  // The index of the task return. It is used to
+  // reorder the intermediate return object
+  // because the ordering of this request
+  // is not guaranteed.
   int64 idx = 3;
+  // If true, it means there's going to be no more
+  // task return after this request.
   bool finished = 4;
+  // The object ref id of the executor task that
+  // generates intermediate results.
   bytes generator_id = 5;
 }
 
-message WriteObjectRefStreamReply {}
+message ReportIntermediateTaskReturnReply {}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
@@ -412,8 +423,8 @@ service CoreWorkerService {
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
-  // SANG-TODO Write a docstring and change the RPC name.
-  rpc WriteObjectRefStream(WriteObjectRefStreamRequest) returns (WriteObjectRefStreamReply);
+  // The RPC to report the intermediate task return to the caller.
+  rpc ReportIntermediateTaskReturn(ReportIntermediateTaskReturnRequest) returns (ReportIntermediateTaskReturnReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
   // Update the batched object location information to the ownership-based object

@@ -2,9 +2,11 @@ import pytest
 import numpy as np
 import sys
 import time
+import gc
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.experimental.state.api import list_objects
 
 
 def test_generator_basic(shutdown_only):
@@ -131,6 +133,55 @@ def test_generator_basic(shutdown_only):
         next(gen)
 
 
+@pytest.mark.parametrize("crash_type", ["exception", "worker_crash"])
+def test_generator_streaming_no_leak_upon_failures(
+    monkeypatch, shutdown_only, crash_type
+):
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server.ReportIntermediateTaskReturn=100000:1000000",
+        )
+        ray.init(num_cpus=1)
+
+        @ray.remote
+        def g():
+            try:
+                gen = f.options(num_returns="streaming").remote()
+                for ref in gen:
+                    print(ref)
+                    ray.get(ref)
+            except Exception:
+                print("exception!")
+                del ref
+
+            del gen
+            gc.collect()
+
+            # Only the ref g is alive.
+            def verify():
+                print(list_objects())
+                return len(list_objects()) == 1
+
+            wait_for_condition(verify)
+            return True
+
+        @ray.remote
+        def f():
+            for i in range(10):
+                time.sleep(0.2)
+                if i == 4:
+                    if crash_type == "exception":
+                        raise ValueError
+                    else:
+                        sys.exit(9)
+                yield 2
+
+        for _ in range(5):
+            ray.get(g.remote())
+
+
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
@@ -180,7 +231,6 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
             assert ray.get(ref) == expected
 
         del ref
-        from ray.experimental.state.api import list_objects
 
         wait_for_condition(
             lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0

@@ -355,11 +355,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
   // SANG-TODO Update the docstring.
-  void DelGenerator(const ObjectID &generator_id);
+  void DelObjectRefStream(const ObjectID &generator_id);
+
+  void CreateObjectRefStream(const ObjectID &generator_id);
 
   // SANG-TODO Update the docstring.
-  Status GetNextObjectRef(const ObjectID &generator_id,
-                          rpc::ObjectReference *object_ref_out);
+  Status AsyncReadObjectRefStream(const ObjectID &generator_id,
+                                  rpc::ObjectReference *object_ref_out);
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -705,9 +707,31 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
 
-  /// SANG-TODO Update the docstring.
-  /// SANG-TODO Support close separately.
-  Status ObjectRefStreamWrite(
+  /// Report the task caller at caller_address that the intermediate
+  /// task return. It means if this API is used, the caller will be notified
+  /// the task return before the current task is terminated. The caller must
+  /// implement HandleReportIntermediateTaskReturn API endpoint
+  /// to handle the intermediate result report.
+  /// This API makes sense only for a generator task
+  /// (task that can return multiple intermediate
+  /// result before the task terminates).
+  ///
+  /// NOTE: The API doesn't guarantee the ordering of the report. The
+  /// caller is supposed to reorder the report based on the idx.
+  ///
+  /// \param[in] dynamic_return_object A intermediate ray object to report
+  /// to the caller before the task terminates. This object must have been
+  /// created dynamically from this worker via AllocateReturnObject.
+  /// \param[in] generator_id The return object ref ID from a current generator
+  /// task.
+  /// \param[in] caller_address The address of the caller of the current task
+  /// that created a generator_id.
+  /// \param[in] idx The index of the task return. It is used to reorder the
+  /// report from the caller side.
+  /// \param[in] finished True indicates there's going to be no more intermediate
+  /// task return. When finished is provided dynamic_return_object input will be
+  /// ignored.
+  Status ReportIntermediateTaskReturn(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
@@ -1055,9 +1079,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
-                                  rpc::WriteObjectRefStreamReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReportIntermediateTaskReturn(
+      rpc::ReportIntermediateTaskReturnRequest request,
+      rpc::ReportIntermediateTaskReturnReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(rpc::KillActorRequest request,

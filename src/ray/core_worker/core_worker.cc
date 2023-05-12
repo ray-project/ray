@@ -1657,7 +1657,7 @@ void CoreWorker::TriggerGlobalGC() {
       });
 }
 
-Status CoreWorker::ObjectRefStreamWrite(
+Status CoreWorker::ReportIntermediateTaskReturn(
     const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
@@ -1665,7 +1665,7 @@ Status CoreWorker::ObjectRefStreamWrite(
     bool finished) {
   RAY_LOG(DEBUG) << "SANG-TODO Write the object ref stream, index: " << idx
                  << " finished: " << finished << ", id: " << dynamic_return_object.first;
-  rpc::WriteObjectRefStreamRequest request;
+  rpc::ReportIntermediateTaskReturnRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_idx(idx);
   request.set_finished(finished);
@@ -1685,8 +1685,9 @@ Status CoreWorker::ObjectRefStreamWrite(
     memory_store_->Delete(deleted);
   }
 
-  client->WriteObjectRefStream(
-      request, [](const Status &status, const rpc::WriteObjectRefStreamReply &reply) {
+  client->ReportIntermediateTaskReturn(
+      request,
+      [](const Status &status, const rpc::ReportIntermediateTaskReturnReply &reply) {
         if (status.ok()) {
           RAY_LOG(DEBUG) << "SANG-TODO Succeeded to send the object ref";
         } else {
@@ -2798,14 +2799,18 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   return status;
 }
 
-void CoreWorker::DelGenerator(const ObjectID &generator_id) {
-  task_manager_->DelGenerator(generator_id);
+void CoreWorker::CreateObjectRefStream(const ObjectID &generator_id) {
+  task_manager_->CreateObjectRefStream(generator_id);
 }
 
-Status CoreWorker::GetNextObjectRef(const ObjectID &generator_id,
-                                    rpc::ObjectReference *object_ref_out) {
+void CoreWorker::DelObjectRefStream(const ObjectID &generator_id) {
+  task_manager_->DelObjectRefStream(generator_id);
+}
+
+Status CoreWorker::AsyncReadObjectRefStream(const ObjectID &generator_id,
+                                            rpc::ObjectReference *object_ref_out) {
   ObjectID object_id;
-  const auto &status = task_manager_->GetNextObjectRef(generator_id, &object_id);
+  const auto &status = task_manager_->AsyncReadObjectRefStream(generator_id, &object_id);
   if (!status.ok()) {
     return status;
   }
@@ -3245,8 +3250,12 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     // counter so that we know that it exists.
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
-    // SANG-TODO If streaming, use streaming instead.
-    reference_counter_->AddStreamingDynamicReturn(object_id, generator_id);
+    if (task_manager_->ObjectRefStreamExists(generator_id)) {
+      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
+                                                                   generator_id);
+    } else {
+      reference_counter_->AddDynamicReturn(object_id, generator_id);
+    }
   }
 
   // Returns true if the object was present and the callback was added. It might have
@@ -3380,8 +3389,12 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
     RAY_CHECK(!generator_id->IsNil());
-    // SANG-TODO If streaming, use streaming instead.
-    reference_counter_->AddStreamingDynamicReturn(object_id, *generator_id);
+    if (task_manager_->ObjectRefStreamExists(*generator_id)) {
+      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
+                                                                   *generator_id);
+    } else {
+      reference_counter_->AddDynamicReturn(object_id, *generator_id);
+    }
   }
 
   auto reference_exists =
@@ -3409,10 +3422,15 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   // until the task finishes.
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
-    // The task is a generator and may not have finished yet. Add the internal
-    // ObjectID so that we can update its location.
-    // SANG-TODO If streaming, use streaming instead.
-    reference_counter_->AddStreamingDynamicReturn(object_id, maybe_generator_id);
+    if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
+      // If the stream exists, it means it is a streaming generator.
+      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
+                                                                   maybe_generator_id);
+    } else {
+      // The task is a generator and may not have finished yet. Add the internal
+      // ObjectID so that we can update its location.
+      reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    }
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }
 }
@@ -3443,11 +3461,12 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
-void CoreWorker::HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
-                                            rpc::WriteObjectRefStreamReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "SANG-TODO HandleWriteObjectRefStream";
-  task_manager_->HandleIntermediateResult(request);
+void CoreWorker::HandleReportIntermediateTaskReturn(
+    rpc::ReportIntermediateTaskReturnRequest request,
+    rpc::ReportIntermediateTaskReturnReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "SANG-TODO HandleReportIntermediateTaskReturn";
+  task_manager_->HandleReportIntermediateTaskReturn(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

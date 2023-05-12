@@ -30,6 +30,50 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
+  bool is_eof_set = last_ != -1;
+  if (is_eof_set && curr_ >= last_) {
+    RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
+                   << "has no more objects.";
+    return Status::KeyError("Finished");
+  }
+
+  auto it = idx_to_refs_.find(curr_);
+  if (it != idx_to_refs_.end()) {
+    // If the current index has been written,
+    // return the object ref.
+    // The returned object ref will always have a ref count of 1.
+    // The caller of this API is supposed to remove the reference
+    // when the obtained object id goes out of scope.
+    *object_id_out = it->second;
+    curr_ += 1;
+    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out
+                   << " generator id: " << generator_id_;
+  } else {
+    // If the current index hasn't been written, return nothing.
+    // The caller is supposed to retry.
+    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << curr_
+                   << " last: " << last_ << " generator id: " << generator_id_;
+    *object_id_out = ObjectID::Nil();
+  }
+  return Status::OK();
+}
+
+bool ObjectRefStream::Write(const ObjectID &object_id, int64_t idx) {
+  if (last_ != -1) {
+    RAY_CHECK(curr_ < last_);
+  }
+
+  if (idx < curr_) {
+    return false;
+  }
+
+  idx_to_refs_.emplace(idx, object_id);
+  return true;
+}
+
+void ObjectRefStream::WriteEoF(int64_t idx) { last_ = idx; }
+
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
@@ -300,101 +344,106 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
-void TaskManager::DelGenerator(const ObjectID &generator_id) {
+void TaskManager::CreateObjectRefStream(const ObjectID &generator_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(it == object_ref_streams_.end())
+      << "CreateObjectRefStream can be called only once. The caller of the API should "
+         "guarantee the API is not called twice.";
+  object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+}
+
+void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
+  RAY_LOG(DEBUG) << "Deleting the object ref stream of an id " << generator_id;
   while (true) {
     ObjectID object_id;
-    const auto &status = GetNextObjectRef(generator_id, &object_id);
-    // SANG-TODO We should remove a reference. Need a test.
+    const auto &status = AsyncReadObjectRefStream(generator_id, &object_id);
+
+    // keyError means the stream reaches to EoF.
     if (status.IsKeyError()) {
       break;
     }
+
     if (object_id == ObjectID::Nil()) {
       break;
+    } else {
+      std::vector<ObjectID> deleted;
+      reference_counter_->RemoveLocalReference(object_id, &deleted);
+      RAY_CHECK_EQ(deleted.size(), 1);
     }
-    RAY_LOG(DEBUG) << "SANG-TODO DelGenerator Get Next";
   }
-  RAY_LOG(DEBUG) << "SANG-TODO Delete generator from " << generator_id;
+
+  absl::MutexLock lock(&mu_);
+  object_ref_streams_.erase(generator_id);
 }
 
-Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
-                                     ObjectID *object_id_out) {
+Status TaskManager::AsyncReadObjectRefStream(const ObjectID &generator_id,
+                                             ObjectID *object_id_out) {
   absl::MutexLock lock(&mu_);
   RAY_CHECK(object_id_out != nullptr);
-  auto it = dynamic_ids_from_generator_.find(generator_id);
-  if (it == dynamic_ids_from_generator_.end()) {
-    RAY_LOG(DEBUG) << "SANG-TODO Generator already GC'ed " << *object_id_out
-                   << " generator id: " << generator_id;
-    *object_id_out = ObjectID::Nil();
-    return Status::OK();
-  }
 
-  auto &reader = dynamic_ids_from_generator_[generator_id];
-  if (reader.last != -1 && reader.curr >= reader.last) {
-    RAY_LOG(DEBUG) << "SANG-TODO Generator has no more objects " << generator_id;
-    return Status::KeyError("Finished");
-  }
-  auto reader_it = reader.idx_to_refs.find(reader.curr);
-  if (reader_it != reader.idx_to_refs.end()) {
-    *object_id_out = reader_it->second;
-    reader.idx_to_refs.erase(reader.curr);
-    reader.curr += 1;
-    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out
-                   << " generator id: " << generator_id;
-  } else {
-    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << reader.curr
-                   << " last: " << reader.last << " generator id: " << generator_id;
-    *object_id_out = ObjectID::Nil();
-  }
-  return Status::OK();
+  auto it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(it != object_ref_streams_.end())
+      << "AsyncReadObjectRefStream API can be used only when the stream has been created "
+         "and not removed.";
+  auto &stream = it->second;
+
+  const auto &status = stream.AsyncReadNext(object_id_out);
+  return status;
 }
 
-void TaskManager::HandleIntermediateResult(
-    const rpc::WriteObjectRefStreamRequest &request) {
+bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = object_ref_streams_.find(generator_id);
+  return it != object_ref_streams_.end();
+}
+
+void TaskManager::HandleReportIntermediateTaskReturn(
+    const rpc::ReportIntermediateTaskReturnRequest &request) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t idx = request.idx();
   // Every generated object has the same task id.
-  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << request.idx()
+  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << idx
                  << " generator_id: " << generator_id;
 
-  {
+  if (request.finished()) {
     absl::MutexLock lock(&mu_);
-    if (request.finished()) {
-      RAY_LOG(DEBUG) << "SANG-TODO Finished with an index " << request.idx();
-      auto &reader = dynamic_ids_from_generator_[generator_id];
-      reader.last = request.idx();
-      RAY_CHECK(request.dynamic_return_objects_size() == 0);
+    RAY_LOG(DEBUG) << "SANG-TODO Finished with an index " << idx;
+    auto it = object_ref_streams_.find(generator_id);
+    if (it != object_ref_streams_.end()) {
+      it->second.WriteEoF(idx);
     }
+    // The last report should not have any return objects.
+    RAY_CHECK(request.dynamic_return_objects_size() == 0);
+    return;
   }
 
+  // Handle the intermediate values.
+  // NOTE: Until we support the retry, this is always empty return value.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
+  // TODO(sang): Support the regular return values as well.
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     RAY_LOG(DEBUG) << "SANG-TODO Add an object " << object_id;
-    int64_t curr;
+    bool is_written_to_stream = false;
     {
       absl::MutexLock lock(&mu_);
-      auto &reader = dynamic_ids_from_generator_[generator_id];
-      curr = reader.curr;
-      if (idx >= curr) {
-        reader.idx_to_refs.emplace(idx, object_id);
-        // TODO(sang): Add it when retry is supported.
-        // auto it = submissible_tasks_.find(task_id);
-        // if (it != submissible_tasks_.end()) {
-        //   // NOTE(sang): This is a hack to modify immutable field.
-        //   // It is possible because most of attributes under
-        //   // TaskSpecification is a pointer to the protobuf message.
-        //   TaskSpecification spec;
-        //   spec = it->second.spec;
-        //   spec.AddDynamicReturnId(object_id);
-        //   it->second.reconstructable_return_ids.insert(object_id);
-        // }
+      auto it = object_ref_streams_.find(generator_id);
+      if (it != object_ref_streams_.end()) {
+        is_written_to_stream = it->second.Write(object_id, idx);
       }
+      // TODO(sang): Update the reconstruct ids and task spec
+      // when we support retry.
     }
+
+    // If the ref was written to a stream, we should also
+    // update the ref count accordingly.
     // If we call this method while holding a lock, it can deadlock.
-    if (idx >= curr) {
-      reference_counter_->AddStreamingDynamicReturn(object_id, generator_id);
+    if (is_written_to_stream) {
+      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
+                                                                   generator_id);
     }
     HandleTaskReturn(object_id,
                      return_object,

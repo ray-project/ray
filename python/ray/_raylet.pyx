@@ -197,24 +197,45 @@ class ObjectRefGenerator:
 
 
 class StreamingObjectRefGenerator:
-    def __init__(self, generator_ref):
+    def __init__(self, generator_ref, worker):
         self._generator_ref = generator_ref
         self._generator_task_completed_time = None
         self._generator_task_exception = None
+        self.worker = worker
+        assert hasattr(worker, "core_worker")
+        worker.core_worker.create_generator(self._generator_ref)
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        core_worker = ray._private.worker.global_worker.core_worker
+        """Wait until the next ref is available to the
+            generator and return the object ref.
+
+        The API will raise StopIteration if there's no more objects
+        to generate.
+
+        The object ref will contain an exception if the task fails.
+        When the generator task returns N objects, it can return
+        up to N + 1 objects (if there's a system failure, the
+        last object will contain a system level exception).
+        """
         obj = self._handle_next()
+
+        # The generator ref will be None if the task succeeds.
+        # It will contain an exception if the task fails by
+        # a system error.
         while obj.is_nil():
             if self._generator_task_exception:
-                # The generator task has failed. We raise StopIteration
+                # The generator task has failed already.
+                # We raise StopIteration
                 # to conform the next interface in Python.
                 raise StopIteration
             else:
-                # Otherwise, check the task status.
+                # Otherwise, we should ray.get on the generator
+                # ref to find if the task has a system failure.
+                # Return the generator ref that contains the system
+                # error as soon as possible.
                 r, _ = ray.wait([self._generator_ref], timeout=0)
                 if len(r) > 0:
                     try:
@@ -228,6 +249,12 @@ class StreamingObjectRefGenerator:
                         if self._generator_task_completed_time is None:
                             self._generator_task_completed_time = time.time()
 
+            # Currently, since the ordering of intermediate result report
+            # is not guaranteed, it is possible that althoug the task
+            # has succeeded, all of the object references are not reported
+            # (e.g., when there are network failures).
+            # If all the object refs are not reported to the generator
+            # within 30 seconds, we consider is as an unreconverable error.
             if self._generator_task_completed_time:
                 if time.time() - self._generator_task_completed_time > 30:
                     # It means the next wasn't reported although the task
@@ -241,16 +268,26 @@ class StreamingObjectRefGenerator:
 
     def _handle_next(self):
         try:
-            core_worker = ray._private.worker.global_worker.core_worker
-            obj = core_worker.generator_get_next(self._generator_ref)
-            return obj
+            worker = ray._private.worker.global_worker
+            if hasattr(worker, "core_worker"):
+                obj = worker.core_worker.generator_get_next(self._generator_ref)
+                return obj
+            else:
+                raise ValueError(
+                    "Cannot access the core worker. "
+                    "Did you already shutdown Ray via ray.shutdown()?")
         except RayKeyError:
             raise StopIteration
 
     def __del__(self):
         worker = ray._private.worker.global_worker
         if hasattr(worker, "core_worker"):
-            worker.core_worker.generator_del(self._generator_ref)
+            worker.core_worker.delete_generator(self._generator_ref)
+
+    def __getstate__(self):
+        raise TypeError(
+            "Serialization of the StreamingObjectRefGenerator "
+            "is now allowed")
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
@@ -815,7 +852,7 @@ cdef execute_streaming_generator(
                         function_name, task_type, title,
                         &intermediate_result, application_error, caller_address)
 
-            CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+            CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
                 intermediate_result.back(),
                 generator_id, caller_address, generator_index, False)
 
@@ -841,7 +878,7 @@ cdef execute_streaming_generator(
             assert intermediate_result.size() == 1
             del output
 
-            CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+            CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
                 intermediate_result.back(),
                 generator_id,
                 caller_address,
@@ -856,13 +893,13 @@ cdef execute_streaming_generator(
     assert intermediate_result.size() == 0
     # Report the owner that there's no more objects.
     # print("SANG-TODO Closes an index ", i)
-    CCoreWorkerProcess.GetCoreWorker().ObjectRefStreamWrite(
+    CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
         c_pair[CObjectID, shared_ptr[CRayObject]](
             CObjectID.Nil(), shared_ptr[CRayObject]()),
         generator_id,
         caller_address,
         generator_index,
-        True)
+        True)  # finished.
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(
@@ -3015,6 +3052,8 @@ cdef class CoreWorker:
                 raise ValueError(
                     "Task returned more than num_returns={} objects.".format(
                         num_returns))
+            # TODO(sang): Remove it when the streaming generator is
+            # enabled by default.
             while i >= returns[0].size():
                 return_id = (CCoreWorkerProcess.GetCoreWorker()
                              .AllocateDynamicReturnId(caller_address))
@@ -3289,11 +3328,17 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker() \
             .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
-    def generator_del(self, ObjectRef generator_id):
+    def create_generator(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
-        CCoreWorkerProcess.GetCoreWorker().DelGenerator(c_generator_id)
+        CCoreWorkerProcess.GetCoreWorker().CreateObjectRefStream(c_generator_id)
+
+    def delete_generator(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
     def generator_get_next(self, ObjectRef generator_id):
         cdef:
@@ -3301,7 +3346,7 @@ cdef class CoreWorker:
             CObjectReference c_object_ref
 
         check_status(
-            CCoreWorkerProcess.GetCoreWorker().GetNextObjectRef(
+            CCoreWorkerProcess.GetCoreWorker().AsyncReadObjectRefStream(
                 c_generator_id, &c_object_ref))
         return ObjectRef(
             c_object_ref.object_id(),

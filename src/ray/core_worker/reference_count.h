@@ -201,8 +201,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
       LOCKS_EXCLUDED(mutex_);
 
-  // SANG-TODO Update the docstring.
-  void AddStreamingDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
+  /// Add a owned object that was dynamically created and reported intermediately.
+  /// These are objects that were created by a task that we called, but that we own.
+  ///
+  ///
+  /// \param[in] object_id The ID of the object that we now own.
+  /// \param[in] generator_id The Object ID of the streaming generator task.
+  void AddIntermediatelyReporteDynamicReturnRef(const ObjectID &object_id,
+                                                const ObjectID &generator_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.

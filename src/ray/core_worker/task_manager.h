@@ -37,13 +37,17 @@ class TaskFinisherInterface {
                                    const rpc::Address &actor_addr,
                                    bool is_application_error) = 0;
 
-  virtual void HandleIntermediateResult(
-      const rpc::WriteObjectRefStreamRequest &request) = 0;
+  virtual void HandleReportIntermediateTaskReturn(
+      const rpc::ReportIntermediateTaskReturnRequest &request) = 0;
 
-  virtual void DelGenerator(const ObjectID &generator_id) = 0;
+  virtual void DelObjectRefStream(const ObjectID &generator_id) = 0;
 
-  virtual Status GetNextObjectRef(const ObjectID &generator_id,
-                                  ObjectID *object_id_out) = 0;
+  virtual void CreateObjectRefStream(const ObjectID &generator_id) = 0;
+
+  virtual bool ObjectRefStreamExists(const ObjectID &generator_id) = 0;
+
+  virtual Status AsyncReadObjectRefStream(const ObjectID &generator_id,
+                                          ObjectID *object_id_out) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    const rpc::RayErrorInfo &error_info) = 0;
@@ -95,10 +99,44 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &error_message,
                                                double timestamp)>;
 
-struct ObjectRefStreamReader {
-  absl::flat_hash_map<int64_t, ObjectID> idx_to_refs;
-  int64_t last = -1;
-  int64_t curr = 0;
+/// When the streaming generator tasks are submitted,
+/// the intermediate return objects are streamed
+/// back to the task manager.
+/// This class manages the references of intermediately
+/// streamed object references.
+/// The API is not thread-safe.
+class ObjectRefStream {
+ public:
+  ObjectRefStream(const ObjectID &generator_id) : generator_id_(generator_id) {}
+
+  /// Asynchronously read object reference of the next index.
+  ///
+  /// \param[out] object_id_out The next object ID from the stream.
+  /// Nil ID is returned if the next index hasn't been written.
+  /// \return KeyError if it reaches to EoF. Ok otherwise.
+  Status AsyncReadNext(ObjectID *object_id_out);
+
+  /// Write the object id to the stream of an index idx.
+  ///
+  /// \param[in] The object id that will be read at index idx.
+  /// \param[in] The index where the object id will be written.
+  bool Write(const ObjectID &object_id, int64_t idx);
+
+  /// Mark the stream canont be used anymore.
+  void WriteEoF(int64_t idx);
+
+ private:
+  const ObjectID generator_id_;
+
+  /// The index -> object reference ids.
+  absl::flat_hash_map<int64_t, ObjectID> idx_to_refs_;
+  /// The last index of the stream.
+  /// idx < last will contain object references.
+  /// If -1, that means the stream hasn't reached to EoF.
+  int64_t last_ = -1;
+  /// The current index of the stream.
+  /// If curr_ == last_, that means it is EoF.
+  int64_t curr_ = 0;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -181,14 +219,37 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
-  // SANG-TODO Docstring + change the method.
-  void HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) override;
+  /// Handle the task return reported before the task terminates.
+  ///
+  void HandleReportIntermediateTaskReturn(
+      const rpc::ReportIntermediateTaskReturnRequest &request) override;
+
+  /// Delete the object ref stream.
+  /// Once the stream is deleted, it will clean up all unconsumed
+  /// object references, and all the future intermediate report
+  /// will be ignored.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void DelObjectRefStream(const ObjectID &generator_id) override;
+
+  /// Create the object ref stream.
+  /// If the object ref stream is not created by this API,
+  /// all object ref stream operation will be no-op.
+  /// Once the stream is created, it has to be deleted
+  /// by DelObjectRefStream when it is not used anymore.
+  /// The API is not idempotent.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void CreateObjectRefStream(const ObjectID &generator_id) override;
+
+  /// Return true if the object ref stream exists.
+  bool ObjectRefStreamExists(const ObjectID &generator_id) override;
 
   // SANG-TODO Docstring + change the method.
-  void DelGenerator(const ObjectID &generator_id) override;
-
-  // SANG-TODO Docstring + change the method.
-  Status GetNextObjectRef(const ObjectID &generator_id, ObjectID *object_id_out) override;
+  Status AsyncReadObjectRefStream(const ObjectID &generator_id,
+                                  ObjectID *object_id_out) override;
 
   /// Returns true if task can be retried.
   ///
@@ -538,6 +599,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// submitted tasks (dependencies and return objects).
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
+  /// Mapping from a streaming generator task id -> object ref stream.
+  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_ GUARDED_BY(mu_);
+
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
   /// objects get stored in plasma again so that any reference holders can
@@ -584,10 +648,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
-
-  // SANG-TODO Docstring + change the name.
-  absl::flat_hash_map<ObjectID, ObjectRefStreamReader> dynamic_ids_from_generator_
-      GUARDED_BY(mu_);
 
   friend class TaskManagerTest;
 };

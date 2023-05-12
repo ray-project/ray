@@ -406,7 +406,7 @@ class RemoteFunction:
                 # that is for the generator task.
                 assert len(object_refs) == 1
                 generator_ref = object_refs[0]
-                return StreamingObjectRefGenerator(generator_ref)
+                return StreamingObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:
