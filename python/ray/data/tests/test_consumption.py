@@ -251,12 +251,14 @@ def test_schema_lazy(ray_start_regular_shared):
 
 def test_schema_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"text": "spam", "number": 0}])
+    # fmt: off
     expected_repr = (
         "Column  Type\n"
         "------  ----\n"
         "text    string\n"
         "number  int64\n"
     )
+    # fmt:on
     assert repr(ds.schema()) == expected_repr
 
     ds = ray.data.from_items([{"long_column_name": "spam"}])
