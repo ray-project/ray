@@ -608,7 +608,7 @@ def multiplexed(
             class MultiplexedDeployment:
 
                 def __init__(self):
-                    # Define s3 base path to load models
+                    # Define s3 base path to load models.
                     self.s3_base_path = "s3://my_bucket/my_models"
 
                 @serve.multiplexed(max_num_models_per_replica=5)
@@ -620,11 +620,12 @@ def multiplexed(
                     return load_from_s3(model_id)
 
                 async def __call__(self, request):
-                    # Get model id from request context
+                    # Get the model_id from the request context.
                     model_id = serve.get_multiplexed_model_id()
-                    # Load model with the given model id
+                    # Load the model for the requested model_id.
+                    # If the model is already cached locally,
+                    # this will just be a dictionary lookup.
                     model = await self.load_model(model_id)
-                    # Call the model
                     return model(request)
 
 
@@ -639,33 +640,29 @@ def multiplexed(
 
 @PublicAPI(stability="alpha")
 def get_multiplexed_model_id() -> str:
-    """[EXPERIMENTAL] Returns the model id of the current request.
+    """[EXPERIMENTAL] Get the multiplexed model ID for the current request.
 
-    When user defines a multiplexed deployment, the model id of the current request
-    can be retrieved by calling `serve.get_multiplexed_model_id()`.
+    This is used with a function decorated with `@serve.multiplexed`
+    to cache multiple independent models within a single deployment.
 
     .. code-block:: python
             from ray import serve
+            import ray
+            import requests
+            # client code
+            # User needs to set the model id in the request header with the key
+            # "ray_serve_request_model_id" when sending requests to the http proxy.
+            requests.get("http://localhost:8000",
+                headers={"ray_serve_request_model_id": "model_1"})
 
-            @serve.deployment
-            class MultiplexedDeployment:
+            # Internally model_id will be set in the request context
+            # inside the http proxy. The request context information
+            # will be passed to the replica.
+            # ray.serve.context.set_request_context(model_id="model_1")
 
-                @serve.multiplexed(max_num_models_per_replica=5)
-                async def load_model(self, model_id: str) -> Any:
-                    # Load model with the given tag
-                    # You can use any model loading library here
-                    # and return the loaded model. load_from_s3 is
-                    # a placeholder function.
-                    return load_from_s3(model_id)
-
-                async def __call__(self, request):
-                    # Get model id from request context
-                    model_id = serve.get_multiplexed_model_id()
-                    # Load model with the given model id
-                    model = await self.load_model(model_id)
-                    # Call the model
-                    return model(request)
-
+            # In replica, You can retrieve the model id from the
+            # request context.
+            assert serve.get_multiplexed_model_id() == "model_1"
 
     """
     raise NotImplementedError("get_multiplexed_model_id API is not supported yet.")
