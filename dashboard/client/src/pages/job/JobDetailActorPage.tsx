@@ -1,7 +1,6 @@
 import { makeStyles } from "@material-ui/core";
 import React, { PropsWithChildren } from "react";
 
-import { Outlet } from "react-router-dom";
 import { Section } from "../../common/Section";
 import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
