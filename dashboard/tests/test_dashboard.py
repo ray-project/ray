@@ -340,9 +340,9 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
             assert len(dump_data["agents"]) == 1
-            node_id, ports = next(iter(dump_data["agents"].items()))
+            _, ports = next(iter(dump_data["agents"].items()))
             ip = ray_start_with_dashboard["node_ip_address"]
-            http_port, grpc_port = ports
+            http_port = ports[0]
 
             response = requests.get(
                 f"http://{ip}:{http_port}" f"/test/http_get_from_agent?url={target_url}"

@@ -50,11 +50,6 @@ void AgentManager::StartAgent() {
   argv.push_back("--agent-id");
   argv.push_back(agent_id_str.c_str());
 
-  // Disable metrics report if needed.
-  if (!RayConfig::instance().enable_metrics_collection()) {
-    argv.push_back("--disable-metrics-collection");
-  }
-
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting agent process with command:";

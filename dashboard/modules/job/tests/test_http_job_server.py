@@ -730,8 +730,13 @@ async def test_job_head_choose_job_agent():
             node_ip = agent[1]["ipAddress"]
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
+            runtime_env_agent_grpc_port = agent[1]["runtimeEnvAgentGrpcPort"]
             DataSource.node_id_to_ip[node_id] = node_ip
-            DataSource.agents[node_id] = (http_port, grpc_port)
+            DataSource.agents[node_id] = (
+                http_port,
+                grpc_port,
+                runtime_env_agent_grpc_port,
+            )
 
         def del_agent(agent):
             node_id = agent[0]
@@ -744,6 +749,7 @@ async def test_job_head_choose_job_agent():
                 ipAddress="1.1.1.1",
                 httpPort=1,
                 grpcPort=1,
+                runtimeEnvAgentGrpcPort=1,
                 httpAddress="1.1.1.1:1",
             ),
         )
@@ -753,6 +759,7 @@ async def test_job_head_choose_job_agent():
                 ipAddress="2.2.2.2",
                 httpPort=2,
                 grpcPort=2,
+                runtimeEnvAgentGrpcPort=2,
                 httpAddress="2.2.2.2:2",
             ),
         )
@@ -762,6 +769,7 @@ async def test_job_head_choose_job_agent():
                 ipAddress="3.3.3.3",
                 httpPort=3,
                 grpcPort=3,
+                runtimeEnvAgentGrpcPort=3,
                 httpAddress="3.3.3.3:3",
             ),
         )

@@ -730,9 +730,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
 
-  /// The agent manager RPC service.
-  std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
-  rpc::AgentManagerGrpcService agent_manager_service_;
+  /// The dashboard agent manager RPC service.
+  std::unique_ptr<rpc::AgentManagerServiceHandler>
+      dashboard_agent_manager_service_handler_;
+  rpc::AgentManagerGrpcService dashboard_agent_manager_service_;
 
   /// The runtime env agent manager RPC service.
   std::unique_ptr<rpc::RuntimeEnvAgentManagerServiceHandler>

@@ -1580,7 +1580,7 @@ def start_raylet(
 
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
-            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
+            ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
         ),
         os.path.join(
             RAY_PATH,
