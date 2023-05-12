@@ -47,6 +47,7 @@ class TableBlockBuilder(BlockBuilder):
         self._block_type = block_type
 
     def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
+        ctx = ray.data.DataContext.get_current()
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
@@ -71,7 +72,11 @@ class TableBlockBuilder(BlockBuilder):
             self._column_names = item_column_names
 
         for key, value in item.items():
-            if is_array_like(value) and not isinstance(value, np.ndarray):
+            if (
+                ctx.strict_mode
+                and is_array_like(value)
+                and not isinstance(value, np.ndarray)
+            ):
                 value = np.array(value)
             self._columns[key].append(value)
         self._num_rows += 1

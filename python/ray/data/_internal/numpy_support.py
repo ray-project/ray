@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 
+import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _truncated_repr
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -38,7 +39,9 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
         ValueError if an input was array-like but we failed to convert it to an array.
     """
 
-    if isinstance(udf_return_col, np.ndarray):
+    ctx = ray.data.DataContext.get_current()
+
+    if isinstance(udf_return_col, np.ndarray) or not ctx.strict_mode:
         # No copy/conversion needed, just keep it verbatim.
         return udf_return_col
 
