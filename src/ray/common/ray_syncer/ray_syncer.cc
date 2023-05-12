@@ -231,7 +231,7 @@ void RaySyncer::Connect(const std::string &node_id,
                                     << NodeID::FromBinary(node_id);
                       Connect(node_id, channel);
                     },
-                    /* delay_microseconds = */ 2000);
+                    /* delay_duration = */ std::chrono::milliseconds(2000));
               }
             },
             /* stub */ std::move(stub));
