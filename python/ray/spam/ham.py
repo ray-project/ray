@@ -1,6 +1,6 @@
 def eggs():
     """
-    >>> x = 3
-    >>> x
-    3
+    >>> import ray
+    >>> ray.init()  # doctest: +ELLIPSIS
+    RayContext(...)
     """

@@ -1,4 +1,6 @@
 def f():
     """
-    >>> x = 3
-    """
+    >>> import ray
+    >>> ray.init()  # doctest: +ELLIPSIS
+    RayContext(...)
+"""
