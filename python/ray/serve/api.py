@@ -585,7 +585,7 @@ def multiplexed(
     function must have exactly one argument, the model id of type `str` for the
     model to be loaded.
 
-    User have to define the function with `async def` and the function must be
+    It is required to define the function with `async def` and the function must be
     an async function. It is recommended to define coroutines for long running
     IO tasks in the function to avoid blocking the event loop.
 
