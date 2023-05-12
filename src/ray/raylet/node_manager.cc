@@ -399,7 +399,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                   std::to_string(server_port));
     }
   }
-
+  // Disable metrics report if needed.
+  if (!RayConfig::instance().enable_metrics_collection()) {
+    agent_command_line.push_back("--disable-metrics-collection");
+  }
   auto options = AgentManager::Options({self_node_id, agent_command_line});
   agent_manager_ = std::make_shared<DashboardAgentManager>(
       std::move(options),
