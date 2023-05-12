@@ -73,6 +73,70 @@ def test_failure():
     with pytest.raises(ModuleNotFoundError):
         import horovod  # noqa: F401
 
+    with pytest.raises(ModuleNotFoundError):
+        import accelerate  # noqa: F401
+
+    with pytest.raises(ModuleNotFoundError):
+        import transformers  # noqa: F401
+
+
+def test_huggingface(ray_start_4_cpus):
+    """Tests that HuggingFace integrations are lazily loaded."""
+
+    # Torch is eagerly loaded in ray.train.huggingface.
+    runtime_env = {"pip": ["torch"]}
+
+    @ray.remote(runtime_env=runtime_env)
+    def test_huggingface_task():
+        import ray.train.huggingface  # noqa: F401
+
+        from ray.train.huggingface import (
+            AccelerateTrainer,
+            HuggingFaceCheckpoint,
+            HuggingFacePredictor,
+            HuggingFaceTrainer,
+            TransformersCheckpoint,
+            TransformersPredictor,
+            TransformersTrainer,
+        )
+
+        # Real values are not needed for these tests.
+        DUMMY_TRAIN_LOOP_PER_WORKER = None
+        DUMMY_MODEL = None
+        DUMMY_PATH = None
+        DUMMY_PIPELINE = None
+        DUMMY_CHECKPOINT = None
+        DUMMY_TRAINER_INIT_PER_WORKER = None
+
+        with pytest.raises(ImportError):
+            AccelerateTrainer(DUMMY_TRAIN_LOOP_PER_WORKER)
+
+        with pytest.raises(ImportError):
+            HuggingFaceCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
+
+        with pytest.raises(ImportError):
+            HuggingFacePredictor(DUMMY_PIPELINE)
+
+        with pytest.raises(ImportError):
+            HuggingFacePredictor.from_checkpoint(DUMMY_CHECKPOINT)
+
+        with pytest.raises(ImportError):
+            HuggingFaceTrainer(DUMMY_TRAINER_INIT_PER_WORKER)
+
+        with pytest.raises(ImportError):
+            TransformersCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
+
+        with pytest.raises(ImportError):
+            TransformersPredictor(DUMMY_PIPELINE)
+
+        with pytest.raises(ImportError):
+            TransformersPredictor.from_checkpoint(DUMMY_CHECKPOINT)
+
+        with pytest.raises(ImportError):
+            TransformersTrainer(DUMMY_TRAINER_INIT_PER_WORKER)
+
+    ray.get(test_huggingface_task.remote())
+
 
 if __name__ == "__main__":
     import sys

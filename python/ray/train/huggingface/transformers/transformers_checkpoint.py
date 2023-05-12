@@ -1,17 +1,24 @@
 import os
 from typing import TYPE_CHECKING, Type, Optional, Union
 
-import torch
-import transformers
-import transformers.modeling_utils
-import transformers.trainer
-import transformers.training_args
-from transformers.trainer import TRAINING_ARGS_NAME, WEIGHTS_NAME
 
+import torch
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
+
 from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
+
+TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
+
+try:
+    import transformers
+    import transformers.modeling_utils
+    import transformers.trainer
+    import transformers.training_args
+    from transformers.trainer import TRAINING_ARGS_NAME, WEIGHTS_NAME
+except ImportError as e:
+    TRANSFORMERS_IMPORT_ERROR = e
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -28,8 +35,8 @@ class TransformersCheckpoint(Checkpoint):
     @classmethod
     def from_model(
         cls,
-        model: Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
-        tokenizer: Optional[transformers.PreTrainedTokenizer] = None,
+        model: Union["transformers.modeling_utils.PreTrainedModel", "torch.nn.Module"],
+        tokenizer: Optional["transformers.PreTrainedTokenizer"] = None,
         *,
         path: os.PathLike,
         preprocessor: Optional["Preprocessor"] = None,
@@ -47,6 +54,10 @@ class TransformersCheckpoint(Checkpoint):
         Returns:
             A :py:class:`TransformersCheckpoint` containing the specified model.
         """
+
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
+
         if not isinstance(model, transformers.modeling_utils.PreTrainedModel):
             state_dict = model.state_dict()
             torch.save(state_dict, os.path.join(path, WEIGHTS_NAME))
@@ -66,10 +77,10 @@ class TransformersCheckpoint(Checkpoint):
     def get_model(
         self,
         model: Union[
-            Type[transformers.modeling_utils.PreTrainedModel], torch.nn.Module
+            Type["transformers.modeling_utils.PreTrainedModel"], "torch.nn.Module"
         ],
         **pretrained_model_kwargs,
-    ) -> Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module]:
+    ) -> Union["transformers.modeling_utils.PreTrainedModel", "torch.nn.Module"]:
         """Retrieve the model stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             if isinstance(model, torch.nn.Module):
@@ -85,14 +96,14 @@ class TransformersCheckpoint(Checkpoint):
 
     def get_tokenizer(
         self,
-        tokenizer: Type[transformers.PreTrainedTokenizer],
+        tokenizer: Type["transformers.PreTrainedTokenizer"],
         **kwargs,
-    ) -> Optional[transformers.PreTrainedTokenizer]:
+    ) -> Optional["transformers.PreTrainedTokenizer"]:
         """Create a tokenizer using the data stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             return tokenizer.from_pretrained(checkpoint_path, **kwargs)
 
-    def get_training_arguments(self) -> transformers.training_args.TrainingArguments:
+    def get_training_arguments(self) -> "transformers.training_args.TrainingArguments":
         """Retrieve the training arguments stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             training_args_path = os.path.join(checkpoint_path, TRAINING_ARGS_NAME)

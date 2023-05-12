@@ -13,8 +13,8 @@ class HuggingFaceCheckpoint(TransformersCheckpoint):
     # Use __new__ as it is much less likely to be overriden
     # than __init__
     def __new__(cls: type, *args, **kwargs):
-        warnings.warn(deprecation_msg, DeprecationWarning)
-        return super(HuggingFaceCheckpoint, cls).__new__(cls, *args, **kwargs)
+        warnings.warn(deprecation_msg, DeprecationWarning, stacklevel=2)
+        return super(HuggingFaceCheckpoint, cls).__new__(cls)
 
 
 __all__ = [
