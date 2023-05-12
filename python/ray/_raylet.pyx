@@ -1840,11 +1840,16 @@ cdef class GcsErrorSubscriber:
         with nogil:
             check_status(self.inner.get().PollError(&key_id, &error_data))
 
-        return (bytes(key_id), {"error_message": error_data.error_message().decode()})
+        return (bytes(key_id), {
+            "job_id": error_data.job_id(),
+            "type": error_data.type().decode(),
+            "error_message": error_data.error_message().decode(),
+            "timestamp": error_data.timestamp(),
+        })
 
     def close(self):
-        # TODO: Implement
-        pass
+        with nogil:
+            check_status(self.inner.get().Close())
 
 
 cdef class GcsLogSubscriber:

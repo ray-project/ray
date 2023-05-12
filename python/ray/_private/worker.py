@@ -1983,14 +1983,14 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data.job_id not in [
+            if error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:
                 continue
 
-            error_message = error_data.error_message
-            if error_data.type == ray_constants.TASK_PUSH_ERROR:
+            error_message = error_data["error_message"]
+            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
                 # TODO(ekl) remove task push errors entirely now that we have
                 # the separate unhandled exception handler.
                 pass
