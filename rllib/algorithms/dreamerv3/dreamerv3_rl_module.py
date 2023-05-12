@@ -20,52 +20,67 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
     def setup(self):
         catalog = self.config.get_catalog()
-        # Build model from catalog.
-        self.dreamer_model = catalog.build_dreamer_model(framework=self.framework)
+        # Build encoder and decoder from catalog.
+        self.encoder = catalog.build_encoder(framework=self.framework)
+        self.decoder = catalog.build_decoder(framework=self.framework)
+        # Build the world model (containing encoder and decoder).
+        self.world_model = WorldModel(
+            model_dimension=self.model_dimension,
+            action_space=self.action_space,
+            batch_length_T=self.model_config.batch_length_T,
+            num_gru_units=self.model_config.num_gru_units,
+            encoder=encoder,
+            decoder=decoder,
+            symlog_obs=self.model_config.symlog_obs,
+        )
+        # Build the final dreamer model (containing the world model).
+        self.dreamer_model = DreamerModel(
+            model_dimension=self.model_dimension,
+            action_space=self.action_space,
+            world_model=world_model,
+            # use_curiosity=use_curiosity,
+            # intrinsic_rewards_scale=intrinsic_rewards_scale,
+            batch_size_B=self.model_config.batch_size_B,
+            batch_length_T=self.model_config.batch_length_T,
+            horizon_H=self.model_config.horizon_H,
+        )
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
-        # TODO
-        return self.input_specs_exploration()
+        return [SampleBatch.OBS, STATE_IN, "is_first"]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        # TODO
-        return SpecDict({SampleBatch.ACTION_DIST: Distribution})
+        return [SampleBatch.ACTIONS, STATE_OUT]
 
     @override(RLModule)
     def input_specs_exploration(self):
-        # TODO
-        return []
+        return self.input_specs_inference()
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        # TODO
-        return [
-            SampleBatch.VF_PREDS,
-            SampleBatch.ACTION_DIST,
-            SampleBatch.ACTION_DIST_INPUTS,
-        ]
+        return self.output_specs_inference()
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
-        # TODO
-        specs = self.input_specs_exploration()
-        specs.append(SampleBatch.ACTIONS)
-        if SampleBatch.OBS in specs:
-            specs.append(SampleBatch.NEXT_OBS)
-        return specs
+        return [SampleBatch.OBS, SampleBatch.ACTIONS, "is_first"]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
-        # TODO
-        spec = SpecDict(
-            {
-                SampleBatch.ACTION_DIST: Distribution,
-                SampleBatch.ACTION_LOGP: TensorSpec("b", framework=self.framework),
-                SampleBatch.VF_PREDS: TensorSpec("b", framework=self.framework),
-                "entropy": TensorSpec("b", framework=self.framework),
-            }
-        )
-        return spec
+        return [
+            "sampled_obs_symlog_BxT",
+            "obs_distribution_BxT",
+            "reward_logits_BxT",
+            "rewards_BxT",
+            "continue_distribution_BxT",
+            "continues_BxT",
+
+            # Sampled, discrete posterior z-states (t1 to T).
+            "z_posterior_states_BxT",
+            "z_posterior_probs_BxT",
+            "z_prior_probs_BxT",
+
+            # Deterministic, continuous h-states (t1 to T).
+            "h_states_BxT",
+        ]

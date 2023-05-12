@@ -26,29 +26,15 @@ class DreamerV3TfRLModule(DreamerV3RLModule, TfRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        output = {}
-
-        # TODO (Artur): Remove this once Policy supports RNN
-        batch = batch.copy()
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
-
-        encoder_outs = self.encoder(batch)
-        # TODO (Artur): Un-uncomment once Policy supports RNN
-        # output[STATE_OUT] = encoder_outs[STATE_OUT]
-
-        # Actions
-        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        action_dist = self.action_dist_cls.from_logits(action_logits)
-        output[SampleBatch.ACTION_DIST] = action_dist.to_deterministic()
-
-        return output
+        actions, next_state = self.dreamer_model.forward_inference(
+            previous_states=batch[STATE_IN],
+            observations=batch[SampleBatch.OBS],
+            is_first=batch["is_first"],
+        )
+        return {
+            SampleBatch.ACTIONS: actions,
+            STATE_OUT: next_state,
+        }
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:

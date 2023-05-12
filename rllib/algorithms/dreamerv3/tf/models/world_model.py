@@ -334,7 +334,7 @@ class WorldModel(tf.keras.Model):
             "z_prior_probs_BxT": z_prior_probs,
             # Deterministic, continuous h-states (t1 to T).
             "h_states_BxT": h_BxT,
-            # Sampled, discrete z-states (t1 to T).
+            # Sampled, discrete posterior z-states (t1 to T).
             "z_states_BxT": z_BxT,
         }
 

@@ -24,7 +24,7 @@ class DreamerV3Catalog(Catalog):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_config: DreamerV3ModelConfig,
+        model_config_dict: dict,
     ):
         """Initializes a DreamerV3Catalog instance.
 
@@ -36,11 +36,10 @@ class DreamerV3Catalog(Catalog):
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
-            # TODO (sven): Make all catalogs only support ModelConfig objects.
-            model_config_dict=dataclasses.asdict(model_config),
+            model_config_dict=model_config_dict,
         )
 
-        self.model_config = model_config
+        self.model_dimension = self.model_config_dict["model_dimension"]
         self.is_img_space = len(self.observation_space.shape) in [2, 3]
         self.is_gray_scale = (
             self.is_img_space and len(self.observation_space.shape) == 2
@@ -57,77 +56,37 @@ class DreamerV3Catalog(Catalog):
         if framework != "tf2":
             raise NotImplementedError
 
-        from ray.rllib.algorithms.dreamerv3.tf.models.components.cnn_atari import (
-            CNNAtari,
-        )
-        from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+        if self.is_img_space:
+            from ray.rllib.algorithms.dreamerv3.tf.models.components.cnn_atari import (
+                CNNAtari,
+            )
 
-        encoder = (
-            CNNAtari(model_dimension=self.model_config.model_dimension)
-            if self.is_img_space
-            else MLP(model_dimension=self.model_config.model_dimension)
-        )
-        return encoder
+            return CNNAtari(model_dimension=self.model_dimension)
+        else:
+            from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+
+            return MLP(model_dimension=self.model_dimension)
 
     def build_decoder(self, framework: str) -> Model:
         """Builds the World-Model's decoder network depending on the obs space."""
         if framework != "tf2":
             raise NotImplementedError
 
-        from ray.rllib.algorithms.dreamerv3.tf.models.components.conv_transpose_atari import (
-            ConvTransposeAtari,
-        )
-        from ray.rllib.algorithms.dreamerv3.tf.models.components.vector_decoder import (
-            VectorDecoder,
-        )
+        if self.is_img_space:
+            from ray.rllib.algorithms.dreamerv3.tf.models.components.conv_transpose_atari import (
+                ConvTransposeAtari,
+            )
 
-        decoder = (
-            ConvTransposeAtari(
-                model_dimension=self.model_config.model_dimension,
+            return ConvTransposeAtari(
+                model_dimension=self.model_dimension,
                 gray_scaled=self.is_gray_scale,
             )
-            if self.is_img_space
-            else VectorDecoder(
-                model_dimension=self.model_config.model_dimension,
+        else:
+            from ray.rllib.algorithms.dreamerv3.tf.models.components.vector_decoder import (
+                VectorDecoder,
+            )
+
+            return VectorDecoder(
+                model_dimension=self.model_dimension,
                 observation_space=self.observation_space,
             )
-        )
-        return decoder
-
-    def build_world_model(self, framework: str) -> Model:
-        if framework != "tf2":
-            raise NotImplementedError
-
-        from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
-
-        encoder = self.build_encoder(framework=framework)
-        decoder = self.build_decoder(framework=framework)
-        world_model = WorldModel(
-            model_dimension=self.model_config.model_dimension,
-            action_space=self.action_space,
-            batch_length_T=self.model_config.batch_length_T,
-            num_gru_units=self.model_config.num_gru_units,
-            encoder=encoder,
-            decoder=decoder,
-            symlog_obs=self.model_config.symlog_obs,
-        )
-        return world_model
-
-    def build_dreamer_model(self, framework: str) -> Model:
-        if framework != "tf2":
-            raise NotImplementedError
-
-        from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
-
-        world_model = self.build_world_model(framework=framework)
-        dreamer_model = DreamerModel(
-            model_dimension=self.model_config.model_dimension,
-            action_space=self.action_space,
-            world_model=world_model,
-            # use_curiosity=use_curiosity,
-            # intrinsic_rewards_scale=intrinsic_rewards_scale,
-            batch_size_B=self.model_config.batch_size_B,
-            batch_length_T=self.model_config.batch_length_T,
-            horizon_H=self.model_config.horizon_H,
-        )
-        return dreamer_model
