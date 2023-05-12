@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", function() {
     for (let i = 0; i < navItems.length; i++) {
         let navItem = navItems[i];
         const stringList = [
-            "User Guide", "Examples",
+            "User Guides", "Examples",
             "Ray Core", "Ray Core API",
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
