@@ -1,3 +1,5 @@
+.. _observability-overview:
+
 Overview
 ========
 

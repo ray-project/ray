@@ -384,6 +384,19 @@ parts:
 
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
+        sections:
+          - file: ray-observability/user-guides/index
+            title: User Guides
+            sections:
+              - file: ray-observability/user-guides/troubleshoot-apps/index
+                title: Troubleshooting Applications
+                sections:
+                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-failures
+                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-hangs
+                  - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
+                  - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
+                  - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+              - file: ray-observability/user-guides/ray-tracing
 
       - file: ray-references/api
         title: References
@@ -401,5 +414,7 @@ parts:
               - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
+              - file: ray-contribute/debugging.rst
+              - file: ray-contribute/profiling.rst
           - file: ray-core/configure
           - file: ray-contribute/whitepaper

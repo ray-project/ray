@@ -1,5 +1,7 @@
-Troubleshooting Performance
-===========================
+.. _observability-optimize-performance:
+
+Optimizing Performance
+======================
 
 No Speedup
 ----------
