@@ -208,11 +208,16 @@ class DataOrganizer:
     @classmethod
     async def get_all_agent_infos(cls):
         agent_infos = dict()
-        for node_id, (http_port, grpc_port) in DataSource.agents.items():
+        for node_id, (
+            http_port,
+            grpc_port,
+            runtime_env_grpc_port,
+        ) in DataSource.agents.items():
             agent_infos[node_id] = dict(
                 ipAddress=DataSource.node_id_to_ip[node_id],
                 httpPort=int(http_port or -1),
                 grpcPort=int(grpc_port or -1),
+                runtimeEnvGrpcPort=int(runtime_env_grpc_port),
                 httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
             )
         return agent_infos

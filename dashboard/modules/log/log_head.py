@@ -30,7 +30,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         agent_port = DataSource.agents.get(node_id)
         if agent_port is None:
             return
-        agent_http_port, _ = agent_port
+        agent_http_port, _, _ = agent_port
         log_url = self.LOG_URL_TEMPLATE.format(
             ip=node_info.get("ip"), port=agent_http_port
         )

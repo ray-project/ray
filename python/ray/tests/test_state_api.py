@@ -15,6 +15,7 @@ from click.testing import CliRunner
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
 import ray.dashboard.consts as dashboard_consts
+from ray._private.runtime_env.runtime_env_agent import agent_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._raylet import ActorID
@@ -1580,17 +1581,20 @@ async def test_state_data_source_client(ray_start_cluster):
     for node in ray.nodes():
         node_id = node["NodeID"]
         key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        runtime_env_port_key = f"{agent_consts.RUNTIME_ENV_AGENT_PORT_PREFIX}{node_id}"
 
-        def get_port():
+        def get_port(key):
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
+        wait_for_condition(lambda: get_port(key) is not None)
+        wait_for_condition(lambda: get_port(runtime_env_port_key) is not None)
         # The second index is the gRPC port
-        port = json.loads(get_port())[1]
+        port = json.loads(get_port(key))[1]
+        runtime_env_port = json.loads(get_port(runtime_env_port_key))[0]
         ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port, runtime_env_port)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
@@ -1796,17 +1800,20 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     for node in ray.nodes():
         node_id = node["NodeID"]
         key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        runtime_env_port_key = f"{agent_consts.RUNTIME_ENV_AGENT_PORT_PREFIX}{node_id}"
 
-        def get_port():
+        def get_port(key):
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
+        wait_for_condition(lambda: get_port(key) is not None)
+        wait_for_condition(lambda: get_port(runtime_env_port_key) is not None)
         # The second index is the gRPC port
-        port = json.loads(get_port())[1]
+        port = json.loads(get_port(key))[1]
+        runtime_env_port = json.loads(get_port(runtime_env_port_key))[0]
         ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port, runtime_env_port)
 
     @ray.remote
     class Actor:
