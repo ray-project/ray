@@ -83,6 +83,7 @@ Instead of:
 you can do:
 
 .. testcode::
+
     import ray
     import asyncio
 
@@ -93,6 +94,7 @@ you can do:
     async def await_obj_ref():
         await some_task.remote()
         await asyncio.wait([some_task.remote()])
+
     asyncio.run(await_obj_ref())
 
 Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
