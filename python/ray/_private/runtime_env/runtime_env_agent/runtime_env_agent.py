@@ -668,7 +668,7 @@ class RuntimeEnvAgent(
             runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
                 self, self._grpc_server
             )
-        # Save agent port to redis
+        # Save agent port to internal kv storage
         await self._gcs_aio_client.internal_kv_put(
             f"{agent_consts.RUNTIME_ENV_AGENT_PORT_PREFIX}{self._node_id}".encode(),
             json.dumps([self._grpc_port]).encode(),
@@ -688,8 +688,9 @@ class RuntimeEnvAgent(
                 agent_ip_address=self._node_ip_address,
             )
         )
-        tasks = [check_parent_task]
-        await asyncio.gather(*tasks)
+        if sys.platform not in ["win32", "cygwin"]:
+            await check_parent_task
+
         await self._grpc_server.wait_for_termination()
 
 
@@ -832,5 +833,7 @@ if __name__ == "__main__":
 
         loop.run_until_complete(agent.run())
     except Exception:
-        logger.exception("Agent is working abnormally. It will exit immediately.")
+        logger.exception(
+            "Runtime env agent is working abnormally. It will exit immediately."
+        )
         exit(1)

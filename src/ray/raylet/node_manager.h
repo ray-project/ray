@@ -721,7 +721,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for wait requests.
   WaitManager wait_manager_;
 
-  std::shared_ptr<DashboardAgentManager> agent_manager_;
+  std::shared_ptr<DashboardAgentManager> dashboard_agent_manager_;
   std::shared_ptr<RuntimeEnvAgentManager> runtime_env_agent_manager_;
 
   /// The RPC server.

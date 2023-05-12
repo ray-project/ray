@@ -36,10 +36,10 @@ void DashboardAgentManager::HandleRegisterAgent(
   // TODO(SongGuyang): We should remove this after we find better port resolution.
   // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
   if (reported_agent_port_ != 0) {
-    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << reported_agent_ip_address_
+    RAY_LOG(INFO) << "Handle register dashboard agent, ip: " << reported_agent_ip_address_
                   << ", port: " << reported_agent_port_ << ", id: " << reported_agent_id_;
   } else {
-    RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
+    RAY_LOG(WARNING) << "The GRPC port of the dashboard agent is invalid (0), ip: "
                      << reported_agent_ip_address_ << ", id: " << reported_agent_id_
                      << ". The agent client in the raylet has been disabled.";
   }

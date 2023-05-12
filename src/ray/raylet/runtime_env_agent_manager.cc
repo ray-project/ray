@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2023 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,12 +38,14 @@ void RuntimeEnvAgentManager::HandleRegisterRuntimeEnvAgent(
   if (reported_agent_port_ != 0) {
     runtime_env_agent_client_ = runtime_env_agent_client_factory_(
         reported_agent_ip_address_, reported_agent_port_);
-    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << reported_agent_ip_address_
-                  << ", port: " << reported_agent_port_ << ", id: " << reported_agent_id_;
+    RAY_LOG(INFO) << "Handle register runtime env agent, ip: "
+                  << reported_agent_ip_address_ << ", port: " << reported_agent_port_
+                  << ", id: " << reported_agent_id_;
   } else {
-    RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
-                     << reported_agent_ip_address_ << ", id: " << reported_agent_id_
-                     << ". The agent client in the raylet has been disabled.";
+    RAY_LOG(WARNING)
+        << "The GRPC port of the runtime env agent agent is invalid (0), ip: "
+        << reported_agent_ip_address_ << ", id: " << reported_agent_id_
+        << ". The agent client in the raylet has been disabled.";
     disable_agent_client_ = true;
   }
   reply->set_status(rpc::RUNTIME_ENV_AGENT_RPC_STATUS_OK);

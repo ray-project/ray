@@ -583,7 +583,7 @@ class Node:
 
     @property
     def runtime_env_agent_port(self):
-        """Get the port that exposes metrics"""
+        """Get the port that creates runtime env"""
         return self._runtime_env_agent_port
 
     def is_head(self):
