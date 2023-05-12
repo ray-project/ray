@@ -670,6 +670,7 @@ To get started with the dashboard, install the default installation as follows:
 pip install -U "ray[default]"
 ```
 ````
+Access the dashboard through the default URL, http://localhost:8265.
 
 ```{button-ref}  ../ray-core/ray-dashboard
 :color: primary
