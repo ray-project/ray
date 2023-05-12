@@ -10,11 +10,11 @@ import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
 import {
-  JobDetailActorLayout,
+  JobDetailActorDetailWrapper,
   JobDetailActorsPage,
 } from "./pages/job/JobDetailActorPage";
 import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
-import { JobDetailLayout } from "./pages/job/JobDetailLayout";
+import { JobDetailLayout, JobPage } from "./pages/job/JobDetailLayout";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
 import { SideTabPage } from "./pages/layout/SideTabLayout";
 import { LogsLayout } from "./pages/log/Logs";
@@ -166,39 +166,46 @@ const App = () => {
                       }
                       path=""
                     />
-                    <Route element={<NodeDetailPage />} path="nodes/:id" />
                   </Route>
+                  <Route element={<NodeDetailPage />} path="nodes/:id" />
                 </Route>
                 <Route element={<JobsLayout />} path="jobs">
                   <Route element={<JobList />} path="" />
-                  <Route element={<JobDetailLayout />} path=":id">
-                    <Route
-                      element={
-                        <SideTabPage tabId="info">
-                          <JobDetailInfoPage />
-                        </SideTabPage>
-                      }
-                      path="info"
-                    />
-                    <Route
-                      element={
-                        <SideTabPage tabId="charts">
-                          <JobDetailChartsPage />
-                        </SideTabPage>
-                      }
-                      path=""
-                    />
-                    <Route
-                      element={
-                        <SideTabPage tabId="actors">
-                          <JobDetailActorLayout />
-                        </SideTabPage>
-                      }
-                      path="actors"
-                    >
-                      <Route element={<JobDetailActorsPage />} path="" />
-                      <Route element={<ActorDetailPage />} path=":actorId" />
+                  <Route element={<JobPage />} path=":id">
+                    <Route element={<JobDetailLayout />} path="">
+                      <Route
+                        element={
+                          <SideTabPage tabId="info">
+                            <JobDetailInfoPage />
+                          </SideTabPage>
+                        }
+                        path="info"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="charts">
+                            <JobDetailChartsPage />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="actors">
+                            <JobDetailActorsPage />
+                          </SideTabPage>
+                        }
+                        path="actors"
+                      />
                     </Route>
+                    <Route
+                      element={
+                        <JobDetailActorDetailWrapper>
+                          <ActorDetailPage />
+                        </JobDetailActorDetailWrapper>
+                      }
+                      path="actors/:actorId"
+                    />
                   </Route>
                 </Route>
                 <Route element={<ActorLayout />} path="actors">

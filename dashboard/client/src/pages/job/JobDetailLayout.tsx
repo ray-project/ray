@@ -4,11 +4,12 @@ import {
   RiInformationLine,
   RiLineChartLine,
 } from "react-icons/ri";
+import { Outlet } from "react-router-dom";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 import { useJobDetail } from "./hook/useJobDetail";
 
-export const JobDetailLayout = () => {
+export const JobPage = () => {
   const { job } = useJobDetail();
 
   const jobId = job?.job_id ?? job?.submission_id;
@@ -24,10 +25,17 @@ export const JobDetailLayout = () => {
         id: "job-detail",
         path: undefined,
       };
+  return (
+    <div>
+      <MainNavPageInfo pageInfo={pageInfo} />
+      <Outlet />
+    </div>
+  );
+};
 
+export const JobDetailLayout = () => {
   return (
     <SideTabLayout>
-      <MainNavPageInfo pageInfo={pageInfo} />
       <SideTabRouteLink tabId="info" title="Info" Icon={RiInformationLine} />
       <SideTabRouteLink
         to=""
