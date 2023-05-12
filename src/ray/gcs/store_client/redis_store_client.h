@@ -111,33 +111,11 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
-  // Iterate the pending queue and call the progress_fn for each key.
-  //
-  // \param keys The keys to scan
-  // \param progress_fn The function to call for the queue of each key.
-  // \return The number of queues that have been added or deleted.
-  template <typename F>
-  std::pair<size_t, size_t> Progress(const std::vector<std::string> &keys,
-                                     F progress_fn) {
-    size_t added_cnt = 0;
-    size_t deleted_cnt = 0;
-    {
-      absl::MutexLock lock(&mu_);
-      for (const auto &key : keys) {
-        auto [op_iter, added] = pending_redis_request_by_key_.emplace(
-            key, std::queue<std::function<void()>>());
-        if (added) {
-          added_cnt++;
-        }
-        progress_fn(op_iter->second);
-        if (op_iter->second.empty()) {
-          deleted_cnt++;
-          pending_redis_request_by_key_.erase(op_iter);
-        }
-      }
-    }
-    return {added_cnt, deleted_cnt};
-  }
+  size_t PushToSendingQueue(const std::vector<std::string> &keys,
+                            std::function<void()> send_request);
+
+  std::vector<std::function<void()>> PopFromSendingQueue(
+      const std::vector<std::string> &keys);
 
   Status DoPut(const std::string &key,
                const std::string &data,

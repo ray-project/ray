@@ -228,66 +228,95 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
+size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys,
+                                            std::function<void()> send_request) {
+  size_t queue_added = 0;
+  absl::MutexLock lock(&mu_);
+  for (const auto &key : keys) {
+    auto [op_iter, added] =
+        pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
+    if (added) {
+      queue_added++;
+    }
+    if (added) {
+      // There is no in-flight requests for this key which means
+      // in the callback the queue won't be poped. So just push
+      // an entry as placeholder to indicate there is pending
+      // requests.
+      op_iter->second.push(nullptr);
+    } else {
+      op_iter->second.push(send_request);
+    }
+  }
+  return queue_added;
+}
+
+std::vector<std::function<void()>> RedisStoreClient::PopFromSendingQueue(
+    const std::vector<std::string> &keys) {
+  std::vector<std::function<void()>> send_requests;
+  absl::MutexLock lock(&mu_);
+  for (const auto &key : keys) {
+    auto [op_iter, added] =
+        pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
+    RAY_CHECK(added == false) << "Pop from a queue doesn't exist: " << key;
+    op_iter->second.pop();
+    if (op_iter->second.empty()) {
+      pending_redis_request_by_key_.erase(op_iter);
+    } else {
+      send_requests.emplace_back(std::move(op_iter->second.front()));
+    }
+  }
+  return send_requests;
+}
+
 void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                                     std::vector<std::string> args,
                                     RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
   auto counter = std::make_shared<std::atomic<size_t>>(0);
-  auto send_redis = [this,
-                     counter = counter,
-                     keys,
-                     args = std::move(args),
-                     redis_callback = std::move(redis_callback)]() mutable {
-    *counter += 1;
-    // There are still pending requets for these keys.
-    if (*counter != keys.size()) {
-      return;
+  std::function<void()> send_redis = [this,
+                                      counter = counter,
+                                      keys,
+                                      args = std::move(args),
+                                      redis_callback =
+                                          std::move(redis_callback)]() mutable {
+    {
+      absl::MutexLock lock(&mu_);
+      *counter += 1;
+      RAY_CHECK(*counter <= keys.size());
+      // There are still pending requets for these keys.
+      if (*counter != keys.size()) {
+        return;
+      }
     }
-
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
     RAY_CHECK_OK(cxt->RunArgvAsync(
         std::move(args),
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
-          std::vector<std::function<void()>> requests;
-          // No new queues should have been added here
-          RAY_CHECK(Progress(keys, [&requests](auto &queue) mutable {
-                      // All write operations have been consumed, remove
-                      // this entry Pop the current request
-                      queue.pop();
-                      // Push the next one
-                      if (!queue.empty()) {
-                        RAY_CHECK(queue.front());
-                        requests.push_back(std::move(queue.front()));
-                      }
-                    }).first == 0);
-
+          auto requests = PopFromSendingQueue(keys);
           for (auto &request : requests) {
             request();
           }
-
           if (redis_callback) {
             redis_callback(reply);
           }
         }));
   };
 
-  auto [added_cnt, del_cnt] = Progress(keys, [send_redis, counter](auto &queue) mutable {
-    // No pending request
-    if (queue.empty()) {
-      *counter += 1;
-      queue.push(nullptr);
+  auto added_count = PushToSendingQueue(keys, send_redis);
+  {
+    absl::MutexLock lock(&mu_);
+    *counter += added_count;
+    // We should be able to file it directly.
+    if (*counter == keys.size()) {
+      *counter = keys.size() - 1;
     } else {
-      queue.push(send_redis);
+      send_redis = nullptr;
     }
-  });
-
-  RAY_CHECK(del_cnt == 0);
-  // If the added count equals with the keys size, it means that there is no
-  // pending request for these keys. We can send the request directly.
-  if (added_cnt == keys.size()) {
-    *counter = keys.size() - 1;
+  }
+  if (send_redis) {
     send_redis();
   }
 }
