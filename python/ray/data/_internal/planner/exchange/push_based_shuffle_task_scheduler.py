@@ -437,7 +437,6 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
             map_bar = sub_progress_bar_dict[bar_name]
             should_close_bar = False
-            # print("===> got shuffle map bar:", map_bar)
         else:
             map_bar = ProgressBar(bar_name, position=0, total=len(input_blocks_list))
         map_stage_executor = _PipelinedStageExecutor(
@@ -472,8 +471,6 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
-        # bar gets closed, because we didn't get subprog bar
-        # print("===> going to close shuffle map?", should_close_bar)
         if should_close_bar:
             map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()

@@ -24,16 +24,6 @@ def _plan_all_to_all_op(
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
-    # try building physical op first, without bulk fn, to initialize subprog bars
-    # physical_op = AllToAllOperator(
-    #     None,
-    #     input_physical_dag,
-    #     num_outputs=op._num_outputs,
-    #     sub_progress_bar_names=op._sub_progress_bar_names,
-    #     name=op.name,
-    # )
-    # physical_op.initialize_sub_progress_bars()
-
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op._seed)
     elif isinstance(op, RandomShuffle):
@@ -47,8 +37,6 @@ def _plan_all_to_all_op(
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-    # physical_op._bulk_fn = fn
-    # return physical_op
     return AllToAllOperator(
         fn,
         input_physical_dag,
