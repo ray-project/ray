@@ -793,40 +793,6 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
 # Integration tests
 
 
-def test_logs_get_http(ray_start_with_dashboard):
-    assert (
-        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
-        is True
-    )
-    webui_url = ray_start_with_dashboard.address_info["webui_url"]
-    webui_url = format_web_url(webui_url)
-    node_id = list_nodes()[0]["node_id"]
-
-    import urllib
-
-    @ray.remote
-    def f():
-        print("hi there")
-
-    t = f.remote()
-    ray.get(t)
-
-    def verify_basic():
-        options = GetLogOptions(
-            timeout=30,
-            media_type="file",
-            node_id=node_id,
-            task_id=t.task_id.hex(),
-        )
-        response = requests.get(
-            webui_url + f"/api/v0/logs/file?"
-            f"{urllib.parse.urlencode(options.dict())}",
-            stream=True,
-        )
-
-        assert response.status_code == 200
-
-
 def test_logs_list_http(ray_start_with_dashboard):
     assert (
         wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
@@ -962,12 +928,13 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + "/api/v0/logs/file?&lines=-1"
         + "&filename=test.log"
         + f"&node_id={node_id}"
-        + "&report_server_stream_error=False",
+        + "&ignore_server_stream_error=True",
         stream=True,
     )
     assert stream_response.status_code == 200, stream_response.text
     stream_iterator = stream_response.iter_content(chunk_size=None)
     actual_output = next(stream_iterator).decode("utf-8")
+    # No 0/1 bit info.
     assert test_log_text.format("123456") == actual_output
     del stream_response
 

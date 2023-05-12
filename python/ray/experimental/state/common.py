@@ -292,11 +292,12 @@ class GetLogOptions:
     # The suffix of the log file if file resolution not through filename directly.
     # Default to "out".
     suffix: str = "out"
-    # If streaming error will be reported. When true, a "1/0" bit will be added to
-    # each streaming chunk to indicate if streaming is successful. When `0` bit
+    # If streaming error will be reported. When False or None, a "1/0" bit will be
+    # added to each streaming chunk to indicate if streaming is successful. When `0` bit
     # is prepended to the chunk, the streamed data will contain error info on the
-    # server side.
-    report_server_stream_error: bool = False
+    # server side. If True, there's no such per chunk "1/0" info prepended to the
+    # streaming data.
+    ignore_server_stream_error: Optional[bool] = None
 
     def dict(self) -> Dict[str, Any]:
         """Return dict of non None value fields."""

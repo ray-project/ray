@@ -1207,7 +1207,7 @@ def get_log(
         timeout=timeout,
         suffix=suffix,
         attempt_number=attempt_number,
-        report_server_stream_error=True,
+        ignore_server_stream_error=None,
     )
     options_dict = options.dict()
 

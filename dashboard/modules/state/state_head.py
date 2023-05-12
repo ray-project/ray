@@ -411,9 +411,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             interval=req.query.get("interval", None),
             suffix=req.query.get("suffix", "out"),
             attempt_number=req.query.get("attempt_number", 0),
-            report_server_stream_error=req.query.get(
-                "report_server_stream_error", "False"
-            )
+            ignore_server_stream_error=req.query.get("ignore_server_stream_error", None)
             == "True",
         )
 
@@ -446,7 +444,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
                 logs_to_stream = bytearray()
-                if options.report_server_stream_error:
+                if not options.ignore_server_stream_error:
                     logs_to_stream.extend(b"1")
                 logs_to_stream.extend(logs_in_bytes)
                 await response.write(bytes(logs_to_stream))
@@ -454,7 +452,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             return response
         except Exception as e:
             logger.exception(e)
-            if options.report_server_stream_error:
+            if not options.ignore_server_stream_error:
                 error_msg = bytearray(b"0")
                 error_msg.extend(
                     f"Closing HTTP stream due to internal server error.\n{e}".encode()

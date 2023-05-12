@@ -66,37 +66,6 @@ def find_offset_of_content_in_file(
         offset += len(block_data)
 
 
-def find_offset_of_content_in_file(
-    file: io.BufferedIOBase, content: bytes, start_offset: int = 0
-) -> int:
-    """Find the offset of the first occurrence of content in a file.
-
-    Args:
-        file: File object
-        content: Content to find
-        start_offset: Start offset to read from, inclusive.
-
-    Returns:
-        Offset of the first occurrence of content in a file.
-    """
-    logger.debug(f"Finding offset of content {content} in file")
-    file.seek(start_offset, io.SEEK_SET)  # move file pointer to start of file
-    offset = start_offset
-    while True:
-        # Read in block
-        block_data = file.read(BLOCK_SIZE)
-        if block_data == b"":
-            # Stop reading
-            return -1
-        # Find the offset of the first occurrence of content in the block
-        block_offset = block_data.find(content)
-        if block_offset != -1:
-            # Found the offset in the block
-            return offset + block_offset
-        # Continue reading
-        offset += len(block_data)
-
-
 def find_end_offset_file(file: io.BufferedIOBase) -> int:
     """
     Find the offset of the end of a file without changing the file pointer.
