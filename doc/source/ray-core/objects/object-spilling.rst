@@ -133,6 +133,7 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
   ray.shutdown()
 
 .. testcode::
+  :skipif: True
 
     import json
     import ray
@@ -163,6 +164,7 @@ Spilling to multiple remote storages is also supported.
   ray.shutdown()
 
 .. testcode::
+  :skipif: True
 
     import json
     import ray

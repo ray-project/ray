@@ -102,6 +102,8 @@ If you need to directly access the future object, you can call:
 
 .. testcode::
 
+    import asyncio
+
     async def convert_to_asyncio_future():
         ref = some_task.remote()
         fut: asyncio.Future = asyncio.wrap_future(ref.future())
@@ -241,6 +243,12 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
 
     a = ThreadedActor.options(max_concurrency=2).remote()
     ray.get([a.task_1.remote(), a.task_2.remote()])
+
+.. testoutput::
+    :options: +SKIP
+
+    (ThreadedActor pid=4822) I'm running in a thread!
+    (ThreadedActor pid=4822) I'm running in another thread!
 
 Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
 
