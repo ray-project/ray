@@ -331,6 +331,10 @@ class GlobalState:
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
+                for bundle in placement_group_info.bundles
+            },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
             "stats": {
@@ -759,7 +763,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -823,7 +827,7 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
@@ -866,7 +870,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -881,7 +885,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 

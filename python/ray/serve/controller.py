@@ -44,7 +44,10 @@ from ray.serve._private.deploy_utils import (
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
-from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.logging_utils import (
+    configure_component_logger,
+    get_component_logger_file_path,
+)
 from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
@@ -53,6 +56,7 @@ from ray.serve.schema import (
     ApplicationDetails,
     ServeInstanceDetails,
     HTTPOptionsSchema,
+    ServeActorDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -161,6 +165,15 @@ class ServeController:
 
         # Keep track of single-app vs multi-app
         self.deploy_mode = ServeDeployMode.UNSET
+        # Controller actor details
+        self._actor_details = ServeActorDetails(
+            node_id=ray.get_runtime_context().get_node_id(),
+            node_ip=ray.util.get_node_ip_address(),
+            actor_id=ray.get_runtime_context().get_actor_id(),
+            actor_name=self.controller_name,
+            worker_id=ray._private.worker.global_worker.worker_id.hex(),
+            log_file_path=get_component_logger_file_path(),
+        )
 
         run_background_task(self.run_control_loop())
 
@@ -353,13 +366,11 @@ class ServeController:
                 self.deploy_apps(
                     ServeApplicationSchema.parse_obj(applications[0]),
                     deployment_time,
-                    False,
                 )
             else:
                 self.deploy_apps(
                     ServeDeploySchema.parse_obj({"applications": applications}),
                     deployment_time,
-                    False,
                 )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -426,7 +437,7 @@ class ServeController:
             deployment_config_proto_bytes=deployment_config_proto_bytes,
             replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
-            previous_deployment=self.deployment_state_manager.get_deployment(name),
+            route_prefix=route_prefix,
             is_driver_deployment=is_driver_deployment,
             app_name=app_name,
         )
@@ -473,7 +484,6 @@ class ServeController:
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
-        _internal: bool = False,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 
@@ -494,11 +504,6 @@ class ServeController:
 
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
-
-            _internal: whether the config is provided by user or internally (i.e. it is
-                restored from a checkpoint). If it is provided by the user, we need to
-                prepend the app name to each deployment name. If not, it should already
-                be prepended.
         """
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
@@ -709,11 +714,15 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
+            controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=HTTPOptionsSchema(
                 host=http_config.host,
                 port=http_config.port,
             ),
+            http_proxies=self.http_state.get_http_proxy_details()
+            if self.http_state
+            else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)

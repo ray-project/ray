@@ -81,13 +81,14 @@ def ray_instance(request):
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(
-        ["ray", "start", "--head"],
-    )
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(_check_ray_stop, timeout=15)
+    subprocess.check_output(["ray", "start", "--head"])
+
     yield
-    subprocess.check_output(
-        ["ray", "stop", "--force"],
-    )
+
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(_check_ray_stop, timeout=15)
 
 
 @pytest.fixture(scope="function")
@@ -419,29 +420,55 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.shutdown()
 
 
+def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
+    """Test that serve logs show up across different drivers."""
+    import tempfile
+
+    file1 = """from ray import serve
+@serve.deployment
+class A:
+    def __call__(self):
+        return "Hello A"
+serve.run(A.bind())"""
+
+    file2 = """from ray import serve
+@serve.deployment
+class B:
+    def __call__(self):
+        return "Hello B"
+serve.run(B.bind())"""
+
+    with tempfile.NamedTemporaryFile() as f1, tempfile.NamedTemporaryFile() as f2:
+        f1.write(file1.encode("utf-8"))
+        f1.seek(0)
+        # Driver 1 (starts Serve controller)
+        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        assert "Adding 1 replica to deployment default_A" in output.decode("utf-8")
+
+        f2.write(file2.encode("utf-8"))
+        f2.seek(0)
+        # Driver 2 (reconnects to the same Serve controller)
+        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        assert "Adding 1 replica to deployment default_B" in output.decode("utf-8")
+
+
 class TestDeployApp:
     @pytest.fixture(scope="function")
     def client(self):
-        subprocess.check_output(["ray", "stop", "--force"])
-        wait_for_condition(
-            _check_ray_stop,
-            timeout=15,
-        )
-        subprocess.check_output(["ray", "start", "--head"])
-        wait_for_condition(
-            lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-            == 200,
-            timeout=15,
-        )
-        ray.init(address="auto", namespace=SERVE_NAMESPACE)
-        yield serve.start(detached=True)
-        serve.shutdown()
-        ray.shutdown()
-        subprocess.check_output(["ray", "stop", "--force"])
-        wait_for_condition(
-            _check_ray_stop,
-            timeout=15,
-        )
+        with start_and_shutdown_ray_cli():
+            wait_for_condition(
+                lambda: requests.get(
+                    "http://localhost:52365/api/ray/version"
+                ).status_code
+                == 200,
+                timeout=15,
+            )
+            ray.init(address="auto", namespace=SERVE_NAMESPACE)
+            yield serve.start(detached=True)
+            serve.shutdown()
+            ray.shutdown()
 
     def check_deployment_running(self, client: ServeControllerClient, name: str):
         serve_status = client.get_serve_status()
@@ -1639,6 +1666,27 @@ class TestDeployApp:
             )
 
         wait_for_condition(check_app_message)
+
+    def test_deploy_with_no_applications(self, client: ServeControllerClient):
+        """Deploy an empty list of applications, serve should just be started."""
+
+        config = ServeDeploySchema.parse_obj({"applications": []})
+        client.deploy_apps(config)
+
+        def serve_running():
+            ServeInstanceDetails.parse_obj(
+                ray.get(client._controller.get_serve_instance_details.remote())
+            )
+            actors = list_actors(
+                filters=[
+                    ("ray_namespace", "=", SERVE_NAMESPACE),
+                    ("state", "=", "ALIVE"),
+                ]
+            )
+            actor_names = [actor["class_name"] for actor in actors]
+            return "ServeController" in actor_names and "HTTPProxyActor" in actor_names
+
+        wait_for_condition(serve_running)
 
     def test_deployments_not_listed_in_config(self, client: ServeControllerClient):
         """Apply a config without the app's deployments listed. The deployments should

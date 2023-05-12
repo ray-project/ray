@@ -1,4 +1,4 @@
-"""Utility for debugging object store memory eager deletion in Datastreams.
+"""Utility for debugging object store memory eager deletion in Datasets.
 
 NOTE: the performance overhead of tracing object allocation is fairly substantial.
 This is meant to use in unit test for debugging. Please do not enable in production,
