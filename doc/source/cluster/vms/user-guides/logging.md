@@ -1,4 +1,4 @@
-(kuberay-logging)=
+(vms-logging)=
 
 # Log Persistence
 
@@ -239,53 +239,6 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a job when connecting via :ref:`Ray Client <ray-client-ref>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.- 
-
-## Redirecting Ray logs to stderr
-
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you wish to redirect all internal Ray logging and your own logging within tasks/actors to stderr of the host nodes, you can do so by ensuring that the ``RAY_LOG_TO_STDERR=1`` environment variable is set on the driver and on all Ray nodes. This is very useful if you are using a log aggregator that needs log records to be written to stderr in order for them to be captured.
-
-Redirecting logging to stderr will also cause a ``({component})`` prefix, e.g. ``(raylet)``, to be added to each of the log record messages.
-
-.. code-block:: bash
-
-    [2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
-    [2022-01-24 19:42:06,696 I 1829415 1829415] (raylet) grpc_server.cc:103: ObjectManager server started, listening on port 40545.
-    2022-01-24 19:42:05,087 INFO (dashboard) dashboard.py:95 -- Setup static dir for dashboard: /mnt/data/workspace/ray/python/ray/dashboard/client/build
-    2022-01-24 19:42:07,500 INFO (dashboard_agent) agent.py:105 -- Dashboard agent grpc address: 0.0.0.0:49228
-
-This should make it easier to filter the stderr stream of logs down to the component of interest. Note that multi-line log records will **not** have this component marker at the beginning of each line.
-
-When running a local Ray cluster, this environment variable should be set before starting the local cluster:
-
-.. code-block:: python
-
-    os.environ["RAY_LOG_TO_STDERR"] = "1"
-    ray.init()
-
-When starting a local cluster via the CLI or when starting nodes in a multi-node Ray cluster, this environment variable should be set before starting up each node:
-
-.. code-block:: bash
-
-    env RAY_LOG_TO_STDERR=1 ray start
-
-If using the Ray cluster launcher, you would specify this environment variable in the Ray start commands:
-
-.. code-block:: bash
-
-    head_start_ray_commands:
-        - ray stop
-        - env RAY_LOG_TO_STDERR=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-    worker_start_ray_commands:
-        - ray stop
-        - env RAY_LOG_TO_STDERR=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
-
-When connecting to the cluster, be sure to set the environment variable before connecting:
-
-.. code-block:: python
-
-    os.environ["RAY_LOG_TO_STDERR"] = "1"
-    ray.init(address="auto")
 
 ## Log rotation
 
