@@ -1,9 +1,25 @@
-import { Box, IconButton, Tab, Tabs, Typography } from "@material-ui/core";
+import {
+  Box,
+  createStyles,
+  IconButton,
+  makeStyles,
+  Tab,
+  Tabs,
+  Typography,
+} from "@material-ui/core";
 import React, { useState } from "react";
 import { RiArrowUpDownLine } from "react-icons/ri";
 import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
+
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    tabs: {
+      borderBottom: `1px solid ${theme.palette.divider}`,
+    },
+  }),
+);
 
 export type MultiTabLogViewerTab = {
   title: string;
@@ -16,6 +32,7 @@ export type MultiTabLogViewerProps = {
 };
 
 export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
+  const classes = useStyles();
   const [value, setValue] = useState(tabs[0]?.title);
   const [expanded, setExpanded] = useState(false);
 
@@ -26,19 +43,45 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
       <Box
         display="flex"
         flexDirection="row"
-        alignItems="center"
+        alignItems="flex-start"
         justifyContent="space-between"
       >
-        <Tabs
-          value={value}
-          onChange={(_, newValue) => {
-            setValue(newValue);
-          }}
+        <Box
+          display="flex"
+          flexDirection="column"
+          alignItems="stretch"
+          flexGrow={1}
         >
-          {tabs.map(({ title }) => (
-            <Tab key={title} label={title} value={title} />
-          ))}
-        </Tabs>
+          <Tabs
+            className={classes.tabs}
+            value={value}
+            onChange={(_, newValue) => {
+              setValue(newValue);
+            }}
+          >
+            {tabs.map(({ title }) => (
+              <Tab key={title} label={title} value={title} />
+            ))}
+          </Tabs>
+
+          {!currentTab ? (
+            <Typography color="error">Please select a tab.</Typography>
+          ) : (
+            tabs.map(({ title, nodeId, filename }) => (
+              <HideableBlock
+                key={title}
+                visible={title === currentTab?.title}
+                keepRendered
+              >
+                <StateApiLogViewer
+                  nodeId={nodeId}
+                  filename={filename}
+                  height={expanded ? 800 : 300}
+                />
+              </HideableBlock>
+            ))
+          )}
+        </Box>
         <IconButton
           onClick={() => {
             setExpanded(!expanded);
@@ -47,23 +90,6 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
           <RiArrowUpDownLine />
         </IconButton>
       </Box>
-      {!currentTab ? (
-        <Typography color="error">Please select a tab.</Typography>
-      ) : (
-        tabs.map(({ title, nodeId, filename }) => (
-          <HideableBlock
-            key={title}
-            visible={title === currentTab?.title}
-            keepRendered
-          >
-            <StateApiLogViewer
-              nodeId={nodeId}
-              filename={filename}
-              height={expanded ? 800 : 300}
-            />
-          </HideableBlock>
-        ))
-      )}
     </div>
   );
 };

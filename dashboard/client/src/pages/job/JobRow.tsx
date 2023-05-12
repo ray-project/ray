@@ -60,7 +60,13 @@ export const JobRow = ({ job }: JobRowProps) => {
   return (
     <TableRow>
       <TableCell align="center">
-        {job_id ? <Link to={`${job_id}`}>{job_id}</Link> : "-"}
+        {job_id ? (
+          <Link to={`${job_id}`}>{job_id}</Link>
+        ) : submission_id ? (
+          <Link to={`${submission_id}`}>(no ray driver)</Link>
+        ) : (
+          "(no ray driver)"
+        )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">

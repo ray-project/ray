@@ -11,12 +11,13 @@ import { useJobDetail } from "./hook/useJobDetail";
 export const JobDetailLayout = () => {
   const { job } = useJobDetail();
 
+  const jobId = job?.job_id ?? job?.submission_id;
   const pageInfo = job
     ? {
-        title: job.job_id ?? "Job",
-        pageTitle: job.job_id ? `${job.job_id} | Job` : undefined,
+        title: jobId ?? "Job",
+        pageTitle: jobId ? `${jobId} | Job` : undefined,
         id: "job-detail",
-        path: job.job_id ? `/jobs/${job.job_id}` : undefined,
+        path: jobId ? `/jobs/${jobId}` : undefined,
       }
     : {
         title: "Job",
