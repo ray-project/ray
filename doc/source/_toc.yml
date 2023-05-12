@@ -344,13 +344,13 @@ parts:
             - file: cluster/kubernetes/getting-started
             - file: cluster/kubernetes/user-guides
               sections:
-                - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
-                - file: cluster/kubernetes/user-guides/config.md
-                - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
-                - file: cluster/kubernetes/user-guides/logging.md
-                - file: cluster/kubernetes/user-guides/gpu.md
-                - file: cluster/kubernetes/user-guides/experimental.md
-                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
+                - file: cluster/kubernetes/user-guides/k8s-cluster-setup
+                - file: cluster/kubernetes/user-guides/config
+                - file: cluster/kubernetes/user-guides/configuring-autoscaling
+                - file: cluster/kubernetes/user-guides/logging
+                - file: cluster/kubernetes/user-guides/gpu
+                - file: cluster/kubernetes/user-guides/experimental
+                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay
             - file: cluster/kubernetes/examples
               sections:
                 - file: cluster/kubernetes/examples/ml-example.md
@@ -366,6 +366,7 @@ parts:
               - file: cluster/vms/user-guides/launching-clusters/index
               - file: cluster/vms/user-guides/large-cluster-best-practices
               - file: cluster/vms/user-guides/configuring-autoscaling
+              - file: cluster/vms/user-guides/logging
               - file: cluster/vms/user-guides/community/index
                 title: Community-supported Cluster Managers
                 sections:
@@ -396,6 +397,8 @@ parts:
                   - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
                   - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
                   - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+              - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing
 
       - file: ray-references/api

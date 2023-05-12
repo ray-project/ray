@@ -1,6 +1,6 @@
 (kuberay-logging)=
 
-# Logging
+# Log Persistence
 
 This page provides tips on how to collect logs from
 Ray clusters running on Kubernetes.
