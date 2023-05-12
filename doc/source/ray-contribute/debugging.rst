@@ -1,7 +1,5 @@
-Debugging for Ray Developers
-============================
-
-This debugging guide is for contributors to the Ray project. 
+Debugging (internal)
+====================
 
 Starting processes in a debugger
 --------------------------------

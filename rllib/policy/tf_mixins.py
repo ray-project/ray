@@ -33,9 +33,7 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
-        # Disable any scheduling behavior related to learning if Learner API is active.
-        # Schedules are handled by Learner class.
-        if lr_schedule is None or self.config.get("_enable_learner_api", False):
+        if lr_schedule is None:
             self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         else:
             self._lr_schedule = PiecewiseSchedule(
@@ -80,11 +78,7 @@ class EntropyCoeffSchedule:
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        # Disable any scheduling behavior related to learning if Learner API is active.
-        # Schedules are handled by Learner class.
-        if entropy_coeff_schedule is None or (
-            self.config.get("_enable_learner_api", False)
-        ):
+        if entropy_coeff_schedule is None:
             self.entropy_coeff = get_variable(
                 entropy_coeff, framework="tf", tf_name="entropy_coeff", trainable=False
             )
@@ -214,32 +208,37 @@ class TargetNetworkMixin:
     """
 
     def __init__(self):
-        if not self.config.get("_enable_rl_module_api", False):
+        if self.config.get("_enable_rl_module_api", False):
+            # In order to access the variables for rl modules, we need to
+            # use the underlying keras api model.trainable_variables.
+            model_vars = self.model.trainable_variables
+            target_model_vars = self.target_model.trainable_variables
+        else:
             model_vars = self.model.trainable_variables()
             target_model_vars = self.target_model.trainable_variables()
 
-            @make_tf_callable(self.get_session())
-            def update_target_fn(tau):
-                tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-                update_target_expr = []
-                assert len(model_vars) == len(target_model_vars), (
-                    model_vars,
-                    target_model_vars,
+        @make_tf_callable(self.get_session())
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            update_target_expr = []
+            assert len(model_vars) == len(target_model_vars), (
+                model_vars,
+                target_model_vars,
+            )
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target)
                 )
-                for var, var_target in zip(model_vars, target_model_vars):
-                    update_target_expr.append(
-                        var_target.assign(tau * var + (1.0 - tau) * var_target)
-                    )
-                    logger.debug("Update target op {}".format(var_target))
-                return tf.group(*update_target_expr)
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
 
-            # Hard initial update.
-            self._do_update = update_target_fn
-            # TODO: The previous SAC implementation does an update(1.0) here.
-            # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
-            # Also the test is not very maintainable, we need to change that unittest
-            # anyway.
-            self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
+        # Hard initial update.
+        self._do_update = update_target_fn
+        # TODO: The previous SAC implementation does an update(1.0) here.
+        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
+        # Also the test is not very maintainable, we need to change that unittest
+        # anyway.
+        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
@@ -277,8 +276,7 @@ class TargetNetworkMixin:
             EagerTFPolicyV2.set_weights(self, weights)
         elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
             EagerTFPolicy.set_weights(self, weights)
-        if not self.config.get("_enable_rl_module_api", False):
-            self.update_target(self.config.get("tau", 1.0))
+        self.update_target(self.config.get("tau", 1.0))
 
 
 class ValueNetworkMixin:

@@ -550,8 +550,8 @@ ray::Status NodeManager::RegisterGcs() {
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
                 }
+                *checking_ptr = false;
               }
-              *checking_ptr = false;
             },
             /* timeout_ms = */ 30000));
       },
@@ -2502,7 +2502,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Report object spilling stats.
-  local_object_manager_.FillObjectStoreStats(reply);
+  local_object_manager_.FillObjectSpillingStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
   // As a result of the HandleGetNodeStats, we are collecting information from all

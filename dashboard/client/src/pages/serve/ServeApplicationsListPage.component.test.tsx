@@ -2,11 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { getServeApplications } from "../../service/serve";
-import {
-  ServeApplicationStatus,
-  ServeDeploymentMode,
-  ServeHTTPProxyStatus,
-} from "../../type/serve";
+import { ServeApplicationStatus, ServeDeploymentMode } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
 
@@ -16,18 +12,11 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(14);
+    expect.assertions(11);
 
     mockGetServeApplications.mockResolvedValue({
       data: {
         http_options: { host: "1.2.3.4", port: 8000 },
-        http_proxies: {
-          foo: {
-            node_id: "node:12345",
-            status: ServeHTTPProxyStatus.HEALTHY,
-            actor_id: "actor:12345",
-          },
-        },
         proxy_location: ServeDeploymentMode.EveryNode,
         applications: {
           home: {
@@ -65,19 +54,10 @@ describe("ServeApplicationsListPage", () => {
 
     const user = userEvent.setup();
 
-    await screen.findByText("System");
-    expect(screen.getByText("System")).toBeVisible();
-    // System tab is hidden at first
-    expect(screen.queryByText("1.2.3.4")).toBeNull();
-    // Expand the system tab
-    await user.click(screen.getByText("System"));
-    await screen.findByText("1.2.3.4");
+    await screen.findByText("Config");
+    expect(screen.getByText("Config")).toBeVisible();
     expect(screen.getByText("1.2.3.4")).toBeVisible();
     expect(screen.getByText("8000")).toBeVisible();
-
-    // HTTP Proxy row
-    expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
-    expect(screen.getByText("HEALTHY")).toBeVisible();
 
     // First row
     expect(screen.getByText("home")).toBeVisible();

@@ -5,14 +5,10 @@ import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import ActorDetailPage from "./pages/actor/ActorDetail";
-import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
-import {
-  JobDetailActorLayout,
-  JobDetailActorsPage,
-} from "./pages/job/JobDetailActorPage";
+import { JobDetailActorsPage } from "./pages/job/JobDetailActorPage";
 import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
 import { JobDetailLayout } from "./pages/job/JobDetailLayout";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
@@ -190,20 +186,16 @@ const App = () => {
                     <Route
                       element={
                         <SideTabPage tabId="actors">
-                          <JobDetailActorLayout />
+                          <JobDetailActorsPage />
                         </SideTabPage>
                       }
                       path="actors"
-                    >
-                      <Route element={<JobDetailActorsPage />} path="" />
-                      <Route element={<ActorDetailPage />} path=":actorId" />
-                    </Route>
+                    />
+                    <Route element={<ActorDetailPage />} path="actors/:id" />
                   </Route>
                 </Route>
-                <Route element={<ActorLayout />} path="actors">
-                  <Route element={<Actors />} path="" />
-                  <Route element={<ActorDetailPage />} path=":actorId" />
-                </Route>
+                <Route element={<Actors />} path="actors" />
+                <Route element={<ActorDetailPage />} path="actors/:id" />
                 <Route element={<Metrics />} path="metrics" />
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeApplicationsListPage />} path="" />

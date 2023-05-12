@@ -4,8 +4,6 @@ from packaging import version
 from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, Optional
 
-from ray._private.dict import flatten_dict
-
 if TYPE_CHECKING:
     from mlflow.entities import Run
     from mlflow.tracking import MlflowClient
@@ -264,7 +262,6 @@ class _MLflowLoggerUtil:
             params_to_log: Dictionary of parameters to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
-        params_to_log = flatten_dict(params_to_log)
 
         if run_id and self._run_exists(run_id):
             client = self._get_client()
@@ -287,7 +284,6 @@ class _MLflowLoggerUtil:
             metrics_to_log: Dictionary of metrics to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
-        metrics_to_log = flatten_dict(metrics_to_log)
         metrics_to_log = self._parse_dict(metrics_to_log)
 
         if run_id and self._run_exists(run_id):

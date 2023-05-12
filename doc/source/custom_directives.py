@@ -286,15 +286,16 @@ def build_gallery(app):
         source = yaml.safe_load((Path(app.srcdir) / gallery).read_text())
 
         meta = source["meta"]
-        grid = meta.pop("grid")
+        is_titled = True if meta.get("section-titles") else False
+        meta.pop("section-titles")
         projects = source["projects"]
-        classes = source["classes"]
+        buttons = source["buttons"]
 
         for item in projects:
-            ref = "button-link"
+            ref = ":type: url"
             website = item["website"]
             if "://" not in website:  # if it has no http/s protocol, it's a "ref"
-                ref = ref.replace("link", "ref")
+                ref = ref.replace("url", "ref")
 
             if not item.get("image"):
                 item["image"] = "https://docs.ray.io/_images/ray_logo.png"
@@ -307,37 +308,40 @@ def build_gallery(app):
                         gh_stars = (
                             f".. image:: https://img.shields.io/github/"
                             f"stars/{org}/{repo}?style=social)]\n"
-                            f"\t\t\t:target: {item['repo']}"
+                            f"\t\t:target: {item['repo']}"
                         )
                 except Exception:
                     pass
 
             item = f"""
-    .. grid-item-card::
+        ---
         :img-top: {item["image"]}
-        :class-img-top: {classes["class-img-top"]}
 
         {gh_stars}
 
         {item["description"]}
 
         +++
-        .. {ref}:: {item["website"]}
-            :color: primary
-            :outline:
-            :expand:
-
-            {item["name"]}
+        .. link-button:: {item["website"]}
+            {ref}
+            :text: {item["name"]}
+            :classes: {buttons["classes"]}
             """
-
             panel_items.append(item)
 
-        panel_header = f".. grid:: {grid}\n"
+        panel_header = ".. panels::\n"
         for k, v in meta.items():
-            panel_header += f"    :{k}: {v}\n"
+            panel_header += f"\t:{k}: {v}\n"
 
-        panel_items = "\n".join(panel_items)
-        panels = panel_header + panel_items
+        if is_titled:
+            panels = ""
+            for item, panel in zip(projects, panel_items):
+                title = item["section_title"]
+                underline_title = "-" * len(title)
+                panels += f"{title}\n{underline_title}\n\n{panel_header}{panel}\n\n"
+        else:
+            panel_items = "\n".join(panel_items)
+            panels = panel_header + panel_items
 
         gallery_out = gallery.replace(".yml", ".txt")
         (Path(app.srcdir) / gallery_out).write_text(panels)

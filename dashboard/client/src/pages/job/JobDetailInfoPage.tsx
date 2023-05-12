@@ -1,9 +1,6 @@
 import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
-import {
-  CodeDialogButton,
-  CodeDialogButtonWithPreview,
-} from "../../common/CodeDialogButton";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { JobStatusWithIcon } from "../../common/JobStatus";
@@ -11,7 +8,6 @@ import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
-import { filterRuntimeEnvSystemVariables } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -141,23 +137,6 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           content: {
             value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
           },
-        },
-        {
-          label: "Runtime environemnt",
-          ...(job.runtime_env
-            ? {
-                content: (
-                  <CodeDialogButton
-                    title="Runtime environment"
-                    code={filterRuntimeEnvSystemVariables(job.runtime_env)}
-                  />
-                ),
-              }
-            : {
-                content: {
-                  value: "-",
-                },
-              }),
         },
         ...(job.type === "SUBMISSION"
           ? [

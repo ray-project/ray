@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.impala import ImpalaConfig
@@ -9,7 +8,6 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 tf1, tf, _ = try_import_tf()
@@ -79,17 +77,11 @@ class TestImpalaLearner(unittest.TestCase):
         #  Deprecate the current default and set it to {}.
         config.exploration_config = {}
 
-        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
+        for _ in framework_iterator(config, frameworks=["tf2", "torch"]):
             algo = config.build()
             policy = algo.get_policy()
 
-            if fw == "tf2":
-                train_batch = SampleBatch(
-                    tree.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
-                )
-            elif fw == "torch":
-                train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
-
+            train_batch = SampleBatch(FAKE_BATCH)
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()

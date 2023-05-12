@@ -1,7 +1,6 @@
 import { makeStyles } from "@material-ui/core";
 import React from "react";
 
-import { Outlet } from "react-router-dom";
 import { Section } from "../../common/Section";
 import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
@@ -16,19 +15,7 @@ const useStyle = makeStyles((theme) => ({
 
 export const JobDetailActorsPage = () => {
   const classes = useStyle();
-  const { params } = useJobDetail();
-
-  return (
-    <div className={classes.root}>
-      <Section title="Actors">
-        <ActorList jobId={params.id} />
-      </Section>
-    </div>
-  );
-};
-
-export const JobDetailActorLayout = () => {
-  const { job } = useJobDetail();
+  const { job, params } = useJobDetail();
 
   const pageInfo = job
     ? {
@@ -43,9 +30,11 @@ export const JobDetailActorLayout = () => {
       };
 
   return (
-    <div>
+    <div className={classes.root}>
       <MainNavPageInfo pageInfo={pageInfo} />
-      <Outlet />
+      <Section title="Actors">
+        <ActorList jobId={params.id} />
+      </Section>
     </div>
   );
 };

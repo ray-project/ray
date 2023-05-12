@@ -1,4 +1,4 @@
-.. _writing-code-snippets_ref:
+.. _writing-code-snippets:
 
 ==========================
 How to write code snippets
@@ -227,7 +227,7 @@ the `doctest` directive and replace problematic sections with ellipsis. ::
 
         >>> import ray
         >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-        Dataset(
+        Datastream(
            num_blocks=...,
            num_rows=...,
            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
@@ -237,7 +237,7 @@ If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code 
 
     >>> import ray
     >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
-    Dataset(
+    Datastream(
        num_blocks=...,
        num_rows=...,
        schema={image: numpy.ndarray(shape=..., dtype=uint8)}
@@ -260,7 +260,7 @@ the `testoutput` directive and replace problematic sections with ellipsis. ::
     .. testoutput::
         :options: +ELLIPSIS
 
-        Dataset(
+        Datastream(
            num_blocks=...,
            num_rows=...,
            schema={image: numpy.ndarray(shape=..., dtype=uint8)}

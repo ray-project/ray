@@ -99,14 +99,13 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
             )
         msg = (
             "Ignore this message if the cluster is autoscaling. "
-            "No trial is running and no new trial has been started "
-            "within the last 0 seconds. This could be due to the cluster not having "
-            "enough resources available. You asked for 5.0 CPUs and 3.0 GPUs per "
-            "trial, but the cluster only has 4.0 CPUs and 2.0 GPUs available. "
-            "Stop the tuning and adjust the required resources "
-            "(e.g. via the `ScalingConfig` or `resources_per_trial`, "
-            "or `num_workers` for rllib), "
-            "or add more resources to your cluster."
+            "You asked for 5.0 cpu and 3.0 gpu per trial, "
+            "but the cluster only has 4.0 cpu and 2.0 gpu. "
+            "Stop the tuning job and "
+            "adjust the resources requested per trial "
+            "(possibly via `resources_per_trial` "
+            "or via `num_workers` for rllib) "
+            "and/or add more resources to your Ray runtime."
         )
         mocked_warn.assert_called_once_with(msg)
 

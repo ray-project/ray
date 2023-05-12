@@ -149,6 +149,3 @@ class VersionedReplica(ABC):
     @property
     def version(self) -> DeploymentVersion:
         pass
-
-    def update_state(self, state):
-        pass

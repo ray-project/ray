@@ -65,34 +65,34 @@ Next Steps
 Ray's key primitives are simple, but can be composed together to express almost any kind of distributed computation.
 Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the following user guides:
 
-.. grid:: 1 2 3 3
-    :gutter: 1
-    :class-container: container pb-3
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-50 d-block mx-auto
 
+    ---
+    :img-top: /images/tasks.png
 
-    .. grid-item-card::
-        :img-top: /images/tasks.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    .. link-button:: ray-remote-functions
+        :type: ref
+        :text: Using remote functions (Tasks)
+        :classes: btn-link btn-block stretched-link
 
-        .. button-ref:: ray-remote-functions
+    ---
+    :img-top: /images/actors.png
 
-            Using remote functions (Tasks)
+    .. link-button:: ray-remote-classes
+        :type: ref
+        :text: Using remote classes (Actors)
+        :classes: btn-link btn-block stretched-link
 
-    .. grid-item-card::
-        :img-top: /images/actors.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    ---
+    :img-top: /images/objects.png
 
-        .. button-ref:: ray-remote-classes
-
-            Using remote classes (Actors)
-
-    .. grid-item-card::
-        :img-top: /images/objects.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: objects-in-ray
-
-            Working with Ray Objects
+    .. link-button:: objects-in-ray
+        :type: ref
+        :text: Working with Ray Objects
+        :classes: btn-link btn-block stretched-link
 
 
 .. include:: /_includes/core/announcement_bottom.rst

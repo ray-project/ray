@@ -805,7 +805,7 @@ py_test(
 py_test(
     name = "test_algorithm_config",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "medium",
+    size = "small",
     srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
@@ -2458,16 +2458,6 @@ py_test(
     args = ["TestCheckpointRestorePG"]
 )
 
-
-py_test(
-    name = "tests/test_checkpoint_restore_pg_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePG"]
-)
-
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -2477,29 +2467,10 @@ py_test(
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
-
-py_test(
-    name = "tests/test_checkpoint_restore_off_policy_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreEvolutionAlgos"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
     size = "medium",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
@@ -2757,18 +2728,9 @@ py_test(
  )
 
 py_test(
-    name="tests/test_supported_spaces_dqn",
-    main="tests/test_supported_spaces.py",
-    tags=["team:rllib", "tests_dir"],
-    size="large",
-    srcs=["tests/test_supported_spaces.py"],
-    args=["TestSupportedSpacesDQN"]
-)
-
-py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "gpu", "no_cpu"],
+     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]

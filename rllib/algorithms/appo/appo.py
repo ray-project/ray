@@ -381,9 +381,16 @@ class APPO(Impala):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.appo.torch.appo_torch_policy_rlm import (
+                    APPOTorchPolicyWithRLModule,
+                )
 
-            return APPOTorchPolicy
+                return APPOTorchPolicyWithRLModule
+            else:
+                from ray.rllib.algorithms.appo.appo_torch_policy import APPOTorchPolicy
+
+                return APPOTorchPolicy
         elif config["framework"] == "tf":
             if config._enable_rl_module_api:
                 raise ValueError(
@@ -395,6 +402,12 @@ class APPO(Impala):
 
             return APPOTF1Policy
         else:
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.appo.tf.appo_tf_policy_rlm import (
+                    APPOTfPolicyWithRLModule,
+                )
+
+                return APPOTfPolicyWithRLModule
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
             return APPOTF2Policy

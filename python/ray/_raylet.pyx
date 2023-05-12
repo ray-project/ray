@@ -846,7 +846,6 @@ cdef void execute_task(
             return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
-        task_exception = False
         try:
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
@@ -892,20 +891,15 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            # Record the task id via magic token in the log file.
-            # This will be used to locate the beginning of logs from a task.
-            attempt_number = core_worker.get_current_task_attempt_number()
-            task_attempt_magic_token = "{}{}-{}\n".format(
-                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
-                attempt_number)
-            # Print on both .out and .err
-            print(task_attempt_magic_token, end="")
-            print(task_attempt_magic_token, file=sys.stderr, end="")
-
+            worker.record_task_log_start()
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
+                    is_exiting = core_worker.is_exiting()
+                    if is_exiting:
+                        title = f"{title}::Exiting"
+                        next_title = f"{next_title}::Exiting"
                     with ray._private.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
@@ -952,14 +946,9 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the end of task via magic token in the log file.
-                    # This will be used to locate the end of logs from a task.
-                    task_attempt_magic_token = "{}{}-{}\n".format(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
-                        attempt_number)
-                    # Print on both .out and .err
-                    print(task_attempt_magic_token, end="")
-                    print(task_attempt_magic_token, file=sys.stderr, end="")
+                    # Record the task logs end offsets regardless of
+                    # task execution results.
+                    worker.record_task_log_end()
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
@@ -1222,6 +1211,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
+
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -1912,9 +1902,6 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
-
-    def get_current_task_attempt_number(self):
-        return CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskAttemptNumber()
 
     def get_task_depth(self):
         return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
@@ -3024,6 +3011,9 @@ cdef class CoreWorker:
             self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
+
+    def is_exiting(self):
+        return CCoreWorkerProcess.GetCoreWorker().IsExiting()
 
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:

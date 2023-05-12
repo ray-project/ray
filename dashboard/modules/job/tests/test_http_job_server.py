@@ -623,7 +623,6 @@ def test_request_headers(job_sdk_client):
             data=None,
             json={"entrypoint": "ls"},
             headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
-            verify=True,
         )
 
 

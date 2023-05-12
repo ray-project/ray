@@ -17,11 +17,11 @@ import { Alert, Autocomplete, Pagination } from "@material-ui/lab";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import Loading from "../../components/Loading";
+import { MetadataSection } from "../../components/MetadataSection";
 import { HelpInfo } from "../../components/Tooltip";
 import { useServeApplications } from "./hook/useServeApplications";
 import { ServeApplicationRow } from "./ServeApplicationRow";
 import { ServeMetricsSection } from "./ServeMetricsSection";
-import { ServeSystemDetails } from "./ServeSystemDetails";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -33,9 +33,6 @@ const useStyles = makeStyles((theme) =>
     },
     helpInfo: {
       marginLeft: theme.spacing(1),
-    },
-    applicationsSection: {
-      marginTop: theme.spacing(4),
     },
     metricsSection: {
       marginTop: theme.spacing(4),
@@ -59,13 +56,10 @@ export const ServeApplicationsListPage = () => {
   const {
     serveDetails,
     filteredServeApplications,
-    httpProxies,
     error,
     allServeApplications,
     page,
     setPage,
-    httpProxiesPage,
-    setHttpProxiesPage,
     changeFilter,
   } = useServeApplications();
 
@@ -79,121 +73,132 @@ export const ServeApplicationsListPage = () => {
 
   return (
     <div>
-      {serveDetails.http_options === undefined ? (
-        <Alert className={classes.serveInstanceWarning} severity="warning">
-          Serve not started. Please deploy a serve application first.
-        </Alert>
-      ) : (
-        <React.Fragment>
-          <ServeSystemDetails
-            serveDetails={serveDetails}
-            httpProxies={httpProxies}
-            page={httpProxiesPage}
-            setPage={setHttpProxiesPage}
+      <CollapsibleSection title="Config" startExpanded>
+        {serveDetails.host && serveDetails.port ? (
+          <MetadataSection
+            metadataList={[
+              {
+                label: "Host",
+                content: {
+                  copyableValue: serveDetails.host,
+                  value: serveDetails.host,
+                },
+              },
+              {
+                label: "Port",
+                content: {
+                  copyableValue: `${serveDetails.port}`,
+                  value: `${serveDetails.port}`,
+                },
+              },
+              {
+                label: "Proxy location",
+                content: {
+                  value: `${serveDetails.proxy_location}`,
+                },
+              },
+            ]}
           />
-          <CollapsibleSection
-            title="Serve applications"
-            startExpanded
-            className={classes.applicationsSection}
-          >
-            <TableContainer>
-              <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(
-                      allServeApplications.map((e) => (e.name ? e.name : "-")),
-                    ),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter(
-                      "name",
-                      value.trim() !== "-" ? value.trim() : "",
-                    );
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Name" />
-                  )}
-                />
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(allServeApplications.map((e) => e.status)),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter("status", value.trim());
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Status" />
-                  )}
-                />
-                <TextField
-                  style={{ margin: 8, width: 120 }}
-                  label="Page Size"
-                  size="small"
-                  defaultValue={10}
-                  InputProps={{
-                    onChange: ({ target: { value } }) => {
-                      setPage("pageSize", Math.min(Number(value), 500) || 10);
-                    },
-                    endAdornment: (
-                      <InputAdornment position="end">Per Page</InputAdornment>
-                    ),
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <Pagination
-                  count={Math.ceil(
-                    filteredServeApplications.length / page.pageSize,
-                  )}
-                  page={page.pageNo}
-                  onChange={(e, pageNo) => setPage("pageNo", pageNo)}
-                />
-              </div>
-              <Table className={classes.table}>
-                <TableHead>
-                  <TableRow>
-                    {columns.map(({ label, helpInfo, width }) => (
-                      <TableCell
-                        align="center"
-                        key={label}
-                        style={width ? { width } : undefined}
-                      >
-                        <Box
-                          display="flex"
-                          justifyContent="center"
-                          alignItems="center"
-                        >
-                          {label}
-                          {helpInfo && (
-                            <HelpInfo className={classes.helpInfo}>
-                              {helpInfo}
-                            </HelpInfo>
-                          )}
-                        </Box>
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredServeApplications
-                    .slice(
-                      (page.pageNo - 1) * page.pageSize,
-                      page.pageNo * page.pageSize,
-                    )
-                    .map((application) => (
-                      <ServeApplicationRow
-                        key={application.name}
-                        application={application}
-                      />
-                    ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </CollapsibleSection>
-        </React.Fragment>
-      )}
+        ) : (
+          <Alert className={classes.serveInstanceWarning} severity="warning">
+            Serve not started. Please deploy a serve application first.
+          </Alert>
+        )}
+      </CollapsibleSection>
+      <CollapsibleSection title="Serve applications" startExpanded>
+        <TableContainer>
+          <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+            <Autocomplete
+              style={{ margin: 8, width: 120 }}
+              options={Array.from(
+                new Set(
+                  allServeApplications.map((e) => (e.name ? e.name : "-")),
+                ),
+              )}
+              onInputChange={(_: any, value: string) => {
+                changeFilter("name", value.trim() !== "-" ? value.trim() : "");
+              }}
+              renderInput={(params: TextFieldProps) => (
+                <TextField {...params} label="Name" />
+              )}
+            />
+            <Autocomplete
+              style={{ margin: 8, width: 120 }}
+              options={Array.from(
+                new Set(allServeApplications.map((e) => e.status)),
+              )}
+              onInputChange={(_: any, value: string) => {
+                changeFilter("status", value.trim());
+              }}
+              renderInput={(params: TextFieldProps) => (
+                <TextField {...params} label="Status" />
+              )}
+            />
+            <TextField
+              style={{ margin: 8, width: 120 }}
+              label="Page Size"
+              size="small"
+              defaultValue={10}
+              InputProps={{
+                onChange: ({ target: { value } }) => {
+                  setPage("pageSize", Math.min(Number(value), 500) || 10);
+                },
+                endAdornment: (
+                  <InputAdornment position="end">Per Page</InputAdornment>
+                ),
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <Pagination
+              count={Math.ceil(
+                filteredServeApplications.length / page.pageSize,
+              )}
+              page={page.pageNo}
+              onChange={(e, pageNo) => setPage("pageNo", pageNo)}
+            />
+          </div>
+          <Table className={classes.table}>
+            <TableHead>
+              <TableRow>
+                {columns.map(({ label, helpInfo, width }) => (
+                  <TableCell
+                    align="center"
+                    key={label}
+                    style={width ? { width } : undefined}
+                  >
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo className={classes.helpInfo}>
+                          {helpInfo}
+                        </HelpInfo>
+                      )}
+                    </Box>
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredServeApplications
+                .slice(
+                  (page.pageNo - 1) * page.pageSize,
+                  page.pageNo * page.pageSize,
+                )
+                .map((application) => (
+                  <ServeApplicationRow
+                    key={application.name}
+                    application={application}
+                  />
+                ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </CollapsibleSection>
       <ServeMetricsSection className={classes.metricsSection} />
     </div>
   );

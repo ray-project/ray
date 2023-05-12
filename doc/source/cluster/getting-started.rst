@@ -31,66 +31,57 @@ or onto :ref:`platforms not listed here <ref-cluster-setup>`.
 What's next?
 ------------
 
-.. grid:: 1 2 2 2
-    :gutter: 1
-    :class-container: container pb-3
+.. panels::
+    :container: text-center
+    :column: col-lg-6 px-3 py-2
+    :card:
 
-    .. grid-item-card::
+    **I want to learn key Ray cluster concepts**
+    ^^^
+    Understand the key concepts and main ways of interacting with a Ray cluster.
 
-        **I want to learn key Ray cluster concepts**
-        ^^^
-        Understand the key concepts and main ways of interacting with a Ray cluster.
+    +++
+    .. link-button:: cluster-key-concepts
+        :type: ref
+        :text: Learn Key Concepts
+        :classes: btn-outline-info btn-block
 
-        +++
-        .. button-ref:: cluster-key-concepts
-            :color: primary
-            :outline:
-            :expand:
+    ---
 
-            Learn Key Concepts
+    **I want to run Ray on Kubernetes**
+    ^^^
+    Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
+    Kubernetes cluster or on your laptop via KinD.
 
-    .. grid-item-card::
+    +++
+    .. link-button:: kuberay-quickstart
+        :type: ref
+        :text: Get Started with Ray on Kubernetes
+        :classes: btn-outline-info btn-block
 
-        **I want to run Ray on Kubernetes**
-        ^^^
-        Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-        Kubernetes cluster or on your laptop via KinD.
+    ---
 
-        +++
-        .. button-ref:: kuberay-quickstart
-            :color: primary
-            :outline:
-            :expand:
+    **I want to run Ray on a cloud provider**
+    ^^^
+    Take a sample application designed to run on a laptop and scale it up in the
+    cloud. Access to an AWS or GCP account is required.
 
-            Get Started with Ray on Kubernetes
+    +++
+    .. link-button:: vm-cluster-quick-start
+        :type: ref
+        :text: Get Started with Ray on VMs
+        :classes: btn-outline-info btn-block
 
-    .. grid-item-card::
+    ---
 
-        **I want to run Ray on a cloud provider**
-        ^^^
-        Take a sample application designed to run on a laptop and scale it up in the
-        cloud. Access to an AWS or GCP account is required.
+    **I want to run my application on an existing Ray cluster**
+    ^^^
+    Guide to submitting applications as Jobs to existing Ray clusters.
 
-        +++
-        .. button-ref:: vm-cluster-quick-start
-            :color: primary
-            :outline:
-            :expand:
-
-            Get Started with Ray on VMs
-
-    .. grid-item-card::
-
-        **I want to run my application on an existing Ray cluster**
-        ^^^
-        Guide to submitting applications as Jobs to existing Ray clusters.
-
-        +++
-        .. button-ref:: jobs-quickstart
-            :color: primary
-            :outline:
-            :expand:
-
-            Job Submission
+    +++
+    .. link-button:: jobs-quickstart
+        :type: ref
+        :text: Job Submission
+        :classes: btn-outline-info btn-block
 
 .. include:: /_includes/clusters/announcement_bottom.rst

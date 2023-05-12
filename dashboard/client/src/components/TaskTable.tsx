@@ -60,7 +60,7 @@ const TaskTable = ({
   const columns = [
     { label: "ID" },
     { label: "Name" },
-    { label: "Job ID" },
+    { label: "Job Id" },
     { label: "State" },
     {
       label: "Actions",
@@ -77,13 +77,13 @@ const TaskTable = ({
       ),
     },
     { label: "Duration" },
-    { label: "Function or class name" },
-    { label: "Node ID" },
-    { label: "Actor ID" },
-    { label: "Worker ID" },
+    { label: "Function or Class Name" },
+    { label: "Node Id" },
+    { label: "Actor_id" },
+    { label: "Worker_id" },
     { label: "Type" },
-    { label: "Placement group ID" },
-    { label: "Required resources" },
+    { label: "Placement Group Id" },
+    { label: "Required Resources" },
   ];
 
   return (

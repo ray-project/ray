@@ -187,7 +187,7 @@ def test_pipeline_fail():
     class FittablePreprocessor(Preprocessor):
         _is_fittable = True
 
-        def _fit(self, dataset):
+        def _fit(self, datastream):
             self.fitted_ = True
             return self
 
@@ -234,7 +234,7 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
     if pipeline:
         patcher = patch.object(ray.data.dataset_pipeline.DatasetPipeline, "map_batches")
     else:
-        patcher = patch.object(ray.data.dataset.Dataset, "map_batches")
+        patcher = patch.object(ray.data.datastream.Datastream, "map_batches")
 
     with patcher as mock_map_batches:
         _apply_transform(with_pandas, ds)
@@ -263,7 +263,7 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
-    # Case 1: simple dataset. No support
+    # Case 1: simple datastream. No support
     (
         with_nothing,
         with_pandas,
@@ -290,7 +290,7 @@ def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preproce
 
 
 def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
-    # Case 2: pandas dataset
+    # Case 2: pandas datastream
     (
         with_nothing,
         with_pandas,
@@ -328,7 +328,7 @@ def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors)
 
 
 def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
-    # Case 3: arrow dataset
+    # Case 3: arrow datastream
     (
         with_nothing,
         with_pandas,
@@ -371,7 +371,7 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
 
 
 def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors):
-    # Case 4: tensor dataset created by from numpy data directly
+    # Case 4: tensor datastream created by from numpy data directly
     (
         with_nothing,
         with_pandas,

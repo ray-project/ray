@@ -13,6 +13,7 @@ import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
+from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
@@ -24,19 +25,21 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
-    synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
 )
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.typing import ResultDict
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -44,9 +47,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ResultDict
-from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner import Learner
@@ -325,13 +325,6 @@ class PPOConfig(PGConfig):
         # Check `entropy_coeff` for correctness.
         if self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
-        # Entropy coeff schedule checking.
-        if self._enable_learner_api:
-            Scheduler.validate(
-                self.entropy_coeff_schedule,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
-            )
 
 
 class UpdateKL:
@@ -378,17 +371,32 @@ class PPO(Algorithm):
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
 
-            from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
+                    PPOTorchPolicyWithRLModule,
+                )
 
-            return PPOTorchPolicy
+                return PPOTorchPolicyWithRLModule
+            else:
+                from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+
+                return PPOTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 
             return PPOTF1Policy
         else:
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
+                    PPOTfPolicyWithRLModule,
+                )
 
-            return PPOTF2Policy
+                return PPOTfPolicyWithRLModule
+            else:
+
+                from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+
+                return PPOTF2Policy
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:

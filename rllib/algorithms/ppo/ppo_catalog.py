@@ -38,7 +38,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModule for
+    for the policy and value function. See implementations of PPORLModuleBase for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -89,9 +89,8 @@ class PPOCatalog(Catalog):
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            # We don't know the output dimension yet, because it depends on the
-            # action distribution input dimension.
-            output_dims=None,
+            output_dims=None,  # We don't know the output dimension yet, because it
+            # depends on the action distribution input dimension
         )
 
         self.vf_head_config = MLPHeadConfig(
@@ -107,7 +106,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the encoder from the encoder_config.
         This can be overridden to build a custom ActorCriticEncoder as a means of
-        configuring the behavior of a PPORLModule implementation.
+        configuring the behavior of a PPORLModuleBase implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -132,7 +131,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a PPORLModule implementation.
+        the behavior of a PPORLModuleBase implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -157,7 +156,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the vf_head_config.
         This can be overridden to build a custom value function head as a means of
-        configuring the behavior of a PPORLModule implementation.
+        configuring the behavior of a PPORLModuleBase implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".

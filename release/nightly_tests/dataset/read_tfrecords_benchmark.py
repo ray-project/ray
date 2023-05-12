@@ -4,7 +4,7 @@ import tempfile
 from typing import List, Tuple
 
 import ray
-from ray.data.dataset import Dataset
+from ray.data.datastream import Dataset
 
 from benchmark import Benchmark
 from read_images_benchmark import generate_images

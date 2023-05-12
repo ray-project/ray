@@ -290,8 +290,7 @@ def _get_trial_table_data_per_status(
     more_info = None
     for t in trials:
         if len(trial_infos) >= max_row:
-            remaining = len(trials) - max_row
-            more_info = f"{remaining} more {status}"
+            more_info = f"... and {str(len(trials) - max_row)} more {status} ..."
             break
         trial_infos.append(_get_trial_info(t, metric_keys))
     return _PerStatusTrialTableData(trial_infos, more_info)
@@ -300,7 +299,6 @@ def _get_trial_table_data_per_status(
 def _get_trial_table_data(
     trials: List[Trial],
     metric_keys: List[str],
-    all_rows: bool = False,
 ) -> _TrialTableData:
     """Generate a table showing the current progress of tuning trials.
 
@@ -309,7 +307,6 @@ def _get_trial_table_data(
         metric_keys: Ordered list of metrics to be displayed in the table.
             Including both default and user defined.
             Will only be shown if at least one trial is having the key.
-        all_rows: Force to show all rows.
 
     Returns:
         Trial table data, including header and trial table per each status.
@@ -345,7 +342,7 @@ def _get_trial_table_data(
             t_status,
             trials_by_state[t_status],
             metric_keys=formatted_metric_columns,
-            force_max_rows=not all_rows and len(trials) > max_trial_num_to_show,
+            force_max_rows=len(trials) > max_trial_num_to_show,
         )
         if trial_data_per_status:
             trial_data.append(trial_data_per_status)
@@ -506,10 +503,10 @@ class ProgressReporter:
         if self._verbosity < self._heartbeat_threshold:
             return
         if force or time.time() - self._last_heartbeat_time > self._heartbeat_freq:
-            self._print_heartbeat(trials, *args, force=force)
+            self._print_heartbeat(trials, *args)
             self._last_heartbeat_time = time.time()
 
-    def _print_heartbeat(self, trials, *args, force: bool = False):
+    def _print_heartbeat(self, trials, *args):
         raise NotImplementedError
 
 
@@ -562,9 +559,7 @@ class TuneReporterBase(ProgressReporter):
         return f"Trial status: {result}"
 
     # TODO: Return a more structured type to share code with Jupyter flow.
-    def _get_heartbeat(
-        self, trials, *sys_args, force_full_output: bool = False
-    ) -> Tuple[List[str], _TrialTableData]:
+    def _get_heartbeat(self, trials, *sys_args) -> Tuple[List[str], _TrialTableData]:
         result = list()
         # Trial status: 1 RUNNING | 7 PENDING
         result.append(self._get_overall_trial_progress_str(trials))
@@ -585,12 +580,10 @@ class TuneReporterBase(ProgressReporter):
 
         all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
 
-        trial_table_data = _get_trial_table_data(
-            trials, all_metrics, all_rows=force_full_output
-        )
+        trial_table_data = _get_trial_table_data(trials, all_metrics)
         return result, trial_table_data
 
-    def _print_heartbeat(self, trials, *sys_args, force: bool = False):
+    def _print_heartbeat(self, trials, *sys_args):
         raise NotImplementedError
 
 
@@ -631,34 +624,28 @@ class TuneTerminalReporter(TuneReporterBase):
             **kwargs,
         )
 
-    def _print_heartbeat(self, trials, *sys_args, force: bool = False):
-        if self._verbosity < self._heartbeat_threshold and not force:
+    def _print_heartbeat(self, trials, *sys_args):
+        if self._verbosity < self._heartbeat_threshold:
             return
-        heartbeat_strs, table_data = self._get_heartbeat(
-            trials, *sys_args, force_full_output=force
-        )
-
+        heartbeat_strs, table_data = self._get_heartbeat(trials, *sys_args)
         for s in heartbeat_strs:
             print(s)
         # now print the table using Tabulate
-        more_infos = []
-        all_data = []
+        all_infos = []
         header = table_data.header
-        for sub_table in table_data.data:
-            all_data.extend(sub_table.trial_infos)
-            if sub_table.more_info:
-                more_infos.append(sub_table.more_info)
-
+        table_data_list = table_data.data
+        for table in table_data_list:
+            all_infos.extend(table.trial_infos)
+            if table.more_info:
+                all_infos.append(table.more_info)
         print(
             tabulate(
-                all_data,
+                all_infos,
                 headers=header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
         )
-        if more_infos:
-            print(", ".join(more_infos))
         print()
 
 
@@ -723,7 +710,7 @@ class TuneRichReporter(TuneReporterBase):
 
         self._live.update(table)
 
-    def _print_heartbeat(self, trials, *args, force: bool = False):
+    def _print_heartbeat(self, trials, *args):
         if not rich:
             return
         if not self._live:
@@ -732,9 +719,7 @@ class TuneRichReporter(TuneReporterBase):
                 "be called without `with_live` context manager."
             )
             return
-        heartbeat_strs, table_data = self._get_heartbeat(
-            trials, *args, force_full_output=force
-        )
+        heartbeat_strs, table_data = self._get_heartbeat(trials, *args)
         self._render_layout(heartbeat_strs, table_data)
 
 
@@ -742,7 +727,7 @@ class TrainReporter(ProgressReporter):
     # the minimal verbosity threshold at which heartbeat starts getting printed.
     _heartbeat_threshold = AirVerbosity.VERBOSE
 
-    def _get_heartbeat(self, trials: List[Trial], force_full_output: bool = False):
+    def _get_heartbeat(self, trials: List[Trial]):
         # Training on iteration 1. Current time: 2023-03-22 15:29:25 (running for 00:00:03.24)  # noqa
         if len(trials) == 0:
             return
@@ -759,8 +744,8 @@ class TrainReporter(ProgressReporter):
             [f"Training on iteration {iter_num}.", self._time_heartbeat_str]
         )
 
-    def _print_heartbeat(self, trials, *args, force: bool = False):
-        print(self._get_heartbeat(trials, force_full_output=force))
+    def _print_heartbeat(self, trials, *args):
+        print(self._get_heartbeat(trials))
 
 
 # These keys are blacklisted for printing out training/tuning intermediate/final result!

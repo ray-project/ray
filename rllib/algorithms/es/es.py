@@ -357,10 +357,6 @@ class Worker(FaultAwareApply):
             eval_lengths=eval_lengths,
         )
 
-    def stop(self):
-        """Releases all resources used by this RolloutWorker."""
-        pass
-
 
 def get_policy_class(config: AlgorithmConfig):
     if config.framework_str == "torch":

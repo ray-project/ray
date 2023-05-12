@@ -72,13 +72,10 @@ describe("RecentJobsCard", () => {
     expect(link).toHaveAttribute("href");
   });
 
-  it("link is active for driverless job(only have submission_id)", async () => {
+  it("disables link when job_id is null", async () => {
     render(<RecentJobsCard />, { wrapper: MemoryRouter });
 
     await screen.findByText("01000000");
-
-    expect(
-      screen.queryByRole("link", { name: "raysubmit_23456" }),
-    ).toBeVisible();
+    expect(screen.queryByRole("link", { name: "raysubmit_23456" })).toBeNull();
   });
 });

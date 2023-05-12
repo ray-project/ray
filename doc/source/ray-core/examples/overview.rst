@@ -7,57 +7,60 @@ Ray Tutorials and Examples
 Machine Learning Examples
 -------------------------
 
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-    .. grid-item-card::
-        :img-top: /images/timeseries.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    ---
+    :img-top: /images/timeseries.png
 
-        .. button-ref:: automl_for_time_series
+    +++
+    .. link-button:: automl_for_time_series
+        :type: ref
+        :text: Build Simple AutoML for Time Series Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
 
-            Build Simple AutoML for Time Series Using Ray
+    +++
+    .. link-button:: batch_prediction
+        :type: ref
+        :text: Build Batch Prediction Using Ray
+        :classes: btn-link btn-block stretched-link
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
 
-        .. button-ref:: batch_prediction
+    +++
+    .. link-button:: batch_training
+        :type: ref
+        :text: Build Batch Training Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: images/param_actor.png
 
-            Build Batch Prediction Using Ray
+    +++
+    .. link-button:: plot_parameter_server
+        :type: ref
+        :text: Build a Simple Parameter Server Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: images/hyperparameter.png
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    +++
+    .. link-button:: plot_hyperparameter
+        :type: ref
+        :text: Simple Parallel Model Selection
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
 
-        .. button-ref:: batch_training
-
-            Build Batch Training Using Ray
-
-    .. grid-item-card::
-        :img-top: images/param_actor.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_parameter_server
-
-            Build a Simple Parameter Server Using Ray
-
-    .. grid-item-card::
-        :img-top: images/hyperparameter.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_hyperparameter
-
-            Simple Parallel Model Selection
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_example-lm
-
-            Fault-Tolerant Fairseq Training
+    +++
+    .. link-button:: plot_example-lm
+        :type: ref
+        :text: Fault-Tolerant Fairseq Training
+        :classes: btn-link btn-block stretched-link
 
 
 Reinforcement Learning Examples
@@ -67,54 +70,61 @@ These are simple examples that show you how to leverage Ray Core.
 For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
 
 
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-    .. grid-item-card::
-        :img-top:  images/pong.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    ---
+    :img-top: images/pong.png
 
-        .. button-ref:: plot_pong_example
+    +++
+    .. link-button:: plot_pong_example
+        :type: ref
+        :text: Learning to Play Pong
+        :classes: btn-link btn-block stretched-link
 
-            Learning to Play Pong
+    ---
+    :img-top: images/a3c.png
 
-    .. grid-item-card::
-        :img-top: images/a3c.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: plot_example-a3c
-
-            Asynchronous Advantage Actor Critic (A3C)
+    +++
+    .. link-button:: plot_example-a3c
+        :type: ref
+        :text: Asynchronous Advantage Actor Critic (A3C)
+        :classes: btn-link btn-block stretched-link
 
 
 Basic Examples
 --------------
 
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
 
-        .. button-ref:: gentle_walkthrough
+    +++
+    .. link-button:: gentle_walkthrough
+        :type: ref
+        :text: A Gentle Introduction to Ray Core by Example
+        :classes: btn-link btn-block stretched-link
 
-            A Gentle Introduction to Ray Core by Example
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
 
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    +++
+    .. link-button:: highly_parallel
+        :type: ref
+        :text: Using Ray for Highly Parallelizable Tasks
+        :classes: btn-link btn-block stretched-link
 
-        .. button-ref:: highly_parallel
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
 
-            Using Ray for Highly Parallelizable Tasks
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: map_reduce
-
-            Running a Simple MapReduce Example with Ray Core
+    +++
+    .. link-button:: map_reduce
+        :type: ref
+        :text: Running a Simple MapReduce Example with Ray Core
+        :classes: btn-link btn-block stretched-link

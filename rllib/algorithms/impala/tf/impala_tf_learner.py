@@ -1,9 +1,11 @@
-from typing import Mapping
+from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
+from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -19,10 +21,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
-        target_policy_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
+        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
         values = fwd_out[SampleBatch.VF_PREDS]
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
@@ -95,8 +94,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         total_loss = (
             pi_loss
             + vf_loss * self.hps.vf_loss_coeff
-            + mean_entropy_loss
-            * (self.entropy_coeff_scheduler.get_current_value(module_id))
+            + mean_entropy_loss * self.hps.entropy_coeff
         )
         return {
             self.TOTAL_LOSS_KEY: total_loss,
@@ -104,3 +102,21 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             "vf_loss": mean_vf_loss,
             ENTROPY_KEY: -mean_entropy_loss,
         }
+
+    @override(ImpalaLearner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, timestep: int
+    ) -> Dict[str, Any]:
+        results = super().additional_update_per_module(
+            module_id,
+            timestep=timestep,
+        )
+
+        # Update entropy coefficient.
+        value = self.hps.entropy_coeff
+        if self.hps.entropy_coeff_schedule is not None:
+            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
+            self.curr_entropy_coeffs_per_module[module_id].assign(value)
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
+
+        return results

@@ -29,7 +29,7 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
-from ray.data.dataset import DataBatch, Dataset
+from ray.data.datastream import DataBatch, Datastream
 from ray.util.annotations import PublicAPI
 
 
@@ -117,33 +117,34 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 @PublicAPI
 class GroupedData:
-    """Represents a grouped dataset created by calling ``Dataset.groupby()``.
+    """Represents a grouped datastream created by calling ``Datastream.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset, key: str):
-        """Construct a dataset grouped by key (internal API).
+    def __init__(self, datastream: Datastream, key: str):
+        """Construct a datastream grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
-        Use the ``Dataset.groupby()`` method to construct one.
+        Use the ``Datastream.groupby()`` method to construct one.
         """
-        self._dataset = dataset
+        self._datastream = datastream
         self._key = key
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
+            f"{self.__class__.__name__}(datastream={self._datastream}, "
+            f"key={self._key!r})"
         )
 
-    def aggregate(self, *aggs: AggregateFn) -> Dataset:
+    def aggregate(self, *aggs: AggregateFn) -> Datastream:
         """Implements an accumulator-based aggregation.
 
         Args:
             aggs: Aggregations to do.
 
         Returns:
-            The output is an dataset of ``n + 1`` columns where the first column
+            The output is an datastream of ``n + 1`` columns where the first column
             is the groupby key and the second through ``n + 1`` columns are the
             results of the aggregations.
             If groupby key is ``None`` then the key part of return is omitted.
@@ -155,8 +156,8 @@ class GroupedData:
             if len(aggs) == 0:
                 raise ValueError("Aggregate requires at least one aggregation")
             for agg in aggs:
-                agg._validate(self._dataset.schema(fetch_if_missing=True))
-            # Handle empty dataset.
+                agg._validate(self._datastream.schema(fetch_if_missing=True))
+            # Handle empty datastream.
             if blocks.initial_num_blocks() == 0:
                 return blocks, stage_info
 
@@ -189,7 +190,7 @@ class GroupedData:
                 ctx=task_ctx,
             )
 
-        plan = self._dataset._plan.with_stage(
+        plan = self._datastream._plan.with_stage(
             AllToAllStage(
                 "Aggregate",
                 None,
@@ -198,7 +199,7 @@ class GroupedData:
             )
         )
 
-        logical_plan = self._dataset._logical_plan
+        logical_plan = self._datastream._logical_plan
         if logical_plan is not None:
             op = Aggregate(
                 logical_plan.dag,
@@ -206,10 +207,10 @@ class GroupedData:
                 aggs=aggs,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(
+        return Datastream(
             plan,
-            self._dataset._epoch,
-            self._dataset._lazy,
+            self._datastream._epoch,
+            self._datastream._lazy,
             logical_plan,
         )
 
@@ -221,14 +222,14 @@ class GroupedData:
         *args,
         **kwargs,
     ):
-        """Helper for aggregating on a particular subset of the dataset.
+        """Helper for aggregating on a particular subset of the datastream.
 
         This validates the `on` argument, and converts a list of column names
         to a multi-aggregation. A null `on` results in a
-        multi-aggregation on all columns for an Arrow Dataset, and a single
-        aggregation on the entire row for a simple Dataset.
+        multi-aggregation on all columns for an Arrow Datastream, and a single
+        aggregation on the entire row for a simple Datastream.
         """
-        aggs = self._dataset._build_multicolumn_aggs(
+        aggs = self._datastream._build_multicolumn_aggs(
             agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
@@ -240,8 +241,8 @@ class GroupedData:
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         **ray_remote_args,
-    ) -> "Dataset":
-        """Apply the given function to each group of records of this dataset.
+    ) -> "Datastream":
+        """Apply the given function to each group of records of this datastream.
 
         While map_groups() is very flexible, note that it comes with downsides:
             * It may be slower than using more specific methods such as min(), max().
@@ -301,9 +302,9 @@ class GroupedData:
         # Note that sort() will ensure that records of the same key partitioned
         # into the same block.
         if self._key is not None:
-            sorted_ds = self._dataset.sort(self._key)
+            sorted_ds = self._datastream.sort(self._key)
         else:
-            sorted_ds = self._dataset.repartition(1)
+            sorted_ds = self._datastream.repartition(1)
 
         # Returns the group boundaries.
         def get_key_boundaries(block_accessor: BlockAccessor):
@@ -353,7 +354,7 @@ class GroupedData:
             **ray_remote_args,
         )
 
-    def count(self) -> Dataset:
+    def count(self) -> Datastream:
         """Compute count aggregation.
 
         Examples:
@@ -363,7 +364,7 @@ class GroupedData:
             ...     "A").count() # doctest: +SKIP
 
         Returns:
-            A dataset of ``[k, v]`` columns where ``k`` is the groupby key and
+            A datastream of ``[k, v]`` columns where ``k`` is the groupby key and
             ``v`` is the number of rows with that key.
             If groupby key is ``None`` then the key part of return is omitted.
         """
@@ -371,7 +372,7 @@ class GroupedData:
 
     def sum(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
-    ) -> Dataset:
+    ) -> Datastream:
         r"""Compute grouped sum aggregation.
 
         Examples:
@@ -401,10 +402,10 @@ class GroupedData:
 
             For different values of ``on``, the return varies:
 
-            - ``on=None``: a dataset containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise sum column for each original column
-              in the dataset.
-            - ``on=["col_1", ..., "col_n"]``: a dataset of ``n + 1``
+              in the datastream.
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -414,7 +415,7 @@ class GroupedData:
 
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
-    ) -> Dataset:
+    ) -> Datastream:
         """Compute grouped min aggregation.
 
         Examples:
@@ -439,10 +440,10 @@ class GroupedData:
 
             For different values of ``on``, the return varies:
 
-            - ``on=None``: a dataset containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise min column for each original column in
-              the dataset.
-            - ``on=["col_1", ..., "col_n"]``: a dataset of ``n + 1``
+              the datastream.
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -452,7 +453,7 @@ class GroupedData:
 
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
-    ) -> Dataset:
+    ) -> Datastream:
         """Compute grouped max aggregation.
 
         Examples:
@@ -477,10 +478,10 @@ class GroupedData:
 
             For different values of ``on``, the return varies:
 
-            - ``on=None``: a dataset containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise max column for each original column in
-              the dataset.
-            - ``on=["col_1", ..., "col_n"]``: a dataset of ``n + 1``
+              the datastream.
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -490,7 +491,7 @@ class GroupedData:
 
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
-    ) -> Dataset:
+    ) -> Datastream:
         """Compute grouped mean aggregation.
 
         Examples:
@@ -515,10 +516,10 @@ class GroupedData:
 
             For different values of ``on``, the return varies:
 
-            - ``on=None``: a dataset containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise mean column for each original column
-              in the dataset.
-            - ``on=["col_1", ..., "col_n"]``: a dataset of ``n + 1``
+              in the datastream.
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
@@ -531,7 +532,7 @@ class GroupedData:
         on: Union[str, List[str]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
-    ) -> Dataset:
+    ) -> Datastream:
         """Compute grouped standard deviation aggregation.
 
         Examples:
@@ -566,10 +567,10 @@ class GroupedData:
 
             For different values of ``on``, the return varies:
 
-            - ``on=None``: a dataset containing a groupby key column,
+            - ``on=None``: a datastream containing a groupby key column,
               ``"k"``, and a column-wise std column for each original column in
-              the dataset.
-            - ``on=["col_1", ..., "col_n"]``: a dataset of ``n + 1``
+              the datastream.
+            - ``on=["col_1", ..., "col_n"]``: a datastream of ``n + 1``
               columns where the first column is the groupby key and the second
               through ``n + 1`` columns are the results of the aggregations.
 
