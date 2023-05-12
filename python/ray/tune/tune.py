@@ -24,6 +24,7 @@ from typing import (
 import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -192,7 +193,7 @@ def _setup_signal_catching() -> threading.Event:
             "to skip. "
         )
         experiment_interrupted_event.set()
-        # Restore original signal handler to react to future SIGINT signals
+        # Restore original signal handler to react to future SIGINT signals.
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
@@ -564,6 +565,12 @@ def run(
         )
 
     ray._private.usage.usage_lib.record_library_usage("tune")
+
+    # Track environment variable usage here will also catch:
+    # 1.) Tuner.fit() usage
+    # 2.) Trainer.fit() usage
+    # 3.) Ray client usage (env variables are inherited by the Ray runtime env)
+    air_usage.tag_ray_air_env_vars()
 
     all_start = time.time()
 

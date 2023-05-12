@@ -15,20 +15,14 @@ describe("JobDriverLogs", () => {
       headers: {
         "content-type": "text/plain",
       },
-      data: "log line\nthis is a line\nHi\n10\nfoo",
+      data: "1log line\nthis is a line\nHi\n10\nfoo",
     });
 
     render(
       <JobDriverLogs
         job={{
-          driver_agent_http_address: "http://127.0.0.1:52365",
-          driver_info: {
-            id: "01000000",
-            node_id: "node-id-0",
-            node_ip_address: "127.0.0.1",
-            pid: "1234",
-          },
           submission_id: "raysubmit_12345",
+          driver_node_id: "node-id-0",
         }}
       />,
     );
@@ -41,7 +35,7 @@ describe("JobDriverLogs", () => {
     expect(screen.getByText(/foo/)).toBeVisible();
 
     expect(mockedGet).toBeCalledWith(
-      "log_proxy?url=http%3A%2F%2F127.0.0.1%3A52365%2Flogs%2Fjob-driver-raysubmit_12345.log",
+      "api/v0/logs/file?node_id=node-id-0&filename=job-driver-raysubmit_12345.log&lines=-1",
     );
   });
 });
