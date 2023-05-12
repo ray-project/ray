@@ -60,12 +60,14 @@ class MinimalClusterManager(ClusterManager):
                 logger.info("Cluster env not found. Creating new one.")
                 try:
                     result = self.sdk.create_byod_cluster_environment(
-                        name=self.cluster_env_name,
-                        config_json={
-                            "docker_image": "anyscale/ray:latest",
-                            "ray_version": "latest",
-                            "env_vars": {},
-                        },
+                        dict(
+                            name=self.cluster_env_name,
+                            config_json=dict(
+                                docker_image="anyscale/ray:latest",
+                                ray_version="latest",
+                                env_vars={},
+                            ),
+                        )
                     )
                     #                    result = self.sdk.create_cluster_environment(
                     #                        dict(
