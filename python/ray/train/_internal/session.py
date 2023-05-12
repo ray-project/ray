@@ -344,10 +344,15 @@ class _TrainSession:
         )
         if upload_from_workers:
             self._create_checkpoint_file_list(checkpoint)
+            logger.info(
+                f"Uploading checkpoint files from worker rank {self.world_rank} "
+                f"to cloud URI {self.checkpoint_uri}."
+            )
             # We want to upload the files directly to cloud storage,
             # so that they won't need to be shipped to the driver node
             # via object store.
             checkpoint.to_uri(self.checkpoint_uri)
+            logger.info("Done uploading checkpoint files.")
             self._remove_uploaded_checkpoint_files(checkpoint)
 
         # Update session checkpoint to latest checkpoint.
