@@ -8,6 +8,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
     # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
     # package. We don't want that, so we exclude it from the list of input files.
     files = native.glob(include=files, exclude=["__init__.py"])
+    print(files)
 
     if gpu:
         name += "[gpu]"
@@ -21,6 +22,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
         args = [
             "--doctest-modules",
             "--capture=no",
+            "--verbose",
             "-c=$(location //bazel:conftest.py)",
         ] + args + ["$(location :%s)" % file for file in files],
         data = ["//bazel:conftest.py"] + files + data,
