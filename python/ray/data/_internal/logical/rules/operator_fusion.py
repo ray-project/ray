@@ -1,7 +1,4 @@
 from typing import Iterator, List, Tuple
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 
 from ray.data._internal.logical.operators.all_to_all_operator import Repartition
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -220,16 +217,6 @@ class OperatorFusionRule(Rule):
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        # if not isinstance(up_op, ActorPoolMapOperator) and not isinstance(
-        #     down_op, ActorPoolMapOperator
-        # ):
-        #     fused_init_fn = None
-        # else:
-        #     if isinstance(up_op, ActorPoolMapOperator):
-        #         fused_init_fn = up_op._init_fn()
-        #     elif isinstance(down_op, ActorPoolMapOperator):
-        #         fused_init_fn = down_op._init_fn()
-
         def fused_map_transform_fn(
             blocks: Iterator[Block], ctx: TaskContext
         ) -> Iterator[Block]:
@@ -252,7 +239,6 @@ class OperatorFusionRule(Rule):
         op = MapOperator.create(
             fused_map_transform_fn,
             input_op,
-            # init_fn=fused_init_fn,  # TODO(Scott): fuse init fn
             name=name,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,
