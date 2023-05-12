@@ -637,6 +637,11 @@ async def test_logs_manager_stream_log(logs_manager):
     options = GetLogOptions(
         timeout=30, media_type="stream", lines=10, interval=0.5, node_id="1", pid="10"
     )
+    filename, node_id = await logs_manager.resolve_filename(
+        timeout=30, node_id="1", pid=10
+    )
+    options.filename = filename
+    options.node_id = node_id
 
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
     i = 0
@@ -703,7 +708,41 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
 # Integration tests
 
 
-def test_logs_list(ray_start_with_dashboard):
+def test_logs_get_http(ray_start_with_dashboard):
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    import urllib
+
+    @ray.remote
+    def f():
+        print("hi there")
+
+    t = f.remote()
+    ray.get(t)
+
+    def verify_basic():
+        options = GetLogOptions(
+            timeout=30,
+            media_type="file",
+            node_id=node_id,
+            task_id=t.task_id.hex(),
+        )
+        response = requests.get(
+            webui_url + f"/api/v0/logs/file?"
+            f"{urllib.parse.urlencode(options.dict())}",
+            stream=True,
+        )
+
+        assert response.status_code == 200
+
+
+def test_logs_list_http(ray_start_with_dashboard):
     assert (
         wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
         is True
@@ -826,6 +865,39 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     actor = Actor.remote()
     ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
+    # Test streaming w/o reporting server stream error
+    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+    file = "test.log"
+    binary_file = os.path.join(log_dir, file)
+    with open(binary_file, "wb") as f:
+        f.write(test_log_text.format("123456").encode("utf-8"))
+
+    stream_response = requests.get(
+        webui_url
+        + "/api/v0/logs/file?&lines=-1"
+        + "&filename=test.log"
+        + f"&node_id={node_id}"
+        + "&report_server_stream_error=False",
+        stream=True,
+    )
+    assert stream_response.status_code == 200, stream_response.text
+    stream_iterator = stream_response.iter_content(chunk_size=None)
+    actual_output = next(stream_iterator).decode("utf-8")
+    assert test_log_text.format("123456") == actual_output
+    del stream_response
+
+    # Test resolve file fails returns error
+    stream_response = requests.get(
+        webui_url
+        + "/api/v0/logs/file?&lines=-1"
+        + "&pid=9999999"
+        + f"&node_id={node_id}",
+        stream=True,
+    )
+    assert stream_response.status_code == 500
+    assert "Failed to resolve filename" in stream_response.reason
+    del stream_response
+
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
@@ -834,7 +906,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         stream=True,
     )
     if stream_response.status_code != 200:
-        raise ValueError(stream_response.content.decode("utf-8"))
+        raise ValueError(stream_response.reason)
     stream_iterator = stream_response.iter_content(chunk_size=None)
     actual_output = next(stream_iterator).decode("utf-8")
     assert "actor_name:Actor\n" in actual_output

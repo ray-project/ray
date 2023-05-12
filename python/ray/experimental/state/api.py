@@ -1207,12 +1207,9 @@ def get_log(
         timeout=timeout,
         suffix=suffix,
         attempt_number=attempt_number,
+        report_server_stream_error=True,
     )
-    options_dict = {}
-    for field in fields(options):
-        option_val = getattr(options, field.name)
-        if option_val is not None:
-            options_dict[field.name] = option_val
+    options_dict = options.dict()
 
     with requests.get(
         f"{api_server_url}/api/v0/logs/{media_type}?"
@@ -1220,7 +1217,7 @@ def get_log(
         stream=True,
     ) as r:
         if r.status_code != 200:
-            raise RayStateApiException(r.text)
+            raise RayStateApiException(r.reason)
         for bytes in r.iter_content(chunk_size=None):
             bytes = bytearray(bytes)
             # First byte 1 means success.

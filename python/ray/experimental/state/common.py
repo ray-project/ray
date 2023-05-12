@@ -4,7 +4,7 @@ import sys
 from abc import ABC
 from dataclasses import field, fields
 from enum import Enum, unique
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
@@ -292,6 +292,20 @@ class GetLogOptions:
     # The suffix of the log file if file resolution not through filename directly.
     # Default to "out".
     suffix: str = "out"
+    # If streaming error will be reported. When true, a "1/0" bit will be added to
+    # each streaming chunk to indicate if streaming is successful. When `0` bit
+    # is prepended to the chunk, the streamed data will contain error info on the
+    # server side.
+    report_server_stream_error: bool = False
+
+    def dict(self) -> Dict[str, Any]:
+        """Return dict of non None value fields."""
+        options_dict = {}
+        for f in fields(self):
+            option_val = getattr(self, f.name)
+            if option_val is not None:
+                options_dict[f.name] = option_val
+        return options_dict
 
     def __post_init__(self):
         if self.pid:

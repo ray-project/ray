@@ -411,37 +411,63 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             interval=req.query.get("interval", None),
             suffix=req.query.get("suffix", "out"),
             attempt_number=req.query.get("attempt_number", 0),
+            report_server_stream_error=req.query.get(
+                "report_server_stream_error", "False"
+            )
+            == "True",
         )
 
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
-        await response.prepare(req)
+        try:
+            node_id = options.node_id or self._log_api.ip_to_node_id(options.node_ip)
+            filename, node_id = await self._log_api.resolve_filename(
+                node_id=node_id,
+                log_filename=options.filename,
+                actor_id=options.actor_id,
+                task_id=options.task_id,
+                attempt_number=options.attempt_number,
+                pid=options.pid,
+                get_actor_fn=DataSource.actors.get,
+                timeout=options.timeout,
+                suffix=options.suffix,
+            )
+            options.filename = filename
+            options.node_id = node_id
+            await response.prepare(req)
+        except Exception as e:
+            response.set_status(500, f"Failed to resolve filename for {options}: {e}")
+            await response.prepare(req)
+            return response
 
         # NOTE: The first byte indicates the success / failure of individual
         # stream. If the first byte is b"1", it means the stream was successful.
         # If it is b"0", it means it is failed.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
-                logs_to_stream = bytearray(b"1")
+                logs_to_stream = bytearray()
+                if options.report_server_stream_error:
+                    logs_to_stream.extend(b"1")
                 logs_to_stream.extend(logs_in_bytes)
                 await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
-        except asyncio.CancelledError:
-            # This happens when the client side closes the connection.
-            # Fofce close the connection and do no-op.
-            response.force_close()
-            raise
         except Exception as e:
             logger.exception(e)
-            error_msg = bytearray(b"0")
-            error_msg.extend(
-                f"Closing HTTP stream due to internal server error.\n{e}".encode()
-            )
+            if options.report_server_stream_error:
+                error_msg = bytearray(b"0")
+                error_msg.extend(
+                    f"Closing HTTP stream due to internal server error.\n{e}".encode()
+                )
 
-            await response.write(bytes(error_msg))
-            await response.write_eof()
-            return response
+                await response.write(bytes(error_msg))
+                await response.write_eof()
+                return response
+            else:
+                # This could happen when the client side closes the connection.
+                # Force close the connection and do no-op.
+                response.force_close()
+                raise
 
     async def _handle_summary_api(
         self,

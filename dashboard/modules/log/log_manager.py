@@ -12,9 +12,6 @@ from ray.experimental.state.common import (
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
-# TODO(sang): Remove the usage of this class.
-from ray.dashboard.datacenter import DataSource
-
 
 logger = logging.getLogger(__name__)
 
@@ -73,24 +70,11 @@ class LogsManager:
         Return:
             Async generator of streamed logs in bytes.
         """
-        node_id = options.node_id or self.ip_to_node_id(options.node_ip)
-
-        log_file_name, node_id = await self.resolve_filename(
-            node_id=node_id,
-            log_filename=options.filename,
-            actor_id=options.actor_id,
-            task_id=options.task_id,
-            attempt_number=options.attempt_number,
-            pid=options.pid,
-            get_actor_fn=DataSource.actors.get,
-            timeout=options.timeout,
-            suffix=options.suffix,
-        )
 
         keep_alive = options.media_type == "stream"
         stream = await self.client.stream_log(
-            node_id=node_id,
-            log_file_name=log_file_name,
+            node_id=options.node_id,
+            log_file_name=options.filename,
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
