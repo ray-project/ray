@@ -52,7 +52,17 @@ def generate_sort_fn(
         num_outputs = num_mappers
 
         # Sample boundaries for sort key.
+        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        map_bar = None
+        bar_name = "Sort Sample"
+        if sub_progress_bar_dict is not None:
+            assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+            map_bar = sub_progress_bar_dict[bar_name]
+
         boundaries = SortTaskSpec.sample_boundaries(blocks, key, num_outputs)
+        if map_bar is not None:
+            map_bar.update(num_outputs)
+
         if descending:
             boundaries.reverse()
         sort_spec = SortTaskSpec(boundaries=boundaries, key=key, descending=descending)
@@ -62,7 +72,7 @@ def generate_sort_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(sort_spec)
 
-        return scheduler.execute(refs, num_outputs)
+        return scheduler.execute(refs, num_outputs, ctx)
 
     # NOTE: use partial function to pass parameters to avoid error like
     # "UnboundLocalError: local variable ... referenced before assignment",

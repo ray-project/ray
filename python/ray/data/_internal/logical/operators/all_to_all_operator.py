@@ -77,11 +77,15 @@ class Repartition(AbstractAllToAll):
         num_outputs: int,
         shuffle: bool,
     ):
+        if shuffle:
+            sub_progress_bar_names = ["Shuffle Map", "Shuffle Reduce"]
+        else:
+            sub_progress_bar_names = ["Split Repartition"]
         super().__init__(
             "Repartition",
             input_op,
             num_outputs=num_outputs,
-            sub_progress_bar_names=["Shuffle Map", "Shuffle Reduce"],
+            sub_progress_bar_names=sub_progress_bar_names,
         )
         self._shuffle = shuffle
 

@@ -365,14 +365,12 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        ctx: TaskContext,  # TODO(Scott): typing
+        ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
     ) -> Tuple[List[RefBundle], StatsDict]:
         logger.info("Using experimental push-based shuffle.")
-        assert ctx.sub_progress_bar_dict
-        sub_progress_bar_dict = ctx.sub_progress_bar_dict
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -431,6 +429,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
 
+        sub_progress_bar_dict = ctx.sub_progress_bar_dict
         should_close_bar = True
         bar_name = "Shuffle Map"
         if sub_progress_bar_dict is not None:
