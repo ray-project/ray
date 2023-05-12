@@ -27,7 +27,7 @@ from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
+from ray.air.constants import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str

@@ -9,7 +9,7 @@ import ray.cloudpickle as cloudpickle
 
 from ray.tune.logger.logger import Logger, LoggerCallback
 from ray.tune.utils.util import SafeFallbackEncoder
-from ray.tune.result import (
+from ray.air.constants import (
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_RESULT_FILE,

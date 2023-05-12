@@ -21,7 +21,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.tune import TuneError, PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator

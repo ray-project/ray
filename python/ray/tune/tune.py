@@ -48,7 +48,7 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
+from ray.air.constants import _get_defaults_results_dir
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (

@@ -11,7 +11,7 @@ import numpy as np
 from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.search.sample import Domain, Float, Quantized
 from ray.tune.search import (
     UNRESOLVED_SEARCH_SPACE,

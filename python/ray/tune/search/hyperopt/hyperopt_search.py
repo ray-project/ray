@@ -8,7 +8,7 @@ from functools import partial
 # Use cloudpickle instead of pickle to make lambda funcs in HyperOpt pickleable
 from ray import cloudpickle
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Domain,

@@ -7,7 +7,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.air.constants import DEFAULT_RESULTS_DIR
 from ray.tune.search import grid_search, BasicVariantGenerator
 from ray.tune.search.variant_generator import (
     RecursiveDependencyError,

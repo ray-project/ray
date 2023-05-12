@@ -5,7 +5,7 @@ import ray
 from ray.air import CheckpointConfig
 from ray.rllib import _register_all
 
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.air.constants import TIMESTEPS_TOTAL
 from ray.tune import Trainable, TuneError
 from ray.tune import register_trainable, run_experiments
 from ray.tune.logger import LegacyLoggerCallback, Logger

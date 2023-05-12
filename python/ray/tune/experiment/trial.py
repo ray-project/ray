@@ -31,7 +31,7 @@ from ray.tune.logger import NoopLogger
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import (
+from ray.air.constants import (
     DONE,
     NODE_IP,
     PID,

@@ -19,7 +19,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointS
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
     HyperBandScheduler,

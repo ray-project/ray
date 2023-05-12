@@ -14,7 +14,7 @@ except ImportError:
     sgo = None
     Connection = None
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.search import Searcher
 
 logger = logging.getLogger(__name__)

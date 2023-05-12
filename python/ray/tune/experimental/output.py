@@ -32,7 +32,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.callback import Callback
-from ray.tune.result import (
+from ray.air.constants import (
     AUTO_RESULT_KEYS,
     EPISODE_REWARD_MEAN,
     MEAN_ACCURACY,

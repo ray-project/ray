@@ -29,7 +29,7 @@ except ImportError:
     DataFrame = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import (
+from ray.air.constants import (
     DEFAULT_METRIC,
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,

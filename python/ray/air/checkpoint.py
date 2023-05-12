@@ -853,6 +853,14 @@ class Checkpoint:
             f"You're trying to load a serialized `{serialized_cls.__name__}`, but "
             f"`{serialized_cls.__name__}` isn't compatible with `{cls.__name__}`."
         )
+    
+    @property
+    def id(self) -> int:
+        return getattr(self, CHECKPOINT_ID_ATTR)
+
+    @property
+    def iteration(self) -> int:
+        return getattr(self, CHECKPOINT_ID_ATTR) + 1
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:

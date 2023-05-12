@@ -19,7 +19,7 @@ from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
-from ray.tune.result import (
+from ray.air.constants import (
     DEFAULT_METRIC,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,

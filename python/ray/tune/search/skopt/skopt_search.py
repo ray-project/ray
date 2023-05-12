@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 from typing import Dict, List, Optional, Tuple, Union, Any
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Domain,

@@ -9,7 +9,7 @@ import requests
 
 
 from ray.tune.experiment.config_parser import _make_parser
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.air.constants import DEFAULT_RESULTS_DIR
 
 
 class FrameworkEnum(str, Enum):

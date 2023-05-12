@@ -8,7 +8,7 @@ from ray.air import session
 
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.tune.logger import LoggerCallback
-from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
+from ray.air.constants import TIMESTEPS_TOTAL, TRAINING_ITERATION
 from ray.tune.experiment import Trial
 from ray.util.annotations import PublicAPI
 

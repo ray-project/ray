@@ -21,7 +21,7 @@ from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
-from ray.tune.result import (
+from ray.air.constants import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
     DONE,

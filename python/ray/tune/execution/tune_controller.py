@@ -25,7 +25,7 @@ from ray.tune.experiment.trial import (
     _Location,
     _get_trainable_kwargs,
 )
-from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
+from ray.air.constants import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.trainable import TrainableUtil
 from ray.tune import TuneError
 from ray.tune.callback import Callback

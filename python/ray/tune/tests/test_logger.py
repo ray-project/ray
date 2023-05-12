@@ -21,7 +21,7 @@ from ray.tune.logger import (
     TBXLogger,
 )
 from ray.tune.logger.aim import AimLoggerCallback
-from ray.tune.result import (
+from ray.air.constants import (
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_PROGRESS_FILE,

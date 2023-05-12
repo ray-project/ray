@@ -126,7 +126,7 @@ from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.air.constants import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer

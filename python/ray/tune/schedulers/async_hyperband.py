@@ -5,7 +5,7 @@ import numpy as np
 import pickle
 
 from ray.tune.execution import trial_runner
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI

@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 from ray.air._internal.usage import tag_scheduler
 from ray.tune.execution import trial_runner
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.experiment import Trial
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

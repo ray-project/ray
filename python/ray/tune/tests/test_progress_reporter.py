@@ -21,7 +21,7 @@ from ray.tune.progress_reporter import (
     TuneReporterBase,
     _max_len,
 )
-from ray.tune.result import AUTO_RESULT_KEYS
+from ray.air.constants import AUTO_RESULT_KEYS
 from ray.tune.experiment.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo

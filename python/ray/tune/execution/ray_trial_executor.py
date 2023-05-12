@@ -28,7 +28,7 @@ from ray.tune.error import (
     _TuneNoNextExecutorEventError,
     _TuneStartTrialError,
 )
-from ray.tune.result import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
+from ray.air.constants import STDERR_FILE, STDOUT_FILE, TRIAL_INFO
 from ray.tune.experiment.trial import (
     Trial,
     _Location,

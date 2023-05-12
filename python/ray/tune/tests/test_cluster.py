@@ -393,7 +393,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
         storage_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    from ray.tune.result import DEFAULT_RESULTS_DIR
+    from ray.air.constants import DEFAULT_RESULTS_DIR
 
     local_dir = DEFAULT_RESULTS_DIR
 

@@ -65,7 +65,7 @@ class _TrackedCheckpoint:
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
     ):
-        from ray.tune.result import NODE_IP
+        from ray.air.constants import NODE_IP
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id

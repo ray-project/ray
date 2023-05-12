@@ -20,7 +20,7 @@ from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
-from ray.tune.result import (
+from ray.air.constants import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
     DONE,

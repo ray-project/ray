@@ -1,3 +1,6 @@
+import os
+import json
+import pandas as pd
 import warnings
 from typing import TYPE_CHECKING
 from dataclasses import dataclass
@@ -7,6 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from ray.air.checkpoint import Checkpoint
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
+from ray.air.constants import (
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+    TRAINING_ITERATION,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -48,6 +56,7 @@ class Result:
     _local_path: Optional[str] = None
     _remote_path: Optional[str] = None
     _items_to_repr = ["error", "metrics", "path", "checkpoint"]
+    _restore_required_files = [EXPR_RESULT_FILE, EXPR_PROGRESS_FILE]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -86,7 +95,7 @@ class Result:
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
-        from ray.tune.result import AUTO_RESULT_KEYS
+        from ray.air.constants import AUTO_RESULT_KEYS
 
         shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
         if self.error:
@@ -110,3 +119,70 @@ class Result:
 
     def __repr__(self) -> str:
         return self._repr(indent=0)
+
+    @staticmethod
+    def _validate_trial_dir(trial_dir: str):
+        assert os.path.exists(trial_dir), f"Trail directory {trial_dir} doesn't exists!"
+        for file in Result._restore_required_files:
+            assert file in os.listdir(trial_dir), f"{file} not found in trial folder!"
+
+    @classmethod
+    def from_path(cls, path: str) -> "Result":
+        # TODO(yunxuanx): support restoration from cloud storage
+        local_path = path
+
+        cls._validate_trial_dir(local_path)
+
+        with open(Path(local_path) / EXPR_RESULT_FILE, "r") as f:
+            json_list = [json.loads(line) for line in f if line]
+            metrics_df = pd.json_normalize(json_list, sep="/")
+
+        metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
+
+        ckpt_dirs = [
+            os.path.join(local_path, entry)
+            for entry in os.listdir(local_path)
+            if entry.startswith("checkpoint_")
+        ]
+
+        if ckpt_dirs:
+            checkpoints = [
+                Checkpoint.from_directory(ckpt_dir) for ckpt_dir in ckpt_dirs
+            ]
+
+            checkpoint_metrics = [
+                metrics_df[metrics_df[TRAINING_ITERATION] == ckpt.iteration].to_dict(
+                    "records"
+                )[0]
+                for ckpt in checkpoints
+            ]
+
+            # TODO(air-team): make metrics as a property of checkpoint
+            best_checkpoints = list(zip(checkpoints, checkpoint_metrics))
+            latest_checkpoint = max(checkpoints, key=lambda ckpt: ckpt.id)
+        else:
+            best_checkpoints = latest_checkpoint = None
+
+        result = Result(
+            metrics=metrics,
+            checkpoint=latest_checkpoint,
+            _local_path=local_path,
+            _remote_path=None,
+            metrics_dataframe=metrics_df,
+            best_checkpoints=best_checkpoints,
+            error=None,
+        )
+
+        return result
+
+    @PublicAPI(stability="alpha")
+    def get_best_checkpoint(self, metric: str, mode: str) -> Checkpoint:
+        assert self.best_checkpoints, "No checkpoint exists in the trial directory!"
+
+        assert mode in [
+            "max",
+            "min",
+        ], f'Unsupported mode: {mode}. Please choose from ["min", "max"]!'
+
+        op = max if mode == "max" else min
+        return op(self.best_checkpoints, key=lambda x: x[1][metric])[0]

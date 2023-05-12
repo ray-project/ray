@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import ray
 from ray.tune import register_trainable, run_experiments, run, choice
-from ray.tune.result import TIMESTEPS_TOTAL
+from ray.air.constants import TIMESTEPS_TOTAL
 from ray.tune.experiment import Experiment
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.experiment import Trial

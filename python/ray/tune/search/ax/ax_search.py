@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, List, Optional, Union
 
 from ray import cloudpickle
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Float,

@@ -32,7 +32,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.experiment.trial import _noop_logger_creator
-from ray.tune.result import (
+from ray.air.constants import (
     TIMESTEPS_TOTAL,
     DONE,
     HOSTNAME,

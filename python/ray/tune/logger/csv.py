@@ -5,7 +5,7 @@ import os
 from typing import TYPE_CHECKING, Dict, TextIO
 
 from ray.tune.logger.logger import Logger, LoggerCallback
-from ray.tune.result import EXPR_PROGRESS_FILE
+from ray.air.constants import EXPR_PROGRESS_FILE
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
 

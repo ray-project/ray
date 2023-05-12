@@ -3,7 +3,7 @@ import logging
 import pickle
 from typing import Dict, Optional, Type, Union, List, Sequence
 
-from ray.tune.result import DEFAULT_METRIC
+from ray.air.constants import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Domain,

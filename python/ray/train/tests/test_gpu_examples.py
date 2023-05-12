@@ -20,7 +20,7 @@ from ray.train.tests.test_tune import (
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 
 
 def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):

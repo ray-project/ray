@@ -9,7 +9,7 @@ import numpy as np
 
 import ray
 from ray.tune import run, Trainable, sample_from, ExperimentAnalysis, grid_search
-from ray.tune.result import DEBUG_METRICS
+from ray.air.constants import DEBUG_METRICS
 from ray.tune.experiment import Trial
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint

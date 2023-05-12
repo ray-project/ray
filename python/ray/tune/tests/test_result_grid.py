@@ -224,7 +224,7 @@ def test_result_repr(ray_start_2_cpus):
     result_grid = tuner.fit()
     result = result_grid[0]
 
-    from ray.tune.result import AUTO_RESULT_KEYS
+    from ray.air.constants import AUTO_RESULT_KEYS
 
     representation = result.__repr__()
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
@@ -257,7 +257,7 @@ def test_result_grid_repr():
 
     representation = result_grid.__repr__()
 
-    from ray.tune.result import AUTO_RESULT_KEYS
+    from ray.air.constants import AUTO_RESULT_KEYS
 
     assert len(result_grid) == 2
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
