@@ -246,9 +246,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
       node_manager_service_(io_service, *this),
-      agent_manager_service_handler_(
-          new DefaultAgentManagerServiceHandler(agent_manager_)),
-      agent_manager_service_(io_service, *agent_manager_service_handler_),
+      dashboard_agent_manager_service_handler_(
+          new DefaultAgentManagerServiceHandler(dashboard_agent_manager_)),
+      dashboard_agent_manager_service_(io_service,
+                                       *dashboard_agent_manager_service_handler_),
       runtime_env_agent_manager_service_handler_(
           new DefaultRuntimeEnvAgentManagerServiceHandler(runtime_env_agent_manager_)),
       runtime_env_agent_manager_service_(io_service,
@@ -376,7 +377,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
-  node_manager_server_.RegisterService(agent_manager_service_);
+  node_manager_server_.RegisterService(dashboard_agent_manager_service_);
   node_manager_server_.RegisterService(runtime_env_agent_manager_service_);
 
   if (RayConfig::instance().use_ray_syncer()) {
