@@ -134,17 +134,17 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: /data/batch_inference
+        .. button-link:: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
 
-            [Guide] Batch Prediction using Ray Data
+            [Blog] Using Ray Data to parallelize LangChain inference
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: /ray-core/examples/batch_prediction
+        .. button-ref:: /data/batch_inference
 
-            [Example] Batch Prediction using Ray Core
+            [Guide] Batch Prediction using Ray Data
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
