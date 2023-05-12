@@ -1892,8 +1892,8 @@ cdef class GcsLogSubscriber:
         }
 
     def close(self):
-        # TODO: Implement
-        pass
+        with nogil:
+            check_status(self.inner.get().Close())
 
 
 cdef class CoreWorker:

@@ -308,7 +308,7 @@ PythonGcsSubscriber::PythonGcsSubscriber(
     rpc::ChannelType channel_type,
     const std::string& subscriber_id,
     const std::string& worker_id
-  ) : channel_type_(channel_type), subscriber_id_(subscriber_id), worker_id_(worker_id) {
+  ) : channel_type_(channel_type), subscriber_id_(subscriber_id), worker_id_(worker_id), closed_(false) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   RAY_CHECK(address.size() == 2);
@@ -319,6 +319,12 @@ PythonGcsSubscriber::PythonGcsSubscriber(
 }
 
 Status PythonGcsSubscriber::Connect() {
+  absl::MutexLock lock(&mu_);
+
+  if (closed_) {
+    return Status::OK();
+  }
+
   auto arguments = PythonGrpcChannelArguments();
   channel_ = rpc::BuildChannel(gcs_address_, gcs_port_, arguments);
   pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
@@ -327,6 +333,10 @@ Status PythonGcsSubscriber::Connect() {
 
 Status PythonGcsSubscriber::Subscribe() {
   absl::MutexLock lock(&mu_);
+
+  if (closed_) {
+    return Status::OK();
+  }
 
   grpc::ClientContext context;
 
@@ -345,6 +355,10 @@ Status PythonGcsSubscriber::Subscribe() {
 
 Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
   absl::MutexLock lock(&mu_);
+
+  if (closed_) {
+    return Status::OK();
+  }
 
   grpc::ClientContext context;
 
@@ -388,6 +402,26 @@ Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
   RAY_RETURN_NOT_OK(DoPoll(&message));
   *key_id = message.key_id();
   *data = message.log_batch_message();
+  return Status::OK();
+}
+
+Status PythonGcsSubscriber::Close() {
+  absl::MutexLock lock(&mu_);
+
+  grpc::ClientContext context;
+
+  rpc::GcsSubscriberCommandBatchRequest request;
+  request.set_subscriber_id(subscriber_id_);
+  request.set_sender_id(worker_id_);
+  auto *cmd = request.add_commands();
+  cmd->set_channel_type(channel_type_);
+  cmd->mutable_unsubscribe_message();
+
+  rpc::GcsSubscriberCommandBatchReply reply;
+  grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+
+  closed_ = true;
+
   return Status::OK();
 }
 

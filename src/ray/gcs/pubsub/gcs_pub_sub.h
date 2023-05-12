@@ -197,6 +197,9 @@ class RAY_EXPORT PythonGcsSubscriber {
   /// Polls for new function key messages.
   Status PollFunctionKey(std::string* key_id, rpc::PythonFunction* data);
 
+  /// Closes the subscriber and its active subscription.
+  Status Close();
+
  private:
   Status DoPoll(rpc::PubMessage* message);
 
@@ -212,6 +215,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   std::string worker_id_;
   int64_t max_processed_sequence_id_;
   std::deque<rpc::PubMessage> queue_;
+  bool closed_;
 };
 
 /// Construct the arguments for synchronous gRPC clients

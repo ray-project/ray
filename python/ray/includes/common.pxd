@@ -373,6 +373,8 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus PollLogs(c_string* key_id, CLogBatch* data)
 
+        CRayStatus Close()
+
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
     c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
 
