@@ -379,6 +379,7 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
+        RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const

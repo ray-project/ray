@@ -384,10 +384,10 @@ Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* 
 }
 
 Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
-  // rpc::PubMessage message;
-  // RAY_RETURN_NOT_OK(DoPoll(&message));
-  // *key_id = message.key_id();
-  // *data = message.log_batch_message();
+  rpc::PubMessage message;
+  RAY_RETURN_NOT_OK(DoPoll(&message));
+  *key_id = message.key_id();
+  *data = message.log_batch_message();
   return Status::OK();
 }
 

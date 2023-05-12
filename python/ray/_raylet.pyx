@@ -98,6 +98,7 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_STRICT_SPREAD,
     CChannelType,
     RAY_ERROR_INFO_CHANNEL,
+    RAY_LOG_CHANNEL,
     PythonGetLogBatchLines,
 )
 from ray.includes.unique_ids cimport (
@@ -1857,7 +1858,7 @@ cdef class GcsLogSubscriber:
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        self.inner.reset(new CPythonGcsSubscriber(address, RAY_ERROR_INFO_CHANNEL, subscriber_id, c_worker_id))
+        self.inner.reset(new CPythonGcsSubscriber(address, RAY_LOG_CHANNEL, subscriber_id, c_worker_id))
         check_status(self.inner.get().Connect())
 
     def subscribe(self):
@@ -1878,16 +1879,16 @@ cdef class GcsLogSubscriber:
 
         log_lines = []
         for c_log_line in c_log_lines:
-            log_lines.append(c_log_line)
+            log_lines.append(c_log_line.decode())
 
         return {
-            "ip": log_batch.ip(),
-            "pid": log_batch.pid(),
-            "job": log_batch.job_id(),
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
             "is_err": log_batch.is_error(),
             "lines": log_lines,
-            "actor_name": log_batch.actor_name(),
-            "task_name": log_batch.task_name(),
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
         }
 
     def close(self):

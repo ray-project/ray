@@ -60,7 +60,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = ray._private.gcs_pubsub.GcsLogSubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
