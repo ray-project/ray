@@ -788,6 +788,43 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
 # Integration tests
 
 
+def test_task_log_err_empty(ray_start_with_dashboard):
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    TEST_LOG = "task-log\n"
+
+    @ray.remote
+    def f():
+        import sys
+
+        print(TEST_LOG, file=sys.stdout, end="")
+
+    t = f.remote()
+    task_id = t.task_id().hex()
+    ray.get(t)
+
+    def verify():
+        response = requests.get(
+            webui_url + f"/api/v0/logs/file?task_id={task_id}&lines=-1"
+        )
+        assert response.status_code == 200, response.reason
+        assert response.content.decode() == f"1{TEST_LOG}"
+
+        response = requests.get(
+            webui_url + f"/api/v0/logs/file?task_id={task_id}&suffix=err&lines=-1"
+        )
+        assert response.status_code == 200, response.reason
+        assert response.content.decode() == f"1"
+        return True
+
+    wait_for_condition(verify)
+
+
 def test_logs_list(ray_start_with_dashboard):
     assert (
         wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])

@@ -238,6 +238,7 @@ async def _stream_log_in_chunk(
                 continue
 
             # Have read the entire file, done
+            yield reporter_pb2.StreamLogReply(data=b"")
             break
         logger.debug(f"Sending {len(bytes)} bytes at {cur_offset}")
         yield reporter_pb2.StreamLogReply(data=bytes)
