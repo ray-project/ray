@@ -18,8 +18,8 @@ import { PlacementGroupState } from "../type/placementGroup";
 import {
   ServeApplicationStatus,
   ServeDeploymentStatus,
-  ServeHTTPProxyStatus,
   ServeReplicaState,
+  ServeSystemActorStatus,
 } from "../type/serve";
 import { TypeTaskStatus } from "../type/task";
 
@@ -85,9 +85,14 @@ const colorMap = {
     [ServeReplicaState.STOPPING]: red,
   },
   serveHttpProxy: {
-    [ServeHTTPProxyStatus.HEALTHY]: green,
-    [ServeHTTPProxyStatus.UNHEALTHY]: red,
-    [ServeHTTPProxyStatus.STARTING]: yellow,
+    [ServeSystemActorStatus.HEALTHY]: green,
+    [ServeSystemActorStatus.UNHEALTHY]: red,
+    [ServeSystemActorStatus.STARTING]: yellow,
+  },
+  serveController: {
+    [ServeSystemActorStatus.HEALTHY]: green,
+    [ServeSystemActorStatus.UNHEALTHY]: red,
+    [ServeSystemActorStatus.STARTING]: yellow,
   },
 } as {
   [key: string]: {

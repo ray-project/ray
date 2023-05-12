@@ -5,7 +5,7 @@ import { getServeApplications } from "../../service/serve";
 import {
   ServeApplicationStatus,
   ServeDeploymentMode,
-  ServeHTTPProxyStatus,
+  ServeSystemActorStatus,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
@@ -24,7 +24,7 @@ describe("ServeApplicationsListPage", () => {
         http_proxies: {
           foo: {
             node_id: "node:12345",
-            status: ServeHTTPProxyStatus.HEALTHY,
+            status: ServeSystemActorStatus.HEALTHY,
             actor_id: "actor:12345",
           },
         },
