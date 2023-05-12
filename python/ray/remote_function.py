@@ -306,6 +306,10 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         if num_returns == "dynamic":
             num_returns = -1
+        elif num_returns == "streaming":
+            # TODO(sang): This is a temporary private API.
+            # Remove it when we migrate to the streaming generator.
+            num_returns = -2
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
         if isinstance(retry_exceptions, (list, tuple)):

@@ -2810,6 +2810,10 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
+    if isinstance(object_ref, ray._raylet.StreamingObjectRefGeneratorV2):
+        assert hasattr(object_ref, "_generator_ref")
+        object_ref = object_ref._generator_ref
+
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "

@@ -354,6 +354,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
+  // SANG-TODO Update the docstring.
+  void DelGenerator(const ObjectID &generator_id);
+
+  // SANG-TODO Update the docstring.
+  Status GetNextObjectRef(const ObjectID &generator_id,
+                          rpc::ObjectReference *object_ref_out);
+
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
@@ -697,6 +704,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
+  
+  /// SANG-TODO Update the docstring.
+  /// SANG-TODO Support close separately.
+  Status ObjectRefStreamWrite(
+        const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+        const ObjectID &generator_id,
+        const rpc::Address &caller_address,
+        int64_t idx,
+        bool finished);
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -937,15 +953,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                std::shared_ptr<RayObject> *return_object,
                                const ObjectID &generator_id);
 
+  /// SANG-TODO Update the docstring.
   /// Dynamically allocate an object.
   ///
   /// This should be used during task execution, if the task wants to return an
   /// object to the task caller and have the resulting ObjectRef be owned by
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
+  /// \param[in] owner_address The address of the owner who will own this
+  /// dynamically generated object.
   ///
   /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId();
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address);
 
   /// Get a handle to an actor.
   ///
@@ -1034,6 +1053,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleGetObjectLocationsOwner(rpc::GetObjectLocationsOwnerRequest request,
                                      rpc::GetObjectLocationsOwnerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleWriteObjectRefStream(rpc::WriteObjectRefStreamRequest request,
+                                  rpc::WriteObjectRefStreamReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(rpc::KillActorRequest request,

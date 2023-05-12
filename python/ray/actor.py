@@ -1167,6 +1167,10 @@ class ActorHandle:
 
         if num_returns == "dynamic":
             num_returns = -1
+        elif num_returns == "streaming":
+            # TODO(sang): This is a temporary private API.
+            # Remove it when we migrate to the streaming generator.
+            num_returns = -2
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,

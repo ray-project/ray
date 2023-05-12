@@ -300,6 +300,110 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
+void TaskManager::DelGenerator(const ObjectID &generator_id) {
+  while (true) {
+    ObjectID object_id;
+    const auto &status = GetNextObjectRef(generator_id, &object_id);
+    // SANG-TODO We should remove a reference. Need a test.
+    if (status.IsKeyError()) {
+      break;
+    }
+    if (object_id == ObjectID::Nil()) {
+      break;
+    }
+    RAY_LOG(DEBUG) << "SANG-TODO DelGenerator Get Next";
+  }
+  RAY_LOG(DEBUG) << "SANG-TODO Delete generator from " << generator_id;
+}
+
+Status TaskManager::GetNextObjectRef(const ObjectID &generator_id,
+                                     ObjectID *object_id_out) {
+  absl::MutexLock lock(&mu_);
+  RAY_CHECK(object_id_out != nullptr);
+  auto it = dynamic_ids_from_generator_.find(generator_id);
+  if (it == dynamic_ids_from_generator_.end()) {
+    RAY_LOG(DEBUG) << "SANG-TODO Generator already GC'ed " << *object_id_out
+                   << " generator id: " << generator_id;
+    *object_id_out = ObjectID::Nil();
+    return Status::OK();
+  }
+
+  auto &reader = dynamic_ids_from_generator_[generator_id];
+  if (reader.last != -1 && reader.curr >= reader.last) {
+    RAY_LOG(DEBUG) << "SANG-TODO Generator has no more objects " << generator_id;
+    return Status::KeyError("Finished");
+  }
+  auto reader_it = reader.idx_to_refs.find(reader.curr);
+  if (reader_it != reader.idx_to_refs.end()) {
+    *object_id_out = reader_it->second;
+    reader.idx_to_refs.erase(reader.curr);
+    reader.curr += 1;
+    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out
+                   << " generator id: " << generator_id;
+  } else {
+    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << reader.curr
+                   << " last: " << reader.last << " generator id: " << generator_id;
+    *object_id_out = ObjectID::Nil();
+  }
+  return Status::OK();
+}
+
+void TaskManager::HandleIntermediateResult(
+    const rpc::WriteObjectRefStreamRequest &request) {
+  const auto &generator_id = ObjectID::FromBinary(request.generator_id());
+  const auto &task_id = generator_id.TaskId();
+  int64_t idx = request.idx();
+  // Every generated object has the same task id.
+  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << request.idx()
+                 << " generator_id: " << generator_id;
+
+  {
+    absl::MutexLock lock(&mu_);
+    if (request.finished()) {
+      RAY_LOG(DEBUG) << "SANG-TODO Finished with an index " << request.idx();
+      auto &reader = dynamic_ids_from_generator_[generator_id];
+      reader.last = request.idx();
+      RAY_CHECK(request.dynamic_return_objects_size() == 0);
+    }
+  }
+
+  const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
+
+  for (const auto &return_object : request.dynamic_return_objects()) {
+    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    RAY_LOG(DEBUG) << "SANG-TODO Add an object " << object_id;
+    int64_t curr;
+    {
+      absl::MutexLock lock(&mu_);
+      auto &reader = dynamic_ids_from_generator_[generator_id];
+      curr = reader.curr;
+      if (idx >= curr) {
+        reader.idx_to_refs.emplace(idx, object_id);
+        // TODO(sang): Add it when retry is supported.
+        // auto it = submissible_tasks_.find(task_id);
+        // if (it != submissible_tasks_.end()) {
+        //   // NOTE(sang): This is a hack to modify immutable field.
+        //   // It is possible because most of attributes under
+        //   // TaskSpecification is a pointer to the protobuf message.
+        //   TaskSpecification spec;
+        //   spec = it->second.spec;
+        //   spec.AddDynamicReturnId(object_id);
+        //   it->second.reconstructable_return_ids.insert(object_id);
+        // }
+      }
+    }
+    // If we call this method while holding a lock, it can deadlock.
+    if (idx >= curr) {
+      reference_counter_->AddStreamingDynamicReturn(object_id, generator_id);
+    }
+    HandleTaskReturn(object_id,
+                     return_object,
+                     NodeID::FromBinary(request.worker_addr().raylet_id()),
+                     /*store_in_plasma*/store_in_plasma_ids.count(object_id));
+  }
+  RAY_LOG(DEBUG) << "SANG-TODO Finished handling intermediate result";
+}
+
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr,
@@ -710,8 +814,9 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
-  RAY_CHECK(it != submissible_tasks_.end())
-      << "Tried to store return values for task that was not pending " << task_id;
+  if (it == submissible_tasks_.end()) {
+    return {};
+  }
   first_execution = it->second.num_successful_executions == 0;
   if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;

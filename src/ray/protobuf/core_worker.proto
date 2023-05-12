@@ -69,22 +69,6 @@ message ActorHandle {
   int32 max_pending_calls = 13;
 }
 
-message ReturnObject {
-  // Object ID.
-  bytes object_id = 1;
-  // If set, indicates the data is in plasma instead of inline. This
-  // means that data and metadata will be empty.
-  bool in_plasma = 2;
-  // Data of the object.
-  bytes data = 3;
-  // Metadata of the object.
-  bytes metadata = 4;
-  // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated ObjectReference nested_inlined_refs = 5;
-  // Size of this object.
-  int64 size = 6;
-}
-
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -398,6 +382,16 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
+message WriteObjectRefStreamRequest {
+  repeated ReturnObject dynamic_return_objects = 1;
+  Address worker_addr = 2;
+  int64 idx = 3;
+  bool finished = 4;
+  bytes generator_id = 5;
+}
+
+message WriteObjectRefStreamReply {}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -418,6 +412,8 @@ service CoreWorkerService {
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  // SANG-TODO Write a docstring and change the RPC name.
+  rpc WriteObjectRefStream(WriteObjectRefStreamRequest) returns (WriteObjectRefStreamReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
   // Update the batched object location information to the ownership-based object

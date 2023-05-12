@@ -239,6 +239,35 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
+void ReferenceCounter::AddStreamingDynamicReturn(const ObjectID &object_id,
+                                                 const ObjectID &generator_id) {
+  absl::MutexLock lock(&mutex_);
+  auto outer_it = object_id_refs_.find(generator_id);
+  if (outer_it == object_id_refs_.end()) {
+    // Outer object already went out of scope. Either:
+    // 1. The inner object was never deserialized and has already gone out of
+    // scope.
+    // 2. The inner object was deserialized and we already added it as a
+    // dynamic return.
+    // Either way, we shouldn't add the inner object to the ref count.
+    return;
+  }
+  RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
+                 << " contained in generator object " << generator_id;
+  RAY_CHECK(outer_it->second.owned_by_us);
+  RAY_CHECK(outer_it->second.owner_address.has_value());
+  rpc::Address owner_address(outer_it->second.owner_address.value());
+  RAY_UNUSED(AddOwnedObjectInternal(object_id,
+                                    {},
+                                    owner_address,
+                                    outer_it->second.call_site,
+                                    /*object_size=*/-1,
+                                    outer_it->second.is_reconstructable,
+                                    /*add_local_ref=*/true,
+                                    absl::optional<NodeID>()));
+  UpdateObjectPendingCreation(object_id, false);
+}
+
 bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,

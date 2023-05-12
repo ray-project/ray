@@ -37,6 +37,14 @@ class TaskFinisherInterface {
                                    const rpc::Address &actor_addr,
                                    bool is_application_error) = 0;
 
+  virtual void HandleIntermediateResult(
+      const rpc::WriteObjectRefStreamRequest &request) = 0;
+
+  virtual void DelGenerator(const ObjectID &generator_id) = 0;
+
+  virtual Status GetNextObjectRef(const ObjectID &generator_id,
+                                  ObjectID *object_id_out) = 0;
+
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    const rpc::RayErrorInfo &error_info) = 0;
 
@@ -86,6 +94,12 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
+
+struct ObjectRefStreamReader {
+  absl::flat_hash_map<int64_t, ObjectID> idx_to_refs;
+  int64_t last = -1;
+  int64_t curr = 0;
+};
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -166,6 +180,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
+
+
+  // SANG-TODO Docstring + change the method.
+  void HandleIntermediateResult(const rpc::WriteObjectRefStreamRequest &request) override;
+
+  // SANG-TODO Docstring + change the method.
+  void DelGenerator(const ObjectID &generator_id) override;
+
+  // SANG-TODO Docstring + change the method.
+  Status GetNextObjectRef(const ObjectID &generator_id, ObjectID *object_id_out) override;
 
   /// Returns true if task can be retried.
   ///
@@ -459,17 +483,19 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
-  // Get the objects that were stored in plasma upon the first successful
-  // execution of this task. If the task is re-executed, these objects should
-  // get stored in plasma again, even if they are small and were returned
-  // directly in the worker's reply. This ensures that any reference holders
-  // that are already scheduled at the raylet can retrieve these objects
-  // through plasma.
-  // \param[in] task_id The task ID.
-  // \param[out] first_execution Whether the task has been successfully
-  // executed before. If this is false, then the objects to store in plasma
-  // will be empty.
-  // \param [out] Return objects that should be stored in plasma.
+  /// Get the objects that were stored in plasma upon the first successful
+  /// execution of this task. If the task is re-executed, these objects should
+  /// get stored in plasma again, even if they are small and were returned
+  /// directly in the worker's reply. This ensures that any reference holders
+  /// that are already scheduled at the raylet can retrieve these objects
+  /// through plasma.
+  ///
+  /// \param[in] task_id The task ID.
+  /// \param[out] first_execution Whether the task has been successfully
+  /// executed before. If this is false, then the objects to store in plasma
+  /// will be empty.
+  /// \param [out] Return objects that should be stored in plasma. If the
+  /// task has been already terminated, it returns an empty set.
   absl::flat_hash_set<ObjectID> GetTaskReturnObjectsToStoreInPlasma(
       const TaskID &task_id, bool *first_execution = nullptr) const LOCKS_EXCLUDED(mu_);
 
@@ -559,6 +585,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// task_event_buffer_.Enabled() will return false if disabled (due to config or set-up
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
+
+  // SANG-TODO Docstring + change the name.
+  absl::flat_hash_map<ObjectID, ObjectRefStreamReader> dynamic_ids_from_generator_
+      GUARDED_BY(mu_);
 
   friend class TaskManagerTest;
 };

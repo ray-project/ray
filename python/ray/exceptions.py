@@ -336,6 +336,10 @@ class RaySystemError(RayError):
         return error_msg
 
 
+class RayKeyError(RayError):
+    pass
+
+
 @PublicAPI
 class ObjectStoreFullError(RayError):
     """Indicates that the object store is full.
