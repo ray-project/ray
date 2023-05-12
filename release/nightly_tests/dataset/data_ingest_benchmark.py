@@ -132,7 +132,7 @@ def do_consume(
 def make_ds(size_gb: int, parallelism: int = -1):
     # Dataset of 10KiB tensor records.
     total_size = 1024 * 1024 * 1024 * size_gb
-    record_dim = 1280
+    record_dim = 1024
     record_size = record_dim * 8
     num_records = int(total_size / record_size)
     dataset = ray.data.range_tensor(
