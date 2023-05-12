@@ -8,6 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -1533,8 +1534,14 @@ async def test_state_data_source_client(ray_start_cluster):
         entrypoint="ls",
     )
     result = await client.get_job_info()
-    assert list(result.keys())[0] == job_id
-    assert isinstance(result, dict)
+    assert isinstance(result[0], JobDetails)
+    found_job = False
+    for job in result:
+        if job.type != "DRIVER":
+            assert job.submission_id == job_id
+            found_job = True
+    assert found_job, result
+    assert isinstance(result, list)
 
     """
     Test tasks
