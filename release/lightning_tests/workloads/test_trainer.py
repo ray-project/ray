@@ -23,7 +23,7 @@ if __name__ == "__main__":
             logger=CSVLogger("logs", name="my_exp_name"),
         )
         .fit_params(datamodule=MNISTDataModule(batch_size=128))
-        .checkpointing(monitor="ptl/val_accuracy", mode="max", save_last=True)
+        .checkpointing(monitor="val_accuracy", mode="max", save_last=True)
         .build()
     )
 
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     taken = time.time() - start
     result = {
         "time_taken": taken,
-        "ptl/val_accuracy": result.metrics["ptl/val_accuracy"],
+        "val_accuracy": result.metrics["val_accuracy"],
     }
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/lightning_trainer_test.json"

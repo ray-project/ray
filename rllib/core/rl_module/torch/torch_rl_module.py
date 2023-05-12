@@ -1,10 +1,11 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union
+from typing import Any, List, Mapping, Tuple, Union, Type
 
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
+from ray.rllib.core.rl_module import RLModule
+from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType
@@ -53,6 +54,15 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         # we do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
         self.config = self.unwrapped().config
+
+    def get_train_action_dist_cls(self, *args, **kwargs) -> Type[Distribution]:
+        return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
+
+    def get_exploration_action_dist_cls(self, *args, **kwargs) -> Type[Distribution]:
+        return self.unwrapped().get_exploration_action_dist_cls(*args, **kwargs)
+
+    def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[Distribution]:
+        return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):

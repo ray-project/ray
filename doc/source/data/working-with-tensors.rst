@@ -22,7 +22,7 @@ Ray Data represents tensors as
 .. testoutput::
     :options: +ELLIPSIS
 
-    Datastream(
+    Dataset(
        num_blocks=...,
        num_rows=100,
        schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
@@ -102,6 +102,8 @@ Save tensor data in Parquet or Numpy files. Other formats aren't supported.
             ds.write_numpy("/tmp/simple.npy", column="image")
 
 For more information on saving data, read :ref:`Saving data <loading_data>`.
+
+.. _transforming_variable_tensors:
 
 Transforming variable-shape tensor data
 ---------------------------------------
