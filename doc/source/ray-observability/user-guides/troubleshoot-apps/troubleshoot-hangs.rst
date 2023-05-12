@@ -1,3 +1,5 @@
+.. _observability-troubleshoot-hangs:
+
 Troubleshooting Hangs
 =====================
 

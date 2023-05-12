@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import asyncio
 from typing import List
 from unittest.mock import MagicMock
 
@@ -16,18 +17,29 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+
+from ray._private.ray_constants import (
+    LOG_PREFIX_TASK_ATTEMPT_START,
+    LOG_PREFIX_TASK_ATTEMPT_END,
+)
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
-from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
+from ray.core.generated.gcs_pb2 import (
+    ActorTableData,
+    TaskEvents,
+    TaskStateUpdate,
+)
 from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import (
+    find_offset_of_content_in_file,
     find_end_offset_file,
     find_end_offset_next_n_lines_from_offset,
     find_start_offset_last_n_lines_from_offset,
+    LogAgentV1Grpc,
 )
 from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
-
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
@@ -42,6 +54,19 @@ else:
 
 
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
+
+
+def generate_task_event(task_id, node_id, attempt_number, worker_id):
+    task_event = TaskEvents(
+        task_id=task_id.binary(),
+        attempt_number=attempt_number,
+        job_id=b"",
+        state_updates=TaskStateUpdate(
+            node_id=node_id.binary(), worker_id=worker_id.binary()
+        ),
+    )
+
+    return task_event
 
 
 def generate_actor_data(id, node_id, worker_id):
@@ -86,6 +111,9 @@ async def _stream_log(context, fp, start, end):
     return result
 
 
+TEST_LINE_TEMPLATE = "{}-test-line"
+
+
 def _write_lines_and_get_offset_at_index(
     f, num_lines, start_offset=0, trailing_new_line=True
 ):
@@ -110,9 +138,9 @@ def _write_lines_and_get_offset_at_index(
         offsets.append(f.tell())
         if i == num_lines - 1 and not trailing_new_line:
             # Last line no newline
-            line = f"{i}-test-line"
+            line = TEST_LINE_TEMPLATE.format(i)
         else:
-            line = f"{i}-test-line\n"
+            line = TEST_LINE_TEMPLATE.format(i) + "\n"
         f.write(line.encode("utf-8"))
 
     f.flush()
@@ -180,6 +208,40 @@ def test_find_end_offset_next_n_lines_from_offset(temp_file):
     # Test offset diff
     assert find_end_offset_next_n_lines_from_offset(file, 1, 1) == o[1]
     assert find_end_offset_next_n_lines_from_offset(file, o[1] - 1, 1) == o[1]
+
+
+def test_find_offset_of_content_in_file(temp_file):
+    file = temp_file
+    o, end_file = _write_lines_and_get_offset_at_index(file, num_lines=10)
+
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(0).encode("utf-8")
+        )
+        == o[0]
+    )
+
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(3).encode("utf-8"), o[1] + 1
+        )
+        == o[3]
+    )
+
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(4).encode("utf-8"), o[1] - 1
+        )
+        == o[4]
+    )
+
+    # Not found
+    assert (
+        find_offset_of_content_in_file(
+            file, TEST_LINE_TEMPLATE.format(1000).encode("utf-8"), o[1] - 1
+        )
+        == -1
+    )
 
 
 @pytest.mark.asyncio
@@ -286,6 +348,48 @@ async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
     assert (
         all_lines.count("\n") == lines_to_tail + num_new_lines
     ), "Non-matching number of lines tailed after append"
+
+
+@pytest.mark.asyncio
+async def test_log_agent_find_task_log_offsets(temp_file):
+    log_file_content = ""
+    task_id = "taskid1234"
+    attempt_number = 0
+    # Previous data
+    for i in range(3):
+        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    # Task's logs
+    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
+    expected_start = len(log_file_content)
+    for i in range(10):
+        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    expected_end = len(log_file_content)
+    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
+
+    # Next data
+    for i in range(3):
+        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+
+    # Write to files
+    temp_file.write(log_file_content.encode("utf-8"))
+
+    # Test all task logs
+    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
+        task_id, attempt_number, -1, temp_file
+    )
+    assert start_offset == expected_start
+    assert end_offset == expected_end
+
+    # Test tailing last X lines
+    num_tail = 3
+    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
+        task_id, attempt_number, num_tail, temp_file
+    )
+    assert end_offset == expected_end
+    exclude_tail_content = ""
+    for i in range(10 - num_tail):
+        exclude_tail_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    assert start_offset == expected_start + len(exclude_tail_content)
 
 
 # Unit Tests (LogsManager)
@@ -442,17 +546,33 @@ async def test_logs_manager_resolve_file(logs_manager):
     """
     Test task id is given.
     """
-    with pytest.raises(NotImplementedError):
-        task_id = TaskID(b"2" * 24)
-        log_file_name, n = await logs_manager.resolve_filename(
-            node_id=node_id.hex(),
-            log_filename=None,
-            actor_id=None,
-            task_id=task_id,
-            pid=None,
-            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
-            timeout=10,
-        )
+    task_id = TaskID(b"2" * 24)
+    logs_client = logs_manager.data_source_client
+    logs_client.get_all_task_info = AsyncMock()
+    logs_client.get_all_task_info.return_value = GetTaskEventsReply(
+        events_by_task=[
+            generate_task_event(task_id, node_id, attempt_number=1, worker_id=worker_id)
+        ]
+    )
+    logs_manager.list_logs.return_value = {
+        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"],
+        "worker_err": [],
+    }
+
+    # Expect resolved file.
+    filename, n = await logs_manager.resolve_filename(task_id=task_id, attempt_number=1)
+    # Default out file. See generate_task_event() for filename
+    assert filename == f"worker-{worker_id.hex()}-123-123.out"
+    assert n == node_id.hex()
+
+    # Wrong task attempt
+    with pytest.raises(FileNotFoundError):
+        await logs_manager.resolve_filename(task_id=task_id, attempt_number=0)
+
+    # No task found
+    logs_client.get_all_task_info.return_value = GetTaskEventsReply(events_by_task=[])
+    with pytest.raises(FileNotFoundError):
+        await logs_manager.resolve_filename(task_id=TaskID(b"1" * 24), attempt_number=1)
 
     """
     Test pid is given.
@@ -587,6 +707,8 @@ async def test_logs_manager_stream_log(logs_manager):
         lines=10,
         interval=None,
         timeout=30,
+        task_id=None,
+        attempt_number=0,
     )
 
     # Test pid, media_type = "stream", node_ip
@@ -614,6 +736,8 @@ async def test_logs_manager_stream_log(logs_manager):
         lines=10,
         interval=0.5,
         timeout=None,
+        task_id=None,
+        attempt_number=0,
     )
 
     # Currently cannot test actor_id with AsyncMock.
@@ -656,6 +780,8 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
         lines=10,
         interval=None,
         timeout=None,
+        task_id=None,
+        attempt_number=0,
     )
 
 
@@ -788,24 +914,22 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
-        + "/api/v0/logs/stream?&lines=2"
+        + "/api/v0/logs/stream?&lines=-1"
         + f"&actor_id={actor._ray_actor_id.hex()}",
         stream=True,
     )
     if stream_response.status_code != 200:
         raise ValueError(stream_response.content.decode("utf-8"))
     stream_iterator = stream_response.iter_content(chunk_size=None)
-    # NOTE: Prefix 1 indicates the stream has succeeded.
-    assert (
-        next(stream_iterator).decode("utf-8")
-        == "1:actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
-    )
+    actual_output = next(stream_iterator).decode("utf-8")
+    assert "actor_name:Actor\n" in actual_output
+    assert test_log_text.format("XXXXXX") in actual_output
 
     streamed_string = ""
     for i in range(5):
         strings = []
-        for j in range(100):
-            strings.append(test_log_text.format(f"{100*i + j:06d}"))
+        for j in range(3):
+            strings.append(test_log_text.format(f"{3*i + j:06d}"))
 
         ray.get(actor.write_log.remote(strings))
 
@@ -814,7 +938,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
             string += s + "\n"
         streamed_string += string
         # NOTE: Prefix 1 indicates the stream has succeeded.
-        assert next(stream_iterator).decode("utf-8") == "1" + string
+        assert string in next(stream_iterator).decode("utf-8")
     del stream_response
 
     # Test tailing log by actor id
@@ -826,7 +950,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
-    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    for line in streamed_string.split("\n")[-(LINES + 1) :]:
+        assert line in file_response
 
     # Test query by pid & node_ip instead of actor id.
     node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
@@ -837,7 +962,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"&pid={pid}",
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
-    assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+    for line in streamed_string.split("\n")[-(LINES + 1) :]:
+        assert line in file_response
 
 
 def test_log_list(ray_start_cluster):
@@ -935,10 +1061,6 @@ def test_log_get(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
-
-    with pytest.raises(NotImplementedError):
-        for _ in get_log(task_id=123, tail=10):
-            pass
 
     del a
     """
@@ -1049,6 +1171,99 @@ def test_log_get(ray_start_cluster):
         ):
             assert read == data.decode(encoding="iso-8859-1", errors="replace")
 
+        return True
+
+    wait_for_condition(verify)
+
+    # Test running task logs
+    @ray.remote
+    def sleep_task(out_msg):
+        print(out_msg, end="", file=sys.stdout)
+        import time
+
+        time.sleep(10)
+
+    expected_out = "This is a test log from stdout\n"
+    task = sleep_task.remote(expected_out)
+
+    def verify():
+        lines = get_log(task_id=task.task_id().hex())
+        assert expected_out == "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Test get log by multiple task id
+    @ray.remote
+    def task_log():
+        out_msg = "This is a test log from stdout\n"
+        print(out_msg, end="", file=sys.stdout)
+        err_msg = "THIS IS A TEST LOG FROM STDERR\n"
+        print(err_msg, end="", file=sys.stderr)
+
+        return out_msg, err_msg
+
+    # Run some other tasks before and after to make sure task
+    # log only outputs the task's log.
+    ray.get(task_log.remote())
+    task = task_log.remote()
+    expected_out, expected_err = ray.get(task)
+    ray.get(task_log.remote())
+
+    def verify():
+        lines = get_log(task_id=task.task_id().hex())
+        assert expected_out == "".join(lines)
+
+        # Test suffix
+        lines = get_log(task_id=task.task_id().hex(), suffix="err")
+        assert expected_err == "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Test actor task logs with interleaving logs.
+    @ray.remote
+    class Actor:
+        async def print_log(self, x, out_msg):
+            for _ in range(3):
+                print(out_msg, end="", file=sys.stdout)
+                await asyncio.sleep(1)
+
+    actor = Actor.options(max_concurrency=2).remote()
+    out_msg = "[{name}]: This is a test log from stdout\n"
+    task_a = actor.print_log.remote("a", out_msg.format(name="a"))
+    task_b = actor.print_log.remote("b", out_msg.format(name="b"))
+    ray.get([task_a, task_b])
+
+    def verify():
+        lines = get_log(task_id=task_a.task_id().hex())
+        actual_output = "".join(lines)
+        assert actual_output.count(out_msg.format(name="a")) == 3
+
+        lines = get_log(task_id=task_b.task_id().hex())
+        actual_output = "".join(lines)
+        assert actual_output.count(out_msg.format(name="b")) == 3
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Test task logs tail with lines.
+    expected_out = [f"task-{i}\n" for i in range(5)]
+
+    @ray.remote
+    def f():
+        print("".join(expected_out), end="", file=sys.stdout)
+
+    t = f.remote()
+    ray.get(t)
+
+    def verify():
+        lines = get_log(task_id=t.task_id().hex(), tail=2)
+        actual_output = "".join(lines)
+        assert actual_output == "".join(expected_out[-2:])
         return True
 
     wait_for_condition(verify)
