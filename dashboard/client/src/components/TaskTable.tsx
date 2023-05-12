@@ -1,9 +1,7 @@
 import {
   Box,
-  createStyles,
   InputAdornment,
   Link,
-  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -16,11 +14,9 @@ import {
 } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
+import React, { useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { GlobalContext } from "../App";
 import { CodeDialogButton } from "../common/CodeDialogButton";
-import DialogWithTitle from "../common/DialogWithTitle";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
 import rowStyles from "../common/RowStyles";

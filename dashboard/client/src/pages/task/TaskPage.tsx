@@ -1,7 +1,7 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Box, createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
 import { useParams } from "react-router-dom";
-import { CodeDialogButton } from "../../common/CodeDialogButton";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -129,26 +129,38 @@ const TaskPageContents = ({
           },
           {
             label: "Actor ID",
-            content: {
-              value: actor_id ? actor_id : "-",
-              copyableValue: actor_id ? actor_id : undefined,
-              link: actor_id ? generateActorLink(actor_id) : undefined,
-            },
+            content: actor_id
+              ? {
+                  value: actor_id,
+                  copyableValue: actor_id,
+                  link: generateActorLink(actor_id),
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Node ID",
-            content: {
-              value: node_id ? node_id : "-",
-              copyableValue: node_id ? node_id : undefined,
-              link: node_id ? generateNodeLink(node_id) : undefined,
-            },
+            content: node_id
+              ? {
+                  value: node_id,
+                  copyableValue: node_id,
+                  link: generateNodeLink(node_id),
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Worker ID",
-            content: {
-              value: worker_id ? worker_id : "-",
-              copyableValue: worker_id ? worker_id : undefined,
-            },
+            content: worker_id
+              ? {
+                  value: worker_id,
+                  copyableValue: worker_id,
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Type",
@@ -158,21 +170,25 @@ const TaskPageContents = ({
           },
           {
             label: "Placement group ID",
-            content: {
-              value: placement_group_id ? placement_group_id : "-",
-              copyableValue: placement_group_id
-                ? placement_group_id
-                : undefined,
-            },
+            content: placement_group_id
+              ? {
+                  value: placement_group_id,
+                  copyableValue: placement_group_id,
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Required resources",
             content:
               Object.entries(required_resources).length > 0 ? (
-                <CodeDialogButton
-                  title="Required resources"
-                  code={JSON.stringify(required_resources, undefined, 2)}
-                />
+                <Box display="inline-block">
+                  <CodeDialogButtonWithPreview
+                    title="Required resources"
+                    code={JSON.stringify(required_resources, undefined, 2)}
+                  />
+                </Box>
               ) : (
                 {
                   value: "{}",
@@ -217,30 +233,29 @@ type TaskLogsProps = {
 };
 
 const TaskLogs = ({
-  task: { node_id, worker_id, job_id, error_message, error_type },
+  task: { task_id, error_message, error_type, worker_id, node_id },
 }: TaskLogsProps) => {
-  if (!node_id || !worker_id || !job_id) {
-    return <Typography color="error">No logs available.</Typography>;
-  }
-
   const errorDetails =
     error_type !== null && error_message !== null
       ? `Error Type: ${error_type}\n\n${error_message}`
       : undefined;
 
   const tabs: MultiTabLogViewerTab[] = [
-    // {
-    //   title: "stderr",
-    //   nodeId: node_id,
-    //   // TODO(aguo): Have API return the log file name.
-    //   filename: `worker-${worker_id}-${job_id}-${pid}.err`,
-    // },
-    // {
-    //   title: "stdout",
-    //   nodeId: node_id,
-    //   // TODO(aguo): Have API return the log file name.
-    //   filename: `worker-${worker_id}-${job_id}-${pid}.out`,
-    // },
+    ...(worker_id !== null && node_id !== null
+      ? ([
+          {
+            title: "stderr",
+            taskId: task_id,
+            suffix: "err",
+          },
+          {
+            title: "stdout",
+            taskId: task_id,
+            suffix: "out",
+          },
+        ] as const)
+      : []),
+    // TODO(aguo): uncomment once PID is available in the API.
     // {
     //   title: "system",
     //   nodeId: node_id,
