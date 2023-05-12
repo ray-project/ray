@@ -25,7 +25,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - ./ci/env/install-dependencies.sh
+    - LINT=1 DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,+gpu
       python/ray/... doc/source/...
