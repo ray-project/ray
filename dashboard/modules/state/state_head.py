@@ -438,9 +438,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             await response.prepare(req)
             return response
 
-        # NOTE: The first byte indicates the success / failure of individual
+        # NOTE: If not ignore_server_stream_error:
+        # The first byte indicates the success / failure of individual
         # stream. If the first byte is b"1", it means the stream was successful.
         # If it is b"0", it means it is failed.
+        # else: we send the raw data in stream directly.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
                 logs_to_stream = bytearray()

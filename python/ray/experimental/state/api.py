@@ -1209,7 +1209,7 @@ def get_log(
         attempt_number=attempt_number,
         ignore_server_stream_error=None,
     )
-    options_dict = options.dict()
+    options_dict = options.as_dict_no_none()
 
     with requests.get(
         f"{api_server_url}/api/v0/logs/{media_type}?"

@@ -299,7 +299,7 @@ class GetLogOptions:
     # streaming data.
     ignore_server_stream_error: Optional[bool] = None
 
-    def dict(self) -> Dict[str, Any]:
+    def as_dict_no_none(self) -> Dict[str, Any]:
         """Return dict of non None value fields."""
         options_dict = {}
         for f in fields(self):
