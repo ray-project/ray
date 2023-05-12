@@ -267,7 +267,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Examples:
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
-        >>> ds  # doctest: +ellipsis
+        >>> ds  # doctest: +ELLIPSIS
         Dataset(
             num_blocks=...,
             num_rows=1000,
@@ -855,8 +855,8 @@ def read_json(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
-        >>> ds.take(1)  # doctest: + SKIP
+        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: +SKIP
+        >>> ds.take(1)  # doctest: +SKIP
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
     Args:
@@ -950,8 +950,8 @@ def read_csv(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: + SKIP
-        >>> ds.take(1)  # doctest: + SKIP
+        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: +SKIP
+        >>> ds.take(1)  # doctest: +SKIP
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, ``read_csv`` reads all files from file paths. If you want to filter
@@ -1786,24 +1786,24 @@ def from_huggingface(
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
-             num_blocks=1,
-             num_rows=3257,
-             schema={text: string, label: int64}
+           num_blocks=1,
+           num_rows=3257,
+           schema={text: string, label: int64}
         ), 'test': MaterializedDataset(
-             num_blocks=1,
-             num_rows=1421,
-             schema={text: string, label: int64}
+           num_blocks=1,
+           num_rows=1421,
+           schema={text: string, label: int64}
         ), 'validation': MaterializedDataset(
-             num_blocks=1,
-             num_rows=374,
-             schema={text: string, label: int64}
+           num_blocks=1,
+           num_rows=374,
+           schema={text: string, label: int64}
         )}
         >>> ray_ds = ray.data.from_huggingface(hf_dataset["train"])
         >>> ray_ds
         MaterializedDataset(
-             num_blocks=1,
-             num_rows=3257,
-             schema={text: string, label: int64}
+           num_blocks=1,
+           num_rows=3257,
+           schema={text: string, label: int64}
         )
 
     Args:
