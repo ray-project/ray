@@ -42,14 +42,14 @@ nodes. With this strategy, it is key to mount
 the Ray container's `/tmp/ray` directory to the relevant `hostPath`.
 
 (kuberay-fluentbit)=
-# Setting up logging sidecars with Fluent Bit.
+## Setting up logging sidecars with Fluent Bit
 In this section, we give an example of how to set up log-emitting
 [Fluent Bit][FluentBit] sidecars for Ray pods.
 
 See the full config for a single-pod RayCluster with a logging sidecar [here][ConfigLink].
 We now discuss this configuration and show how to deploy it.
 
-## Configure log processing
+### Configure log processing
 The first step is to create a ConfigMap with configuration
 for Fluent Bit.
 
@@ -73,9 +73,9 @@ A few notes on the above config:
   in the Fluent Bit container's stdout sooner.
 
 
-## Add logging sidecars to your RayCluster CR.
+### Add logging sidecars to your RayCluster CR
 
-### Add log and config volumes.
+#### Add log and config volumes
 For each pod template in our RayCluster CR, we
 need to add two volumes: One volume for Ray's logs
 and another volume to store Fluent Bit configuration from the ConfigMap
@@ -85,7 +85,7 @@ applied above.
 :start-after: Log and config volumes
 ```
 
-### Mount the Ray log directory
+#### Mount the Ray log directory
 Add the following volume mount to the Ray container's configuration.
 ```{literalinclude} ../configs/ray-cluster.log.yaml
 :language: yaml
@@ -93,7 +93,7 @@ Add the following volume mount to the Ray container's configuration.
 :end-before: Fluent Bit sidecar
 ```
 
-### Add the Fluent Bit sidecar
+#### Add the Fluent Bit sidecar
 Finally, add the Fluent Bit sidecar container to each Ray pod config
 in your RayCluster CR.
 ```{literalinclude} ../configs/ray-cluster.log.yaml
@@ -104,14 +104,14 @@ in your RayCluster CR.
 Mounting the `ray-logs` volume gives the sidecar container access to Ray's logs.
 The <nobr>`fluentbit-config`</nobr> volume gives the sidecar access to logging configuration.
 
-### Putting everything together
+#### Putting everything together
 Putting all of the above elements together, we have the following yaml configuration
 for a single-pod RayCluster will a log-processing sidecar.
 ```{literalinclude} ../configs/ray-cluster.log.yaml
 :language: yaml
 ```
 
-## Deploying a RayCluster with logging CR.
+### Deploying a RayCluster with logging CR
 (kuberay-logging-tldr)=
 Now, we will see how to deploy the configuration described above.
 
@@ -144,76 +144,74 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 
-## How to set up loggers
+## Setting up loggers
 
 When using Ray, all of the tasks and actors are executed remotely in Ray's worker processes. 
 Since Python logger module creates a singleton logger per process, loggers should be configured on per task/actor basis. 
 
-.. note::
+:::{note}
+To stream logs to a driver, they should be flushed to stdout and stderr.
+:::
 
-    To stream logs to a driver, they should be flushed to stdout and stderr.
+```python
+import ray
+import logging
+# Initiate a driver.
+ray.init()
 
-.. code-block:: python
-
-    import ray
-    import logging
-    # Initiate a driver.
-    ray.init()
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            # Basic config automatically configures logs to
-            # be streamed to stdout and stderr.
-            # Set the severity to INFO so that info logs are printed to stdout.
-            logging.basicConfig(level=logging.INFO)
-
-        def log(self, msg):
-            logging.info(msg)
-
-    actor = Actor.remote()
-    ray.get(actor.log.remote("A log message for an actor."))
-
-    @ray.remote
-    def f(msg):
+@ray.remote
+class Actor:
+     def __init__(self):
+        # Basic config automatically configures logs to
+        # be streamed to stdout and stderr.
+        # Set the severity to INFO so that info logs are printed to stdout.
         logging.basicConfig(level=logging.INFO)
+
+    def log(self, msg):
         logging.info(msg)
 
-    ray.get(f.remote("A log message for a task"))
+actor = Actor.remote()
+ray.get(actor.log.remote("A log message for an actor."))
 
-.. code-block:: bash
+@ray.remote
+def f(msg):
+    logging.basicConfig(level=logging.INFO)
+    logging.info(msg)
 
-    (pid=95193) INFO:root:A log message for a task
-    (pid=95192) INFO:root:A log message for an actor.
+ray.get(f.remote("A log message for a task"))
+```
 
-## How to use structured logging
+```bash
+(pid=95193) INFO:root:A log message for a task
+(pid=95192) INFO:root:A log message for an actor.
+```
+## Using structured logging
 
 The metadata of tasks or actors may be obtained by Ray's :ref:`runtime_context APIs <runtime-context-apis>`.
 Runtime context APIs help you to add metadata to your logging messages, making your logs more structured.
 
-.. code-block:: python
+```python
+import ray
+# Initiate a driver.
+ray.init()
 
-    import ray
-    # Initiate a driver.
-    ray.init()
+ @ray.remote
+def task():
+    print(f"task_id: {ray.get_runtime_context().task_id}")
 
-    @ray.remote
-    def task():
-        print(f"task_id: {ray.get_runtime_context().task_id}")
+ray.get(task.remote())
+```
 
-    ray.get(task.remote())
-
-.. code-block:: bash
-
-    (pid=47411) task_id: TaskID(a67dc375e60ddd1affffffffffffffffffffffff01000000)
-
+```bash
+(pid=47411) task_id: TaskID(a67dc375e60ddd1affffffffffffffffffffffff01000000)
+```
 ## Logging directory structure
 
 By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory. 
 
-.. note::
-
-    The default temp directory is ``/tmp/ray`` (for Linux and Mac OS). If you'd like to change the temp directory, you can specify it when ``ray start`` or ``ray.init()`` is called. 
+:::{note}
+The default temp directory is ``/tmp/ray`` (for Linux and Mac OS). If you'd like to change the temp directory, you can specify it when ``ray start`` or ``ray.init()`` is called. 
+:::
 
 A new Ray instance creates a new session ID to the temp directory. The latest session ID is symlinked to ``/tmp/ray/session_latest``.
 
@@ -238,16 +236,16 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
   For the logs of the actual installations (including e.g. ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
 - ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a job when connecting via :ref:`Ray Client <ray-client-ref>`.
-- ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.- 
+- ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver. 
 
-## Log rotation
+## Rotating logs
 
 Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
 
 By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
 If you'd like to change the log rotation configuration, you can do it by specifying environment variables. For example,
 
-.. code-block:: bash
-
-    RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
-    RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
+```bash
+RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
+RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
+```

@@ -386,6 +386,7 @@ parts:
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
         sections:
+          - file: ray-observability/key-concepts
           - file: ray-observability/user-guides/index
             title: User Guides
             sections:

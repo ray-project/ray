@@ -3,7 +3,7 @@
 Configuring Logging
 ===================
 
-This document explains Ray's logging system and best practices.
+This guide helps you modify the default configuration of Ray's logging system.
 
 Disabling logging to the driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -20,7 +20,7 @@ In large scale runs, it may be undesirable to route all worker logs to the drive
 Log deduplication
 ~~~~~~~~~~~~~~~~~
 
-By default, Ray will deduplicate logs that appear redundantly across multiple processes. The first instance of each log message will always be immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) will be buffered for up to five seconds and printed in batch. For example, for the following code snippet:
+By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) are buffered for up to five seconds and printed in batch. For example, for the following code snippet:
 
 .. code-block:: python
 
@@ -33,7 +33,7 @@ By default, Ray will deduplicate logs that appear redundantly across multiple pr
 
     ray.get([task.remote() for _ in range(100)])
 
-The output will be as follows:
+The output is as follows:
 
 .. code-block:: bash
 

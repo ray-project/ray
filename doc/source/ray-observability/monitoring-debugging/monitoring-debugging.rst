@@ -13,7 +13,6 @@ See :ref:`Getting Help <ray-troubleshoot-getting-help>` if your problem is not s
     ../overview
     ../../ray-core/ray-dashboard
     ../state/state-api
-    ../ray-logging
     ../ray-metrics
     profiling
     gotchas
