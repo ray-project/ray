@@ -66,6 +66,7 @@ class TuneController(_TuneControllerBase):
         chdir_to_trial_dir: bool = False,
         reuse_actors: bool = False,
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
+        _trainer_api: bool = False,
     ):
         if resource_manager_factory:
             self._resource_manager = resource_manager_factory()
@@ -144,6 +145,7 @@ class TuneController(_TuneControllerBase):
             callbacks=callbacks,
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
+            _trainer_api=_trainer_api,
         )
 
     def _wrapped(self):

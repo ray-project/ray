@@ -30,7 +30,6 @@ from ray.core.generated.gcs_service_pb2 import (
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
     GetObjectsInfoRequest,
-    GetTasksInfoReply,
 )
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
@@ -352,20 +351,6 @@ class StateDataSourceClient:
 
     async def get_all_cluster_events(self) -> Dictionary:
         return DataSource.events
-
-    @handle_grpc_network_errors
-    async def get_task_info(
-        self, task_id: str, timeout: int = None, limit: int = None
-    ) -> Optional[GetTasksInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
-        req_filters = GetTaskEventsRequest.Filters()
-        req_filters.task_ids.append(TaskID(hex_to_binary(task_id)).binary())
-
-        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
-        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
-        return reply
 
     @handle_grpc_network_errors
     async def get_object_info(

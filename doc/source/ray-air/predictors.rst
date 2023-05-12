@@ -407,7 +407,7 @@ Implement `_predict_numpy` or `_predict_pandas`
         batch of NumPy data. It accepts a ``np.ndarray`` or ``dict[str, np.ndarray]`` as
         input and returns a ``np.ndarray`` or ``dict[str, np.ndarray]`` as output.
 
-        The input type is determined by the type of :class:`~ray.data.Datastream` passed to
+        The input type is determined by the type of :class:`~ray.data.Dataset` passed to
         :meth:`BatchPredictor.predict <ray.train.batch_predictor.BatchPredictor.predict>`.
         If your dataset has columns, the input is a ``dict``; otherwise, the input is a
         ``np.ndarray``.
@@ -448,7 +448,7 @@ Perform inference
            You can also use any of the out-of-the-box preprocessors instead of implementing your own: :ref:`air-preprocessor-ref`.
         2. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
            checkpoint.
-        3. Read sample images into a :class:`~ray.data.Datastream`.
+        3. Read sample images into a :class:`~ray.data.Dataset`.
         4. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to classify
            the images in the dataset.
 
@@ -464,7 +464,7 @@ Perform inference
 
         1. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
            checkpoint.
-        2. Read the Guerry dataset into a :class:`~ray.data.Datastream`.
+        2. Read the Guerry dataset into a :class:`~ray.data.Dataset`.
         3. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to perform
            regression on the samples in the dataset.
 

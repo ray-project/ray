@@ -179,6 +179,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .framework("torch")
             .rollouts(enable_connectors=True)
             .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
         )
 
         config.validate()
@@ -328,7 +329,11 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is the simplest case where we have to construct the marl module based on
         # the default specs only.
-        config = SingleAgentAlgoConfig().rl_module(_enable_rl_module_api=True)
+        config = (
+            SingleAgentAlgoConfig()
+            .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
+        )
         config.validate()
 
         spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
@@ -343,14 +348,18 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is the case where we pass in a multi-agent RLModuleSpec that asks the
         # algorithm to assign a specific type of RLModule class to certain module_ids.
-        config = SingleAgentAlgoConfig().rl_module(
-            _enable_rl_module_api=True,
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs={
-                    "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
-                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
-                }
-            ),
+        config = (
+            SingleAgentAlgoConfig()
+            .rl_module(
+                _enable_rl_module_api=True,
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                        "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                    },
+                ),
+            )
+            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -360,9 +369,13 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is the case where we ask the algorithm to assign a specific type of
         # RLModule class to ALL module_ids.
-        config = SingleAgentAlgoConfig().rl_module(
-            _enable_rl_module_api=True,
-            rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+        config = (
+            SingleAgentAlgoConfig()
+            .rl_module(
+                _enable_rl_module_api=True,
+                rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+            )
+            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -377,11 +390,15 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is an alternative way to ask the algorithm to assign a specific type of
         # RLModule class to ALL module_ids.
-        config = SingleAgentAlgoConfig().rl_module(
-            _enable_rl_module_api=True,
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs=SingleAgentRLModuleSpec(module_class=CustomRLModule1)
-            ),
+        config = (
+            SingleAgentAlgoConfig()
+            .rl_module(
+                _enable_rl_module_api=True,
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs=SingleAgentRLModuleSpec(module_class=CustomRLModule1)
+                ),
+            )
+            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -398,15 +415,19 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is not only assigning a specific type of RLModule class to EACH
         # module_id, but also defining a new custom MultiAgentRLModule class to be used
         # in the multi-agent scenario.
-        config = SingleAgentAlgoConfig().rl_module(
-            _enable_rl_module_api=True,
-            rl_module_spec=MultiAgentRLModuleSpec(
-                marl_module_class=CustomMARLModule1,
-                module_specs={
-                    "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
-                    "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
-                },
-            ),
+        config = (
+            SingleAgentAlgoConfig()
+            .rl_module(
+                _enable_rl_module_api=True,
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    marl_module_class=CustomMARLModule1,
+                    module_specs={
+                        "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                        "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                    },
+                ),
+            )
+            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -435,8 +456,10 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
         # SingleAgentRLmoduleSpecs.
-        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().rl_module(
-            _enable_rl_module_api=True
+        config = (
+            MultiAgentAlgoConfigWithNoSingleAgentSpec()
+            .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
         )
 
         self.assertRaisesRegex(
@@ -449,7 +472,11 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
         # SingleAgentRLmoduleSpecs.
-        config = MultiAgentAlgoConfig().rl_module(_enable_rl_module_api=True)
+        config = (
+            MultiAgentAlgoConfig()
+            .rl_module(_enable_rl_module_api=True)
+            .training(_enable_learner_api=True)
+        )
         config.validate()
 
         spec, expected = self._get_expected_marl_spec(
