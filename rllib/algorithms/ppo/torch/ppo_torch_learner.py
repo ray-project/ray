@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
@@ -19,8 +18,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
-
-logger = logging.getLogger(__name__)
 
 
 class PPOTorchLearner(PPOLearner, TorchLearner):

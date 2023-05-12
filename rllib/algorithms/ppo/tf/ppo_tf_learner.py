@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
@@ -20,7 +19,6 @@ from ray.rllib.utils.typing import TensorType
 
 
 _, tf, _ = try_import_tf()
-logger = logging.getLogger(__name__)
 
 
 class PPOTfLearner(PPOLearner, TfLearner):
