@@ -9,13 +9,25 @@ Examples
 
 .. _data-recipes:
 
-Simple Data Processing Examples
--------------------------------
-
 Ray Data is a data processing engine that supports multiple data
 modalities and types. Here you will find a few end-to-end examples of some basic data
-processing with Ray Data on tabular data, text (coming soon!), and imagery (coming
-soon!).
+processing with Ray Data on tabular data, text (coming soon!), and images.
+
+Computer Vision Examples
+------------------------
+.. grid:: 1 2 3 3
+    :gutter: 2
+    :class-container: container pb-4
+
+    .. grid-item-card::
+    
+       .. button-ref:: pytorch_resnet_batch_prediction
+
+            Image Classification Batch Inference with PyTorch
+
+
+Simple Data Processing Examples
+-------------------------------
 
 .. grid:: 1 2 3 3
     :gutter: 2
