@@ -663,6 +663,7 @@ def get_multiplexed_model_id() -> str:
 
             # In your deployment code, you can retrieve the model id from
             # `get_multiplexed_model_id()`.
+            @serve.deployment
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
