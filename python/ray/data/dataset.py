@@ -4094,6 +4094,12 @@ class Dataset:
         """
         return pickle.loads(serialized_ds)
 
+    @property
+    @DeveloperAPI
+    def context(self) -> DataContext:
+        """Return the DataContext used to create this Dataset."""
+        return self._plan._context
+
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
