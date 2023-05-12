@@ -2211,7 +2211,7 @@ class Dataset:
             >>> import ray
             >>> # Create dataset from synthetic data.
             >>> ds = ray.data.range(1000)
-            >>> ds.columns
+            >>> ds.columns()
             ["id"]
 
         Args:
