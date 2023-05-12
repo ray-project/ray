@@ -269,9 +269,9 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
         >>> ds  # doctest: +ELLIPSIS
         Dataset(
-            num_blocks=...,
-            num_rows=1000,
-            schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
+           num_blocks=...,
+           num_rows=1000,
+           schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
                 [0, 0]]),
@@ -1783,7 +1783,8 @@ def from_huggingface(
         >>> import ray
         >>> import datasets
         >>> hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-        >>> ray_ds = ray.data.from_huggingface(hf_dataset)
+        >>> ray_ds = ray.data.from_huggingface(hf_dataset)  # doctest: +ELLIPSIS
+        Downloading ...
         >>> ray_ds
         {'train': MaterializedDataset(
            num_blocks=1,
