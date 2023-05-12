@@ -64,6 +64,7 @@ class MinimalClusterManager(ClusterManager):
                         config_json={
                             "docker_image": "anyscale/ray:latest",
                             "ray_version": "latest",
+                            "env_vars": {},
                         },
                     )
                     #                    result = self.sdk.create_cluster_environment(
