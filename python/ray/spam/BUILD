@@ -1,17 +1,12 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    name = "doctest",
-    files = glob(["*.py"], exclude=["yerb.py"]),
-    size = "small",
+    files = glob(["*.py"], exclude=["gpu_module.py"]),
     tags = ["team:spam"],
-    deps = ["//:ray_lib"],
 )
 
 doctest(
-    name = "doctest[gpu]",
-    size = "small",
-    files = ["yerb.py"],
-    tags = ["team:spam", "gpu"],
-    deps = ["//:ray_lib"],
+    files = ["gpu_module.py"],
+    gpu = True,
+    tags = ["team:spam"],
 )
