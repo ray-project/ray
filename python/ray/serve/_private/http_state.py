@@ -190,13 +190,6 @@ class HTTPState:
         location = self._config.location
         target_nodes = get_all_node_ids(self._gcs_client)
 
-        # Make ip address as string if it is bytes.
-        for index in range(len(target_nodes)):
-            node_id, ip_address = target_nodes[index]
-            if type(ip_address) == bytes:
-                ip_address = ip_address.decode("utf-8")
-                target_nodes[index] = (node_id, ip_address)
-
         if location == DeploymentMode.NoServer:
             return []
 
