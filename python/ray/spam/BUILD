@@ -4,14 +4,14 @@ doctest(
     name = "doctest",
     files = glob(["*.py"], exclude=["yerb.py"]),
     size = "small",
-    tags = ["team:spam", "doctest"],
+    tags = ["team:spam"],
     deps = ["//:ray_lib"],
 )
 
 doctest(
-    name = "doctest_gpu",
+    name = "doctest[gpu]",
     size = "small",
     files = ["yerb.py"],
-    tags = ["team:spam", "doctest", "gpu_only"],
+    tags = ["team:spam", "gpu"],
     deps = ["//:ray_lib"],
 )

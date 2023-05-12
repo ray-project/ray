@@ -4,20 +4,23 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 # Python file in `files`
 
 
-def doctest(name, files, srcs = [], data = [], args = [], **kwargs):
+def doctest(name, files, srcs = [], data = [], args = [], tags = [], **kwargs):
+    # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
+    # package. We don't want that, so we exclude it from the list of input files.
     files = native.glob(include=files, exclude=["__init__.py"])
     native.py_test(
         name = name,
-        srcs = ["//bazel:pytest_wrapper.py"] + srcs + files,
+        srcs = ["//bazel:pytest_wrapper.py"] + srcs,
         main = "//bazel:pytest_wrapper.py",
         args = [
             "--doctest-modules",
             "--capture=no",
             "-c=$(location //bazel:conftest.py)",
         ] + args + ["$(location :%s)" % file for file in files],
-        data = ["//bazel:conftest.py"] + data,
+        data = ["//bazel:conftest.py"] + files + data,
         python_version = "PY3",
         srcs_version = "PY3",
+        tags = ["doctest"] + tags,
         **kwargs
     )
 
