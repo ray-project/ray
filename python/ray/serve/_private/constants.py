@@ -62,10 +62,23 @@ DEFAULT_LATENCY_BUCKET_MS = [
     50,
     100,
     200,
+    300,
+    400,
     500,
     1000,
     2000,
+    # 5 seconds
     5000,
+    # 10 seconds
+    10000,
+    # 60 seconds
+    60000,
+    # 2min
+    120000,
+    # 5 min
+    300000,
+    # 10 min
+    600000,
 ]
 
 #: Name of deployment health check method implemented by user.
