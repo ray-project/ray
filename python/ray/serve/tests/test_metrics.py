@@ -12,11 +12,8 @@ import ray.experimental.state.api as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
-<<<<<<< HEAD
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-=======
->>>>>>> 3299f23ea4 (Update & trim pr)
 
 
 @pytest.fixture
