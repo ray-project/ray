@@ -39,8 +39,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        action_dist_class_train = self._module[module_id].get_train_action_dist_cls()
-        action_dist_class_exploration = self._module[
+        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
+        action_dist_class_exploration = self.module[
             module_id
         ].get_exploration_action_dist_cls()
         curr_action_dist = action_dist_class_train.from_logits(
@@ -92,7 +92,6 @@ class PPOTfLearner(PPOLearner, TfLearner):
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
             - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
-            # - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
