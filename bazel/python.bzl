@@ -4,18 +4,17 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 # Python file in `files`
 
 
-def doctest(name, files, exclude = [], srcs = [], args = [], data = [], **kwargs):
-    srcs = native.glob(include = files, exclude = exclude, allow_empty=False)
+def doctest(name, files, srcs = [], args = [], **kwargs):
     native.py_test(
         name = name,
         srcs = [
             "//bazel:pytest_wrapper.py",
-        ] + srcs,
+        ] + srcs + files,
         main = "//bazel:pytest_wrapper.py",
         args = [
             "--doctest-modules",
             "--capture=no",
-        ] + args + ["$(location :%s)" % x for x in srcs],
+        ] + args + ["$(location :%s)" % x for x in files],
         python_version = "PY3",
         srcs_version = "PY3",
         **kwargs
