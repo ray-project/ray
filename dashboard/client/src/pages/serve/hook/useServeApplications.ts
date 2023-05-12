@@ -3,6 +3,15 @@ import useSWR from "swr";
 import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getServeApplications } from "../../../service/serve";
+import { ServeHTTPProxyStatus } from "../../../type/serve";
+import { ServeDetails } from "../ServeSystemDetails";
+
+const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<ServeHTTPProxyStatus, number> =
+  {
+    [ServeHTTPProxyStatus.UNHEALTHY]: 0,
+    [ServeHTTPProxyStatus.STARTING]: 1,
+    [ServeHTTPProxyStatus.HEALTHY]: 2,
+  };
 
 export const useServeApplications = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
@@ -23,6 +32,11 @@ export const useServeApplications = () => {
     setFilter([...filter]);
   };
 
+  const [httpProxiesPage, setHttpProxiesPage] = useState({
+    pageSize: 10,
+    pageNo: 1,
+  });
+
   const { data, error } = useSWR(
     "useServeApplications",
     async () => {
@@ -35,14 +49,23 @@ export const useServeApplications = () => {
     { refreshInterval: API_REFRESH_INTERVAL_MS },
   );
 
-  const serveDetails = data
-    ? { ...data.http_options, proxy_location: data.proxy_location }
+  const serveDetails: ServeDetails | undefined = data
+    ? { http_options: data.http_options, proxy_location: data.proxy_location }
     : undefined;
   const serveApplicationsList = data
     ? Object.values(data.applications).sort(
         (a, b) => (b.last_deployed_time_s ?? 0) - (a.last_deployed_time_s ?? 0),
       )
     : [];
+
+  const httpProxies =
+    data && data.http_proxies
+      ? Object.values(data.http_proxies).sort(
+          (a, b) =>
+            SERVE_HTTP_PROXY_STATUS_SORT_ORDER[b.status] -
+            SERVE_HTTP_PROXY_STATUS_SORT_ORDER[a.status],
+        )
+      : [];
 
   return {
     serveDetails,
@@ -51,10 +74,14 @@ export const useServeApplications = () => {
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
     ),
+    httpProxies,
     error,
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
+    httpProxiesPage,
+    setHttpProxiesPage: (key: string, val: number) =>
+      setHttpProxiesPage({ ...httpProxiesPage, [key]: val }),
     ipLogMap,
     allServeApplications: serveApplicationsList,
   };

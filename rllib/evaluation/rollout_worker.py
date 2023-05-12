@@ -227,7 +227,7 @@ class RolloutWorker(EnvRunner):
         log_dir: Optional[str] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
-        dataset_shards: Optional[List[ray.data.Datastream]] = None,
+        dataset_shards: Optional[List[ray.data.Dataset]] = None,
         # Deprecated: This is all specified in `config` anyways.
         tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
     ):
