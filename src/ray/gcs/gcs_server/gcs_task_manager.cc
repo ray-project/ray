@@ -313,16 +313,17 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
 
-  // Select candidate events by indexing.
+  // Select candidate events by indexing if possible.
   std::vector<rpc::TaskEvents> task_events;
-  if (request.has_task_ids()) {
+  const auto &filters = request.filters();
+  if (filters.task_ids_size() > 0) {
     absl::flat_hash_set<TaskID> task_ids;
-    for (const auto &task_id_str : request.task_ids().vals()) {
+    for (const auto &task_id_str : filters.task_ids()) {
       task_ids.insert(TaskID::FromBinary(task_id_str));
     }
     task_events = task_event_storage_->GetTaskEvents(task_ids);
-  } else if (request.has_job_id()) {
-    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(request.job_id()));
+  } else if (filters.has_job_id()) {
+    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(filters.job_id()));
   } else {
     task_events = task_event_storage_->GetTaskEvents();
   }
@@ -334,15 +335,34 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   int32_t num_profile_event_limit = 0;
   int32_t num_status_event_limit = 0;
 
-  for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
-    auto &task_event = *itr;
+  // A lambda filter fn, where it returns true for task events to be included in the
+  // result. Task ids and job ids are already filtered by the storage with indexing above.
+  auto filter_fn = [&filters](const rpc::TaskEvents &task_event) {
     if (!task_event.has_task_info()) {
       // Skip task events w/o task info.
-      continue;
+      return false;
+    }
+    if (filters.exclude_driver() &&
+        task_event.task_info().type() == rpc::TaskType::DRIVER_TASK) {
+      return false;
     }
 
-    if (request.exclude_driver() &&
-        task_event.task_info().type() == rpc::TaskType::DRIVER_TASK) {
+    if (filters.has_actor_id() && task_event.task_info().has_actor_id() &&
+        ActorID::FromBinary(task_event.task_info().actor_id()) !=
+            ActorID::FromBinary(filters.actor_id())) {
+      return false;
+    }
+
+    if (filters.has_name() && task_event.task_info().name() != filters.name()) {
+      return false;
+    }
+
+    return true;
+  };
+
+  for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
+    auto &task_event = *itr;
+    if (!filter_fn(task_event)) {
       continue;
     }
 
@@ -367,15 +387,25 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   return;
 }
 
+void GcsTaskManager::RecordDataLossFromWorker(const rpc::TaskEventData &data) {
+  // TODO(rickyx): GCS side GC will be changed in another PR. This is a temporary
+  // routine for supporting legacy behaviour with worker side changes.
+  if (data.dropped_task_attempts_size() > 0) {
+    stats_counter_.Increment(kTotalNumStatusTaskEventsDropped,
+                             data.dropped_task_attempts_size());
+  }
+
+  if (data.num_profile_events_dropped() > 0) {
+    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                             data.num_profile_events_dropped());
+  }
+}
+
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   auto data = std::move(request.data());
-  // Update counters.
-  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
-                           data.num_profile_task_events_dropped());
-  stats_counter_.Increment(kTotalNumStatusTaskEventsDropped,
-                           data.num_status_task_events_dropped());
+  RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);

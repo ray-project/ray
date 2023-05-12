@@ -24,6 +24,7 @@ from typing import (
 import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -37,6 +38,7 @@ from ray.tune.experimental.output import (
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
+from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -191,7 +193,7 @@ def _setup_signal_catching() -> threading.Event:
             "to skip. "
         )
         experiment_interrupted_event.set()
-        # Restore original signal handler to react to future SIGINT signals
+        # Restore original signal handler to react to future SIGINT signals.
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
@@ -252,6 +254,8 @@ def run(
     checkpoint_score_attr: Optional[str] = None,
     checkpoint_freq: int = 0,
     checkpoint_at_end: bool = False,
+    checkpoint_keep_all_ranks: bool = False,
+    checkpoint_upload_from_workers: bool = False,
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
@@ -277,7 +281,10 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    # Todo (krfricke): Find a better way to pass entrypoint information, e.g.
+    # a context object or similar.
     _tuner_api: bool = False,
+    _trainer_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -383,6 +390,10 @@ def run(
         checkpoint_at_end: Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
+        checkpoint_keep_all_ranks: Whether to save checkpoints from all ranked
+            training workers.
+        checkpoint_upload_from_workers: Whether to upload checkpoint files
+            directly from distributed training workers.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief trial
             results, 3 = status and detailed trial results. Defaults to 3.
@@ -486,19 +497,24 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
-    error_message_map = (
-        {
+    if _tuner_api and _trainer_api:
+        error_message_map = {
+            "entrypoint": "Trainer(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
+        }
+    elif _tuner_api and not _trainer_api:
+        error_message_map = {
             "entrypoint": "Tuner(...)",
             "search_space_arg": "param_space",
             "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
         }
-        if _tuner_api
-        else {
+    else:
+        error_message_map = {
             "entrypoint": "tune.run(...)",
             "search_space_arg": "config",
             "restore_entrypoint": "tune.run(..., resume=True)",
         }
-    )
     _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
     if _remote is None:
@@ -555,6 +571,12 @@ def run(
         )
 
     ray._private.usage.usage_lib.record_library_usage("tune")
+
+    # Track environment variable usage here will also catch:
+    # 1.) Tuner.fit() usage
+    # 2.) Trainer.fit() usage
+    # 3.) Ray client usage (env variables are inherited by the Ray runtime env)
+    air_usage.tag_ray_air_env_vars()
 
     all_start = time.time()
 
@@ -649,6 +671,8 @@ def run(
         checkpoint_score_order=checkpoint_score_order,
         checkpoint_frequency=checkpoint_freq,
         checkpoint_at_end=checkpoint_at_end,
+        _checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
+        _checkpoint_upload_from_workers=checkpoint_upload_from_workers,
     )
 
     if num_samples == -1:
@@ -907,6 +931,7 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
+        _trainer_api=_trainer_api,
     )
 
     if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
@@ -922,6 +947,9 @@ def run(
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
+        # search_alg.total_samples has been updated, so we should
+        # update the number of pending trials
+        runner.update_max_pending_trials()
     else:
         logger.debug(
             "You have resumed the Tune run, which means that any newly specified "
@@ -957,10 +985,24 @@ def run(
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
+        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+            tensorboard_path = runner._local_experiment_path
+        else:
+            tensorboard_path = None
+
         if air_progress_reporter and isinstance(
             air_progress_reporter, TuneRichReporter
         ):
             stack.enter_context(air_progress_reporter.with_live())
+        elif air_progress_reporter:
+            air_progress_reporter.experiment_started(
+                experiment_name=runner._experiment_dir_name,
+                experiment_path=runner.experiment_path,
+                searcher_str=search_alg.__class__.__name__,
+                scheduler_str=scheduler.__class__.__name__,
+                total_num_samples=search_alg.total_samples,
+                tensorboard_path=tensorboard_path,
+            )
 
         try:
             while (
@@ -1016,10 +1058,16 @@ def run(
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
             path=runner.experiment_path,
         )
-        logger.warning(
-            "Experiment has been interrupted, but the most recent state was saved.\n"
-            f"Continue running this experiment with: {restore_entrypoint}"
-        )
+        if _trainer_api:
+            logger.warning(
+                f"Training has been interrupted, but the most recent state was saved.\n"
+                f"Resume training with: {restore_entrypoint}"
+            )
+        else:
+            logger.warning(
+                f"Experiment has been interrupted, but the most recent state was "
+                f"saved.\nResume experiment with: {restore_entrypoint}"
+            )
     ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,

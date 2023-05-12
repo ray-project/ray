@@ -1,3 +1,4 @@
+import copy
 import inspect
 import logging
 from pathlib import Path
@@ -21,7 +22,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
+from ray.widgets.util import ensure_ipywidgets_dep, repr_fallback_if_colab
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -39,7 +40,8 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
     ):
         self.preprocessor = preprocessor
         super(_DataParallelCheckpointManager, self).__init__(
-            run_dir=run_dir, checkpoint_strategy=checkpoint_strategy
+            run_dir=run_dir,
+            checkpoint_strategy=checkpoint_strategy,
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -99,7 +101,7 @@ class DataParallelTrainer(BaseTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Datastream shard for the given key.
+            # Returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -210,7 +212,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datastreams to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -411,6 +413,7 @@ class DataParallelTrainer(BaseTrainer):
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
+            checkpoint_config=self.run_config.checkpoint_config,
         )
 
         checkpoint_manager = self._checkpoint_manager_cls(
@@ -420,6 +423,17 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
+        # Disable TrainingIterator's CheckpointManager from handling
+        # checkpoints itself by setting num_to_keep to None.
+        # This is important because otherwise Trainer's CheckpointManager
+        # may delete a checkpoint prematurely, before the next checkpoint
+        # has been fully handled by Tune.
+        # TODO(jungong, justinvyu) : Trainer should not own a
+        # CheckpointManager.
+        checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)
+        checkpoint_strategy.num_to_keep = None
+        checkpoint_strategy.checkpoint_score_attribute = None
+
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
@@ -427,7 +441,8 @@ class DataParallelTrainer(BaseTrainer):
             dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.resume_from_checkpoint,
-            checkpoint_strategy=None,
+            checkpoint_strategy=checkpoint_strategy,
+            storage_path=self.run_config.storage_path,
         )
 
         self._report(training_iterator)
@@ -443,40 +458,61 @@ class DataParallelTrainer(BaseTrainer):
         """
         return self._dataset_config.copy()
 
-    @ensure_notebook_deps(
-        ["tabulate", None],
-        ["ipywidgets", "8"],
-    )
-    @fallback_if_colab
-    def _ipython_display_(self):
+    @ensure_ipywidgets_dep("8")
+    @repr_fallback_if_colab
+    def _repr_mimebundle_(self, **kwargs):
+        """Return a mimebundle with an ipywidget repr and a simple text repr.
+
+        Depending on the frontend where the data is being displayed,
+        different mimetypes will be used from this bundle.
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html
+        for information about this method, and
+        https://ipywidgets.readthedocs.io/en/latest/embedding.html
+        for more information about the jupyter widget mimetype.
+
+        Returns:
+            A mimebundle containing an ipywidget repr and a simple text repr.
+        """
         from ipywidgets import HTML, VBox, Tab, Layout
-        from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
-        children = [
-            self._datasets_repr_() if self.datasets else None,
-            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None,
-            HTML(self._train_loop_config_repr_html_())
-            if self._train_loop_config
-            else None,
-            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None,
-            HTML(self.run_config._repr_html_()) if self.run_config else None,
-            HTML(self._backend_config._repr_html_()) if self._backend_config else None,
-        ]
+        children = []
+        titles = []
 
-        tab = Tab(
-            children,
-            titles=[
-                "Datasets",
-                "Dataset Config",
-                "Train Loop Config",
-                "Scaling Config",
-                "Run Config",
-                "Backend Config",
-            ],
+        if self.datasets:
+            children.append(self._datasets_repr_())
+            titles.append("Datasets")
+
+        if self._dataset_config:
+            children.append(HTML(self._dataset_config_repr_html_()))
+            titles.append("Dataset Config")
+
+        if self._train_loop_config:
+            children.append(HTML(self._train_loop_config_repr_html_()))
+            titles.append("Train Loop Config")
+
+        if self.scaling_config:
+            children.append(HTML(self.scaling_config._repr_html_()))
+            titles.append("Scaling Config")
+
+        if self.run_config:
+            children.append(HTML(self.run_config._repr_html_()))
+            titles.append("Run Config")
+
+        if self._backend_config:
+            children.append(HTML(self._backend_config._repr_html_()))
+            titles.append("Backend Config")
+
+        tab = Tab(children, titles=titles)
+        widget = VBox([title, tab], layout=Layout(width="100%"))
+        bundle = widget._repr_mimebundle_(**kwargs)
+        bundle.update(
+            {
+                "text/plain": repr(self),
+            }
         )
-        display(VBox([title, tab], layout=Layout(width="100%")))
+        return bundle
 
     def _train_loop_config_repr_html_(self) -> str:
         if self._train_loop_config:
@@ -514,7 +550,6 @@ class DataParallelTrainer(BaseTrainer):
 
         return Template("rendered_html_common.html.j2").render(content=content)
 
-    @ensure_notebook_deps(["ipywidgets", "8"])
     def _datasets_repr_(self) -> str:
         from ipywidgets import HTML, VBox, Layout
 

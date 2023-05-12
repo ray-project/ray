@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Optional, Union, Tuple, Set
 
 from datetime import datetime
@@ -133,12 +134,15 @@ class _TuneControllerBase:
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        _trainer_api: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._callbacks = CallbackList(callbacks or [])
-        self._insufficient_resources_manager = _InsufficientResourcesManager()
+        self._insufficient_resources_manager = _InsufficientResourcesManager(
+            for_train=_trainer_api
+        )
         self._pending_trial_queue_times = {}
 
         self._max_pending_trials = _get_max_pending_trials(self._search_alg)
@@ -364,7 +368,9 @@ class _TuneControllerBase:
             },
         }
 
-        tmp_file_name = os.path.join(experiment_dir, ".tmp_experiment_state")
+        tmp_file_name = os.path.join(
+            experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
+        )
 
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
@@ -515,6 +521,11 @@ class _TuneControllerBase:
             elif trial.status != Trial.TERMINATED and not resume_unfinished:
                 trial_to_add.status = Trial.TERMINATED
             self.add_trial(trial_to_add)
+
+    def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
+        self._max_pending_trials = max_pending_trials or _get_max_pending_trials(
+            self._search_alg
+        )
 
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
@@ -1249,6 +1260,7 @@ class TrialRunner(_TuneControllerBase):
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        _trainer_api: bool = False,
         # Deprecated
         local_checkpoint_dir: Optional[str] = None,
     ):
@@ -1284,6 +1296,7 @@ class TrialRunner(_TuneControllerBase):
             callbacks=callbacks,
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
+            _trainer_api=_trainer_api,
         )
 
         self.trial_executor.setup(
@@ -1304,6 +1317,10 @@ class TrialRunner(_TuneControllerBase):
             runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
             executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
         )
+
+    def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
+        super().update_max_pending_trials(max_pending_trials=max_pending_trials)
+        self.trial_executor._max_staged_actors = self._max_pending_trials
 
     def _used_resources_string(self) -> str:
         return self.trial_executor.debug_string()
@@ -1601,7 +1618,9 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     # Use a minimum of 16 to trigger fast autoscaling
     # Scale up to at most the number of available cluster CPUs
     cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
-    max_pending_trials = max(16, int(cluster_cpus * 1.1))
+    max_pending_trials = min(
+        max(search_alg.total_samples, 16), max(16, int(cluster_cpus * 1.1))
+    )
 
     if max_pending_trials > 128:
         logger.warning(

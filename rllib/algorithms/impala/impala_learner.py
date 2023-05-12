@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Any, List, Mapping
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -12,7 +13,11 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
+
+
+LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 @dataclass
@@ -36,12 +41,38 @@ class ImpalaHyperparameters(LearnerHyperparameters):
     discount_factor: float = None
     vtrace_clip_rho_threshold: float = None
     vtrace_clip_pg_rho_threshold: float = None
-    vtrace_drop_last_ts: bool = None
     vf_loss_coeff: float = None
     entropy_coeff: float = None
+    entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None
 
 
 class ImpalaLearner(Learner):
+    @override(Learner)
+    def build(self) -> None:
+        super().build()
+
+        # Build entropy coeff scheduling tools.
+        self.entropy_coeff_scheduler = Scheduler(
+            fixed_value=self.hps.entropy_coeff,
+            schedule=self.hps.entropy_coeff_schedule,
+            framework=self.framework,
+            device=self._device,
+        )
+
+    @override(Learner)
+    def additional_update_per_module(
+        self, module_id: ModuleID, timestep: int
+    ) -> Dict[str, Any]:
+        results = super().additional_update_per_module(module_id, timestep=timestep)
+
+        # Update entropy coefficient via our Scheduler.
+        new_entropy_coeff = self.entropy_coeff_scheduler.update(
+            module_id, timestep=timestep
+        )
+        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
+
+        return results
+
     @override(Learner)
     def compile_results(
         self,
@@ -62,7 +93,7 @@ def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     """Reduce/Aggregate a list of results from Impala Learners.
 
     Average the values of the result dicts. Add keys for the number of agent and env
-    steps trained.
+    steps trained (on all modules).
 
     Args:
         results: result dicts to reduce.
