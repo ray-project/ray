@@ -15,21 +15,45 @@ import {
 } from "../../../type/job";
 import { TypeTaskStatus } from "../../../type/task";
 
+const enum TaskStatus {
+  PENDING_ARGS_AVAIL = "PENDING_ARGS_AVAIL",
+  PENDING_NODE_ASSIGNMENT = "PENDING_NODE_ASSIGNMENT",
+  SUBMITTED_TO_WORKER = "SUBMITTED_TO_WORKER",
+  RUNNING = "RUNNING",
+  FINISHED = "FINISHED",
+  FAILED = "FAILED",
+  UNKNOWN = "UNKNOWN",
+}
+
 const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<
   TypeTaskStatus,
+  keyof TaskStatus
+> = {
+  [TypeTaskStatus.PENDING_ARGS_AVAIL]: "PENDING_ARGS_AVAIL",
+  [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: TaskStatus.PENDING_NODE_ASSIGNMENT,
+  [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]:
+    TaskStatus.PENDING_NODE_ASSIGNMENT,
+  [TypeTaskStatus.PENDING_ARGS_FETCH]: TaskStatus.PENDING_NODE_ASSIGNMENT,
+  [TypeTaskStatus.SUBMITTED_TO_WORKER]: TaskStatus.SUBMITTED_TO_WORKER,
+  [TypeTaskStatus.RUNNING]: TaskStatus.RUNNING,
+  [TypeTaskStatus.RUNNING_IN_RAY_GET]: TaskStatus.RUNNING,
+  [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: TaskStatus.RUNNING,
+  [TypeTaskStatus.FINISHED]: TaskStatus.FINISHED,
+  [TypeTaskStatus.FAILED]: TaskStatus.FAILED,
+  [TypeTaskStatus.NIL]: TaskStatus.UNKNOWN,
+};
+
+export const TaskStatusToTaskProgressMapping: Record<
+  TaskStatus,
   keyof TaskProgress
 > = {
-  [TypeTaskStatus.PENDING_ARGS_AVAIL]: "numPendingArgsAvail",
-  [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: "numPendingNodeAssignment",
-  [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]: "numPendingNodeAssignment",
-  [TypeTaskStatus.PENDING_ARGS_FETCH]: "numPendingNodeAssignment",
-  [TypeTaskStatus.SUBMITTED_TO_WORKER]: "numSubmittedToWorker",
-  [TypeTaskStatus.RUNNING]: "numRunning",
-  [TypeTaskStatus.RUNNING_IN_RAY_GET]: "numRunning",
-  [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: "numRunning",
-  [TypeTaskStatus.FINISHED]: "numFinished",
-  [TypeTaskStatus.FAILED]: "numFailed",
-  [TypeTaskStatus.NIL]: "numUnknown",
+  [TaskStatus.PENDING_ARGS_AVAIL]: "numPendingArgsAvail",
+  [TaskStatus.PENDING_NODE_ASSIGNMENT]: "numPendingNodeAssignment",
+  [TaskStatus.SUBMITTED_TO_WORKER]: "numSubmittedToWorker",
+  [TaskStatus.RUNNING]: "numRunning",
+  [TaskStatus.FINISHED]: "numFinished",
+  [TaskStatus.FAILED]: "numFailed",
+  [TaskStatus.UNKNOWN]: "numUnknown",
 };
 
 const useFetchStateApiProgressByTaskName = (
