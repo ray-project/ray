@@ -385,7 +385,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         lines = request.lines if request.lines else 1000
         task_id = request.task_id if request.HasField("task_id") else None
 
-        filepath = Path(f"{self._dashboard_agent.log_dir}") /f"{request.log_file_name}"
+        filepath = Path(f"{self._dashboard_agent.log_dir}") / f"{request.log_file_name}"
         logger.info(f"Streaming log file: {filepath}")
 
         if not filepath.is_file():
