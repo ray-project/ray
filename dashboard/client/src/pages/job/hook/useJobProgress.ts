@@ -29,7 +29,7 @@ const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<
   TypeTaskStatus,
   keyof TaskStatus
 > = {
-  [TypeTaskStatus.PENDING_ARGS_AVAIL]: "PENDING_ARGS_AVAIL",
+  [TypeTaskStatus.PENDING_ARGS_AVAIL]: TaskStatus.PENDING_ARGS_AVAIL,
   [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: TaskStatus.PENDING_NODE_ASSIGNMENT,
   [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]:
     TaskStatus.PENDING_NODE_ASSIGNMENT,
