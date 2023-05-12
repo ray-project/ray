@@ -654,11 +654,11 @@ def get_multiplexed_model_id() -> str:
             import requests
             # client code
             # User needs to set the model id in the request header with the key
-            # "ray_serve_request_model_id" when sending requests to the http proxy.
+            # "ray_serve_multiplexed_model_id" when sending requests to the http proxy.
             requests.get("http://localhost:8000",
-                headers={"ray_serve_request_model_id": "model_1"})
+                headers={"ray_serve_multiplexed_model_id": "model_1"})
             # Or user can also set model id inside the serve handle.
-            handle.options(model_id="model_1").remote("blablabla")
+            handle.options(multiplexed_model_id="model_1").remote("blablabla")
 
             # In replica, You can retrieve the model id from the
             # request context.
