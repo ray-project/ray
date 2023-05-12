@@ -3,6 +3,23 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
 
+
+def doctest(name, srcs, deps = [], args = [], data = [], **kwargs):
+    native.py_test(
+        name = name,
+        srcs = [
+            "//bazel:pytest_wrapper.py",
+        ] + srcs,
+        main = "//bazel:pytest_wrapper.py",
+        args = [
+            "--doctest-modules --capture=no",
+        ] + args + ["$(location :%s)" % x for x in srcs],
+        python_version = "PY3",
+        srcs_version = "PY3",
+        **kwargs
+    )
+
+
 def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwargs):
     for file in files:
         # remove .py
