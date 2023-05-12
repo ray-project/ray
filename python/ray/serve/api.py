@@ -646,23 +646,24 @@ def get_multiplexed_model_id() -> str:
     """[EXPERIMENTAL] Get the multiplexed model ID for the current request.
 
     This is used with a function decorated with `@serve.multiplexed`
-    to cache multiple independent models within a single deployment.
+    to retrieve the model ID for the current request.
 
     .. code-block:: python
-            from ray import serve
             import ray
+            from ray import serve
             import requests
-            # client code
-            # User needs to set the model id in the request header with the key
-            # "ray_serve_multiplexed_model_id" when sending requests to the http proxy.
+
+            # Set the multiplexed model id with the key
+            # "ray_serve_multiplexed_model_id" in the request
+            # headers when sending requests to the http proxy.
             requests.get("http://localhost:8000",
                 headers={"ray_serve_multiplexed_model_id": "model_1"})
-            # Or user can also set model id inside the serve handle.
+            # This can also be set when using `RayServeHandle`.
             handle.options(multiplexed_model_id="model_1").remote("blablabla")
 
-            # In replica, You can retrieve the model id from the
-            # request context.
-            assert serve.get_multiplexed_model_id() == "model_1"
-
+            # In your deployment code, you can retrieve the model id from
+            # `get_multiplexed_model_id()`.
+            def my_deployment_function(request):
+                assert serve.get_multiplexed_model_id() == "model_1"
     """
     raise NotImplementedError("get_multiplexed_model_id API is not supported yet.")
