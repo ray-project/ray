@@ -34,6 +34,7 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 
 _INDEX_FILE_EXTENSION = ".files"
@@ -337,8 +338,19 @@ class _TrainSession:
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
+        checkpoint_type, _ = checkpoint.get_internal_representation()
+
+        if checkpoint_type == "data_dict" and self.checkpoint_keep_all_ranks:
+            if log_once("keep_all_ranks_dict_checkpoint"):
+                logger.warning(
+                    "Saving checkpoints from all ranks does not work with "
+                    "dictionary checkpoints. Set _checkpoint_keep_all_ranks "
+                    "to False, or write checkpoints to a directory and report "
+                    "directory checkpoints instead."
+                )
+
         upload_from_workers = (
-            checkpoint.get_internal_representation()[0] == "local_path"
+            checkpoint_type == "local_path"
             and self.checkpoint_upload_from_workers
             and self.checkpoint_uri
         )
