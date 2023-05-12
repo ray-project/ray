@@ -348,8 +348,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       task_ids.insert(TaskID::FromBinary(task_id_str));
     }
     task_events = task_event_storage_->GetTaskEvents(task_ids);
-  } else if (request.has_job_id()) {
-    const auto job_id = JobID::FromBinary(request.job_id());
+  } else if (filters.has_job_id()) {
+    const auto job_id = JobID::FromBinary(filters.job_id());
     task_events = task_event_storage_->GetTaskEvents(job_id);
     // Populate per-job data loss.
     if (task_event_storage_->HasJob(job_id)) {
