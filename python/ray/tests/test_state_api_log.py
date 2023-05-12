@@ -999,6 +999,27 @@ def test_log_list(ray_start_cluster):
     e.match(f"Given node id {node_id} is not available")
 
 
+def test_log_job(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    # Submit a job
+    from ray.job_submission import JobSubmissionClient
+
+    JOB_LOG = "test-job-log\n"
+    client = JobSubmissionClient(webui_url)
+    job_id = client.submit_job(entrypoint=f"echo {JOB_LOG}")
+
+    def verify():
+        logs = "".join(get_log(job_id=job_id, node_id=node_id))
+        assert JOB_LOG == logs
+        return True
+
+    wait_for_condition(verify)
+
+
 def test_log_get(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)

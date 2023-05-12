@@ -20,7 +20,6 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import ActorID
 from ray._private.test_utils import (
     run_string_as_driver,
-    run_string_as_driver_nonblocking,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -2194,9 +2193,8 @@ def test_list_jobs(shutdown_only):
 
     wait_for_condition(verify)
 
-
     # Test driver jobs
-    script="""
+    script = """
 
 import ray
 
@@ -2206,7 +2204,7 @@ def f():
 
 ray.get(f.remote())
 """
-    driver_out = run_string_as_driver(script)
+    run_string_as_driver(script)
 
     def verify():
         jobs = list_jobs(filters=[("type", "=", "DRIVER")])

@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import logging
 from datetime import datetime
@@ -23,7 +22,6 @@ from ray.experimental.state.common import (
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     GetApiOptions,
-    JobState,
     ListApiOptions,
     PredicateType,
     StateResource,
@@ -815,6 +813,7 @@ def _print_log(
     encoding_errors: str = "strict",
     task_id: Optional[str] = None,
     attempt_number: int = 0,
+    job_id: Optional[str] = None,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -843,6 +842,7 @@ def _print_log(
         errors=encoding_errors,
         task_id=task_id,
         attempt_number=attempt_number,
+        job_id=job_id,
     ):
         print(chunk, end="", flush=True)
 
@@ -1180,7 +1180,10 @@ def log_worker(
     "job_id",
     required=True,
     type=str,
-    help="Retrieves the logs from a submission job with submission id, i.e. raysubmit_XXX",
+    help=(
+        "Retrieves the logs from a submission job with submission id,"
+        "i.e. raysubmit_XXX"
+    ),
 )
 @address_option
 @log_follow_option

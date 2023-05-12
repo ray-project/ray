@@ -119,11 +119,11 @@ class LogsManager:
             )
         assert node_id is not None
 
-    async def _resolve_job_filename(self, job_id: str) -> Tuple[str, str]:
-        """Return the log file name and node id for a given job id.
+    async def _resolve_job_filename(self, sub_job_id: str) -> Tuple[str, str]:
+        """Return the log file name and node id for a given job submission id.
 
         Args:
-            job_id: The job id.
+            sub_job_id: The job submission id.
 
         Returns:
             The log file name and node id.
@@ -131,20 +131,21 @@ class LogsManager:
         job_infos = await self.client.get_job_info(timeout=DEFAULT_RPC_TIMEOUT)
         target_job = None
         for job_info in job_infos:
-            if job_info.job_id == job_id:
+            if job_info.submission_id == sub_job_id:
                 target_job = job_info
                 break
         if target_job is None:
-            logger.info(f"Job ID {job_id} not found.")
+            logger.info(f"Submission job ID {sub_job_id} not found.")
             return None, None
 
         node_id = job_info.driver_node_id
         if node_id is None:
             raise ValueError(
-                f"Job {job_id} has no driver node id info. This is likely a bug. Please file an issue."
+                f"Job {sub_job_id} has no driver node id info. "
+                "This is likely a bug. Please file an issue."
             )
 
-        log_filename = JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id)
+        log_filename = JOB_LOGS_PATH_TEMPLATE.format(job_id=sub_job_id)
         return node_id, log_filename
 
     async def _resolve_worker_file(
@@ -261,15 +262,12 @@ class LogsManager:
                 if t.attempt_number == attempt_number:
                     task_event = t
                     break
-        elif job_id:
-            node, log_filename = self._resolve_job_filename(job_id)
 
             if task_event is None:
                 raise FileNotFoundError(
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})"
                 )
-
             # Get the worker id and node id.
             task = protobuf_to_task_state_dict(task_event)
 
@@ -289,6 +287,12 @@ class LogsManager:
                 pid=None,
                 suffix=suffix,
                 timeout=timeout,
+            )
+        elif job_id:
+            node_id, log_filename = await self._resolve_job_filename(job_id)
+
+            logger.info(
+                f"Resolving job {job_id} on node {node_id} with filename {log_filename}"
             )
 
         elif pid:

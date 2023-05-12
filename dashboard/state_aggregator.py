@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from dataclasses import asdict, fields
+from dataclasses import fields
 import dataclasses
 from itertools import islice
 from typing import List, Tuple, Optional
@@ -111,7 +111,10 @@ def _convert_filters_type(
                         )
                 elif column_type is float or column_type == "number":
                     try:
-                        val = convert_string_to_type(val, float, )
+                        val = convert_string_to_type(
+                            val,
+                            float,
+                        )
                     except ValueError:
                         raise ValueError(
                             f"Invalid filter `--filter {col} {val}` for a float "
@@ -256,7 +259,6 @@ class StateAPIManager:
 
         result = []
         for message in reply.placement_group_table_data:
-
             data = protobuf_message_to_dict(
                 message=message,
                 fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
@@ -371,7 +373,7 @@ class StateAPIManager:
             result=result,
             total=total,
             num_after_truncation=total,
-            num_filtered=num_filtered
+            num_filtered=num_filtered,
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:

@@ -10,7 +10,6 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.dashboard.modules.job.common import JobInfo, JobStatus
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
@@ -296,7 +295,7 @@ class GetLogOptions:
     # The suffix of the log file if file resolution not through filename directly.
     # Default to "out".
     suffix: str = "out"
-    # The job submission id for submission job. This doesn't work for driver job 
+    # The job submission id for submission job. This doesn't work for driver job
     # since Ray doesn't log driver logs to file in the ray logs directory.
     job_id: Optional[str] = None
 
@@ -321,7 +320,9 @@ class GetLogOptions:
                 "Both node_id and node_ip are given. Only one of them can be provided. "
                 f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
             )
-        if not (self.actor_id or self.task_id or self.pid or self.filename or self.job_id):
+        if not (
+            self.actor_id or self.task_id or self.pid or self.filename or self.job_id
+        ):
             raise ValueError(
                 "None of actor_id, task_id, pid, job_id or filename is provided. "
                 "At least one of them is required to fetch logs."
@@ -441,6 +442,7 @@ class NodeState(StateSchema):
     # up to 30 seconds).
     end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
 
+
 # NOTE:
 # Declaring this as dataclass would make __init__ not being called properly.
 class JobState(StateSchema, JobDetails):
@@ -468,7 +470,7 @@ class JobState(StateSchema, JobDetails):
                 "error_type",
                 "driver_info",
             ]
-        return [f for f in JobDetails.__fields__]
+        return list(f for f in JobDetails.__fields__)
 
     def asdict(self):
         return JobDetails.dict(self)
@@ -477,7 +479,9 @@ class JobState(StateSchema, JobDetails):
     def schema_dict(cls) -> Dict[str, Any]:
         schema_types = cls.schema()["properties"]
         # Get type name to actual type mapping.
-        return {k: v['type'] for k, v in schema_types.items() if v.get('type') is not None}
+        return {
+            k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
+        }
 
 
 @dataclass(init=True)
