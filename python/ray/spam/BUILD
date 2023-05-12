@@ -7,6 +7,6 @@ doctest(
 
 doctest(
     files = ["gpu_module.py"],
-    gpu = True,
     tags = ["team:spam"],
+    gpu = True,
 )

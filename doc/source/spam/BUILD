@@ -5,9 +5,8 @@ doctest(
     tags = ["team:spam"],
 )
 
-
 doctest(
     files = ["gpu_guide.rst"],
-    gpu = True,
     tags = ["team:spam"],
+    gpu = True,
 )
