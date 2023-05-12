@@ -12,6 +12,8 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
     if gpu:
         name += "[gpu]"
         tags += ["gpu"]
+    else:
+        tags += ["cpu"]
 
     native.py_test(
         name = name,
