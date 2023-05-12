@@ -85,4 +85,4 @@ def test_count_vectorizer():
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

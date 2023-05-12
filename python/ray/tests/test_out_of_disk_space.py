@@ -257,4 +257,4 @@ def test_ood_events(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

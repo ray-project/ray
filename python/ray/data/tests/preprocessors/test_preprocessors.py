@@ -430,4 +430,4 @@ def test_transform_stats_raises_deprecation_warning(create_dummy_preprocessors):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

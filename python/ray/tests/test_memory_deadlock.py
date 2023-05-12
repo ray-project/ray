@@ -267,4 +267,4 @@ if __name__ == "__main__":
     pass
     # Issue #33491, timing out right now.
     # See python/ray/tests/BUILD for more details (ctrl+f test_memory_deadlock)
-    # sys.exit(pytest.main(["-sv", __file__]))
+    # sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

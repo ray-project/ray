@@ -284,4 +284,4 @@ def test_batch_mapper_numpy_data_format(ds, expected_df):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

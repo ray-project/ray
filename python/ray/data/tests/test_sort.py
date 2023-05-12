@@ -470,4 +470,4 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

@@ -57,4 +57,4 @@ def test_redis_tls(setup_tls, ray_start_cluster_head):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

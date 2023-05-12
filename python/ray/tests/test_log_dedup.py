@@ -132,4 +132,4 @@ def test_dedup_logs_allow_and_skip_regexes():
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

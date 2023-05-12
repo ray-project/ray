@@ -87,4 +87,4 @@ assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))

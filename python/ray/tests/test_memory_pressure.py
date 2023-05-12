@@ -604,4 +604,4 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__] + sys.argv[1:]))
