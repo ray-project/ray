@@ -60,11 +60,6 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                 for e in udf_return_col:
                     shapes.add(e.shape)
             if len(shapes) > 1:
-                logger.get_logger().info(
-                    "Arrays of different shapes were returned in the output: "
-                    f"{_truncated_repr(udf_return_col)}. Falling back to "
-                    "object dtype for these results."
-                )
                 # This util works around some limitations of np.array(dtype=object).
                 udf_return_col = create_ragged_ndarray(udf_return_col)
             else:
