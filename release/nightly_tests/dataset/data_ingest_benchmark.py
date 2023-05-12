@@ -124,7 +124,9 @@ def do_consume(
     if rank == 0:
         print("Ingest stats from rank=0:\n\n{}".format(split.stats()))
 
-    assert bytes_read == expected_total_read_bytes
+    assert (
+        bytes_read == expected_total_read_bytes
+    ), f"{bytes_read} != {expected_total_read_bytes}"
 
 
 def make_ds(size_gb: int, parallelism: int = -1):
