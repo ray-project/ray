@@ -72,6 +72,8 @@ class OrdinalEncoder(Preprocessor):
 
     Args:
         columns: The columns to separately encode.
+        output_columns: The new columns to store the encoded columns. If None,
+            the columns are encoded in-place. Defaults to None.
         encode_lists: If ``True``, encode list elements.  If ``False``, encode
             whole lists (i.e., replace each list with an integer). ``True``
             by default.
@@ -82,9 +84,23 @@ class OrdinalEncoder(Preprocessor):
             Another preprocessor that encodes categorical data.
     """
 
-    def __init__(self, columns: List[str], *, encode_lists: bool = True):
+    def __init__(
+        self,
+        columns: List[str],
+        *,
+        output_columns: Optional[List[str]] = None,
+        encode_lists: bool = True,
+    ):
         # TODO: allow user to specify order of values within each column.
+        if output_columns is not None and len(output_columns) != len(columns):
+            raise ValueError(
+                f"{len(columns)} were requested to be encoded, but only "
+                f"{len(output_columns)} were specified. The number "
+                "of columns to be encoded and the number of "
+                "output columns should match."
+            )
         self.columns = columns
+        self.output_columns = output_columns
         self.encode_lists = encode_lists
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -115,12 +131,16 @@ class OrdinalEncoder(Preprocessor):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df[self.columns] = df[self.columns].apply(column_ordinal_encoder)
+        output_columns = (
+            self.columns if self.output_columns is not None else self.columns
+        )
+        df[output_columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"output_columns={self.output_columns!r}, "
             f"encode_lists={self.encode_lists!r})"
         )
 
@@ -187,6 +207,8 @@ class OneHotEncoder(Preprocessor):
         max_categories: The maximum number of features to create for each column.
             If a value isn't specified for a column, then a feature is created
             for every category in that column.
+        drop_original_columns: Whether to drop the original unencoded columns. Defaults
+            to False.
 
     .. seealso::
 
@@ -200,11 +222,16 @@ class OneHotEncoder(Preprocessor):
     """  # noqa: E501
 
     def __init__(
-        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+        self,
+        columns: List[str],
+        *,
+        max_categories: Optional[Dict[str, int]] = None,
+        drop_original_columns: bool = False,
     ):
-        # TODO: add `drop` parameter.
+
         self.columns = columns
         self.max_categories = max_categories
+        self.drop_original_columns = drop_original_columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
@@ -224,19 +251,28 @@ class OneHotEncoder(Preprocessor):
         for column in self.columns:
             column_values = self.stats_[f"unique_values({column})"]
             if _is_series_composed_of_lists(df[column]):
-                df[column] = df[column].map(lambda x: tuple(x))
+                df[f"tmp_{column}"] = df[column].map(lambda x: tuple(x))
+            else:
+                df[f"tmp_{column}"] = df[column]
+
             for column_value in column_values:
-                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
-                    int
-                )
+                df[f"{column}_{column_value}"] = (
+                    df[f"tmp_{column}"] == column_value
+                ).astype(int)
+
+        # Drop the temp columns.
+        df.drop([f"tmp_{column}" for column in columns_to_drop])
+
         # Drop original unencoded columns.
-        df = df.drop(columns=list(columns_to_drop))
+        if self.drop_original_columns:
+            df = df.drop(columns=list(columns_to_drop))
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"max_categories={self.max_categories!r})"
+            f"max_categories={self.max_categories!r}, "
+            f"drop_original_columns={self.drop_original_columns})"
         )
 
 
@@ -309,7 +345,11 @@ class MultiHotEncoder(Preprocessor):
     """
 
     def __init__(
-        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+        self,
+        columns: List[str],
+        *,
+        output_columns: Optional[List[str]] = None,
+        max_categories: Optional[Dict[str, int]] = None,
     ):
         # TODO: add `drop` parameter.
         self.columns = columns
