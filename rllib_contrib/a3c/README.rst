@@ -7,6 +7,18 @@ A3C (Asynchronous Advantage Actor-Critic)
 Installation
 ------------
 
+Installation without cloning:
+
+.. code-block:: bash
+
+    conda create -n rllib-a3c python=3.10
+    conda activate rllib-a3c
+    pip install -r https://raw.githubusercontent.com/ray-project/ray/master/rllib_contrib/a3c/requirements.txt
+    pip install git+https://github.com/ray-project/ray.git#subdirectory=rllib_contrib/a3c
+
+
+For building from source: 
+
 .. code-block:: bash
 
     conda create -n rllib-a3c python=3.10

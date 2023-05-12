@@ -13,10 +13,22 @@ MAML uses additional metrics to measure performance; episode_reward_mean measure
 Installation
 ------------
 
+Installation without cloning:
+
 .. code-block:: bash
 
     conda create -n rllib-maml python=3.10
     conda activate rllib-maml
+    pip install -r https://raw.githubusercontent.com/ray-project/ray/master/rllib_contrib/maml/requirements.txt
+    pip install git+https://github.com/ray-project/ray.git#subdirectory=rllib_contrib/a3c
+
+
+For building from source: 
+
+.. code-block:: bash
+
+    conda create -n rllib-a3c python=3.10
+    conda activate rllib-a3c
     pip install -r requirements.txt
     pip install -e '.[development]'
 
