@@ -88,17 +88,20 @@ class PPOLearner(Learner):
         postprocessed_loss: Mapping[str, Any],
         postprocessed_gradients: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        if math.isinf(postprocessed_loss[LEARNER_RESULTS_KL_KEY]):
-            logger.warning(
-                "KL divergence is non-finite, this will likely destabilize "
-                "your model and the training process. Action(s) in a "
-                "specific state have near-zero probability. "
-                "This can happen naturally in deterministic "
-                "environments where the optimal policy has zero mass "
-                "for a specific action. To fix this issue, consider "
-                "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                "config."
-            )
+        for module_id, module_loss_results in postprocessed_loss.items():
+            if module_id == self.TOTAL_LOSS_KEY:
+                continue
+            if math.isinf(module_loss_results[LEARNER_RESULTS_KL_KEY]):
+                logger.warning(
+                    "KL divergence is non-finite, this will likely destabilize "
+                    "your model and the training process. Action(s) in a "
+                    "specific state have near-zero probability. "
+                    "This can happen naturally in deterministic "
+                    "environments where the optimal policy has zero mass "
+                    "for a specific action. To fix this issue, consider "
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
+                )
         return super().compile_results(
             batch, fwd_out, postprocessed_loss, postprocessed_gradients
         )
