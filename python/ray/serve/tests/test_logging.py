@@ -191,6 +191,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "route": request_context.route,
             "app_name": request_context.app_name,
             "log_file": logger.handlers[1].baseFilename,
+            "replica": serve.get_replica_context().replica_tag,
         }
 
     @serve.deployment
@@ -203,6 +204,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "route": request_context.route,
                 "app_name": request_context.app_name,
                 "log_file": logger.handlers[1].baseFilename,
+                "replica": serve.get_replica_context().replica_tag,
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -245,12 +247,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         if json_log_format:
             user_method_log_regexes = [
                 f'.*"deployment": "app1_fn", '
+                f'"replica": "{resp["replica"]}", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
                 f'"application": "{resp["app_name"]}", "message":.* user func.*',
             ]
             user_class_method_log_regexes = [
                 f'.*"deployment": "app2_Model", '
+                f'"replica": "{resp2["replica"]}", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
                 f'"application": "{resp2["app_name"]}", "message":.* user log '
@@ -306,6 +310,7 @@ def test_json_log_formatter(is_deployment_type_component):
     expected_json = {}
     if is_deployment_type_component:
         expected_json["deployment"] = "component"
+        expected_json["replica"] = "component_id"
 
     # Set request id
     record.request_id = "request_id"

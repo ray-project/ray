@@ -19,6 +19,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_TIME,
     SERVE_LOG_LEVEL_NAME,
+    SERVE_LOG_REPLICA,
 )
 from ray.serve._private.common import ServeComponentType
 
@@ -45,6 +46,7 @@ class ServeJSONFormatter(logging.Formatter):
         }
         if component_type and component_type == ServeComponentType.DEPLOYMENT:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
+            self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
         else:
             self.component_log_fmt[SERVE_LOG_COMPONENT] = component_name
             self.component_log_fmt[SERVE_LOG_COMPONENT_ID] = component_id
