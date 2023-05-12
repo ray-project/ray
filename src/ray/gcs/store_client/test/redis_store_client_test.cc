@@ -49,27 +49,27 @@ class RedisStoreClientTest : public StoreClientTestBase {
   std::shared_ptr<RedisClient> redis_client_;
 };
 
-// TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
+TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
 
-// TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
-//   TestAsyncGetAllAndBatchDelete();
-// }
+TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
+  TestAsyncGetAllAndBatchDelete();
+}
 
-// TEST_F(RedisStoreClientTest, BasicSimple) {
-//   // Send 100 times write and then read
-//   for(size_t i = 0; i < 100; ++i) {
-//     for(size_t j = 0; j < 20; ++j) {
-//       store_client_->AsyncPut("T", absl::StrCat("A", std::to_string(j)),
-//       std::to_string(i), false, [i](auto r) {
-//         ASSERT_TRUE((i == 0 && r) ||(i != 0 && !r));
-//       });
-//     }
-//   }
-//   store_client_->AsyncGet("T", "A", [](auto s, auto r) {
-//     ASSERT_TRUE(r.has_value());
-//     ASSERT_EQ(*r, "99");
-//   });
-// }
+TEST_F(RedisStoreClientTest, BasicSimple) {
+  // Send 100 times write and then read
+  for(size_t i = 0; i < 100; ++i) {
+    for(size_t j = 0; j < 20; ++j) {
+      store_client_->AsyncPut("T", absl::StrCat("A", std::to_string(j)),
+      std::to_string(i), false, [i](auto r) {
+        ASSERT_TRUE((i == 0 && r) ||(i != 0 && !r));
+      });
+    }
+  }
+  store_client_->AsyncGet("T", "A", [](auto s, auto r) {
+    ASSERT_TRUE(r.has_value());
+    ASSERT_EQ(*r, "99");
+  });
+}
 
 TEST_F(RedisStoreClientTest, Complicated) {
   int window = 10;
