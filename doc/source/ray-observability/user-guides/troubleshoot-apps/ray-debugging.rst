@@ -1,7 +1,7 @@
 .. _ray-debugger:
 
-Ray Debugger
-=============
+Using the Ray Debugger
+======================
 
 Ray has a built in debugger that allows you to debug your distributed applications. It allows
 to set breakpoints in your Ray tasks and actors and when hitting the breakpoint you can
