@@ -15,7 +15,7 @@ import {
 } from "../../../type/job";
 import { TypeTaskStatus } from "../../../type/task";
 
-const enum TaskStatus {
+enum TaskStatus {
   PENDING_ARGS_AVAIL = "PENDING_ARGS_AVAIL",
   PENDING_NODE_ASSIGNMENT = "PENDING_NODE_ASSIGNMENT",
   SUBMITTED_TO_WORKER = "SUBMITTED_TO_WORKER",
@@ -25,10 +25,7 @@ const enum TaskStatus {
   UNKNOWN = "UNKNOWN",
 }
 
-const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<
-  TypeTaskStatus,
-  keyof TaskStatus
-> = {
+const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<TypeTaskStatus, TaskStatus> = {
   [TypeTaskStatus.PENDING_ARGS_AVAIL]: TaskStatus.PENDING_ARGS_AVAIL,
   [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: TaskStatus.PENDING_NODE_ASSIGNMENT,
   [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]:
@@ -205,8 +202,11 @@ const formatStateCountsToProgress = (stateCounts: {
 }) => {
   const formattedProgress: TaskProgress = {};
   Object.entries(stateCounts).forEach(([state, count]) => {
+    const taskStatus: TaskStatus =
+      TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus];
+
     const key: keyof TaskProgress =
-      TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus] ?? "numUnknown";
+      TaskStatusToTaskProgressMapping[taskStatus] ?? "numUnknown";
 
     formattedProgress[key] = (formattedProgress[key] ?? 0) + count;
   });
