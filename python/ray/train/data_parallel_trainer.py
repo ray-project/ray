@@ -426,8 +426,8 @@ class DataParallelTrainer(BaseTrainer):
         # Disable TrainingIterator's CheckpointManager from handling
         # checkpoints itself by setting num_to_keep to None.
         # This is important because otherwise Trainer's CheckpointManager
-        # may delete a checkpoint written by Tuner, when creating a partial
-        # checkpoint itself.
+        # may delete a checkpoint prematurely, before the next checkpoint
+        # has been fully handled by Tune.
         # TODO(jungong, justinvyu) : Trainer should not own a
         # CheckpointManager.
         checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)

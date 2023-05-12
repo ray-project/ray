@@ -26,6 +26,7 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -524,29 +525,6 @@ class Checkpoint:
         with open(checkpoint_metadata_path, "wb") as file:
             pickle.dump(self._metadata, file)
 
-    @staticmethod
-    def _copy_dir_ignore_conflict(src_dir: Path, dst_dir: Path):
-        """This is a workaround for python < 3.8 where shutil.copytree does not
-        support dirs_exist_ok=True.
-
-        We will go through the content of the folder and manually copy ites,
-        while ignoring files that conflict.
-
-        TODO(jungong): remove this workaround when we drop support for python < 3.8.
-        """
-        for inner in src_dir.iterdir():
-            dest = dst_dir / inner.name
-            if inner.is_dir():
-                if not dest.exists():
-                    dest.mkdir(parents=True)
-                Checkpoint._copy_dir_ignore_conflict(inner, dest)
-            else:
-                if not dest.exists():
-                    shutil.copy2(str(inner.absolute()), str(dest.absolute()))
-                else:
-                    # Ignore and don't overwrite the existing file.
-                    pass
-
     def _to_directory(self, path: str, move_instead_of_copy: bool = False) -> None:
         if self._data_dict:
             data_dict = self.to_dict()
@@ -597,7 +575,7 @@ class Checkpoint:
                                 str(inner.absolute()), str(path_pathlib.absolute())
                             )
                     else:
-                        self._copy_dir_ignore_conflict(local_path_pathlib, path_pathlib)
+                        _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)

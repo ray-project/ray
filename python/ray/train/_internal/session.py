@@ -338,7 +338,7 @@ class _TrainSession:
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
         upload_from_workers = (
-            checkpoint._local_path
+            checkpoint.get_internal_representation()[0] == "local_path"
             and self.checkpoint_upload_from_workers
             and self.checkpoint_uri
         )

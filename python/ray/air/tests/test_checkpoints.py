@@ -15,6 +15,7 @@ import boto3
 import ray
 from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
 from ray.air._internal.uri_utils import URI
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 from ray.data import Preprocessor
@@ -159,7 +160,7 @@ class TestCheckpointSerializedAttrs:
         assert new_recovered_checkpoint.foo == "bar"
         assert not list(Path(path).glob("*"))
 
-    def test_copy_dir_ignore_conflict(self):
+    def test_copy_dir_ignore_conflicts(self):
         tmpdir = Path(tempfile.mkdtemp())
 
         src_dir = tmpdir / "src"
@@ -180,7 +181,7 @@ class TestCheckpointSerializedAttrs:
         # Has a directory conflict.
         (dst_dir / "a").mkdir()
 
-        Checkpoint._copy_dir_ignore_conflict(src_dir, dst_dir)
+        _copy_dir_ignore_conflicts(src_dir, dst_dir)
 
         assert (dst_dir / "foo.txt").exists()
         assert (dst_dir / "bar.txt").exists()
