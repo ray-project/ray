@@ -59,17 +59,6 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if self.hps.kl_coeff > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = tf.reduce_mean(action_kl)
-            if tf.math.is_inf(mean_kl_loss):
-                logger.warning(
-                    "KL divergence is non-finite, this will likely destabilize "
-                    "your model and the training process. Action(s) in a "
-                    "specific state have near-zero probability. "
-                    "This can happen naturally in deterministic "
-                    "environments where the optimal policy has zero mass "
-                    "for a specific action. To fix this issue, consider "
-                    "setting the coefficient for the KL loss term to "
-                    "zero or increasing policy entropy."
-                )
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 

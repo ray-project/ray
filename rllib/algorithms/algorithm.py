@@ -732,9 +732,10 @@ class Algorithm(Trainable):
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # sync the weights from local rollout worker to trainers
-            weights = local_worker.get_weights()
-            self.learner_group.set_weights(weights)
+            # sync the weights from the learner group to the rollout workers
+            weights = self.learner_group.get_weights()
+            local_worker.set_weights(weights)
+            self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
