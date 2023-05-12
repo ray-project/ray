@@ -578,12 +578,12 @@ def delete(name: str, _blocking: bool = True):
 def multiplexed(
     func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = -1
 ):
-    """[EXPERIMENTAL] Converts a function or method to a multiplexed function.
+    """[EXPERIMENTAL] Defines a function or method used to load multiplexed
+    models in a replica.
 
     The function can be standalone function or a method of a class. The
-    function must have exact one argument with type `str` and the argument
-    must be the first argument. The `str` argument is the model id of the model to
-    be loaded.
+    function must have exactly one argument, the model id of type `str` for the
+    model to be loaded.
 
     User have to define the function with `async def` and the function must be
     an async function. It is recommended to define coroutines for long running
@@ -621,7 +621,7 @@ def multiplexed(
 
                 async def __call__(self, request):
                     # Get model id from request context
-                    model_id = serve.get_model_id()
+                    model_id = serve.get_multiplexed_model_id()
                     # Load model with the given model id
                     model = await self.load_model(model_id)
                     # Call the model
@@ -642,7 +642,7 @@ def get_multiplexed_model_id() -> str:
     """[EXPERIMENTAL] Returns the model id of the current request.
 
     When user defines a multiplexed deployment, the model id of the current request
-    can be retrieved by calling `serve.get_model_id()`.
+    can be retrieved by calling `serve.get_multiplexed_model_id()`.
 
     .. code-block:: python
             from ray import serve
@@ -660,7 +660,7 @@ def get_multiplexed_model_id() -> str:
 
                 async def __call__(self, request):
                     # Get model id from request context
-                    model_id = serve.get_model_id()
+                    model_id = serve.get_multiplexed_model_id()
                     # Load model with the given model id
                     model = await self.load_model(model_id)
                     # Call the model
