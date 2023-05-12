@@ -2,9 +2,9 @@
 
 .. _data:
 
-======================================
-Ray Data: Distributed ML Preprocessing
-======================================
+==================================
+Ray Data: Scalable Datasets for ML
+==================================
 
 .. _data-intro:
 
@@ -29,8 +29,8 @@ Streaming Batch Inference
 -------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Dataset <dataset_concept>` primitive. Datasets enable workloads such as
-:ref:`GPU batch inference <ref-use-cases-batch-infer>` to run efficiently on large datasets,
+powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as
+:doc:`GPU batch inference <batch_inference>` to run efficiently on large datasets,
 maximizing resource utilization by keeping the working data fitting into Ray object store memory.
 
 .. image:: images/stream-example.png
@@ -117,7 +117,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
         Learn how to :ref:`load data <loading_data>`, :ref:`save
         data <saving_data>`, :ref:`transform data <transforming_data>`,
         :ref:`access and exchange data <consuming_data>`, or
-        :ref:`work with tensor data <data_tensor_support>`.
+        :ref:`work with tensor data <working_with_tensors>`.
 
         +++
         .. button-ref:: data_user_guide

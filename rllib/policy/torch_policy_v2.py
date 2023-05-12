@@ -12,6 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -1110,21 +1111,27 @@ class TorchPolicyV2(Policy):
         extra_fetches = None
         if isinstance(self.model, RLModule):
             if explore:
+                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
-            else:
-                fwd_out = self.model.forward_inference(input_dict)
-            # anything but action_dist and state_out is an extra fetch
-            action_dist = fwd_out.pop("action_dist")
-
-            if explore:
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_inference_action_dist_cls()
+                fwd_out = self.model.forward_inference(input_dict)
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                action_dist = action_dist.to_deterministic()
                 actions = action_dist.sample()
                 logp = None
-            state_out = fwd_out.pop("state_out", {})
+
+            # Anything but actions and state_out is an extra fetch.
+            state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
-            dist_inputs = None
+            dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         elif is_overridden(self.action_sampler_fn):
             action_dist = None
             actions, logp, dist_inputs, state_out = self.action_sampler_fn(
