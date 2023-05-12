@@ -389,9 +389,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
-  auto agent_command_line = ParseCommandLine(config.agent_command);
+  auto dashboard_agent_command_line = ParseCommandLine(config.agent_command);
   int server_port = GetServerPort();
-  for (auto &arg : agent_command_line) {
+  for (auto &arg : dashboard_agent_command_line) {
     auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
     if (node_manager_port_position != std::string::npos) {
       arg.replace(node_manager_port_position,
@@ -401,10 +401,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   }
   // Disable metrics report if needed.
   if (!RayConfig::instance().enable_metrics_collection()) {
-    agent_command_line.push_back("--disable-metrics-collection");
+    dashboard_agent_command_line.push_back("--disable-metrics-collection");
   }
-  auto options = AgentManager::Options({self_node_id, agent_command_line});
-  agent_manager_ = std::make_shared<DashboardAgentManager>(
+  auto options = AgentManager::Options({self_node_id, dashboard_agent_command_line});
+  dashboard_agent_manager_ = std::make_shared<DashboardAgentManager>(
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
