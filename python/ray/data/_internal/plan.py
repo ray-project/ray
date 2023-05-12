@@ -132,6 +132,10 @@ class ExecutionPlan:
 
         self._run_by_consumer = run_by_consumer
 
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = copy.deepcopy(DataContext.get_current())
+
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
@@ -483,7 +487,9 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DataContext.get_current()
+        # Always used the saved context for execution.
+        ctx = self._context
+
         if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(
@@ -532,7 +538,10 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        context = DataContext.get_current()
+
+        # Always used the saved context for execution.
+        context = self._context
+
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
@@ -672,7 +681,7 @@ class ExecutionPlan:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = DataContext.get_current()
+        context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
@@ -728,7 +737,7 @@ class ExecutionPlan:
         """Return whether this plan can be executed as only a read stage."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        context = DataContext.get_current()
+        context = self._context
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
@@ -764,7 +773,7 @@ class ExecutionPlan:
         # - Read only: handle with legacy backend
         # - Read->randomize_block_order: handle with new backend
         # Note that both are considered read equivalent, hence this extra check.
-        context = DataContext.get_current()
+        context = self._context
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1

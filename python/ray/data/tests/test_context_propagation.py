@@ -10,6 +10,36 @@ from ray.data.tests.util import extract_values
 from ray._private.test_utils import run_string_as_driver
 
 
+def test_context_saved_when_dataset_created(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+    d1 = ray.data.range(10)
+    d2 = ray.data.range(10)
+    assert ctx.eager_free
+    assert d1.context.eager_free
+    assert d2.context.eager_free
+
+    d1.context.eager_free = False
+    assert not d1.context.eager_free
+    assert d2.context.eager_free
+    assert ctx.eager_free
+
+    @ray.remote(num_cpus=0)
+    def check(d1, d2):
+        assert not d1.context.eager_free
+        assert d2.context.eager_free
+
+    ray.get(check.remote(d1, d2))
+
+    @ray.remote(num_cpus=0)
+    def check2(d):
+        d.take()
+
+    d1.context.execution_options.resource_limits.cpu = 0.1
+    with pytest.raises(ValueError):
+        ray.get(check2.remote(d1))
+    ray.get(check2.remote(d2))
+
+
 def test_read(ray_start_regular_shared):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
