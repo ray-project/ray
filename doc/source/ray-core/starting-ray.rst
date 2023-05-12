@@ -38,6 +38,7 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
 .. tab-set::
 
     .. tab-item:: Python
+
         .. testcode::
           :hide:
 
