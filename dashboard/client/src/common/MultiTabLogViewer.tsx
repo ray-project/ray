@@ -25,9 +25,15 @@ const useStyles = makeStyles((theme) =>
 
 export type MultiTabLogViewerTabDetails = {
   title: string;
-  nodeId: string | null;
-  filename?: string;
-};
+} & (
+  | {
+      nodeId: string | null;
+      filename?: string;
+    }
+  | {
+      contents: string;
+    }
+);
 
 export type MultiTabLogViewerProps = {
   tabs: MultiTabLogViewerTabDetails[];
@@ -92,19 +98,21 @@ export const MultiTabLogViewer = ({
           {!currentTab ? (
             <Typography color="error">Please select a tab.</Typography>
           ) : (
-            tabs.map(({ title, nodeId, filename }) => (
-              <HideableBlock
-                key={title}
-                visible={title === currentTab?.title}
-                keepRendered
-              >
-                <StateApiLogViewer
-                  nodeId={nodeId}
-                  filename={filename}
-                  height={expanded ? 800 : 300}
-                />
-              </HideableBlock>
-            ))
+            tabs.map((tab) => {
+              const { title, ...data } = tab;
+              return (
+                <HideableBlock
+                  key={title}
+                  visible={title === currentTab?.title}
+                  keepRendered
+                >
+                  <StateApiLogViewer
+                    data={data}
+                    height={expanded ? 800 : 300}
+                  />
+                </HideableBlock>
+              );
+            })
           )}
         </Box>
         <IconButton
@@ -119,17 +127,54 @@ export const MultiTabLogViewer = ({
   );
 };
 
+type LogViewerData =
+  | {
+      nodeId?: string | null;
+      filename?: string;
+    }
+  | {
+      contents: string;
+    };
+
+const isLogViewerDataString = (
+  data: LogViewerData,
+): data is { contents: string } => "contents" in data;
+
 export type StateApiLogViewerProps = {
-  nodeId?: string | null;
-  filename?: string;
   height?: number;
+  data: LogViewerData;
 };
 
 export const StateApiLogViewer = ({
+  height = 300,
+  data,
+}: StateApiLogViewerProps) => {
+  if (isLogViewerDataString(data)) {
+    return <TextLogViewer height={height} contents={data.contents} />;
+  } else {
+    return <ApiLogViewer height={height} {...data} />;
+  }
+};
+
+const TextLogViewer = ({
+  height = 300,
+  contents,
+}: {
+  height: number;
+  contents: string;
+}) => {
+  return <LogViewer log={contents} height={height} />;
+};
+
+const ApiLogViewer = ({
+  height = 300,
   nodeId,
   filename,
-  height = 300,
-}: StateApiLogViewerProps) => {
+}: {
+  height: number;
+  nodeId?: string | null;
+  filename?: string;
+}) => {
   const { downloadUrl, log, path, refresh } = useStateApiLogs(nodeId, filename);
   return typeof log === "string" ? (
     <LogViewer
