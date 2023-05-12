@@ -3,7 +3,7 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -365,12 +365,14 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        sub_progress_bar_dict,  # TODO(Scott): typing
+        ctx: TaskContext,  # TODO(Scott): typing
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
     ) -> Tuple[List[RefBundle], StatsDict]:
         logger.info("Using experimental push-based shuffle.")
+        assert ctx.sub_progress_bar_dict
+        sub_progress_bar_dict = ctx.sub_progress_bar_dict
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -435,7 +437,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
             map_bar = sub_progress_bar_dict[bar_name]
             should_close_bar = False
-            print("===> got shuffle map bar:", map_bar)
+            # print("===> got shuffle map bar:", map_bar)
         else:
             map_bar = ProgressBar(bar_name, position=0, total=len(input_blocks_list))
         map_stage_executor = _PipelinedStageExecutor(
@@ -471,7 +473,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 merge_done = True
                 break
         # bar gets closed, because we didn't get subprog bar
-        print("===> going to close shuffle map?", should_close_bar)
+        # print("===> going to close shuffle map?", should_close_bar)
         if should_close_bar:
             map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()
