@@ -1,9 +1,13 @@
-import { Box, makeStyles, Typography } from "@material-ui/core";
+import { Box, makeStyles } from "@material-ui/core";
 import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { Section } from "../../common/Section";
+import {
+  NodeStatusCard,
+  ResourceStatusCard,
+} from "../../components/AutoscalerStatusCards";
 import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
@@ -12,7 +16,6 @@ import ActorList from "../actor/ActorList";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
-
 import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
 import { JobMetadataSection } from "./JobDetailInfoPage";
@@ -51,57 +54,6 @@ export const JobDetailChartsPage = () => {
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
   const { cluster_status } = useRayStatus();
-
-  const formatNodeStatus = (cluster_status: string) => {
-    // ==== auto scaling status
-    // Node status
-    // ....
-    // Resources
-    // ....
-    const sections = cluster_status.split("Resources");
-    return formatClusterStatus(
-      "Node Status",
-      sections[0].split("Node status")[1],
-    );
-  };
-
-  const formatResourcesStatus = (cluster_status: string) => {
-    // ==== auto scaling status
-    // Node status
-    // ....
-    // Resources
-    // ....
-    const sections = cluster_status.split("Resources");
-    return formatClusterStatus("Resource Status", sections[1]);
-  };
-
-  const formatClusterStatus = (title: string, cluster_status: string) => {
-    const cluster_status_rows = cluster_status.split("\n");
-
-    return (
-      <div>
-        <Box marginBottom={2}>
-          <Typography variant="h6">{title}</Typography>
-        </Box>
-        {cluster_status_rows.map((i, key) => {
-          // Format the output.
-          // See format_info_string in util.py
-          if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
-            // Ignore separators
-            return null;
-          } else if (i.endsWith(":")) {
-            return (
-              <div key={key}>
-                <b>{i}</b>
-              </div>
-            );
-          } else {
-            return <div key={key}>{i}</div>;
-          }
-        })}
-      </div>
-    );
-  };
 
   if (!job) {
     return (
@@ -193,7 +145,7 @@ export const JobDetailChartsPage = () => {
       )}
 
       <CollapsibleSection
-        title="Autoscaler"
+        title="Cluster status and autoscaler"
         startExpanded
         className={classes.section}
       >
@@ -206,34 +158,10 @@ export const JobDetailChartsPage = () => {
         >
           <NodeCountCard className={classes.nodeCountCard} />
           <Section flex="1 1 500px">
-            <Box
-              style={{
-                overflow: "hidden",
-                overflowY: "scroll",
-              }}
-              sx={{ borderRadius: "16px" }}
-              marginLeft={1}
-              marginRight={1}
-            >
-              {cluster_status?.data
-                ? formatNodeStatus(cluster_status?.data.clusterStatus)
-                : "No cluster status."}
-            </Box>
+            <NodeStatusCard cluster_status={cluster_status} />
           </Section>
           <Section flex="1 1 500px">
-            <Box
-              style={{
-                overflow: "hidden",
-                overflowY: "scroll",
-              }}
-              sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
-              marginLeft={1}
-              marginRight={1}
-            >
-              {cluster_status?.data
-                ? formatResourcesStatus(cluster_status?.data.clusterStatus)
-                : "No cluster status."}
-            </Box>
+            <ResourceStatusCard cluster_status={cluster_status} />
           </Section>
         </Box>
       </CollapsibleSection>
@@ -306,6 +234,12 @@ export const JobLogsLink = ({
   job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
 }: JobLogsLinkProps) => {
   const { ipLogMap } = useContext(GlobalContext);
+
+  if (type === "SUBMISSION") {
+    // For submission jobs, send them to the job detail page because we have logs there already.
+    const link = `/jobs/${job_id ? job_id : submission_id}`;
+    return <Link to={link}>Log</Link>;
+  }
 
   let link: string | undefined;
 
