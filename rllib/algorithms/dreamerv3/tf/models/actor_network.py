@@ -21,7 +21,7 @@ class ActorNetwork(tf.keras.Model):
         action_space: gym.Space,
         model_dimension: Optional[str] = "XS",
     ):
-        super().__init__()
+        super().__init__(name="actor")
 
         self.model_dimension = model_dimension
         # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
@@ -39,6 +39,7 @@ class ActorNetwork(tf.keras.Model):
             self.mlp = MLP(
                 model_dimension=self.model_dimension,
                 output_layer_size=self.action_space.n,
+                name="actor_mlp",
             )
         elif isinstance(action_space, Box):
             # assert np.all(action_space.low) == 0.0 and np.all(action_space.high) == 1.0
@@ -46,10 +47,12 @@ class ActorNetwork(tf.keras.Model):
             self.mlp = MLP(
                 model_dimension=self.model_dimension,
                 output_layer_size=output_layer_size,
+                name="actor_mlp_mean",
             )
             self.std_mlp = MLP(
                 model_dimension=self.model_dimension,
                 output_layer_size=output_layer_size,
+                name="actor_mlp_std",
             )
         else:
             raise ValueError(f"Invalid action space: {action_space}")

@@ -68,53 +68,29 @@ class DreamerModel(tf.keras.Model):
             )
 
     @tf.function
-    def call(self, inputs, actions, previous_states, is_first, training=None):
-        observations = inputs
-        self.get_initial_state()
-        # Single action inference.
-        self.forward_inference(
-            previous_states,
-            observations,
+    def call(self, inputs, actions, is_first, training=None):  # previous_states
+        # Forward train passes through all models are enough to build all trainable
+        # variables:
+        # World model.
+        results = self.world_model(
+            inputs,  # observations
+            actions,
             is_first,
         )
-        previous_states_B = tree.map_structure(
-            lambda s: tf.repeat(s, self.batch_size_B, axis=0),
-            previous_states,
+        # Actor.
+        actions = self.actor(
+            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
-        observations_B = tf.repeat(observations, self.batch_size_B, axis=0)
-        is_first_B = tf.repeat(is_first, self.batch_size_B, axis=0)
-        # Inference on "get_action" batch size (parallel envs).
-        self.forward_inference(
-            previous_states_B,
-            observations_B,
-            is_first_B,
+        # Critic.
+        values = self.critic(
+            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
-        previous_states_BxT = tree.map_structure(
-            lambda s: tf.repeat(s, self.batch_size_B * self.batch_length_T, axis=0),
-            previous_states,
-        )
-        self.dream_trajectory(
-            start_states=previous_states_BxT,
-            start_is_terminated=tf.fill(
-                (self.batch_size_B * self.batch_length_T,), 0.0
-            ),
-            timesteps_H=self.horizon_H,
-            gamma=0.99,
-        )
-        observations_B_T = tf.repeat(
-            tf.expand_dims(observations_B, axis=1), self.batch_length_T, axis=1
-        )
-        actions_B = tf.repeat(actions, self.batch_size_B, axis=0)
-        actions_B_T = tree.map_structure(
-            lambda s: tf.repeat(tf.expand_dims(s, axis=1), self.batch_length_T, axis=1),
-            actions_B,
-        )
-        is_first_B_T = tf.repeat(
-            tf.expand_dims(is_first_B, axis=1), self.batch_length_T, axis=1
-        )
-        # For train pass, add time dimension.
-        ret = self.forward_train(observations_B_T, actions_B_T, is_first_B_T)
-        return ret
+
+        return {
+            "world_model_fwd": results,
+            "actions": actions,
+            "values": values,
+        }
 
     @tf.function
     def forward_inference(self, previous_states, observations, is_first, training=None):

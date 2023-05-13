@@ -73,7 +73,7 @@ class WorldModel(tf.keras.Model):
                 *Because symlog encoding is only used for vector observations*, this
                 ablation is equivalent to DreamerV3 on purely image-based environments".
         """
-        super().__init__()
+        super().__init__(name="world_model")
 
         self.model_dimension = model_dimension
         self.batch_length_T = batch_length_T
@@ -90,9 +90,11 @@ class WorldModel(tf.keras.Model):
             # TODO: In Danijar's code, the posterior predictor only has a single layer,
             #  no matter the model size.
             num_dense_layers=1,
+            name="posterior_mlp"
         )
         self.posterior_representation_layer = RepresentationLayer(
-            model_dimension=self.model_dimension
+            model_dimension=self.model_dimension,
+            name="posterior",
         )
 
         # Dynamics (prior) predictor: h -> z^
@@ -108,6 +110,7 @@ class WorldModel(tf.keras.Model):
         self.initial_h = tf.Variable(
             tf.zeros(shape=(self.num_gru_units,), dtype=tf.float32),
             trainable=True,
+            name="initial_h",
         )
         # -> tanh(self.initial_h) -> deterministic state
         # Use our Dynamics predictor for initial stochastic state, BUT with greedy
@@ -142,7 +145,7 @@ class WorldModel(tf.keras.Model):
 
     @tf.function
     def call(self, inputs, *args, **kwargs):
-        return self.forward_inference(inputs, *args, **kwargs)
+        return self.forward_train(inputs, *args, **kwargs)
 
     @tf.function  # (experimental_relax_shapes=True)
     def forward_inference(self, previous_states, observations, is_first, training=None):
@@ -321,18 +324,22 @@ class WorldModel(tf.keras.Model):
         # Return outputs for loss computation.
         # Note that all shapes are [B, ...] (no time axis).
         return {
+            # Obs.
             "sampled_obs_symlog_BxT": observations,
             "obs_distribution_BxT": obs_distribution,
+            # Rewards.
             "reward_logits_BxT": reward_logits,
             "rewards_BxT": rewards,
+            # Continues.
             "continue_distribution_BxT": continue_distribution,
             "continues_BxT": continues,
-            "z_posterior_probs_BxT": z_posterior_probs,
-            "z_prior_probs_BxT": z_prior_probs,
             # Deterministic, continuous h-states (t1 to T).
             "h_states_BxT": h_BxT,
-            # Sampled, discrete posterior z-states (t1 to T).
-            "z_states_BxT": z_BxT,
+            # Sampled, discrete posterior z-states and their probs (t1 to T).
+            "z_posterior_states_BxT": z_BxT,
+            "z_posterior_probs_BxT": z_posterior_probs,
+            # Probs of the prior z-states (t1 to T).
+            "z_prior_probs_BxT": z_prior_probs,
         }
 
     @tf.function

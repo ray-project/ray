@@ -141,7 +141,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # Sum up timesteps, and average over batch (see eq. 4 in [1]).
         L_world_model_total = tf.reduce_mean(L_world_model_total_B_T)
 
-        # Dream trajectories starting in all internal states (h+z) that were
+        # Dream trajectories starting in all internal states (h + z_posterior) that were
         # computed during world model training.
         # Everything goes in as BxT: We are starting a new dream trajectory at every
         # actually encountered timestep in the batch, so we are creating B*T
@@ -149,7 +149,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         dream_data = self.module[module_id].dreamer_model.dream_trajectory(
             start_states={
                 "h": fwd_out["h_states_BxT"],
-                "z": fwd_out["z_states_BxT"],
+                "z": fwd_out["z_posterior_states_BxT"],
             },
             start_is_terminated=tf.reshape(batch["is_terminated"], [-1]),  # ->BxT
             timesteps_H=self.hps.horizon_H,

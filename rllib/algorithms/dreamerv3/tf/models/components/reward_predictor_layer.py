@@ -18,6 +18,7 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
 
     def __init__(
         self,
+        *,
         num_buckets: int = 255,
         lower_bound: float = -20.0,
         upper_bound: float = 20.0,
@@ -42,7 +43,7 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
                 rewards to be as high as 400M. Buckets will be created between
                 `lower_bound` and `upper_bound`.
         """
-        super().__init__()
+        super().__init__(name=f"reward_layer_{self.num_buckets}buckets",)
         self.num_buckets = num_buckets
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
@@ -58,7 +59,6 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
             kernel_initializer="zeros",
             bias_initializer="zeros",  # zero-bias is default anyways
             trainable=trainable,
-            name=f"reward-{self.num_buckets}buckets-predictor-layer",
         )
         # Size of each reward bucket.
         # self.bucket_delta = (

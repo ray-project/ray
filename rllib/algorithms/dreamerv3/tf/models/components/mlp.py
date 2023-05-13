@@ -26,6 +26,7 @@ class MLP(tf.keras.Model):
         dense_hidden_units: Optional[int] = None,
         output_layer_size=None,
         trainable: bool = True,
+        name: Optional[str] = None
     ):
         """TODO:
 
@@ -34,7 +35,7 @@ class MLP(tf.keras.Model):
                 layer. If None, no output layer will be added on top of the MLP dense
                 stack.
         """
-        super().__init__()
+        super().__init__(name=name or "mlp")
 
         num_dense_layers = get_num_dense_layers(
             model_dimension, override=num_dense_layers

@@ -22,7 +22,7 @@ class DynamicsPredictor(tf.keras.Model):
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
-        super().__init__()
+        super().__init__(name="dynamics_predictor")
 
         self.mlp = MLP(
             # TODO: In Danijar's code, the Dynamics Net only has a single layer, no

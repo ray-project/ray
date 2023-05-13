@@ -40,7 +40,7 @@ class DisagreeNetworks(tf.keras.Model):
                 )
             )
             self.representation_layers.append(
-                RepresentationLayer(model_dimension=self.model_dimension)
+                RepresentationLayer(model_dimension=self.model_dimension, name="disagree")
             )
 
         # Optimizer.

@@ -14,7 +14,7 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 class ContinuePredictor(tf.keras.Model):
     def __init__(self, *, model_dimension: Optional[str] = "XS"):
-        super().__init__()
+        super().__init__(name="continue_predictor")
         self.mlp = MLP(model_dimension=model_dimension, output_layer_size=1)
 
     def call(self, h, z, return_distribution=False):

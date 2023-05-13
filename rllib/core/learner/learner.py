@@ -352,7 +352,7 @@ class Learner:
             pairs.append(pair)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
-            for name, pair in pairs.items():
+            for name, pair in pair_or_pairs.items():
                 self._check_structure_param_optim_pair(pair)
                 _, optim = pair
                 if not isinstance(name, str):

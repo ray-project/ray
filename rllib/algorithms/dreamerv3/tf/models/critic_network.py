@@ -24,7 +24,7 @@ class CriticNetwork(tf.keras.Model):
         upper_bound: float = 20.0,
         ema_decay: float = 0.98,
     ):
-        super().__init__()
+        super().__init__(name="critic")
 
         self.model_dimension = model_dimension
         self.ema_decay = ema_decay
@@ -34,11 +34,16 @@ class CriticNetwork(tf.keras.Model):
         # IMPORTANT: We also use this to compute the return-targets, BUT we regularize
         # the critic loss term such that the weights of this fast critic stay close
         # to the EMA weights (see below).
-        self.mlp = MLP(model_dimension=self.model_dimension, output_layer_size=None)
+        self.mlp = MLP(
+            model_dimension=self.model_dimension,
+            output_layer_size=None,
+            name="critic_mlp",
+        )
         self.return_layer = RewardPredictorLayer(
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
+            name="critic"
         )
 
         # Weights-EMA (EWMA) containing networks for critic loss (similar to a
@@ -48,12 +53,14 @@ class CriticNetwork(tf.keras.Model):
             model_dimension=self.model_dimension,
             output_layer_size=None,
             trainable=False,
+            name="critic_mlp_ema",
         )
         self.return_layer_ema = RewardPredictorLayer(
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
             trainable=False,
+            name="critic_ema",
         )
 
     def call(self, h, z, return_logits=False, use_ema=False):

@@ -4,6 +4,8 @@ This file holds framework-agnostic components for DreamerV3's RLModule.
 
 import abc
 
+import numpy as np
+
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
 from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
@@ -11,8 +13,8 @@ from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.numpy import one_hot
 
 
 @ExperimentalAPI
@@ -22,6 +24,8 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
     def setup(self):
         catalog = self.config.get_catalog()
+
+        T = self.config.model_config_dict["batch_length_T"]
 
         symlog_obs = do_symlog_obs(
             self.config.observation_space,
@@ -35,7 +39,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         self.world_model = WorldModel(
             model_dimension=self.config.model_config_dict["model_dimension"],
             action_space=self.config.action_space,
-            batch_length_T=self.config.model_config_dict["batch_length_T"],
+            batch_length_T=T,
             #num_gru_units=self.model_config.num_gru_units,
             encoder=self.encoder,
             decoder=self.decoder,
@@ -49,10 +53,21 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             # use_curiosity=use_curiosity,
             # intrinsic_rewards_scale=intrinsic_rewards_scale,
             batch_size_B=self.config.model_config_dict["batch_size_B"],
-            batch_length_T=self.config.model_config_dict["batch_length_T"],
+            batch_length_T=T,
             horizon_H=self.config.model_config_dict["horizon_H"],
         )
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+
+        # Perform a test call to force building the dreamer model.
+        test_obs = np.tile(np.expand_dims(self.config.observation_space.sample(), (0, 1)), reps=(1, T, 1))
+        test_actions = np.tile(np.expand_dims(one_hot(self.config.action_space.sample(), depth=self.config.action_space.n), (0, 1)), reps=(1, T, 1))
+        self.dreamer_model(
+            inputs=test_obs,
+            actions=test_actions.astype(np.float32),
+            is_first=np.ones((1, T)),
+        )
+        # This should work now.
+        self.dreamer_model.summary(expand_nested=True)
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:

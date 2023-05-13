@@ -27,7 +27,7 @@ class SequenceModel(tf.keras.Model):
         action_space: gym.Space,
         num_gru_units: Optional[int] = None,
     ):
-        super().__init__()
+        super().__init__(name="sequence_model")
 
         num_gru_units = get_gru_units(model_dimension, override=num_gru_units)
 
