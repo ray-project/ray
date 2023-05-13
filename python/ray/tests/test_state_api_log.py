@@ -6,6 +6,7 @@ from typing import List
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.api import list_jobs
 from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
@@ -1011,6 +1012,14 @@ def test_log_job(ray_start_with_dashboard):
     JOB_LOG = "test-job-log\n"
     client = JobSubmissionClient(webui_url)
     job_id = client.submit_job(entrypoint=f"echo {JOB_LOG}")
+
+    def job_done():
+        jobs = list_jobs(filters=[("submission_id", "=", job_id)])
+        assert len(jobs) == 1
+        assert jobs[0].status == "SUCCEEDED"
+        return True
+
+    wait_for_condition(job_done)
 
     def verify():
         logs = "".join(get_log(job_id=job_id, node_id=node_id))
