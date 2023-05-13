@@ -327,6 +327,7 @@ just need to be aware of ``Dict[str, Any]`` (non-batched data records) and
 * There is no more special interpretation of single-column schema containing just ``__value__`` as a column.
 * The default batch format is ``numpy`` instead of ``default`` (pandas).
 * ``schema()`` returns a unified Schema class instead of ``Union[pyarrow.lib.Schema, type]``.
+* When lists of array-like objects are returned from map batches, they will be converted into a contiguous numpy array, rather than treated as a list of objects.
 
 **Datasource behavior changes**:
 
