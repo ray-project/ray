@@ -228,48 +228,65 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
-std::vector<std::function<void()>> RedisStoreClient::Progress(
-    const std::vector<std::string> &keys) {
-  std::vector<std::function<void()>> op;
-  {
-    absl::MutexLock lock(&mu_);
-    for (const auto &key : keys) {
-      auto op_iter = redis_ops_.find(key);
-      RAY_CHECK(op_iter != redis_ops_.end())
-          << " redis ops stats failed for key: " << key;
-      auto &queue = op_iter->second;
-      // All write operations have been consumed, remove this entry
-      if (queue.empty()) {
-        redis_ops_.erase(op_iter);
-      } else {
-        if (queue.front()) {
-          op.push_back(std::move(queue.front()));
-        }
-      }
+size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys,
+                                            std::function<void()> send_request) {
+  size_t queue_added = 0;
+  absl::MutexLock lock(&mu_);
+  for (const auto &key : keys) {
+    auto [op_iter, added] =
+        pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
+    if (added) {
+      queue_added++;
+    }
+    if (added) {
+      // There is no in-flight requests for this key which means
+      // in the callback the queue won't be poped. So just push
+      // an entry as placeholder to indicate there is pending
+      // requests.
+      op_iter->second.push(nullptr);
+    } else {
+      op_iter->second.push(send_request);
     }
   }
-  return op;
+  return queue_added;
+}
+
+std::vector<std::function<void()>> RedisStoreClient::PopFromSendingQueue(
+    const std::vector<std::string> &keys) {
+  std::vector<std::function<void()>> send_requests;
+  absl::MutexLock lock(&mu_);
+  for (const auto &key : keys) {
+    auto [op_iter, added] =
+        pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
+    RAY_CHECK(added == false) << "Pop from a queue doesn't exist: " << key;
+    op_iter->second.pop();
+    if (op_iter->second.empty()) {
+      pending_redis_request_by_key_.erase(op_iter);
+    } else {
+      send_requests.emplace_back(std::move(op_iter->second.front()));
+    }
+  }
+  return send_requests;
 }
 
 void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                                     std::vector<std::string> args,
                                     RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
-
-  auto send_redis = [this,
-                     keys,
-                     args = std::move(args),
-                     redis_callback = std::move(redis_callback)]() mutable {
+  auto counter = std::make_shared<std::atomic<size_t>>(0);
+  std::function<void()> send_redis = [this,
+                                      counter = counter,
+                                      keys,
+                                      args = std::move(args),
+                                      redis_callback =
+                                          std::move(redis_callback)]() mutable {
     {
       absl::MutexLock lock(&mu_);
-      for (const auto &key : keys) {
-        auto op_iter = redis_ops_.find(key);
-        RAY_CHECK(op_iter != redis_ops_.end())
-            << " redis ops stats failed for key: " << key;
-        auto &queue = op_iter->second;
-        // All write operations have been consumed, remove this entry
-        RAY_CHECK(!queue.empty());
-        queue.pop();
+      *counter += 1;
+      RAY_CHECK(*counter <= keys.size());
+      // There are still pending requets for these keys.
+      if (*counter != keys.size()) {
+        return;
       }
     }
     // Send the actual request
@@ -278,55 +295,28 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                       [this,
                        keys = std::move(keys),
                        redis_callback = std::move(redis_callback)](auto reply) {
-                        for (auto &op : Progress(keys)) {
-                          op();
+                        auto requests = PopFromSendingQueue(keys);
+                        for (auto &request : requests) {
+                          request();
                         }
-
                         if (redis_callback) {
                           redis_callback(reply);
                         }
                       });
   };
 
-  bool can_fire = true;
-  // busiest key is defined to be the key has the most pending operations.
-  size_t busiest_key_idx = 0;
-  size_t busiest_key_queuing_size = 0;
+  auto added_count = PushToSendingQueue(keys, send_redis);
   {
     absl::MutexLock lock(&mu_);
-    for (size_t i = 0; i < keys.size(); ++i) {
-      // If there has been an entry in the queue, we need to add the new request
-      // into the queue. The queue needs to be the longest ones among all the keys.
-      // This is like a barrier because this request has to be processed after all
-      // the requests before that finished.
-      if (auto iter = redis_ops_.find(keys[i]); iter != redis_ops_.end()) {
-        if (busiest_key_queuing_size == 0 ||
-            busiest_key_queuing_size < iter->second.size()) {
-          busiest_key_queuing_size = iter->second.size();
-          busiest_key_idx = i;
-        }
-        can_fire = false;
-      } else {
-        redis_ops_.emplace(keys[i], std::queue<std::function<void()>>());
-      }
-    }
-
-    for (size_t i = 0; i < keys.size(); ++i) {
-      auto iter = redis_ops_.find(keys[i]);
-      RAY_CHECK(iter != redis_ops_.end());
-      // Only push the actual operations into the queue of the key
-      // which has the most pending works to avoid duplicate copies.
-      if (!can_fire && i == busiest_key_idx) {
-        iter->second.push(std::move(send_redis));
-      } else {
-        iter->second.push(nullptr);
-      }
+    *counter += added_count;
+    // We should be able to file it directly.
+    if (*counter == keys.size()) {
+      *counter = keys.size() - 1;
+    } else {
+      send_redis = nullptr;
     }
   }
-
-  // If we can fire the request, fire it now.
-  // Otherwise, it'll be handled by the callback of the inflight requests.
-  if (can_fire) {
+  if (send_redis) {
     send_redis();
   }
 }

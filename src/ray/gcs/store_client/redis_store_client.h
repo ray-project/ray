@@ -89,8 +89,10 @@ class RedisStoreClient : public StoreClient {
                         size_t shard_index,
                         const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
-
+    /// The table name that the scanner will scan.
     std::string table_name_;
+
+    // The namespace of the external storage. Used for isolation.
     std::string external_storage_namespace_;
 
     /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
@@ -109,7 +111,11 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
-  std::vector<std::function<void()>> Progress(const std::vector<std::string> &keys);
+  size_t PushToSendingQueue(const std::vector<std::string> &keys,
+                            std::function<void()> send_request);
+
+  std::vector<std::function<void()>> PopFromSendingQueue(
+      const std::vector<std::string> &keys);
 
   Status DoPut(const std::string &key,
                const std::string &data,
@@ -119,6 +125,13 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
+  // Send the redis command to the server. This method will make request to be
+  // serialized for each key in keys. At a given time, only one request for a key
+  // will be in flight.
+  //
+  // \param keys The keys in the request.
+  // \param args The redis commands
+  // \param redis_callback The callback to call when the reply is received.
   void SendRedisCmd(std::vector<std::string> keys,
                     std::vector<std::string> args,
                     RedisCallback redis_callback);
@@ -130,8 +143,11 @@ class RedisStoreClient : public StoreClient {
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::queue<std::function<void()>>> redis_ops_
-      GUARDED_BY(mu_);
+
+  // The pending redis requests queue for each key.
+  // The queue will be poped when the request is processed.
+  absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
+      pending_redis_request_by_key_ GUARDED_BY(mu_);
 };
 
 }  // namespace gcs
