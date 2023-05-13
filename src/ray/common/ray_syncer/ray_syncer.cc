@@ -178,12 +178,11 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
   boost::asio::dispatch(io_context_.get_executor(),
-                        std::packaged_task<void()>([reactors = sync_reactors_]() {
+                        [reactors = sync_reactors_]() {
                           for (auto [_, reactor] : reactors) {
                             reactor->Disconnect();
                           }
-                        }))
-      .get();
+                        });
 }
 
 std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
