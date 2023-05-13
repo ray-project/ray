@@ -119,7 +119,7 @@ export const JobDetailChartsPage = () => {
       </CollapsibleSection>
 
       <CollapsibleSection
-        title="Driver logs"
+        title="Logs"
         startExpanded
         className={classes.section}
       >
