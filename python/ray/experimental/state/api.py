@@ -7,7 +7,6 @@ from dataclasses import fields
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -273,7 +272,7 @@ class StateApiClient(SubmissionClient):
             - NodeState for nodes
             - WorkerState for workers
             - TaskState for tasks
-            - JobDetails for jobs
+            - JobState for jobs
 
             Empty list for objects if not found, or list of ObjectState for objects
 
@@ -586,7 +585,7 @@ def get_job(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[JobDetails]:
+) -> Optional[JobState]:
     """Get a submission job detail by id.
 
     Args:
@@ -599,7 +598,7 @@ def get_job(
 
     Returns:
         None if job not found, or
-        :class:`~ray.dashboard.modules.job.pydantic_models.JobDetails`.
+        :class:`JobState <ray.experimental.state.common.JobState>`.
 
     Raises:
         Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
