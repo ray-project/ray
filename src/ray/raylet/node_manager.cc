@@ -1565,12 +1565,15 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   client->Close();
   auto proc = worker->GetProcess();
 
-  async_retry_until(io_service_.get_executor(), [proc](){
-    return proc.IsAlive() == false;
-  }, std::nullopt, 100ms, [this]() {
-    RAY_CHECK_OK(
-        gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
-  });
+  async_retry_until(
+      io_service_.get_executor(),
+      [proc]() { return proc.IsAlive() == false; },
+      std::nullopt,
+      100ms,
+      [this]() {
+        RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
+            worker_failure_data_ptr, nullptr));
+      });
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
