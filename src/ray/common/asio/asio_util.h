@@ -35,3 +35,37 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
 
   return timer;
 }
+
+pename Fn, typename Ex, typename Duration, typename CompletionToken = boost::asio::use_future_t<>>
+    auto async_retry_until(Ex&& e, Fn &&fn, std::optional<int64_t> retry_num, Duration delay_duration, CompletionToken &&token = CompletionToken()) {
+  auto delay_timer = std::make_unique<boost::asio::deadline_timer>(e);
+  auto delay = boost::posix_time::microseconds(
+      std::chrono::duration_cast<std::chrono::microseconds>(delay_duration).count());
+  return boost::asio::async_compose<CompletionToken, void(bool)>(
+    [
+      retry_num = retry_num,
+      delay_timer = std::move(delay_timer),
+      delay = delay,
+      coro = boost::asio::coroutine(),
+      fn = std::forward<Fn>(fn)
+    ] (auto& self, const boost::system::error_code& error = {}) mutable {
+      reenter (coro) {
+        while (true) {
+          if(fn()) {
+            self.complete(true);
+            return;
+          } else {
+            if(retry_num) {
+              --*retry_num;
+              if(*retry_num < 0) {
+                self.complete(false);
+                return;
+              }
+            }
+            delay_timer->expires_from_now(boost::posix_time::milliseconds(delay));
+            yield delay_timer->async_wait(std::move(self));
+          }
+        }
+      }
+    }, token, e);
+}
