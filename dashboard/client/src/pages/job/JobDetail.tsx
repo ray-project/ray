@@ -118,17 +118,15 @@ export const JobDetailChartsPage = () => {
         </Section>
       </CollapsibleSection>
 
-      {job.type === "SUBMISSION" && (
-        <CollapsibleSection
-          title="Driver logs"
-          startExpanded
-          className={classes.section}
-        >
-          <Section noTopPadding>
-            <JobDriverLogs job={job} />
-          </Section>
-        </CollapsibleSection>
-      )}
+      <CollapsibleSection
+        title="Driver logs"
+        startExpanded
+        className={classes.section}
+      >
+        <Section noTopPadding>
+          <JobDriverLogs job={job} />
+        </Section>
+      </CollapsibleSection>
 
       {job.job_id && (
         <CollapsibleSection

@@ -20,7 +20,6 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
     ? `job-driver-${submission_id}.log`
     : undefined;
 
-  // TODO(aguo): Support showing message for jobs not created via ray job submit.
   const { ipLogMap } = useContext(GlobalContext);
 
   let link: string | undefined;
@@ -43,6 +42,8 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
     link = undefined;
   }
 
+  // TODO(aguo): Support showing message for jobs not created via ray job submit
+  // instead of hiding the driver logs
   return (
     <MultiTabLogViewer
       tabs={[
