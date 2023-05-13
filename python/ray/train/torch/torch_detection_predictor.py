@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.train._internal.dl_predictor import TensorDtype
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
@@ -134,7 +133,5 @@ def _convert_outputs_to_ndarray_batch(
     batch = collections.defaultdict(list)
     for output in outputs:
         for key, value in output.items():
-            batch[key].append(value.cpu().detach().numpy())
-    for key, value in batch.items():
-        batch[key] = create_ragged_ndarray(value)
+            batch[key].append(value.cpu().detach())
     return batch

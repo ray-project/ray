@@ -214,10 +214,14 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = "MaterializedDataset(num_blocks=40, num_rows=40, schema={item: object})"
+    res = (
+        "MaterializedDataset(\n"
+        "   num_blocks=40,\n"
+        "   num_rows=40,\n"
+        "   schema={item: numpy.ndarray(shape=(2,), dtype=int64)}\n"
+        ")"
+    )
     assert str(ds) == res, str(ds)
-    with pytest.raises(pa.lib.ArrowInvalid):
-        next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
     assert df.to_dict().keys() == {"item"}
 
