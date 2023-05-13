@@ -86,10 +86,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             reduce_bar = ProgressBar(bar_name, total=output_num_blocks)
 
         shuffle_reduce_out = [
-            shuffle_reduce.options(
-                **reduce_ray_remote_args,
-                num_returns=2,
-            ).remote(
+            shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2).remote(
                 *self._exchange_spec._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
             )
