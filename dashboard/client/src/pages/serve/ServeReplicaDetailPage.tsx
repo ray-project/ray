@@ -13,7 +13,7 @@ import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { generateActorLink, generateNodeLink } from "../../common/links";
 import {
   MultiTabLogViewer,
-  MultiTabLogViewerTab,
+  MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -191,7 +191,7 @@ const ServeReplicaLogs = ({
     jobId,
   } = actor;
 
-  const tabs: MultiTabLogViewerTab[] = [
+  const tabs: MultiTabLogViewerTabDetails[] = [
     {
       title: "stderr",
       nodeId: node_id,

@@ -1,7 +1,7 @@
 import React from "react";
 import {
   MultiTabLogViewer,
-  MultiTabLogViewerTab,
+  MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { ActorDetail } from "../../type/actor";
 
@@ -16,7 +16,7 @@ export const ActorLogs = ({
     address: { workerId, rayletId },
   },
 }: ActorLogsProps) => {
-  const tabs: MultiTabLogViewerTab[] = [
+  const tabs: MultiTabLogViewerTabDetails[] = [
     {
       title: "stderr",
       nodeId: rayletId,

@@ -114,7 +114,7 @@ const useHideableBlockStyles = makeStyles((theme) =>
 
 type HideableBlockProps = PropsWithChildren<
   {
-    visible?: boolean;
+    visible: boolean;
     /**
      * An optimization to not avoid re-rendering the contents of the collapsible section.
      * When enabled, we will keep the content around when collapsing but hide it via css.
@@ -135,6 +135,10 @@ export const HideableBlock = ({
 }: HideableBlockProps) => {
   const classes = useHideableBlockStyles();
 
+  // visible represents whether the component is viewable in the browser.
+  // Rendered represents whether the DOM elements exist in the DOM tree.
+  // If !visible && rendered, then the elements are in the DOM but are
+  // not drawn via CSS visibility rules.
   const [rendered, setRendered] = useState(visible);
 
   useEffect(() => {
@@ -143,6 +147,8 @@ export const HideableBlock = ({
     }
   }, [visible]);
 
+  // Optimization to keep the component rendered (but not visible) when hidden
+  // to avoid re-rendering when component is shown again.
   return visible || (keepRendered && rendered) ? (
     <div
       className={classNames(classes.body, {

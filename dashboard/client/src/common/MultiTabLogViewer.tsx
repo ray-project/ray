@@ -21,14 +21,14 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export type MultiTabLogViewerTab = {
+export type MultiTabLogViewerTabDetails = {
   title: string;
   nodeId: string | null;
   filename?: string;
 };
 
 export type MultiTabLogViewerProps = {
-  tabs: MultiTabLogViewerTab[];
+  tabs: MultiTabLogViewerTabDetails[];
 };
 
 export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {

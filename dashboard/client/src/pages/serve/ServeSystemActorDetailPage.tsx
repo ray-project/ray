@@ -5,7 +5,7 @@ import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { generateActorLink, generateNodeLink } from "../../common/links";
 import {
   MultiTabLogViewer,
-  MultiTabLogViewerTab,
+  MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -148,7 +148,7 @@ const ServeSystemActorLogs = ({
   },
   systemLogFilePath,
 }: ServeSystemActorLogsProps) => {
-  const tabs: MultiTabLogViewerTab[] = [
+  const tabs: MultiTabLogViewerTabDetails[] = [
     {
       title: type === "controller" ? "Controller" : "HTTP Proxy",
       nodeId: rayletId,
