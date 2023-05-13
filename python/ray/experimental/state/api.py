@@ -7,7 +7,7 @@ from dataclasses import fields
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
-
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -252,6 +252,7 @@ class StateApiClient(SubmissionClient):
             WorkerState,
             TaskState,
             List[ObjectState],
+            JobState,
         ]
     ]:
         """Get resources states by id
@@ -266,12 +267,13 @@ class StateApiClient(SubmissionClient):
                 latency or failed query information.
 
         Returns:
-            None if not found, and if found, a dictionarified:
+            None if not found, and if found:
             - ActorState for actors
             - PlacementGroupState for placement groups
             - NodeState for nodes
             - WorkerState for workers
             - TaskState for tasks
+            - JobDetails for jobs
 
             Empty list for objects if not found, or list of ObjectState for objects
 
@@ -294,6 +296,7 @@ class StateApiClient(SubmissionClient):
             StateResource.WORKERS: "worker_id",
             StateResource.TASKS: "task_id",
             StateResource.OBJECTS: "object_id",
+            StateResource.JOBS: "submission_id",
         }
         if resource not in RESOURCE_ID_KEY_NAME:
             raise ValueError(f"Can't get {resource.name} by id.")
@@ -578,14 +581,36 @@ def get_actor(
     )
 
 
-# TODO(rickyyx:alpha-obs)
 def get_job(
     id: str,
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[JobState]:
-    raise NotImplementedError("Get Job by id is currently not supported")
+) -> Optional[JobDetails]:
+    """Get a submission job detail by id.
+
+    Args:
+        id: Submission ID obtained from job API.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state API requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if job not found, or
+        :class:`~ray.dashboard.modules.job.pydantic_models.JobDetails`.
+
+    Raises:
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
+            failed to query the data.
+    """  # noqa: E501
+    return StateApiClient(address=address).get(
+        StateResource.JOBS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
 
 
 def get_placement_group(

@@ -458,7 +458,7 @@ class JobState(StateSchema, JobDetails):
         return {"job_id", "type", "status", "submission_id"}
 
     @classmethod
-    def list_columns(cls, detail: bool) -> List[str]:
+    def list_columns(cls, detail: bool = False) -> List[str]:
         if not detail:
             return [
                 "job_id",

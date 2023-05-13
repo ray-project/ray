@@ -8,6 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.api import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray._private.gcs_utils import GcsAioClient
 import yaml
@@ -2179,7 +2180,7 @@ def test_list_get_nodes(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_jobs(shutdown_only):
+def test_list_get_jobs(shutdown_only):
     ray.init()
     # Test submission job
     client = JobSubmissionClient(
@@ -2221,6 +2222,16 @@ ray.get(f.remote())
         sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
         assert len(sub_jobs) == 1
         assert sub_jobs[0]["submission_id"] is not None
+        return True
+
+    wait_for_condition(verify)
+
+    # Test GET api
+    def verify():
+        job = get_job(id=job_id)
+        assert job["submission_id"] == job_id
+        assert job["entrypoint"] == "ls"
+        assert job["status"] == "SUCCEEDED"
         return True
 
     wait_for_condition(verify)
