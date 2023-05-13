@@ -144,3 +144,14 @@ def get_num_dense_layers(model_dimension, override=None):
         "XL": 5,
     }
     return num_dense_layers[model_dimension]
+
+
+def do_symlog_obs(observation_space, symlog_obs_user_setting):
+    # If our symlog_obs setting is NOT set specifically ("auto"), return True
+    # if we don't have an image observation space, otherwise False.
+    # TODO (sven): Fix for mixed observations.
+    is_image_space = len(observation_space.shape) in [2, 3]
+    return (
+        not is_image_space if symlog_obs_user_setting == "auto"
+        else symlog_obs_user_setting
+    )

@@ -593,7 +593,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # Create rollout workers via a WorkerSet.
+            # Create a set of env runner actors via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -726,6 +726,7 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
+            #module_spec = local_worker.marl_module_spec
             module_spec = self.config.get_marl_module_spec(
                 policy_dict=self.config.get_multi_agent_setup(
                     env=self.workers.local_worker().env  #TODO(sven): remove this hack
@@ -734,7 +735,7 @@ class Algorithm(Trainable):
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # sync the weights from local rollout worker to trainers
+            # Sync the weights from local rollout worker to individual Learners.
             weights = local_worker.get_weights()
             self.learner_group.set_weights(weights)
 

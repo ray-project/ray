@@ -49,10 +49,10 @@ class MLP(tf.keras.Model):
                 tf.keras.layers.Dense(
                     dense_hidden_units,
                     trainable=trainable,
-                    # Danijar's code uses no biases iff there is LayerNormalization
-                    # (which there always is), and performs the activation after(!)
-                    # the layer norm, not before.
-                    activation=None,  # tf.nn.silu,
+                    # Use no biases, iff there is LayerNormalization
+                    # (which there always is), and perform the activation after the
+                    # layer normalization.
+                    activation=None,
                     use_bias=False,
                 )
             )

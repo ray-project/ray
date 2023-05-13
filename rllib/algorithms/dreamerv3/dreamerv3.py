@@ -101,6 +101,10 @@ class DreamerV3Config(AlgorithmConfig):
         }
 
         # self.num_pretrain_iterations = 0
+        self.lr = None
+        self.world_model_lr = 1e-4
+        self.actor_lr = 3e-5
+        self.critic_lr = 3e-5
         self.batch_size_B = 16
         self.batch_length_T = 64
         self.burn_in_T = 5
@@ -108,7 +112,6 @@ class DreamerV3Config(AlgorithmConfig):
         self.gae_lambda = 0.95  # [1] eq. 7.
         self.entropy_scale = 3e-4  # [1] eq. 11.
         self.return_normalization_decay = 0.99  # [1] eq. 11 and 12.
-        self._symlog_obs = "auto"
         self.train_critic = True
         self.train_actor = True
         self.use_curiosity = False
@@ -152,7 +155,6 @@ class DreamerV3Config(AlgorithmConfig):
         gae_lambda: Optional[float] = NotProvided,
         entropy_scale: Optional[float] = NotProvided,
         return_normalization_decay: Optional[float] = NotProvided,
-        symlog_obs: Optional[Union[bool, str]] = NotProvided,
         train_critic: Optional[bool] = NotProvided,
         train_actor: Optional[bool] = NotProvided,
         use_curiosity: Optional[bool] = NotProvided,
@@ -203,8 +205,6 @@ class DreamerV3Config(AlgorithmConfig):
                 inside the actor loss.
             return_normalization_decay: The decay value to use when computing the
                 running EMA values for return normalization (used in the actor loss).
-            symlog_obs: Whether to symlog the observations or not. If "auto", will
-                symlog only non-image observations.
             train_critic: Whether to train the critic network. If False, `train_actor`
                 must also be False (cannot train actor w/o training the critic).
             train_actor: Whether to train the actor network. If True, `train_critic`
@@ -251,8 +251,6 @@ class DreamerV3Config(AlgorithmConfig):
             self.entropy_scale = entropy_scale
         if return_normalization_decay is not NotProvided:
             self.return_normalization_decay = return_normalization_decay
-        if symlog_obs is not NotProvided:
-            self._symlog_obs = symlog_obs
         if train_critic is not NotProvided:
             self.train_critic = train_critic
         if train_actor is not NotProvided:
@@ -303,27 +301,29 @@ class DreamerV3Config(AlgorithmConfig):
                 "other supported."
             )
 
-    def is_image_space(self) -> bool:
-        """Returns whether we have an image observation space or not."""
-        return len(self.observation_space.shape) in [2, 3]
-
-    @property
-    def symlog_obs(self) -> bool:
-        """Returns whether to symlog the observations or not."""
-
-        # If our symlog_obs setting is NOT set specifically ("auto"), return True
-        # if we don't have an image observation space, otherwise False.
-        # TODO (sven): Fix for mixed observations.
-        return (
-            not self.is_image_space() if self._symlog_obs == "auto" else self._symlog_obs
-        )
-
     @override(AlgorithmConfig)
     def get_learner_hyperparameters(self) -> LearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
         return DreamerV3Hyperparameters(
             model_dimension=self.model_dimension,
             training_ratio=self.training_ratio,
+            batch_size_B=self.batch_size_B,
+            batch_length_T=self.batch_length_T,
+            horizon_H=self.horizon_H,
+            gamma=self.gamma,
+            gae_lambda=self.gae_lambda,
+            entropy_scale=self.entropy_scale,
+            return_normalization_decay=self.return_normalization_decay,
+            train_actor=self.train_actor,
+            train_critic=self.train_critic,
+            world_model_lr=self.world_model_lr,
+            use_curiosity=self.use_curiosity,
+            intrinsic_rewards_scale=self.intrinsic_rewards_scale,
+            actor_lr=self.actor_lr,
+            critic_lr=self.critic_lr,
+            world_model_grad_clip_by_global_norm=self.world_model_grad_clip_by_global_norm,
+            actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
+            critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
             **dataclasses.asdict(base_hps),
         )
 
@@ -493,7 +493,10 @@ class DreamerV3(Algorithm):
                     sample=sample,
                     batch_size_B=self.config.batch_size_B,
                     batch_length_T=self.config.batch_length_T,
-                    symlog_obs=self.config.symlog_obs,
+                    symlog_obs=do_symlog_obs(
+                        self.env_runner.env.single_observation_space,
+                        self.config.model.get("symlog_obs", "auto"),
+                    ),
                 )
                 summarize_world_model_train_results(
                     results=results,

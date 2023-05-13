@@ -21,7 +21,16 @@ class TestDreamerV3(unittest.TestCase):
         config = (
             dreamerv3.DreamerV3Config()
             .training(
-                model=dict(),
+                # TODO (sven): Fix having to provide this.
+                #  Should be compiled by AlgorithmConfig?
+                model={
+                    "batch_size_B": 16,
+                    "batch_length_T": 64,
+                    "horizon_H": 15,
+                    "model_dimension": "XS",
+                    "training_ratio": 512,
+                    "symlog_obs": True,
+                },
                 _enable_learner_api=True,
             )
             .rl_module(_enable_rl_module_api=True)

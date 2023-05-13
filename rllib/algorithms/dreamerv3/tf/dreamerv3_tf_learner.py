@@ -7,17 +7,22 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Union
 
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Learner
 from ray.rllib.core.rl_module.marl_module import ModuleID
+from ray.rllib.core.learner.learner import (
+    ParamDictType,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
+)
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.tf_utils import symlog, two_hot
+from ray.rllib.utils.tf_utils import symlog, two_hot, clip_gradients
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -26,6 +31,84 @@ tfp = try_import_tfp()
 
 class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
     """Implements DreamerV3 losses and update logic in TensorFlow."""
+
+    @override(TfLearner)
+    def configure_optimizer_per_module(
+        self, module_id: ModuleID
+    ) -> NamedParamOptimizerPairs:
+        """Create the 3 optimizers for Dreamer learning: world_model, actor, critic."""
+        ret: NamedParamOptimizerPairs = {}
+
+        dreamerv3_module = self._module[module_id]
+
+        # World Model Optimizer.
+        optim_world_model = tf.keras.optimizers.Adam(learning_rate=self.hps.world_model_lr, epsilon=1e-8)
+        optim_world_model.build(dreamerv3_module.world_model.trainable_variables)
+        ret["world_model"] = (
+            self.get_parameters(dreamerv3_module.world_model), optim_world_model
+        )
+        # Actor Optimizer.
+        optim_actor = tf.keras.optimizers.Adam(learning_rate=self.hps.actor_lr, epsilon=1e-5)
+        optim_actor.build(dreamerv3_module.dreamer_model.actor.trainable_variables)
+        ret["actor"] = (
+            self.get_parameters(dreamerv3_module.dreamer_model.actor), optim_actor
+        )
+        # Critic Optimizer.
+        optim_critic = tf.keras.optimizers.Adam(learning_rate=self.hps.critic_lr, epsilon=1e-5)
+        optim_critic.build(dreamerv3_module.dreamer_model.critic.trainable_variables)
+        ret["critic"] = (
+            self.get_parameters(dreamerv3_module.dreamer_model.critic), optim_critic
+        )
+
+        return ret
+
+    @override(TfLearner)
+    def compute_gradients(
+        self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
+    ) -> ParamDictType:
+        """Compute gradients for all three components: world_model, actor, critic.
+
+        `loss` must be a dictionary containing total loss keys for all the components.
+        """
+        ret: ParamDictType = {}
+        for name, optim in self._named_optimizers.items():
+            ret.update(
+                tape.gradient(
+                    loss[name.upper() + "_L_total"], self._optimizer_parameters[optim]
+                )
+            )
+        return ret
+
+    @override(TfLearner)
+    def postprocess_gradients(
+        self,
+        gradients_dict: Dict[str, Any],
+    ) -> Mapping[str, Any]:
+        """Performs gradient clipping on the 3 components' computed grads.
+
+        Note that different grad clip values are used for the 3 components.
+        """
+        for name, optim in self._named_optimizers.items():
+            grads_sub_dict = {
+                param_ref: gradients_dict[param_ref]
+                for param_ref in self._optimizer_parameters[optim]
+            }
+            # Figure out, which grad clip value to use.
+            grad_clip = (
+                self.hps.world_model_grad_clip_by_global_norm
+                if name == "world_model"
+                else self.hps.actor_grad_clip_by_global_norm
+                if name == "actor"
+                else self.hps.critic_grad_clip_by_global_norm
+            )
+            clip_gradients(
+                grads_sub_dict,
+                grad_clip=grad_clip,
+                grad_clip_by="global_norm",
+            )
+            gradients_dict.update(grads_sub_dict)
+
+        return gradients_dict
 
     @override(TfLearner)
     def compute_loss_per_module(
@@ -382,7 +465,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         entropy = tf.reduce_mean(entropy_H_B)
 
         L_actor_reinforce_term_H_B = -logp_loss_H_B
-        L_actor_action_entropy_term_H_B = -self._hps.entropy_scale * entropy_H_B
+        L_actor_action_entropy_term_H_B = -self.hps.entropy_scale * entropy_H_B
 
         L_actor_H_B = L_actor_reinforce_term_H_B + L_actor_action_entropy_term_H_B
         # Mask out everything that goes beyond a predicted continue=False boundary.
@@ -532,17 +615,17 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # In all the following, when building value targets for t=1 to T=H,
         # exclude rewards & continues for t=1 b/c we don't need r1 or c1.
         # The target (R1) for V1 is built from r2, c2, and V2/R2.
-        discount = continues_t0_to_H_BxT[1:] * self._hps.gamma  # shape=[2-16, BxT]
+        discount = continues_t0_to_H_BxT[1:] * self.hps.gamma  # shape=[2-16, BxT]
         Rs = [value_predictions_t0_to_H_BxT[-1]]  # Rs indices=[16]
         intermediates = (
             rewards_t1_to_H_BxT
-            + discount * (1 - self._hps.lambda_) * value_predictions_t0_to_H_BxT[1:]
+            + discount * (1 - self.hps.gae_lambda) * value_predictions_t0_to_H_BxT[1:]
         )
         # intermediates.shape=[2-16, BxT]
 
         # Loop through reversed timesteps (axis=1) from T+1 to t=2.
         for t in reversed(range(len(discount))):
-            Rs.append(intermediates[t] + discount[t] * self._hps.lambda_ * Rs[-1])
+            Rs.append(intermediates[t] + discount[t] * self.hps.gae_lambda * Rs[-1])
 
         # Reverse along time axis and cut the last entry (value estimate at very end
         # cannot be learnt from as it's the same as the ... well ... value estimate).
@@ -575,12 +658,12 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # Later update (something already stored in EMA variable): Update EMA.
         else:
             actor.ema_value_target_pct5.assign(
-                self._hps.return_normalization_decay * actor.ema_value_target_pct5
-                + (1.0 - self._hps.return_normalization_decay) * Per_R_5
+                self.hps.return_normalization_decay * actor.ema_value_target_pct5
+                + (1.0 - self.hps.return_normalization_decay) * Per_R_5
             )
             actor.ema_value_target_pct95.assign(
-                self._hps.return_normalization_decay * actor.ema_value_target_pct95
-                + (1.0 - self._hps.return_normalization_decay) * Per_R_95
+                self.hps.return_normalization_decay * actor.ema_value_target_pct95
+                + (1.0 - self.hps.return_normalization_decay) * Per_R_95
             )
 
         # [1] eq. 11 (first term).

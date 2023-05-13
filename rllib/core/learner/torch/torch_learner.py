@@ -2,6 +2,7 @@ import logging
 import pathlib
 from typing import (
     Any,
+    Dict,
     Hashable,
     Mapping,
     Optional,
@@ -83,7 +84,7 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
+        self, loss: Union[TensorType, Dict[str, Any]]
     ) -> ParamDictType:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
@@ -92,6 +93,33 @@ class TorchLearner(Learner):
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
+
+    @override(Learner)
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
+        """Postprocesses gradients depending on the optimizer config."""
+
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+        )
+
+        return gradients_dict
+
+    @override(Learner)
+    def apply_gradients(self, gradients_dict: ParamDictType) -> None:
+        # make sure the parameters do not carry gradients on their own
+        for optim in self._optimizer_parameters:
+            optim.zero_grad(set_to_none=True)
+
+        # set the gradient of the parameters
+        for pid, grad in gradients_dict.items():
+            self._params[pid].grad = grad
+
+        # for each optimizer call its step function with the gradients
+        for optim in self._optimizer_parameters:
+            optim.step()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
@@ -105,36 +133,6 @@ class TorchLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
 
         return results
-
-    @override(Learner)
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Postprocesses gradients depending on the optimizer config."""
-
-        # Perform gradient clipping, if necessary.
-        clip_gradients(
-            gradients_dict,
-            grad_clip=self._optimizer_config.get("grad_clip"),
-            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
-        )
-
-        return gradients_dict
-
-    @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
-        # make sure the parameters do not carry gradients on their own
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
-        # set the gradient of the parameters
-        for pid, grad in gradients.items():
-            self._params[pid].grad = grad
-
-        # for each optimizer call its step function with the gradients
-        for optim in self._optimizer_parameters:
-            optim.step()
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:

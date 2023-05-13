@@ -20,14 +20,12 @@ class ActorNetwork(tf.keras.Model):
         *,
         action_space: gym.Space,
         model_dimension: Optional[str] = "XS",
-        return_normalization_decay: float = 0.99,
     ):
         super().__init__()
 
         self.model_dimension = model_dimension
-        # The EMA decay rate used for the [Percentile(R, 95%) - Percentile(R, 5%)]
+        # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
         # diff to scale value targets for the actor loss.
-        self.return_normalization_decay = return_normalization_decay
         self.ema_value_target_pct5 = tf.Variable(
             np.nan, dtype=tf.float32, trainable=False
         )
@@ -55,9 +53,6 @@ class ActorNetwork(tf.keras.Model):
             )
         else:
             raise ValueError(f"Invalid action space: {action_space}")
-
-        # Optimizer.
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5, epsilon=1e-5)
 
     @tf.function
     def call(self, h, z, return_distribution=False):

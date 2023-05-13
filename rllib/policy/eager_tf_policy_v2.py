@@ -846,7 +846,13 @@ class EagerTFPolicyV2(Policy):
         action_dist = action_dist_class.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-        actions = action_dist.sample()
+        # If actions were not already provided, simply sample them here from a
+        # distribution generated from ACTION_DIST_INPUTS.
+        if SampleBatch.ACTIONS not in fwd_out:
+            actions = action_dist.sample()
+        # Otherwise, use actions as-is.
+        else:
+            actions = fwd_out[SampleBatch.ACTIONS]
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():
@@ -884,11 +890,17 @@ class EagerTFPolicyV2(Policy):
 
         action_dist_class = self.model.get_inference_action_dist_cls()
         fwd_out = self.model.forward_inference(input_dict)
-        action_dist = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
-        action_dist = action_dist.to_deterministic()
-        actions = action_dist.sample()
+        # If actions were not already provided, simply sample them here from a
+        # (deterministic) distribution generated from ACTION_DIST_INPUTS.
+        if SampleBatch.ACTIONS not in fwd_out:
+            action_dist = action_dist_class.from_logits(
+                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            )
+            action_dist = action_dist.to_deterministic()
+            actions = action_dist.sample()
+        # Otherwise, use actions as-is.
+        else:
+            actions = fwd_out[SampleBatch.ACTIONS]
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():

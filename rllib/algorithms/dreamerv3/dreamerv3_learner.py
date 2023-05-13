@@ -27,6 +27,27 @@ class DreamerV3Hyperparameters(LearnerHyperparameters):
 
     model_dimension: str = None
     training_ratio: float = None
+    batch_size_B: int = None
+    batch_length_T: int = None
+    horizon_H: int = None
+    gamma: float = None
+    gae_lambda: float = None
+    entropy_scale: float = None
+    return_normalization_decay: float = None
+    #symlog_obs: bool = None
+    world_model_lr: float = None
+    actor_lr: float = None
+    critic_lr: float = None
+    train_critic: bool = None
+    train_actor: bool = None
+    use_curiosity: bool = None
+    intrinsic_rewards_scale: float = None
+    world_model_grad_clip_by_global_norm: float = None
+    actor_grad_clip_by_global_norm: float = None
+    critic_grad_clip_by_global_norm: float = None
+    # disagree_grad_clip_by_global_norm: float = None
+
+
 
 
 class DreamerV3Learner(Learner):

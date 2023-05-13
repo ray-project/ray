@@ -6,6 +6,7 @@ import tree  # pip install dm-tree
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
     Mapping,
     Optional,
@@ -102,16 +103,13 @@ class TfLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
+        self, loss: Union[TensorType, Dict[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
         grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
         return grads
 
     @override(Learner)
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
         """Postprocesses gradients depending on the optimizer config."""
 
         # Perform gradient clipping, if necessary.
@@ -124,7 +122,7 @@ class TfLearner(Learner):
         return gradients_dict
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
+    def apply_gradients(self, gradients_dict: ParamDictType) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
@@ -133,13 +131,14 @@ class TfLearner(Learner):
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
-                if gradients[param_ref] is not None
+                if gradients_dict[param_ref] is not None
             ]
             gradient_list = [
-                gradients[param_ref]
+                gradients_dict[param_ref]
                 for param_ref in param_ref_seq
-                if gradients[param_ref] is not None
+                if gradients_dict[param_ref] is not None
             ]
+            assert len(gradient_list) == len(variable_list)
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
@@ -490,11 +489,13 @@ class TfLearner(Learner):
             #  constraint on forward_train and compute_loss APIs. This seems to be
             #  in-efficient. Make it efficient.
             _batch = NestedDict(_batch)
-            with tf.GradientTape() as tape:
+            with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+                # In case compute_loss returns a single tensor, wrap it in a dict
+                # with `self.TOTAL_LOSS_KEY` as key.
                 if isinstance(loss, tf.Tensor):
-                    loss = {"total_loss": loss}
+                    loss = {self.TOTAL_LOSS_KEY: loss}
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)

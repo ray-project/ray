@@ -56,9 +56,6 @@ class CriticNetwork(tf.keras.Model):
             trainable=False,
         )
 
-        # Optimizer.
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5, epsilon=1e-5)
-
     def call(self, h, z, return_logits=False, use_ema=False):
         """TODO
 

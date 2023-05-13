@@ -325,7 +325,6 @@ class AlgorithmConfig(_Config):
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
-        self._model_config = None
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -422,9 +421,8 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         # TODO (sven): self.rl_module_spec should be a compiled property, not a
         #  user-settable one. It's always deriveable from the obs-space, act-space,
-        #  module confug, etc..
+        #  module config dict, etc..
         self.rl_module_spec = None
-        self.
         self._enable_rl_module_api = False
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
@@ -2428,7 +2426,6 @@ class AlgorithmConfig(_Config):
         self,
         *,
         rl_module_spec: Optional[ModuleSpec] = NotProvided,
-        model_config: Optional[ModelConfig] = NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
@@ -2448,8 +2445,6 @@ class AlgorithmConfig(_Config):
         """
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
-        if model_config is not NotProvided:
-            self._model_config = model_config
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
@@ -3136,8 +3131,6 @@ class AlgorithmConfig(_Config):
                 module_spec.observation_space = policy_spec.observation_space
             if module_spec.action_space is None:
                 module_spec.action_space = policy_spec.action_space
-            if module_spec.model_config is None:
-                module_spec.model_config = policy_spec.config.get("model_config")
             if module_spec.model_config_dict is None:
                 module_spec.model_config_dict = policy_spec.config.get("model", {})
 
