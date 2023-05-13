@@ -16,6 +16,7 @@
 
 #include <sstream>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
@@ -183,7 +184,11 @@ void RedisRequestContext::Run() {
                          << absl::StrJoin(request_cxt->redis_cmds_, " ") << "]"
                          << " failed due to error " << async_context->errstr << ". "
                          << request_cxt->pending_retries_ << " retries left.";
-          request_cxt->Run();
+          // Retry the request after a while.
+          execute_after(
+              request_cxt->io_service_,
+              [request_cxt]() { request_cxt->Run(); },
+              ::RayConfig::instance().redis_retry_interval_ms());
         } else {
           auto reply = std::make_shared<CallbackReply>(
               reinterpret_cast<redisReply *>(redis_reply));
