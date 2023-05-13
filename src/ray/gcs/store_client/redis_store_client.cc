@@ -231,7 +231,6 @@ Status RedisStoreClient::AsyncMultiGet(
 size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys,
                                             std::function<void()> send_request) {
   size_t queue_added = 0;
-  absl::MutexLock lock(&mu_);
   for (const auto &key : keys) {
     auto [op_iter, added] =
         pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
@@ -254,7 +253,6 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys
 std::vector<std::function<void()>> RedisStoreClient::PopFromSendingQueue(
     const std::vector<std::string> &keys) {
   std::vector<std::function<void()>> send_requests;
-  absl::MutexLock lock(&mu_);
   for (const auto &key : keys) {
     auto [op_iter, added] =
         pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
@@ -295,7 +293,11 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
         std::move(args),
         [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
             auto reply) {
-          auto requests = PopFromSendingQueue(keys);
+          std::vector<std::function<void()>> requests;
+          {
+            absl::MutexLock lock(&mu_);
+            requests = PopFromSendingQueue(keys);
+          }
           for (auto &request : requests) {
             request();
           }
@@ -305,9 +307,9 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
         }));
   };
 
-  auto added_count = PushToSendingQueue(keys, send_redis);
   {
     absl::MutexLock lock(&mu_);
+    auto added_count = PushToSendingQueue(keys, send_redis);
     *counter += added_count;
     // We should be able to file it directly.
     if (*counter == keys.size()) {

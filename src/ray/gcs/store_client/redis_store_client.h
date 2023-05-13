@@ -112,10 +112,11 @@ class RedisStoreClient : public StoreClient {
   };
 
   size_t PushToSendingQueue(const std::vector<std::string> &keys,
-                            std::function<void()> send_request);
+                            std::function<void()> send_request)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::vector<std::function<void()>> PopFromSendingQueue(
-      const std::vector<std::string> &keys);
+      const std::vector<std::string> &keys) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status DoPut(const std::string &key,
                const std::string &data,
