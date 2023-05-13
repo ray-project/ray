@@ -120,7 +120,7 @@ export const ServeSystemActorDetail = ({
       />
       {fetchedActor && actor.detail.log_file_path && (
         <CollapsibleSection title="Logs" startExpanded>
-          <Section>
+          <Section noTopPadding>
             <ServeSystemActorLogs
               type="httpProxy"
               actor={fetchedActor}

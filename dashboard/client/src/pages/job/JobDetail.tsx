@@ -1,7 +1,5 @@
-import { Box, Link, makeStyles } from "@material-ui/core";
-import React, { useContext, useRef, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
-import { GlobalContext } from "../../App";
+import { Box, makeStyles } from "@material-ui/core";
+import React, { useRef, useState } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { Section } from "../../common/Section";
 import {
@@ -11,7 +9,7 @@ import {
 import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
+import { NestedJobProgressLink } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
@@ -126,7 +124,7 @@ export const JobDetailChartsPage = () => {
           startExpanded
           className={classes.section}
         >
-          <Section>
+          <Section noTopPadding>
             <JobDriverLogs job={job} />
           </Section>
         </CollapsibleSection>
@@ -217,52 +215,4 @@ export const JobDetailChartsPage = () => {
       )}
     </div>
   );
-};
-
-type JobLogsLinkProps = {
-  job: Pick<
-    UnifiedJob,
-    | "driver_agent_http_address"
-    | "driver_info"
-    | "job_id"
-    | "submission_id"
-    | "type"
-  >;
-};
-
-export const JobLogsLink = ({
-  job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
-}: JobLogsLinkProps) => {
-  const { ipLogMap } = useContext(GlobalContext);
-
-  if (type === "SUBMISSION") {
-    // For submission jobs, send them to the job detail page because we have logs there already.
-    const link = `/jobs/${job_id ? job_id : submission_id}`;
-    return (
-      <Link component={RouterLink} to={link}>
-        Log
-      </Link>
-    );
-  }
-
-  let link: string | undefined;
-
-  if (driver_agent_http_address) {
-    link = `/logs/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
-  } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
-    link = `/logs/${encodeURIComponent(ipLogMap[driver_info.node_ip_address])}`;
-  }
-
-  if (link) {
-    link += `?fileName=${
-      type === "DRIVER" ? job_id : `driver-${submission_id}`
-    }`;
-    return (
-      <Link component={RouterLink} to={link} target="_blank">
-        Log
-      </Link>
-    );
-  }
-
-  return <span>-</span>;
 };

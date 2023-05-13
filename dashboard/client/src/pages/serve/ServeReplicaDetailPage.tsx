@@ -152,7 +152,7 @@ export const ServeReplicaDetailPage = () => {
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>
-        <Section>
+        <Section noTopPadding>
           <ServeReplicaLogs replica={replica} />
         </Section>
       </CollapsibleSection>

@@ -8,10 +8,12 @@ import {
   Typography,
 } from "@material-ui/core";
 import React, { useState } from "react";
-import { RiArrowUpDownLine } from "react-icons/ri";
+import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
+import { Link } from "react-router-dom";
 import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
+import { ClassNameProps } from "./props";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -29,9 +31,14 @@ export type MultiTabLogViewerTabDetails = {
 
 export type MultiTabLogViewerProps = {
   tabs: MultiTabLogViewerTabDetails[];
-};
+  otherLogsLink?: string;
+} & ClassNameProps;
 
-export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
+export const MultiTabLogViewer = ({
+  tabs,
+  otherLogsLink,
+  className,
+}: MultiTabLogViewerProps) => {
   const classes = useStyles();
   const [value, setValue] = useState(tabs[0]?.title);
   const [expanded, setExpanded] = useState(false);
@@ -39,7 +46,7 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
   const currentTab = tabs.find((tab) => tab.title === value);
 
   return (
-    <div>
+    <div className={className}>
       <Box
         display="flex"
         flexDirection="row"
@@ -58,10 +65,28 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
             onChange={(_, newValue) => {
               setValue(newValue);
             }}
+            indicatorColor="primary"
           >
             {tabs.map(({ title }) => (
               <Tab key={title} label={title} value={title} />
             ))}
+            {otherLogsLink && (
+              <Tab
+                label={
+                  <Box display="flex" alignItems="center">
+                    Other logs &nbsp; <RiExternalLinkLine size={20} />
+                  </Box>
+                }
+                onClick={(event) => {
+                  // Prevent the tab from changing
+                  setValue(value);
+                }}
+                component={Link}
+                to={otherLogsLink}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            )}
           </Tabs>
 
           {!currentTab ? (
@@ -87,7 +112,7 @@ export const MultiTabLogViewer = ({ tabs }: MultiTabLogViewerProps) => {
             setExpanded(!expanded);
           }}
         >
-          <RiArrowUpDownLine />
+          {expanded ? <RiSortAsc /> : <RiSortDesc />}
         </IconButton>
       </Box>
     </div>

@@ -196,7 +196,7 @@ const ActorDetailPage = () => {
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>
-        <Section>
+        <Section noTopPadding>
           <ActorLogs actor={actorDetail} />
         </Section>
       </CollapsibleSection>

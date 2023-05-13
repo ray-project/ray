@@ -21,6 +21,14 @@ describe("JobDriverLogs", () => {
     render(
       <JobDriverLogs
         job={{
+          job_id: "01000000",
+          driver_agent_http_address: "127.0.0.1",
+          driver_info: {
+            id: "01000000",
+            node_id: "node-id-0",
+            node_ip_address: "127.0.0.1",
+            pid: "12345",
+          },
           submission_id: "raysubmit_12345",
           driver_node_id: "node-id-0",
         }}
