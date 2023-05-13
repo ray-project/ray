@@ -110,6 +110,7 @@ using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
+                      RedisAsyncContext *context,
                       std::vector<std::string> args);
 
   void Run();

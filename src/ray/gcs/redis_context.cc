@@ -154,8 +154,10 @@ const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray(
 
 RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
+                                         RedisAsyncContext *context,
                                          std::vector<std::string> args)
     : io_service_(io_service),
+      redis_context_(context),
       pending_retries_(RayConfig::instance().num_redis_request_retries()),
       callback_(std::move(callback)),
       start_time_(absl::Now()),
@@ -543,8 +545,10 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                 RedisCallback redis_callback) {
   RAY_CHECK(redis_async_context_);
-  auto request_context =
-      new RedisRequestContext(io_service_, std::move(redis_callback), std::move(args));
+  auto request_context = new RedisRequestContext(io_service_,
+                                                 std::move(redis_callback),
+                                                 redis_async_context_.get(),
+                                                 std::move(args));
   request_context->Run();
 }
 
