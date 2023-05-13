@@ -39,11 +39,14 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
         ValueError if an input was array-like but we failed to convert it to an array.
     """
 
-    ctx = ray.data.DataContext.get_current()
-
-    if isinstance(udf_return_col, np.ndarray) or not ctx.strict_mode:
+    if isinstance(udf_return_col, np.ndarray):
         # No copy/conversion needed, just keep it verbatim.
         return udf_return_col
+
+    ctx = ray.data.DataContext.get_current()
+    if not ctx.strict_mode:
+        # Legacy compat.
+        return np.array(udf_return_col)
 
     if isinstance(udf_return_col, list):
         # Try to convert list values into an numpy array via
