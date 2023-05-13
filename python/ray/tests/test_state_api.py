@@ -1699,11 +1699,11 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
 
 def test_humanify():
     raw_bytes = 1024
-    assert Humanify.memory(raw_bytes) == "1.0 KiB"
+    assert Humanify.memory(raw_bytes) == "1.000 KiB"
     raw_bytes *= 1024
-    assert Humanify.memory(raw_bytes) == "1.0 MiB"
+    assert Humanify.memory(raw_bytes) == "1.000 MiB"
     raw_bytes *= 1024
-    assert Humanify.memory(raw_bytes) == "1.0 GiB"
+    assert Humanify.memory(raw_bytes) == "1.000 GiB"
     timestamp = 1610000000
     assert "1970-01" in Humanify.timestamp(timestamp)
     assert Humanify.duration(timestamp) == "18 days, 15:13:20"

@@ -173,8 +173,8 @@ def output_with_format(
     detail: bool = False,
 ) -> str:
     # humanify all input state data
-    state_data = [schema.humanify(state) for state in state_data]
-
+    if schema:
+        state_data = [schema.humanify(state) for state in state_data]
     if format == AvailableFormat.DEFAULT:
         return get_table_output(state_data, schema, detail)
     if format == AvailableFormat.YAML:
