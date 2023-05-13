@@ -186,14 +186,13 @@ TEST_F(RedisStoreClientTest, Complicated) {
                                                       RAY_LOG(INFO)
                                                           << "F AsyncExists: " << p_key;
                                                       ++finished;
-                                                      ASSERT_TRUE(false);
+                                                      ASSERT_FALSE(false);
                                                     })
                                       .ok());
                     }
                   }
                 })
             .ok());
-    break;
   }
   ASSERT_TRUE(WaitForCondition(
       [&finished, &sent]() {
