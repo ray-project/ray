@@ -49,6 +49,7 @@ from ray.serve._private.utils import (
 
 from ray.serve._private import api as _private_api
 
+
 logger = logging.getLogger(__file__)
 
 
@@ -571,3 +572,99 @@ def delete(name: str, _blocking: bool = True):
     """
     client = get_global_client()
     client.delete_apps([name], blocking=_blocking)
+
+
+@PublicAPI(stability="alpha")
+def multiplexed(
+    func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
+):
+    """[EXPERIMENTAL] Defines a function or method used to load multiplexed
+    models in a replica.
+
+    The function can be standalone function or a method of a class. The
+    function must have exactly one argument, the model id of type `str` for the
+    model to be loaded.
+
+    It is required to define the function with `async def` and the function must be
+    an async function. It is recommended to define coroutines for long running
+    IO tasks in the function to avoid blocking the event loop.
+
+    The multiplexed function is called to load a model with the given model ID when
+    necessary.
+
+    When the number of models in one replica is larger than max_num_models_per_replica,
+    the models will be unloaded using an LRU policy.
+
+    If you want to release resources after the model is loaded, you can define
+    a `__del__` method in your model class. The `__del__` method will be called when
+    the model is unloaded.
+
+    Example:
+
+    .. code-block:: python
+            from ray import serve
+
+            @serve.deployment
+            class MultiplexedDeployment:
+
+                def __init__(self):
+                    # Define s3 base path to load models.
+                    self.s3_base_path = "s3://my_bucket/my_models"
+
+                @serve.multiplexed(max_num_models_per_replica=5)
+                async def load_model(self, model_id: str) -> Any:
+                    # Load model with the given tag
+                    # You can use any model loading library here
+                    # and return the loaded model. load_from_s3 is
+                    # a placeholder function.
+                    return load_from_s3(model_id)
+
+                async def __call__(self, request):
+                    # Get the model_id from the request context.
+                    model_id = serve.get_multiplexed_model_id()
+                    # Load the model for the requested model_id.
+                    # If the model is already cached locally,
+                    # this will just be a dictionary lookup.
+                    model = await self.load_model(model_id)
+                    return model(request)
+
+
+    Args:
+        max_num_models_per_replica: the maximum number of models
+        to be loaded on each replica. By default, it is 3, which
+        means that each replica can cache up to 3 models. You can
+        set it to a larger number if you have enough memory on
+        the node resource, in opposite, you can set it to a smaller
+        number if you want to save memory on the node resource.
+    """
+
+    raise NotImplementedError("Multiplexed deployment is not supported yet.")
+
+
+@PublicAPI(stability="alpha")
+def get_multiplexed_model_id() -> str:
+    """[EXPERIMENTAL] Get the multiplexed model ID for the current request.
+
+    This is used with a function decorated with `@serve.multiplexed`
+    to retrieve the model ID for the current request.
+
+    .. code-block:: python
+            import ray
+            from ray import serve
+            import requests
+
+            # Set the multiplexed model id with the key
+            # "ray_serve_multiplexed_model_id" in the request
+            # headers when sending requests to the http proxy.
+            requests.get("http://localhost:8000",
+                headers={"ray_serve_multiplexed_model_id": "model_1"})
+            # This can also be set when using `RayServeHandle`.
+            handle.options(multiplexed_model_id="model_1").remote("blablabla")
+
+            # In your deployment code, you can retrieve the model id from
+            # `get_multiplexed_model_id()`.
+            @serve.deployment
+            def my_deployment_function(request):
+                assert serve.get_multiplexed_model_id() == "model_1"
+    """
+    raise NotImplementedError("get_multiplexed_model_id API is not supported yet.")
