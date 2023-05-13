@@ -254,7 +254,27 @@ def test_actor_repr_name(shutdown_only):
 
 def test_experimental_import_deprecation():
     with pytest.warns(DeprecationWarning):
-        from ray.experimental.state.api import list_tasks
+        from ray.experimental.state.api import list_tasks  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.custom_types import ACTOR_STATUS  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.exception import RayStateApiException  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.state_cli import ray_get  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.state_manager import (  # noqa: F401
+            StateDataSourceClient,
+        )
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.util import convert_string_to_type  # noqa: F401
 
 
 if __name__ == "__main__":

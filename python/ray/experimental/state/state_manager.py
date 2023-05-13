@@ -1,5 +1,4 @@
-from ray.util.state.state_manager import *
+from ray.util.state.state_manager import *  # noqa: F401 F403
+from ray.util.state.util import record_deprecated_state_api_import
 
-from ray.util.state.util import record_deprecated_state_api_usage
-
-record_deprecated_state_api_usage()
+record_deprecated_state_api_import()
