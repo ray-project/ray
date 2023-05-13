@@ -177,12 +177,11 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
 
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
-  boost::asio::dispatch(io_context_.get_executor(),
-                        [reactors = sync_reactors_]() {
-                          for (auto [_, reactor] : reactors) {
-                            reactor->Disconnect();
-                          }
-                        });
+  boost::asio::dispatch(io_context_.get_executor(), [reactors = sync_reactors_]() {
+    for (auto [_, reactor] : reactors) {
+      reactor->Disconnect();
+    }
+  });
 }
 
 std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
@@ -201,12 +200,12 @@ std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
 
 std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
   auto task = std::packaged_task<std::vector<std::string>()>([&]() {
-                          std::vector<std::string> nodes;
-                          for (auto [node_id, _] : sync_reactors_) {
-                            nodes.push_back(node_id);
-                          }
-                          return nodes;
-                        });
+    std::vector<std::string> nodes;
+    for (auto [node_id, _] : sync_reactors_) {
+      nodes.push_back(node_id);
+    }
+    return nodes;
+  });
   return boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
