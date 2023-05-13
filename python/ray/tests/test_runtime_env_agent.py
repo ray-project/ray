@@ -172,6 +172,9 @@ def check_agent_register(raylet_proc, agent_pid):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    sys.platform in ["win32", "cygwin"], reason="fate-share is not supported on windows"
+)
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and runtime env agent share fate."""
 
