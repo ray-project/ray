@@ -154,7 +154,7 @@ prepare_docker() {
     EXPOSE 8000
     EXPOSE 10001
     RUN pip install /${wheel}[serve]
-    RUN sudo apt update && sudo apt install curl -y
+    RUN (sudo apt update || true) && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
     pushd $tmp_dir
@@ -459,6 +459,7 @@ build_wheels() {
         -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
+        -e "BUILD_ONE_PYTHON_ONLY=${BUILD_ONE_PYTHON_ONLY:-}"
       )
 
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"

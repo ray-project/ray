@@ -67,7 +67,7 @@ def clean_noqa(ex):
 )
 def test_actor_creation_stacktrace(ray_start_regular):
     """Test the actor creation task stacktrace."""
-    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=YYY, repr=ZZZ) # noqa
+    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=YYY, actor_id={actor_id}, repr=ZZZ) # noqa
   File "FILE", line ZZ, in __init__
     g(3)
   File "FILE", line ZZ, in g
@@ -85,12 +85,14 @@ ValueError: 3"""
         def ping(self):
             pass
 
+    a = A.remote()
     try:
-        a = A.remote()
         ray.get(a.ping.remote())
     except RayActorError as ex:
         print(ex)
-        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(
+            expected_output.format(actor_id=a._actor_id.hex())
+        ) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
@@ -128,7 +130,7 @@ ValueError: 7"""
 )
 def test_actor_task_stacktrace(ray_start_regular):
     """Test the actor task stacktrace."""
-    expected_output = """ray::A.f() (pid=XXX, ip=YYY, repr=ZZZ) # noqa
+    expected_output = """ray::A.f() (pid=XXX, ip=YYY, actor_id={actor_id}, repr=ZZZ) # noqa
   File "FILE", line ZZ, in f
     return g(c)
   File "FILE", line ZZ, in g
@@ -151,7 +153,9 @@ ValueError: 7"""
         ray.get(a.f.remote())
     except ValueError as ex:
         print(ex)
-        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(
+            expected_output.format(actor_id=a._actor_id.hex())
+        ) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(

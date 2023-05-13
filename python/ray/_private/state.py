@@ -301,6 +301,8 @@ class GlobalState:
                 return "PENDING"
             elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == gcs_utils.PlacementGroupTableData.RESCHEDULING:
+                return "RESCHEDULING"
             else:
                 return "REMOVED"
 
@@ -327,6 +329,10 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                for bundle in placement_group_info.bundles
+            },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),
@@ -757,7 +763,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -821,7 +827,7 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
@@ -864,7 +870,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -879,7 +885,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 
