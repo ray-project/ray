@@ -616,13 +616,15 @@ TEST_F(SyncerTest, Broadcast) {
   RAY_LOG(INFO) << "s3.id=" << NodeID::FromBinary(s3.syncer->GetLocalNodeID());
 
   EXPECT_TRUE(s3.WaitUntil(
-      [&s3, node_id = s1.syncer->GetLocalNodeID()] () mutable {
+      [&s3, node_id = s1.syncer->GetLocalNodeID()]() mutable {
         return s3.syncer->node_state_->GetClusterView().count(node_id) == 0;
-      }, 5));
+      },
+      5));
   EXPECT_TRUE(s1.WaitUntil(
-      [&s1, node_id = s3.syncer->GetLocalNodeID()] () mutable {
+      [&s1, node_id = s3.syncer->GetLocalNodeID()]() mutable {
         return s1.syncer->node_state_->GetClusterView().count(node_id) == 0;
-      }, 5));
+      },
+      5));
 }
 
 bool CompareViews(const std::vector<SyncerServerTest *> &servers,
