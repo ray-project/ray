@@ -1,6 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import { get } from "../../service/requestHandlers";
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { JobDriverLogs } from "./JobDriverLogs";
 
 jest.mock("../../service/requestHandlers");
@@ -33,6 +36,7 @@ describe("JobDriverLogs", () => {
           driver_node_id: "node-id-0",
         }}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     await screen.findByText(/log line/);
