@@ -14,9 +14,12 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
+#include <chrono>
+
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
+using namespace std::chrono_literals;
 
 namespace ray {
 
@@ -24,13 +27,41 @@ namespace gcs {
 
 class RedisStoreClientTest : public StoreClientTestBase {
  public:
-  RedisStoreClientTest() {}
+  bool chaos = std::getenv("REDIS_CHAOS") != nullptr;
+  std::atomic<bool> stopped{false};
+  RedisStoreClientTest() {
+    if (chaos) {
+      ::RayConfig::instance().num_redis_request_retries() = 1000;
+      ::RayConfig::instance().redis_retry_interval_ms() = 10;
+    }
+  }
 
   virtual ~RedisStoreClientTest() {}
 
-  static void SetUpTestCase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+  void SetUp() override {
+    TestSetupUtil::StartUpRedisServers(std::vector<int>(), chaos);
+    auto port = TEST_REDIS_SERVER_PORTS.front();
+    if (chaos) {
+      t_ = std::make_unique<std::thread>([this, port]() {
+        while (!stopped) {
+          // Inside shutdown it has already slept for 100ms
+          TestSetupUtil::ShutDownRedisServers();
+          TestSetupUtil::StartUpRedisServers({port});
+        }
+      });
+    }
+    TestSetupUtil::FlushAllRedisServers();
+    StoreClientTestBase::SetUp();
+  }
 
-  static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
+  void TearDown() override {
+    stopped = true;
+    if (t_) {
+      t_->join();
+    }
+    StoreClientTestBase::TearDown();
+    TestSetupUtil::ShutDownRedisServers();
+  }
 
   void InitStoreClient() override {
     RedisClientOptions options("127.0.0.1",
@@ -47,6 +78,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
  protected:
   std::shared_ptr<RedisClient> redis_client_;
+  std::unique_ptr<std::thread> t_;
 };
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }

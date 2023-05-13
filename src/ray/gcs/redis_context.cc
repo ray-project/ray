@@ -210,7 +210,6 @@ void RedisRequestContext::Run() {
       fn, this, argv_.size(), argv_.data(), argc_.data());
 
   if (!status.ok()) {
-    RAY_CHECK(!status.IsDisconnected()) << "Redis is disconnected";
     fn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
   }
 }
