@@ -9,7 +9,7 @@ import requests
 import pytest
 
 from ray._private.profiling import chrome_tracing_dump
-from ray.experimental.state.api import (
+from ray.util.state.api import (
     get_actor,
     list_tasks,
     list_actors,
@@ -250,6 +250,11 @@ def test_actor_repr_name(shutdown_only):
 
     a = OutClass().get_actor(name="inner")
     wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="inner")
+
+
+def test_experimental_import_deprecation():
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.api import list_tasks
 
 
 if __name__ == "__main__":

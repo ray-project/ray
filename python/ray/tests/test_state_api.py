@@ -62,7 +62,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     _convert_filters_type,
 )
-from ray.experimental.state.api import (
+from ray.util.state.api import (
     get_actor,
     get_node,
     get_objects,
@@ -84,7 +84,7 @@ from ray.experimental.state.api import (
     StateApiClient,
 )
 from ray._private.event.event_logger import get_event_id
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
@@ -102,16 +102,16 @@ from ray.experimental.state.common import (
     state_column,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
-from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_cli import (
+from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.util.state.state_cli import (
     AvailableFormat,
     format_list_api_output,
     _parse_filter,
     summary_state_cli_group,
 )
-from ray.experimental.state.state_cli import ray_get
-from ray.experimental.state.state_cli import ray_list
-from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.util.state.state_cli import ray_get
+from ray.util.state.state_cli import ray_list
+from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 

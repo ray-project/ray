@@ -45,7 +45,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 
-from ray.experimental.state.state_cli import (
+from ray.util.state.state_cli import (
     ray_get,
     ray_list,
     logs_state_cli_group,
