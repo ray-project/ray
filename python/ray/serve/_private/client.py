@@ -102,7 +102,6 @@ class ServeControllerClient:
 
         # Shut down handles
         for k in list(self.handle_cache):
-            self.handle_cache[k].stop_metrics_pusher()
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
