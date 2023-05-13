@@ -35,7 +35,7 @@ Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
   if (is_eof_set && curr_ >= last_) {
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
                    << "has no more objects.";
-    return Status::KeyError("Finished");
+    return Status::ObjectRefStreamEoF("");
   }
 
   auto it = idx_to_refs_.find(curr_);
@@ -47,13 +47,14 @@ Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
     // when the obtained object id goes out of scope.
     *object_id_out = it->second;
     curr_ += 1;
-    RAY_LOG(DEBUG) << "SANG-TODO Get the next object id " << *object_id_out
-                   << " generator id: " << generator_id_;
+    RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
+                                   << " generator id: " << generator_id_;
   } else {
     // If the current index hasn't been written, return nothing.
     // The caller is supposed to retry.
-    RAY_LOG(DEBUG) << "SANG-TODO Object not available. Current index: " << curr_
-                   << " last: " << last_ << " generator id: " << generator_id_;
+    RAY_LOG_EVERY_MS(DEBUG, 10000)
+        << "Object not available. Current index: " << curr_ << " last: " << last_
+        << " generator id: " << generator_id_;
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
@@ -65,6 +66,7 @@ bool ObjectRefStream::Write(const ObjectID &object_id, int64_t idx) {
   }
 
   if (idx < curr_) {
+    // Index is already used. Don't write it to the stream.
     return false;
   }
 
@@ -360,7 +362,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
     const auto &status = AsyncReadObjectRefStream(generator_id, &object_id);
 
     // keyError means the stream reaches to EoF.
-    if (status.IsKeyError()) {
+    if (status.IsObjectRefStreamEoF()) {
       break;
     }
 
@@ -382,13 +384,11 @@ Status TaskManager::AsyncReadObjectRefStream(const ObjectID &generator_id,
   absl::MutexLock lock(&mu_);
   RAY_CHECK(object_id_out != nullptr);
 
-  auto it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(it != object_ref_streams_.end())
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
       << "AsyncReadObjectRefStream API can be used only when the stream has been created "
          "and not removed.";
-  auto &stream = it->second;
-
-  const auto &status = stream.AsyncReadNext(object_id_out);
+  const auto &status = stream_it->second.AsyncReadNext(object_id_out);
   return status;
 }
 
@@ -404,15 +404,15 @@ void TaskManager::HandleReportIntermediateTaskReturn(
   const auto &task_id = generator_id.TaskId();
   int64_t idx = request.idx();
   // Every generated object has the same task id.
-  RAY_LOG(DEBUG) << "SANG-TODO Received an intermediate result of index " << idx
+  RAY_LOG(DEBUG) << "Received an intermediate result of index " << idx
                  << " generator_id: " << generator_id;
 
   if (request.finished()) {
     absl::MutexLock lock(&mu_);
-    RAY_LOG(DEBUG) << "SANG-TODO Finished with an index " << idx;
-    auto it = object_ref_streams_.find(generator_id);
-    if (it != object_ref_streams_.end()) {
-      it->second.WriteEoF(idx);
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << idx;
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it != object_ref_streams_.end()) {
+      stream_it->second.WriteEoF(idx);
     }
     // The last report should not have any return objects.
     RAY_CHECK(request.dynamic_return_objects_size() == 0);
@@ -426,31 +426,41 @@ void TaskManager::HandleReportIntermediateTaskReturn(
   // TODO(sang): Support the regular return values as well.
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    RAY_LOG(DEBUG) << "SANG-TODO Add an object " << object_id;
-    bool is_written_to_stream = false;
+    RAY_LOG(DEBUG) << "Write an object " << object_id
+                   << " to the object ref stream of id " << generator_id;
+    bool index_not_used_yet = false;
     {
       absl::MutexLock lock(&mu_);
-      auto it = object_ref_streams_.find(generator_id);
-      if (it != object_ref_streams_.end()) {
-        is_written_to_stream = it->second.Write(object_id, idx);
+      auto stream_it = object_ref_streams_.find(generator_id);
+      if (stream_it != object_ref_streams_.end()) {
+        index_not_used_yet = stream_it->second.Write(object_id, idx);
       }
       // TODO(sang): Update the reconstruct ids and task spec
       // when we support retry.
     }
 
     // If the ref was written to a stream, we should also
-    // update the ref count accordingly.
-    // If we call this method while holding a lock, it can deadlock.
-    if (is_written_to_stream) {
-      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
-                                                                   generator_id);
+    // own the dynamically generated task return.
+    // NOTE: If we call this method while holding a lock, it can deadlock.
+    if (index_not_used_yet) {
+      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
+                                                                     generator_id);
+      // When an object is reported, the object is ready to be fetched.
+      // TODO(sang): It is possible this invairant is not true
+      // if tasks can be retried. For example, imagine the intermediate
+      // task return is reported after a task is resubmitted.
+      // It is okay now because we don't support retry yet. But when
+      // we support retry, we should guarantee it is not called
+      // after the task resubmission. We can do it by guaranteeing
+      // HandleReportIntermediateTaskReturn is not called after the task
+      // CompletePendingTask.
+      reference_counter_->UpdateObjectReady(object_id);
     }
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
                      /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
-  RAY_LOG(DEBUG) << "SANG-TODO Finished handling intermediate result";
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,

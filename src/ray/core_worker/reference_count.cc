@@ -239,9 +239,12 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
-void ReferenceCounter::AddIntermediatelyReporteDynamicReturnRef(
+void ReferenceCounter::OwnDynamicallyGeneratedStreamingTaskReturn(
     const ObjectID &object_id, const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
+  // NOTE: The upper layer (the layer that manges the object ref stream)
+  // should make sure the generator ref is not GC'ed when the
+  //
   auto outer_it = object_id_refs_.find(generator_id);
   if (outer_it == object_id_refs_.end()) {
     // Generator object already went out of scope.
@@ -264,9 +267,6 @@ void ReferenceCounter::AddIntermediatelyReporteDynamicReturnRef(
                                     outer_it->second.is_reconstructable,
                                     /*add_local_ref=*/true,
                                     absl::optional<NodeID>()));
-  // When the intermediate object ref is reported, it means the
-  // object is already created.
-  UpdateObjectPendingCreation(object_id, false);
 }
 
 bool ReferenceCounter::AddOwnedObjectInternal(
@@ -412,7 +412,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, true);
+    UpdateObjectPendingCreationInternal(return_id, true);
   }
   for (const ObjectID &argument_id : argument_ids_to_add) {
     RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
@@ -441,7 +441,7 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
     const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, true);
+    UpdateObjectPendingCreationInternal(return_id, true);
   }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
@@ -463,7 +463,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, false);
+    UpdateObjectPendingCreationInternal(return_id, false);
   }
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
@@ -1308,8 +1308,8 @@ void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
   PushToLocationSubscribers(it);
 }
 
-void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
-                                                   bool pending_creation) {
+void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &object_id,
+                                                           bool pending_creation) {
   auto it = object_id_refs_.find(object_id);
   bool push = false;
   if (it != object_id_refs_.end()) {
@@ -1467,6 +1467,11 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   }
   *lineage_evicted = it->second.lineage_evicted;
   return it->second.is_reconstructable;
+}
+
+void ReferenceCounter::UpdateObjectReady(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  UpdateObjectPendingCreationInternal(object_id, /*pending_creation*/ false);
 }
 
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {

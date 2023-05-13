@@ -37,18 +37,6 @@ class TaskFinisherInterface {
                                    const rpc::Address &actor_addr,
                                    bool is_application_error) = 0;
 
-  virtual void HandleReportIntermediateTaskReturn(
-      const rpc::ReportIntermediateTaskReturnRequest &request) = 0;
-
-  virtual void DelObjectRefStream(const ObjectID &generator_id) = 0;
-
-  virtual void CreateObjectRefStream(const ObjectID &generator_id) = 0;
-
-  virtual bool ObjectRefStreamExists(const ObjectID &generator_id) = 0;
-
-  virtual Status AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                          ObjectID *object_id_out) = 0;
-
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    const rpc::RayErrorInfo &error_info) = 0;
 
@@ -118,8 +106,9 @@ class ObjectRefStream {
 
   /// Write the object id to the stream of an index idx.
   ///
-  /// \param[in] The object id that will be read at index idx.
-  /// \param[in] The index where the object id will be written.
+  /// \param[in] object_id The object id that will be read at index idx.
+  /// \param[in] idx The index where the object id will be written.
+  /// \return True if the idx hasn't been used. False otherwise.
   bool Write(const ObjectID &object_id, int64_t idx);
 
   /// Mark the stream canont be used anymore.
@@ -220,9 +209,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            bool is_application_error) override;
 
   /// Handle the task return reported before the task terminates.
-  ///
   void HandleReportIntermediateTaskReturn(
-      const rpc::ReportIntermediateTaskReturnRequest &request) override;
+      const rpc::ReportIntermediateTaskReturnRequest &request);
 
   /// Delete the object ref stream.
   /// Once the stream is deleted, it will clean up all unconsumed
@@ -231,7 +219,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id) override;
+  void DelObjectRefStream(const ObjectID &generator_id);
 
   /// Create the object ref stream.
   /// If the object ref stream is not created by this API,
@@ -242,14 +230,26 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void CreateObjectRefStream(const ObjectID &generator_id) override;
+  void CreateObjectRefStream(const ObjectID &generator_id);
 
   /// Return true if the object ref stream exists.
-  bool ObjectRefStreamExists(const ObjectID &generator_id) override;
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  bool ObjectRefStreamExists(const ObjectID &generator_id);
 
-  // SANG-TODO Docstring + change the method.
-  Status AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                  ObjectID *object_id_out) override;
+  /// Asynchronously read object reference of the next index from the
+  /// object stream of a generator_id.
+  ///
+  /// The caller should ensure the ObjectRefStream is already created
+  /// via CreateObjectRefStream.
+  /// If it is called after the stream hasn't been created or deleted
+  /// it will panic.
+  ///
+  /// \param[out] object_id_out The next object ID from the stream.
+  /// Nil ID is returned if the next index hasn't been written.
+  /// \return KeyError if it reaches to EoF. Ok otherwise.
+  Status AsyncReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
 
   /// Returns true if task can be retried.
   ///

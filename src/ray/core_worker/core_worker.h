@@ -354,14 +354,37 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
-  // SANG-TODO Update the docstring.
-  void DelObjectRefStream(const ObjectID &generator_id);
-
+  /// Create the ObjectRefStream of generator_id.
+  ///
+  /// It is a pass-through method. See TaskManager::CreateObjectRefStream
+  /// for details.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
   void CreateObjectRefStream(const ObjectID &generator_id);
 
-  // SANG-TODO Update the docstring.
+  /// Read the next index of a ObjectRefStream of generator_id.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \param[out] object_ref_out The ObjectReference
+  /// that the caller can convert to its own ObjectRef.
+  /// The current process is always the owner of the
+  /// generated ObjectReference.
+  /// \return Status RayKeyError if the stream reaches to EoF.
+  /// OK otherwise.
   Status AsyncReadObjectRefStream(const ObjectID &generator_id,
                                   rpc::ObjectReference *object_ref_out);
+
+  /// Delete the ObjectRefStream of generator_id
+  /// created by CreateObjectRefStream.
+  ///
+  /// It is a pass-through method. See TaskManager::DelObjectRefStream
+  /// for details.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void DelObjectRefStream(const ObjectID &generator_id);
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -738,6 +761,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int64_t idx,
       bool finished);
 
+  /// Implements gRPC server handler.
+  /// If an executor can generator task return before the task is finished,
+  /// it invokes this endpoint via ReportIntermediateTaskReturn RPC.
+  void HandleReportIntermediateTaskReturn(
+      rpc::ReportIntermediateTaskReturnRequest request,
+      rpc::ReportIntermediateTaskReturnReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get a string describing object store memory usage for debugging purposes.
   ///
   /// \return std::string The string describing memory usage.
@@ -977,7 +1008,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                std::shared_ptr<RayObject> *return_object,
                                const ObjectID &generator_id);
 
-  /// SANG-TODO Update the docstring.
   /// Dynamically allocate an object.
   ///
   /// This should be used during task execution, if the task wants to return an
@@ -1077,12 +1107,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleGetObjectLocationsOwner(rpc::GetObjectLocationsOwnerRequest request,
                                      rpc::GetObjectLocationsOwnerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleReportIntermediateTaskReturn(
-      rpc::ReportIntermediateTaskReturnRequest request,
-      rpc::ReportIntermediateTaskReturnReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(rpc::KillActorRequest request,

@@ -1663,7 +1663,7 @@ Status CoreWorker::ReportIntermediateTaskReturn(
     const rpc::Address &caller_address,
     int64_t idx,
     bool finished) {
-  RAY_LOG(DEBUG) << "SANG-TODO Write the object ref stream, index: " << idx
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << idx
                  << " finished: " << finished << ", id: " << dynamic_return_object.first;
   rpc::ReportIntermediateTaskReturnRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
@@ -1672,9 +1672,8 @@ Status CoreWorker::ReportIntermediateTaskReturn(
   request.set_generator_id(generator_id.Binary());
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
-  // Object id is nil if it is the close operations.
-  // SANG-TODO Support a separate endpoint Close.
   if (!dynamic_return_object.first.IsNil()) {
+    RAY_CHECK_EQ(finished, false);
     auto return_object_proto = request.add_dynamic_return_objects();
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
@@ -1688,10 +1687,9 @@ Status CoreWorker::ReportIntermediateTaskReturn(
   client->ReportIntermediateTaskReturn(
       request,
       [](const Status &status, const rpc::ReportIntermediateTaskReturnReply &reply) {
-        if (status.ok()) {
-          RAY_LOG(DEBUG) << "SANG-TODO Succeeded to send the object ref";
-        } else {
-          RAY_LOG(DEBUG) << "SANG-TODO Failed to send the object ref";
+        if (!status.ok()) {
+          // TODO(sang): Handle network error more gracefully.
+          RAY_LOG(ERROR) << "Failed to send the object ref.";
         }
       });
   return Status::OK();
@@ -3251,8 +3249,8 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
     if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
-                                                                   generator_id);
+      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
+                                                                     generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, generator_id);
     }
@@ -3390,8 +3388,8 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // know that it exists.
     RAY_CHECK(!generator_id->IsNil());
     if (task_manager_->ObjectRefStreamExists(*generator_id)) {
-      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
-                                                                   *generator_id);
+      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
+                                                                     *generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, *generator_id);
     }
@@ -3424,8 +3422,8 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   if (!maybe_generator_id.IsNil()) {
     if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
       // If the stream exists, it means it is a streaming generator.
-      reference_counter_->AddIntermediatelyReporteDynamicReturnRef(object_id,
-                                                                   maybe_generator_id);
+      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
+                                                                     maybe_generator_id);
     } else {
       // The task is a generator and may not have finished yet. Add the internal
       // ObjectID so that we can update its location.
@@ -3465,7 +3463,6 @@ void CoreWorker::HandleReportIntermediateTaskReturn(
     rpc::ReportIntermediateTaskReturnRequest request,
     rpc::ReportIntermediateTaskReturnReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "SANG-TODO HandleReportIntermediateTaskReturn";
   task_manager_->HandleReportIntermediateTaskReturn(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

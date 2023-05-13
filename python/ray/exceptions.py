@@ -336,7 +336,7 @@ class RaySystemError(RayError):
         return error_msg
 
 
-class RayKeyError(RayError):
+class ObjectRefStreamEoFError(RayError):
     pass
 
 

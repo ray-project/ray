@@ -131,7 +131,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    RayKeyError,
+    ObjectRefStreamEoFError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -203,7 +203,7 @@ class StreamingObjectRefGenerator:
         self._generator_task_exception = None
         self.worker = worker
         assert hasattr(worker, "core_worker")
-        worker.core_worker.create_generator(self._generator_ref)
+        worker.core_worker.create_object_ref_stream(self._generator_ref)
 
     def __iter__(self):
         return self
@@ -270,19 +270,20 @@ class StreamingObjectRefGenerator:
         try:
             worker = ray._private.worker.global_worker
             if hasattr(worker, "core_worker"):
-                obj = worker.core_worker.generator_get_next(self._generator_ref)
+                obj = worker.core_worker.async_read_object_ref_stream(
+                    self._generator_ref)
                 return obj
             else:
                 raise ValueError(
                     "Cannot access the core worker. "
                     "Did you already shutdown Ray via ray.shutdown()?")
-        except RayKeyError:
+        except ObjectRefStreamEoFError:
             raise StopIteration
 
     def __del__(self):
         worker = ray._private.worker.global_worker
         if hasattr(worker, "core_worker"):
-            worker.core_worker.delete_generator(self._generator_ref)
+            worker.core_worker.delete_object_ref_stream(self._generator_ref)
 
     def __getstate__(self):
         raise TypeError(
@@ -301,9 +302,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
-    # SANG-TODO Use a different error NotFound
-    elif status.IsKeyError():
-        raise RayKeyError(message)
+    elif status.IsObjectRefStreamEoF():
+        raise ObjectRefStreamEoFError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
@@ -874,7 +874,9 @@ cdef execute_streaming_generator(
                 &intermediate_result,
                 caller_address,
                 generator_id)
-            # print("SANG-TODO Writes an index ", i)
+            logger.debug(
+                "Writes to a ObjectRefStream of an "
+                "index {}".format(generator_index))
             assert intermediate_result.size() == 1
             del output
 
@@ -892,7 +894,9 @@ cdef execute_streaming_generator(
     # All the intermediate result has to be popped and reported.
     assert intermediate_result.size() == 0
     # Report the owner that there's no more objects.
-    # print("SANG-TODO Closes an index ", i)
+    logger.debug(
+        "Writes EoF to a ObjectRefStream "
+        "of an index {}".format(generator_index))
     CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
         c_pair[CObjectID, shared_ptr[CRayObject]](
             CObjectID.Nil(), shared_ptr[CRayObject]()),
@@ -3328,19 +3332,19 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker() \
             .RecordTaskLogEnd(out_end_offset, err_end_offset)
 
-    def create_generator(self, ObjectRef generator_id):
+    def create_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
         CCoreWorkerProcess.GetCoreWorker().CreateObjectRefStream(c_generator_id)
 
-    def delete_generator(self, ObjectRef generator_id):
+    def delete_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
         CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
-    def generator_get_next(self, ObjectRef generator_id):
+    def async_read_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
