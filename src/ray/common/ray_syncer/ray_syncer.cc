@@ -352,6 +352,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);
         syncer_.sync_reactors_.erase(node_id);
+        syncer_.node_state_->RemoveNode(node_id);
       });
   RAY_LOG(DEBUG) << "Get connection from "
                  << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "
