@@ -164,26 +164,32 @@ TEST_F(RedisStoreClientTest, Complicated) {
                   } else {
                     ++sent;
                     RAY_LOG(INFO) << "S AsyncBatchDelete: " << absl::StrJoin(p_keys, ",");
-            ASSERT_TRUE(store_client_->AsyncBatchDelete(
-                "N", p_keys, [&finished, p_keys, keys](auto n) mutable {
-          RAY_LOG(INFO) << "F AsyncBatchDelete: " << absl::StrJoin(p_keys, ",");
-          ++finished;
-          ASSERT_EQ(n, keys.size());
-                });
-
-            for (auto p_key : p_keys) {
-          ++sent;
-          RAY_LOG(INFO) << "S AsyncExists: " << p_key;
-          ASSERT_TRUE(store_client_
-                          ->AsyncExists("N",
-                                        p_key,
-                                        [&finished, p_key](auto b) mutable {
-                                          RAY_LOG(INFO) << "F AsyncExists: " << p_key;
+                    ASSERT_TRUE(store_client_
+                                    ->AsyncBatchDelete(
+                                        "N",
+                                        p_keys,
+                                        [&finished, p_keys, keys](auto n) mutable {
+                                          RAY_LOG(INFO) << "F AsyncBatchDelete: "
+                                                        << absl::StrJoin(p_keys, ",");
                                           ++finished;
-                                          ASSERT_TRUE(false);
+                                          ASSERT_EQ(n, keys.size());
                                         })
-                          .ok());
-            }
+                                    .ok());
+
+                    for (auto p_key : p_keys) {
+                      ++sent;
+                      RAY_LOG(INFO) << "S AsyncExists: " << p_key;
+                      ASSERT_TRUE(store_client_
+                                      ->AsyncExists("N",
+                                                    p_key,
+                                                    [&finished, p_key](auto b) mutable {
+                                                      RAY_LOG(INFO)
+                                                          << "F AsyncExists: " << p_key;
+                                                      ++finished;
+                                                      ASSERT_TRUE(false);
+                                                    })
+                                      .ok());
+                    }
                   }
                 })
             .ok());
