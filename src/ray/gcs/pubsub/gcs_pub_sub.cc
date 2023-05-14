@@ -354,13 +354,14 @@ Status PythonGcsSubscriber::Subscribe() {
 }
 
 Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
-  absl::MutexLock lock(&mu_);
-
-  if (closed_) {
-    return Status::OK();
-  }
-
   grpc::ClientContext context;
+  {
+    absl::MutexLock lock(&mu_);
+    current_polling_context_ = &context;
+    if (closed_) {
+      return Status::OK();
+    }
+  }
 
   rpc::GcsSubscriberPollRequest request;
   request.set_subscriber_id(subscriber_id_);
@@ -370,6 +371,10 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
   rpc::GcsSubscriberPollReply reply;
   // TODO: Add error handling
   grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
+
+  absl::MutexLock lock(&mu_);
+
+  current_polling_context_ = nullptr;
 
   if (publisher_id_ != reply.publisher_id()) {
     publisher_id_ = reply.publisher_id();
@@ -406,7 +411,13 @@ Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
 }
 
 Status PythonGcsSubscriber::Close() {
-  absl::MutexLock lock(&mu_);
+  {
+    absl::MutexLock lock(&mu_);
+    closed_ = true;
+    if (current_polling_context_) {
+      current_polling_context_->TryCancel();
+    }
+  }
 
   grpc::ClientContext context;
 
@@ -419,8 +430,6 @@ Status PythonGcsSubscriber::Close() {
 
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
-
-  closed_ = true;
 
   return Status::OK();
 }

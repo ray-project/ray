@@ -216,6 +216,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   int64_t max_processed_sequence_id_;
   std::deque<rpc::PubMessage> queue_;
   bool closed_;
+  grpc::ClientContext *current_polling_context_;
 };
 
 /// Construct the arguments for synchronous gRPC clients
