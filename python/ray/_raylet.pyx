@@ -1832,6 +1832,10 @@ cdef class GcsErrorSubscriber:
         with nogil:
             check_status(self.inner.get().Subscribe())
 
+    @property
+    def last_batch_size(self):
+        return self.inner.get().last_batch_size()
+
     def poll(self):
         cdef:
             CErrorTableData error_data
@@ -1870,6 +1874,10 @@ cdef class GcsLogSubscriber:
         with nogil:
             check_status(self.inner.get().Subscribe())
 
+    @property
+    def last_batch_size(self):
+        return self.inner.get().last_batch_size()
+
     def poll(self):
         cdef:
             CLogBatch log_batch
@@ -1899,6 +1907,9 @@ cdef class GcsLogSubscriber:
     def close(self):
         with nogil:
             check_status(self.inner.get().Close())
+
+
+# class GcsFunction
 
 
 cdef class CoreWorker:

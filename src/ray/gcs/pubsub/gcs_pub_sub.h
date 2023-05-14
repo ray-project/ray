@@ -200,6 +200,8 @@ class RAY_EXPORT PythonGcsSubscriber {
   /// Closes the subscriber and its active subscription.
   Status Close();
 
+  int64_t last_batch_size();
+
  private:
   Status DoPoll(rpc::PubMessage* message);
 
@@ -214,6 +216,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   std::string publisher_id_;
   std::string worker_id_;
   int64_t max_processed_sequence_id_;
+  int64_t last_batch_size_;
   std::deque<rpc::PubMessage> queue_;
   bool closed_;
   grpc::ClientContext *current_polling_context_;

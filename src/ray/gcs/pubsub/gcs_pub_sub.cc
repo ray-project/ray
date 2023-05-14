@@ -380,6 +380,8 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     publisher_id_ = reply.publisher_id();
   }
 
+  last_batch_size_ = reply.pub_messages().size();
+
   for (auto& message : reply.pub_messages()) {
     max_processed_sequence_id_ = message.sequence_id();
     // TODO: Drop out of order messages
@@ -432,6 +434,11 @@ Status PythonGcsSubscriber::Close() {
   grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   return Status::OK();
+}
+
+int64_t PythonGcsSubscriber::last_batch_size() {
+  absl::MutexLock lock(&mu_);
+  return last_batch_size_;
 }
 
 }  // namespace gcs
