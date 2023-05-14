@@ -151,7 +151,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus AsyncReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        CObjectID AllocateDynamicReturnId()
+        CObjectID AllocateDynamicReturnId(const CAddress &owner_address)
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
@@ -315,7 +315,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string *application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
-            c_bool is_reattempt) nogil
+            c_bool is_reattempt,
+            c_bool is_streaming_generator) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
