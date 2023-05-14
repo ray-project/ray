@@ -18,6 +18,7 @@ import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.config import CheckpointConfig
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
@@ -73,12 +74,13 @@ class TuneRestoreTest(unittest.TestCase):
     def testPostRestoreCheckpointExistence(self):
         """Tests that checkpoint restored from is not deleted post-restore."""
         self.assertTrue(os.path.isfile(self.checkpoint_path))
+        checkpoint_config = CheckpointConfig(num_to_keep=1)
         tune.run(
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},
             checkpoint_freq=1,
-            keep_checkpoints_num=1,
+            checkpoint_config=checkpoint_config,
             restore=self.checkpoint_path,
             config={
                 "env": "CartPole-v0",

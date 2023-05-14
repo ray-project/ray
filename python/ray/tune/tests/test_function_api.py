@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 import ray
+from ray.air.config import CheckpointConfig
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 
@@ -349,7 +350,8 @@ class FunctionApiTest(unittest.TestCase):
                 with open(checkpoint_path, "w") as f:
                     f.write("goodbye")
 
-        [trial] = tune.run(train, keep_checkpoints_num=3).trials
+        checkpoint_config = CheckpointConfig(num_to_keep=3)
+        [trial] = tune.run(train, checkpoint_config=checkpoint_config).trials
         assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log2"))
 
     def testReuseCheckpoint(self):
