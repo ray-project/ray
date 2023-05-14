@@ -269,9 +269,9 @@ def debug(address):
 
 @cli.command()
 @click.option(
-    "--node-ip-address", required=False, type=str, help="the IP address of this node"
+    "--node-ip-address", required=False, type=str, help="the IP address of this head node"
 )
-@click.option("--address", required=False, type=str, help="the address to use for Ray")
+@click.option("--address", required=False, type=str, help="the address to use for Ray <ip>:<port> ")
 @click.option(
     "--port",
     type=int,
@@ -863,6 +863,7 @@ def start(
             "--port": port,
             "--redis-shard-ports": redis_shard_ports,
             "--include-dashboard": include_dashboard,
+            "--node-ip-address": node_ip_address,
         }
         for flag, val in head_only_flags.items():
             if val is None:

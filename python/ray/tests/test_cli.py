@@ -355,6 +355,41 @@ def test_ray_start_worker_cannot_specify_temp_dir(
     assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
 
 
+def test_ray_start_address_options(cleanup_ray):
+    """
+    Verify ray start --head/--address/--node-ip-address combinations
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--node-ip-address", "localhost",
+        ],
+    )
+    _die_on_error(result)
+    _die_on_error(runner.invoke(scripts.stop))
+
+    result = runner.invoke(
+        scripts.start,
+        [
+            "--node-ip-address", "localhost",
+        ],
+    )
+    assert result.exit_code != 0
+
+    result = runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--address", "localhost:6789",
+        ],
+    )
+    # Is this a valid way to express the HEAD node address?
+    _die_on_error(result)
+    _die_on_error(runner.invoke(scripts.stop))
+
+
 def _ray_start_hook(ray_params, head):
     os.makedirs(ray_params.temp_dir, exist_ok=True)
     with open(os.path.join(ray_params.temp_dir, "ray_hook_ok"), "w") as f:
