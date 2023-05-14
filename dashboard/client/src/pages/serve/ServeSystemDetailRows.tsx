@@ -6,9 +6,8 @@ import {
   TableRow,
   Tooltip,
 } from "@material-ui/core";
-import React, { useContext } from "react";
+import React from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { GlobalContext } from "../../App";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeHttpProxy } from "../../type/serve";
 
@@ -35,12 +34,18 @@ export const ServeHttpProxyRow = ({ httpProxy }: ServeHttpProxyRowProps) => {
 
   return (
     <TableRow>
-      <TableCell align="center">HTTPProxyActor:{node_id}</TableCell>
+      <TableCell align="center">
+        <Link component={RouterLink} to={`httpProxies/${node_id}`}>
+          HTTPProxyActor:{node_id}
+        </Link>
+      </TableCell>
       <TableCell align="center">
         <StatusChip type="serveHttpProxy" status={status} />
       </TableCell>
       <TableCell align="center">
-        <ServeHttpProxyLogLink httpProxy={httpProxy} />
+        <Link component={RouterLink} to={`httpProxies/${node_id}`}>
+          Log
+        </Link>
       </TableCell>
       <TableCell align="center">
         <Tooltip className={classes.idCol} title={node_id} arrow interactive>
@@ -58,38 +63,4 @@ export const ServeHttpProxyRow = ({ httpProxy }: ServeHttpProxyRowProps) => {
       </TableCell>
     </TableRow>
   );
-};
-
-export type ServeReplicaLogsLinkProps = {
-  httpProxy: ServeHttpProxy;
-};
-
-export const ServeHttpProxyLogLink = ({
-  httpProxy: { log_file_path, node_ip },
-}: ServeReplicaLogsLinkProps) => {
-  const { ipLogMap } = useContext(GlobalContext);
-
-  let link: string | undefined;
-
-  if (node_ip && ipLogMap[node_ip]) {
-    // TODO(aguo): Clean up this logic after re-writing the log viewer
-    const logsRoot = ipLogMap[node_ip].endsWith("/logs")
-      ? ipLogMap[node_ip].substring(
-          0,
-          ipLogMap[node_ip].length - "/logs".length,
-        )
-      : ipLogMap[node_ip];
-    const path = `/logs${log_file_path}`;
-    link = `/logs/${encodeURIComponent(logsRoot)}/${encodeURIComponent(path)}`;
-  }
-
-  if (link) {
-    return (
-      <Link component={RouterLink} to={link} target="_blank" rel="noreferrer">
-        Log
-      </Link>
-    );
-  }
-
-  return <span>-</span>;
 };

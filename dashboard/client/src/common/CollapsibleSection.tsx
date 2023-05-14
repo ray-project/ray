@@ -25,12 +25,6 @@ const useStyles = makeStyles((theme) =>
       width: 24,
       height: 24,
     },
-    body: {
-      marginTop: theme.spacing(1),
-    },
-    bodyHidden: {
-      display: "none",
-    },
   }),
 );
 
@@ -76,13 +70,6 @@ export const CollapsibleSection = forwardRef<
     const classes = useStyles();
     const [internalExpanded, setInternalExpanded] = useState(startExpanded);
     const finalExpanded = expanded !== undefined ? expanded : internalExpanded;
-    const [rendered, setRendered] = useState(finalExpanded);
-
-    useEffect(() => {
-      if (finalExpanded) {
-        setRendered(true);
-      }
-    }, [finalExpanded]);
 
     const handleExpandClick = () => {
       onExpandButtonClick?.();
@@ -106,16 +93,69 @@ export const CollapsibleSection = forwardRef<
           </Typography>
           {icon}
         </Box>
-        {(finalExpanded || (keepRendered && rendered)) && (
-          <div
-            className={classNames(classes.body, {
-              [classes.bodyHidden]: !finalExpanded,
-            })}
-          >
-            {children}
-          </div>
-        )}
+        <HideableBlock visible={finalExpanded} keepRendered={keepRendered}>
+          {children}
+        </HideableBlock>
       </div>
     );
   },
 );
+
+const useHideableBlockStyles = makeStyles((theme) =>
+  createStyles({
+    body: {
+      marginTop: theme.spacing(1),
+    },
+    bodyHidden: {
+      display: "none",
+    },
+  }),
+);
+
+type HideableBlockProps = PropsWithChildren<
+  {
+    visible: boolean;
+    /**
+     * An optimization to not avoid re-rendering the contents of the collapsible section.
+     * When enabled, we will keep the content around when collapsing but hide it via css.
+     */
+    keepRendered?: boolean;
+  } & ClassNameProps
+>;
+
+/**
+ * Component that can be hidden depending on a passed in prop. Supports an optimization
+ * to keep the component rendered (but not visible) when hidden to avoid re-rendering
+ * when component is shown again.
+ */
+export const HideableBlock = ({
+  visible,
+  keepRendered,
+  children,
+}: HideableBlockProps) => {
+  const classes = useHideableBlockStyles();
+
+  // visible represents whether the component is viewable in the browser.
+  // Rendered represents whether the DOM elements exist in the DOM tree.
+  // If !visible && rendered, then the elements are in the DOM but are
+  // not drawn via CSS visibility rules.
+  const [rendered, setRendered] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+    }
+  }, [visible]);
+
+  // Optimization to keep the component rendered (but not visible) when hidden
+  // to avoid re-rendering when component is shown again.
+  return visible || (keepRendered && rendered) ? (
+    <div
+      className={classNames(classes.body, {
+        [classes.bodyHidden]: !visible,
+      })}
+    >
+      {children}
+    </div>
+  ) : null;
+};

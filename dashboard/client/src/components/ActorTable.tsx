@@ -16,7 +16,6 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useContext, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
 import { ActorLink } from "../common/links";
@@ -436,14 +435,16 @@ const ActorTable = ({
                   <TableCell align="center">
                     {ipLogMap[address?.ipAddress] && (
                       <React.Fragment>
-                        <Link
-                          target="_blank"
-                          to={`/logs/${encodeURIComponent(
-                            ipLogMap[address?.ipAddress],
-                          )}?fileName=${jobId}-${pid}`}
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
                         >
                           Log
-                        </Link>
+                        </ActorLink>
                         <br />
                         <CpuProfilingLink
                           pid={pid}

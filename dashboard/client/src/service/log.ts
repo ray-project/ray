@@ -51,7 +51,9 @@ export const getLogDetail = async (url: string) => {
 };
 
 export const getStateApiDownloadLogUrl = (nodeId: string, fileName: string) =>
-  `api/v0/logs/file?node_id=${nodeId}&filename=${fileName}&lines=-1`;
+  `api/v0/logs/file?node_id=${encodeURIComponent(
+    nodeId,
+  )}&filename=${encodeURIComponent(fileName)}&lines=-1`;
 
 export const getStateApiLog = async (nodeId: string, fileName: string) => {
   const resp = await get<string>(getStateApiDownloadLogUrl(nodeId, fileName));
